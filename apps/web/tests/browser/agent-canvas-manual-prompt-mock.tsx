@@ -139,6 +139,8 @@ function App() {
   const audioToggle = searchParams.get("audioToggle");
   const testManualVideo = searchParams.get("manualVideo") === "1";
   const testModelCache = searchParams.get("modelCache") === "1";
+  const promptPreparingType = (["image", "video", "audio", "text", "script"] as const)
+    .find(type => type === searchParams.get("promptPreparing"));
   const [panelOpen, setPanelOpen] = useState(true);
   const testVideoToolbar = searchParams.get("videoToolbar") === "1" || audioToggle !== null || testManualVideo || testModelCache;
   const audioModel: ProviderModelSummaryV1 = {
@@ -169,7 +171,13 @@ function App() {
     || preparation === "superseded"
     ? preparation
     : "waiting_user";
-  const [node, setNode] = useState<CanvasNodeV2>(() => textPanel ? {
+  const [node, setNode] = useState<CanvasNodeV2>(() => promptPreparingType ? {
+    ...manualNode("queued"),
+    node_type: promptPreparingType,
+    node_id: `prompt-preparing-${promptPreparingType}`,
+    creative_role: promptPreparingType === "text" ? "general_text" : promptPreparingType === "script" ? "script" : `general_${promptPreparingType}`,
+    generation_prompt: null,
+  } : textPanel ? {
     ...manualNode(initialPreparation), node_type: "text", node_id: "text-panel-node",
     creative_role: textPanel === "world" ? "world_setting" : "general_text",
     status: textPanel === "world" || textPanel === "ready" ? "ready" : textPanel === "failed" ? "failed" : "draft",
@@ -232,6 +240,28 @@ function App() {
           <button onClick={() => setPanelOpen(false)}>Close panel</button>
           <button onClick={() => void api.patchModelDefaults({ defaults: { video: "mock:video-alternate" } })
             .catch(() => setEvents(current => [...current, "defaults-save-failed"]))}>Change default</button>
+        </nav>
+      ) : null}
+      {promptPreparingType ? (
+        <nav aria-label="Prompt preparing test controls">
+          <button onClick={() => setPanelOpen(false)}>Close panel</button>
+          <button onClick={() => setPanelOpen(true)}>Open panel</button>
+          <button onClick={() => setNode(current => ({
+            ...current,
+            revision: current.revision + 1,
+            prompt_preparation: current.prompt_preparation ? { ...current.prompt_preparation, status: "working" } : null,
+          }))}>Mark prompt working</button>
+          <button onClick={() => setNode(current => ({
+            ...current,
+            revision: current.revision + 1,
+            generation_prompt: "Prepared generation prompt",
+            prompt_preparation: current.prompt_preparation ? { ...current.prompt_preparation, status: "ready", prompt_digest: "a".repeat(64) } : null,
+          }))}>Mark prompt ready</button>
+          <button onClick={() => setNode(current => ({
+            ...current,
+            revision: current.revision + 1,
+            prompt_preparation: current.prompt_preparation ? { ...current.prompt_preparation, status: "failed" } : null,
+          }))}>Mark prompt failed</button>
         </nav>
       ) : null}
       {panelOpen ? (

@@ -21,6 +21,7 @@ export function TextWorkbench({
   modelsError,
   modelResolution,
   promptEditorRef,
+  preparingPrompt = false,
 }: {
   node: CanvasNodeV2;
   draft: NodeWorkbenchDraft;
@@ -30,6 +31,7 @@ export function TextWorkbench({
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
+  preparingPrompt?: boolean;
 }) {
   const isWorldSetting = node.creative_role === "world_setting";
   const canRun = !isWorldSetting && (node.status === "draft" || node.status === "failed");
@@ -43,6 +45,7 @@ export function TextWorkbench({
         <FourLinePromptEditor
           ariaLabel={isWorldSetting ? "World Setting content" : canRun ? "Text prompt" : "Text content"}
           value={isWorldSetting || !canRun ? draft.textContent : draft.prompt}
+          preparing={canRun && preparingPrompt}
           disabled={draft.pending}
           placeholder={isWorldSetting
             ? "Describe the world, its rules, place, era, and visual continuity."

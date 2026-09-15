@@ -5,7 +5,7 @@
 将视频节点已有的“提示词正在准备...”循环打字提示，扩展到图片、音频、普通文本和
 Script 的提示词编辑区域。沿用同一个展示组件、文案与动画样式，不为各类型另做一套动效。
 
-本轮交付方案和实施计划，尚未修改功能代码、运行实现验收或合并 main。
+本轮交付方案、实现与验收均在独立 worktree 完成；尚未合并 main 或推送远端。
 已从 main `1c0a80df` 创建独立 worktree：
 
 ```text
@@ -119,16 +119,30 @@ const preparingGenerationPrompt = requiresPreparedPrompt
 
 ## 实施计划
 
+### 验证中发现的必要边界修复
+
+浏览器同一面板 `queued → ready + generation_prompt` 测试在五类节点上均复现：
+动效消失，但实际提示词没有进入编辑器。原因是 `useNodeWorkbenchDraft` 将任何
+`lastSavedValue !== node.generation_prompt` 都视为等待自己的保存回包，即使用户从未编辑过。
+直接删除保护也不可用：补充测试复现了后端提示词被 blur/close 重复保存、以及刚保存的本地
+提示词被旧 Workflow 响应覆盖两项回归。
+
+因此将本轮范围补充为最小的草稿同步修复：autosave session 明确记录是否有本地保存等待
+Workflow 确认；无本地改动时，允许接收后端提示词并同时更新持久化基准，不触发保存。
+保留正在输入、保存中、冲突和等待保存确认的保护，包含用户清空后保存 null 的情况。
+对应测试覆盖后端到达、blur/close 无写入、本地输入保护、保存响应滞后与空值保存。
+这不改后端合同、请求路径、debounce 时长或错误重试规则。
+
 - [x] 定位五类节点的共享编辑器、准备状态条件、正文分支和 Presentation Stream 刷新职责。
 - [x] 创建独立 worktree，写明本方案及验收标准。
-- [ ] 先扩展 `AgentCanvasInlineWorkbench.test.tsx`：为 image/audio/text/script 的空提示词
+- [x] 先扩展 `AgentCanvasInlineWorkbench.test.tsx`：为 image/audio/text/script 的空提示词
   `queued/working` 建立失败用例，同时保留视频基准用例。
-- [ ] 统一父层准备标记，向 Media/Text/Script 传递；Text/Script 添加提示词模式防护。
-- [ ] 为音频和 Script 隐藏重复的活动准备状态内容，保留现有监听及错误路径。
-- [ ] 补齐以下状态矩阵与无副作用测试。
-- [ ] 扩展现有 mock 页面，添加跨类型浏览器动画回归。
-- [ ] 执行静态检查、组件/自动保存测试、模型缓存回归及浏览器验收。
-- [ ] 更新本文件的验证结果，在独立分支提交；本轮不包含自动合并 main 或推送远端。
+- [x] 统一父层准备标记，向 Media/Text/Script 传递；Text/Script 添加提示词模式防护。
+- [x] 为音频和 Script 隐藏重复的活动准备状态内容，保留现有监听及错误路径。
+- [x] 补齐以下状态矩阵与无副作用测试。
+- [x] 扩展现有 mock 页面，添加跨类型浏览器动画回归。
+- [x] 执行静态检查、组件/自动保存测试、模型缓存回归及浏览器验收。
+- [x] 更新本文件的验证结果，在独立分支提交；本轮不包含自动合并 main 或推送远端。
 
 ## 验收清单
 
@@ -158,4 +172,12 @@ git diff --check
 
 ## 本轮状态
 
-仅完成定位和方案文档。实现、单测/浏览器验收、提交功能改动与合并尚未执行。
+实现已完成并提交于本 worktree 的独立分支（未合并 main、未推送远端）。
+
+验证结果：
+
+- `npm test -- src/features/agent-canvas/workbench/ src/features/agent-canvas/model/useAgentCanvasProviderModels.test.tsx`：227 项通过。
+- `npm run typecheck`：通过。
+- 指定变更文件 `npx eslint ...`：0 errors，`useNodePromptAutosave.ts` 保留一个既有 ref cleanup warning。
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5199 npx playwright test tests/browser/workbench-prompt-preparing.spec.ts tests/browser/workbench-model-cache.spec.ts`：9 项通过。
+- `git diff --check`：通过。
