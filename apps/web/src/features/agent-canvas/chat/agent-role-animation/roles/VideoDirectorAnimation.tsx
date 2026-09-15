@@ -164,26 +164,6 @@ export const VIDEO_DIRECTOR_MOTION_PROGRAM: AgentRoleMotionProgram = {
       },
     },
   ],
-  waiting: [
-    reelTrack("left-reel", -360, 4_800),
-    reelTrack("right-reel", 360, 4_800),
-    {
-      part: "record-dot",
-      keyframes: [
-        { offset: 0, opacity: 0.72 },
-        { offset: 0.1, opacity: 0.72, easing: INTERVAL_EASING },
-        { offset: 0.4, opacity: 0.9 },
-        { offset: 0.6, opacity: 0.9, easing: INTERVAL_EASING },
-        { offset: 0.9, opacity: 0.72 },
-        { offset: 1, opacity: 0.72 },
-      ],
-      options: {
-        duration: 4_800,
-        iterations: Infinity,
-        easing: LOOP_EASING,
-      },
-    },
-  ],
 };
 
 interface VideoDirectorAnimationProps {

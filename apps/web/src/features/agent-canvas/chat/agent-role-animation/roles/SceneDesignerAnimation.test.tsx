@@ -147,7 +147,6 @@ describe("SceneDesignerAnimation", () => {
         "scene-scan",
         "scene-accent",
       ]);
-    expect(SCENE_DESIGNER_MOTION_PROGRAM.waiting).toEqual([]);
     expect(SCENE_DESIGNER_MOTION_PROGRAM.workingTransitionDurationMs).toBe(120);
 
     const reveal = trackFor("scene-reveal");

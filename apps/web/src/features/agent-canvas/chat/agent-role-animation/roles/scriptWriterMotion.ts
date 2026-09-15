@@ -137,5 +137,4 @@ export const SCRIPT_WRITER_MOTION_PROGRAM: AgentRoleMotionProgram = {
   workingEntryTimeMs: 160,
   workingIntro: createChoreography(INTRO_MS, true),
   working: createChoreography(LOOP_MS, false),
-  waiting: [],
 };

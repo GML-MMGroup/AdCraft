@@ -5,12 +5,16 @@ import type {
 import type { AgentCanvasChatTurnV2 } from "../../../../types-v2.ts";
 import type { StageThreadStatus, StageThreadUnit } from "../stageThreadProjection.ts";
 
+// Two visual states only. A role plays its animated artwork from the moment it
+// starts working until the next role starts working; awaiting a user decision
+// is still part of its working stretch. Queued work has not started yet and
+// stays on the static bitmap.
 export function resolveAgentRoleMotionState({
   status,
   turnId,
   turn,
 }: ResolveAgentRoleMotionStateInput): AgentRoleMotionState {
-  if (status === "queued" || status === "waiting_user") return "waiting";
+  if (status === "waiting_user") return "working";
   if (status !== "working") return "idle";
   if (turn?.turn_id === turnId && turn.status !== "running") return "idle";
   return "working";
@@ -26,7 +30,7 @@ export function resolveStageThreadRoleMotionState(
   unit: StageThreadUnit,
   turnsById: Readonly<Record<string, AgentCanvasChatTurnV2>>,
 ): AgentRoleMotionState {
-  if (unit.status !== "working") return "idle";
+  if (unit.status !== "working" && unit.status !== "waiting_user") return "idle";
 
   const candidates: StageRoleMotionCandidate[] = [
     ...unit.activities.map((activity) => ({

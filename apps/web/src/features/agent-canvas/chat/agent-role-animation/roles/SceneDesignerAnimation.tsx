@@ -78,7 +78,6 @@ export const SCENE_DESIGNER_MOTION_PROGRAM: AgentRoleMotionProgram = {
     sceneTrack("scene-scan", [0, 1, 1, 0, 0]),
     SCENE_ACCENT_TRACK,
   ],
-  waiting: [],
 };
 
 interface SceneDesignerAnimationProps {

@@ -101,38 +101,6 @@ export const PROP_DESIGNER_MOTION_PROGRAM: AgentRoleMotionProgram = {
       },
     },
   ],
-  waiting: [
-    {
-      part: "shade-light",
-      keyframes: [
-        { offset: 0, opacity: 0.68 },
-        { offset: 0.1, opacity: 0.68 },
-        { offset: 0.9, opacity: 0.68 },
-        { offset: 1, opacity: 0.68 },
-      ],
-      options: {
-        duration: 4_800,
-        iterations: Infinity,
-        easing: LOOP_EASING,
-      },
-    },
-    {
-      part: "guide-active-vertical",
-      keyframes: [
-        { offset: 0, opacity: 0, transform: "translateY(0px)" },
-        { offset: 0.12, opacity: 0, transform: "translateY(0px)" },
-        { offset: 0.48, opacity: 0.58, transform: "translateY(12px)" },
-        { offset: 0.6, opacity: 0.58, transform: "translateY(12px)" },
-        { offset: 0.9, opacity: 0, transform: "translateY(0px)" },
-        { offset: 1, opacity: 0, transform: "translateY(0px)" },
-      ],
-      options: {
-        duration: 4_800,
-        iterations: Infinity,
-        easing: LOOP_EASING,
-      },
-    },
-  ],
 };
 
 interface PropDesignerAnimationProps {

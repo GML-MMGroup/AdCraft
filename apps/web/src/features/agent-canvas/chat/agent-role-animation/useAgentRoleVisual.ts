@@ -9,6 +9,8 @@ import {
 import type { AgentRoleMotionState } from "./types.ts";
 
 export function roleVisualMode(state: AgentRoleMotionState): RoleVisualMode {
+  // Only working roles play the animated artwork; idle collapses to the static
+  // bitmap. A role holds its working stretch until the next role takes over.
   return state === "working" ? "animated" : "bitmap";
 }
 
