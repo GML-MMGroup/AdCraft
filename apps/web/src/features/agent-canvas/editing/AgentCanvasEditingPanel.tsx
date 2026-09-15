@@ -164,7 +164,15 @@ export function AgentCanvasEditingPanel({
 
       {!editing.content ? (
         <div className="agent-editing-panel__unavailable" role="alert">
-          This Editing node does not yet contain a valid composition manifest.
+          {editing.contentError ? (
+            <div>
+              <p>This Editing node’s composition manifest could not be read.</p>
+              <details>
+                <summary>Technical details</summary>
+                <pre>{editing.contentError}</pre>
+              </details>
+            </div>
+          ) : "This Editing node does not yet contain a composition manifest."}
         </div>
       ) : (
         <div className="agent-editing-panel__workspace">

@@ -57,6 +57,41 @@ function asset(
   };
 }
 
+function nullableComposition() {
+  const editing = {
+    ...node("editing-null", "editing", null),
+    structured_content: {
+      manifest: {
+        video_entries: ["video-1", "video-2"].map((asset_id) => ({ asset_id, timeline_start_seconds: null })),
+        timeline_duration_seconds: null,
+        bgm: { asset_id: "bgm-1" },
+        output: {},
+        manifest_revision: 1,
+      },
+      dirty: true,
+      preview: { clips: [], bgm_availability: null, estimated_duration_seconds: 30.083334, warnings: [] },
+      last_successful_export: null,
+      active_export: null,
+    },
+  } satisfies CanvasNodeV2;
+  const workflow: AgentCanvasWorkflowV2 = {
+    workflow_id: "workflow-1",
+    project_id: "project-1",
+    workflow_schema_version: 2,
+    canvas_model: "agent_canvas_v1",
+    revision: 1,
+    layout_revision: 1,
+    nodes: [editing],
+    bindings: [],
+    assets: [
+      { ...asset("video-1", "video"), duration_seconds: 15.041667 },
+      { ...asset("video-2", "video"), duration_seconds: 15.041667 },
+      asset("bgm-1", "audio"),
+    ],
+  };
+  return { editing, workflow };
+}
+
 describe("AgentCanvasEditingPanel", () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
@@ -67,6 +102,44 @@ describe("AgentCanvasEditingPanel", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("opens valid nullable content with video and BGM preview without an automatic write", () => {
+    const { editing, workflow } = nullableComposition();
+    const patchNode = vi.fn();
+    render(<AgentCanvasEditingPanel workflow={workflow} node={editing} patchNode={patchNode} onClose={vi.fn()} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("group", { name: "Video track" })).toBeTruthy();
+    expect(screen.getByTestId("editing-preview-video").getAttribute("src")).toContain("video-1/content");
+    expect(screen.getByTestId("editing-preview-bgm").getAttribute("src")).toContain("bgm-1/content");
+    expect(screen.getByRole("button", { name: "Play preview" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(false);
+    expect(patchNode).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes absent content from a malformed manifest and recovers when corrected", () => {
+    const { editing, workflow } = nullableComposition();
+    const patchNode = vi.fn();
+    const missing = { ...editing, structured_content: {} };
+    const { rerender } = render(<AgentCanvasEditingPanel workflow={workflow} node={missing} patchNode={patchNode} onClose={vi.fn()} />);
+    expect(screen.getByRole("alert").textContent).toContain("does not yet contain a composition manifest");
+    expect(screen.queryByText("Technical details")).toBeNull();
+    const malformed: CanvasNodeV2 = {
+      ...editing,
+      structured_content: {
+        ...editing.structured_content,
+        manifest: { ...editing.structured_content.manifest, timeline_duration_seconds: "30" },
+      },
+    };
+    rerender(<AgentCanvasEditingPanel workflow={workflow} node={malformed} patchNode={patchNode} onClose={vi.fn()} />);
+    expect(screen.getByRole("alert").textContent).toContain("could not be read");
+    expect(screen.getByText("Technical details")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("timeline_duration_seconds: expected finite number");
+    expect(screen.queryByRole("button", { name: "Export" })).toBeNull();
+    rerender(<AgentCanvasEditingPanel workflow={workflow} node={editing} patchNode={patchNode} onClose={vi.fn()} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Export" })).toBeTruthy();
+    expect(patchNode).not.toHaveBeenCalled();
   });
 
   it("shows nodes omitted by the backend composition plan without adding controls", () => {

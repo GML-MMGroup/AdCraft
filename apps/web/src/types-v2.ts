@@ -3075,7 +3075,8 @@ export interface EditingVideoEntryV2 {
   binding_id: string | null;
   asset_id: string | null;
   enabled: boolean;
-  timeline_start_seconds?: number;
+  /** Null or omitted lets the timeline determine the clip position. */
+  timeline_start_seconds?: number | null;
   trim_start_seconds: number;
   trim_end_seconds: number | null;
   volume: number;
@@ -3101,7 +3102,8 @@ export interface EditingManifestV2 {
   bgm: EditingBgmEntryV2 | null;
   output: EditingOutputSettingsV2;
   manifest_revision: number;
-  timeline_duration_seconds?: number;
+  /** Null or omitted derives the timeline duration from source media. */
+  timeline_duration_seconds?: number | null;
 }
 
 export interface EditingSkippedInputV2 {
