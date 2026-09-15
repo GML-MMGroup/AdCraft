@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_ad_media import (
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
+    StoryboardPanelV2,
     VideoSegmentContentV2,
     VisualStyleContractV2,
     resolve_visual_style,
@@ -311,7 +312,7 @@ class AgentCanvasProviderPromptCompiler:
             if isinstance(structured, CharacterDesignAssetContentV2)
             else None
         )
-        body = _render_content(structured)
+        body = _render_content(structured, generation_prompt=node.generation_prompt or "")
         reference_identities = _render_reference_identities(
             reference_bundle,
             target_semantic_role=node.semantic_role,
@@ -655,7 +656,7 @@ def _style_from_projection(
     return resolve_visual_style()
 
 
-def _render_content(structured: object) -> str:
+def _render_content(structured: object, *, generation_prompt: str = "") -> str:
     if isinstance(structured, SceneDesignBoardContentV2):
         return "\n".join(
             [
@@ -688,8 +689,7 @@ def _render_content(structured: object) -> str:
                 *[
                     (
                         f"{frame_positions[panel.panel_index - 1]} content: "
-                        f"{panel.beat}; {panel.composition}; "
-                        f"{panel.camera}; {panel.subject_action}; "
+                        f"{_render_storyboard_panel(panel, generation_prompt=generation_prompt)}; "
                         f"continuity={panel.continuity_from_previous}"
                     )
                     for panel in structured.panels
@@ -724,6 +724,24 @@ def _render_content(structured: object) -> str:
     if structured is None:
         return ""
     return json.dumps(structured.model_dump(mode="json"), sort_keys=True)
+
+
+def _render_storyboard_panel(panel: StoryboardPanelV2, *, generation_prompt: str) -> str:
+    """Render each exact panel detail once without rewriting the saved creative prompt."""
+
+    projected_row = f"Panel {panel.panel_index}: {panel.beat}; camera: {panel.camera}."
+    already_projected = projected_row in generation_prompt
+    projected_values = {panel.beat, panel.camera} if already_projected else set()
+    details = list(
+        dict.fromkeys(
+            value
+            for value in (panel.beat, panel.composition, panel.camera, panel.subject_action)
+            if value not in projected_values
+        )
+    )
+    if already_projected:
+        details.insert(0, f"Use Panel {panel.panel_index} in the creative prompt")
+    return "; ".join(details)
 
 
 def _provider_parameters(semantic_role: str) -> dict[str, str | int | float | bool]:
