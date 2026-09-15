@@ -359,7 +359,8 @@ describe("Agent Conversation Shell v2", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
 
     expect(screen.queryByRole("button", { name: "Submit answers" })).toBeNull();
-    expect(screen.getByRole("status", { name: "Guided interaction submitted" })).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Guided interaction submitted" })).toBeNull();
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
 
     finish(false);
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit answers" })).toBeTruthy());
@@ -376,7 +377,8 @@ describe("Agent Conversation Shell v2", () => {
     fireEvent.click(screen.getByRole("radio", { name: /30 seconds/ }));
     fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
     finish(true);
-    await waitFor(() => expect(screen.getByRole("status", { name: "Guided interaction submitted" })).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Submit answers" })).toBeNull());
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
 
     fixture.chat.state.guidedInteraction = null;
     view.rerender(
@@ -397,7 +399,8 @@ describe("Agent Conversation Shell v2", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: /30 seconds/ }));
     fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
-    await waitFor(() => expect(screen.getByRole("status", { name: "Guided interaction submitted" })).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Submit answers" })).toBeNull());
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
 
     const failedEvent = {
       workflow_id: "workflow-1",

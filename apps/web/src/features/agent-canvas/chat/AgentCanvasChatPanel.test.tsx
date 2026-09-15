@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const panelMocks = vi.hoisted(() => ({
@@ -39,6 +39,7 @@ vi.mock("./agent-role-animation/AgentRoleAnimation.tsx", () => ({
 
 import type {
   AgentCanvasChatTurnV2,
+  CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
   AgentCanvasWorkflowV2,
   ChatCapabilityActivityV2,
@@ -2047,7 +2048,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     const chat = mockChatResult();
     chat.state.guidedInteraction = interaction;
     panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: { ...chat.state, guidanceAwaiting } });
-    return render(
+    const rendered = render(
       <AgentCanvasChatPanel
         workflow={roleMotionWorkflow}
         chatRevision={0}
@@ -2055,7 +2056,73 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
         onFocusNode={vi.fn()}
       />,
     );
+    return { ...rendered, chat };
   }
+
+  function directionInteraction(): GuidedInteractionV1 {
+    return {
+      ...openInteraction(), kind: "concept_choice", context: "Choose your direction",
+      content: {
+        content_kind: "concept_choice", proposal_id: null, stage: "world_view", stage_revision: 3,
+        action_id: "action-world", occurrence_id: "world-1", capability_id: "world_setting",
+        allow_custom: true, allow_exclusion: false,
+        options: [{ option_id: "option-world", title: "Quiet world", summary: "A calm setting.",
+          difference_tags: [], recommended: true, reference_preview: [] }],
+      },
+      allowed_actions: ["select", "custom"],
+    };
+  }
+
+  function submitDirection() {
+    fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit guided direction" }));
+  }
+
+  it("removes the submitted card and overlay during acceptance without a replacement notice", async () => {
+    const { chat, rerender } = renderPanelWithInteraction(directionInteraction());
+    let accept!: (accepted: boolean) => void;
+    chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
+    submitDirection();
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledTimes(1);
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "select", option_id: "option-world" }));
+    expect(screen.queryByRole("status", { name: "Guided interaction submitted" })).toBeNull();
+    expect(screen.queryByText("Generating nodes…")).toBeNull();
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(screen.queryByRole("radio", { name: /Quiet world/ })).toBeNull();
+    await act(async () => { accept(true); });
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    chat.state.guidedInteraction = { ...openInteraction(), interaction_id: "next-interaction" };
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it.each(["rejected", "throws"])("restores the original choices after submission %s", async outcome => {
+    const { chat } = renderPanelWithInteraction(directionInteraction());
+    if (outcome === "throws") chat.actions.submitGuidedInteraction.mockRejectedValue(new Error("Submission failed"));
+    else chat.actions.submitGuidedInteraction.mockResolvedValue(false);
+    submitDirection();
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Quiet world/ })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+    expect(screen.queryByText("Generating nodes…")).toBeNull();
+  });
+
+  it("restores the interaction when the submitted materialization explicitly fails", async () => {
+    const interaction = directionInteraction();
+    const { chat, rerender } = renderPanelWithInteraction(interaction);
+    chat.actions.submitGuidedInteraction.mockResolvedValue(true);
+    submitDirection();
+    await act(async () => {});
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    const event: CanvasRuntimeEventV2 = {
+      seq: 1, workflow_id: roleMotionWorkflow.workflow_id, event_type: "proposal_materialization_failed",
+      project_id: null, execution_id: null, node_id: null, asset_id: null, binding_id: null,
+      conversation_id: null, turn_id: null, action_id: interaction.interaction_id, trace_id: null,
+      span_id: null, created_at: "2026-09-15T00:00:01Z", payload: null,
+    };
+    rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[event]} onFocusNode={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Quiet world/ })).toBeTruthy());
+  });
 
   it("renders open interactions as a floating overlay that no longer squeezes the timeline", () => {
     renderPanelWithInteraction();

@@ -571,13 +571,8 @@ export function AgentCanvasChatPanel({
   }
 
   function renderStandaloneGuidedInteractionCard() {
-    if (!standaloneGuidedInteraction) return null;
-    return currentInteractionOptimisticallyDismissed ? (
-      <div className="agent-chat__optimistic-interaction-status" role="status" aria-label="Guided interaction submitted">
-        <strong>Submitted</strong>
-        <span>Generating nodes…</span>
-      </div>
-    ) : (
+    if (!standaloneGuidedInteraction || currentInteractionOptimisticallyDismissed) return null;
+    return (
       <GuidedInteractionCard
         key={standaloneGuidedInteraction.interaction_id}
         interaction={standaloneGuidedInteraction}
@@ -930,24 +925,22 @@ export function AgentCanvasChatPanel({
             <ChevronUpIcon />
           </button>
         ) : null}
-        {standaloneGuidedInteraction
-          && !(interactionDockCollapsed && !currentInteractionOptimisticallyDismissed) ? (
+        {standaloneGuidedInteraction && !currentInteractionOptimisticallyDismissed
+          && !interactionDockCollapsed ? (
           <div
             className="agent-chat__current-interaction agent-chat__current-interaction--overlay"
             aria-live="polite"
           >
-            {!currentInteractionOptimisticallyDismissed ? (
-              <button
-                className="agent-chat__interaction-collapse"
-                type="button"
-                aria-label="Collapse decision card"
-                title="Collapse decision card"
-                aria-expanded="true"
-                onClick={() => setInteractionDockCollapsed(true)}
-              >
-                <ChevronDownIcon />
-              </button>
-            ) : null}
+            <button
+              className="agent-chat__interaction-collapse"
+              type="button"
+              aria-label="Collapse decision card"
+              title="Collapse decision card"
+              aria-expanded="true"
+              onClick={() => setInteractionDockCollapsed(true)}
+            >
+              <ChevronDownIcon />
+            </button>
             {renderStandaloneGuidedInteractionCard()}
           </div>
         ) : null}
