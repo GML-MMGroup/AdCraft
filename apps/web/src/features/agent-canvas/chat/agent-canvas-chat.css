@@ -276,6 +276,11 @@
   min-width: 0;
 }
 
+/* Keep compact spacing outside the item's content-visibility paint boundary. */
+.agent-chat__timeline-virtualized-item:not(:first-child):has(> .agent-chat__message--agent.continues-speaker-run) {
+  margin-top: -8px;
+}
+
 .agent-chat__timeline-virtualized-placeholder {
   width: 100%;
   height: 100%;
@@ -534,10 +539,6 @@
   width: fit-content;
   max-width: min(86%, 520px);
   align-self: flex-start;
-}
-
-.agent-chat__message--agent.continues-speaker-run {
-  margin-top: -8px;
 }
 
 .agent-chat__message--agent > span {
