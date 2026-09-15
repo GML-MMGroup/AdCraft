@@ -104,7 +104,6 @@ describe("WorldSettingAnimation", () => {
     ]);
     expect((0.16 - 0.1) * 5_600).toBeCloseTo(336, 6);
     expect((0.22 - 0.16) * 5_600).toBeCloseTo(336, 6);
-    expect(WORLD_SETTING_MOTION_PROGRAM.waiting).toEqual([]);
 
     const { container } = render(<WorldSettingAnimation motionState="idle" />);
     const starArtwork = container.querySelector<SVGGElement>(

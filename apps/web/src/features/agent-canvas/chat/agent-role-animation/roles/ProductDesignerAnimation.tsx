@@ -61,7 +61,6 @@ export const PRODUCT_DESIGNER_MOTION_PROGRAM: AgentRoleMotionProgram = {
       },
     },
   ],
-  waiting: [],
 };
 
 interface ProductDesignerAnimationProps {

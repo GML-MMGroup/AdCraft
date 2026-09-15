@@ -53,7 +53,6 @@ describe("ProductDesignerAnimation", () => {
   it("runs one material sweep followed by one short flash and a quiet hold", () => {
     expect(PRODUCT_DESIGNER_MOTION_PROGRAM.working.map(({ part }) => part))
       .toEqual(["glass-sweep", "camera-flash"]);
-    expect(PRODUCT_DESIGNER_MOTION_PROGRAM.waiting).toEqual([]);
 
     const sweep = trackFor("glass-sweep");
     const flash = trackFor("camera-flash");

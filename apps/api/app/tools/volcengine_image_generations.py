@@ -7,6 +7,8 @@ from app.services.v2_provider_reference_input_delivery import (
     is_provider_compatible_model_input,
 )
 
+_SEEDREAM_PRO_MODEL_ID = "doubao-seedream-5-0-pro-260628"
+
 
 class V2ProviderRequestContractError(RuntimeError):
     def __init__(
@@ -44,8 +46,9 @@ def serialize_volcengine_image_generation_request(
         "response_format": response_format,
         "size": size,
         "watermark": watermark,
-        "sequential_image_generation": "disabled",
     }
+    if model != _SEEDREAM_PRO_MODEL_ID:
+        body["sequential_image_generation"] = "disabled"
     _validate_base_body(body, canonical_prompt=canonical_prompt, audit=audit)
 
     serialized_values: list[str] = []
@@ -111,7 +114,12 @@ def _validate_base_body(
         raise _contract_error(
             "Volcengine image request prompt must match the canonical prompt.", audit
         )
-    if body.get("sequential_image_generation") != "disabled":
+    if body.get("model") == _SEEDREAM_PRO_MODEL_ID:
+        if "sequential_image_generation" in body:
+            raise _contract_error(
+                "Seedream Pro does not accept group generation parameters.", audit
+            )
+    elif body.get("sequential_image_generation") != "disabled":
         raise _contract_error("V2 image slots must disable sequential image generation.", audit)
 
 

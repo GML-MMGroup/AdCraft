@@ -1425,7 +1425,7 @@ def _later_grid_bindings(
             input_role="image_reference",
             order=len(bindings),
             metadata={
-                "semantic_reference_role": "style_composition_reference",
+                "semantic_reference_role": "style_reference",
                 "storyboard_reference_purpose": "sequence_visual_anchor",
             },
             created_at=now,

@@ -59,11 +59,11 @@ describe("AgentRoleAnimation visual lifecycle", () => {
     expect(log).toHaveBeenCalled();
     expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBeUndefined();
   });
-  it("waiting has continuous fallback motion even for artwork without waiting tracks", () => {
+  it("keeps the animated artwork mounted across the whole working stretch", () => {
     visual.snapshot.mockReturnValue(ready);
-    const { rerender } = render(<AgentRoleAnimation capabilityId="world_setting" motionState="waiting" />);
-    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBeUndefined();
+    const { rerender } = render(<AgentRoleAnimation capabilityId="world_setting" motionState="working" />);
+    expect(screen.getByTestId("agent-role-animation-frame").dataset.motionState).toBe("working");
     rerender(<AgentRoleAnimation capabilityId="world_setting" motionState="working" />);
-    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBeUndefined();
+    expect(screen.getByTestId("agent-role-animation-frame").dataset.motionState).toBe("working");
   });
 });

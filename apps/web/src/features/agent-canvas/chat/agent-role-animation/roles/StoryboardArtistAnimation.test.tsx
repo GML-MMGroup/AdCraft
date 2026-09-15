@@ -44,7 +44,7 @@ interface Pose {
 
 function trackFor(
   part: string,
-  phase: "working" | "waiting",
+  phase: "working",
 ): AgentRoleMotionTrack {
   const track = STORYBOARD_ARTIST_MOTION_PROGRAM[phase]
     .find((candidate) => candidate.part === part);
@@ -298,9 +298,8 @@ describe("StoryboardArtistAnimation", () => {
       trackFor(part, "working").options.duration
     ))).toEqual([...PANEL_EMPHASIS_PARTS, ...BASE_ACTION_PARTS, ...ACTIVE_ACTION_PARTS]
       .map(() => 3_600));
-    expect(STORYBOARD_ARTIST_MOTION_PROGRAM.waiting).toEqual([]);
 
-    for (const phase of ["working", "waiting"] as const) {
+    for (const phase of ["working"] as const) {
       const tracks = STORYBOARD_ARTIST_MOTION_PROGRAM[phase];
       expect(tracks.map(({ part }) => part))
         .toHaveLength(new Set(tracks.map(({ part }) => part)).size);
@@ -475,7 +474,7 @@ describe("StoryboardArtistAnimation", () => {
       )))
     )))).toEqual(new Set([0.88]));
 
-    for (const motionState of ["idle", "waiting"] as const) {
+    for (const motionState of ["idle"] as const) {
       const { container } = render(
         <StoryboardArtistAnimation motionState={motionState} />,
       );
@@ -498,10 +497,7 @@ describe("StoryboardArtistAnimation", () => {
     const { container } = render(
       <StoryboardArtistAnimation motionState="working" />,
     );
-    const tracks = [
-      ...STORYBOARD_ARTIST_MOTION_PROGRAM.working,
-      ...STORYBOARD_ARTIST_MOTION_PROGRAM.waiting,
-    ];
+    const tracks = [...STORYBOARD_ARTIST_MOTION_PROGRAM.working];
 
     for (const track of tracks) {
       expectCanonicalLoop(track);
