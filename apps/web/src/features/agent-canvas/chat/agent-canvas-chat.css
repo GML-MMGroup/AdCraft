@@ -2134,6 +2134,75 @@ button.agent-chat__node-links--related:hover {
   pointer-events: auto;
 }
 
+.agent-chat__interaction-collapse {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  z-index: 1;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 6px;
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-secondary);
+  cursor: pointer;
+}
+
+.agent-chat__interaction-collapse:hover {
+  border-color: var(--agent-chat-strong-line);
+  color: var(--agent-chat-primary);
+}
+
+.agent-chat__interaction-collapse svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agent-chat__interaction-chip {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  display: inline-flex;
+  max-width: min(320px, calc(100% - 88px));
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 999px;
+  background: var(--agent-chat-raised);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 28%);
+  color: var(--agent-chat-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-chat__interaction-chip:hover {
+  border-color: var(--agent-chat-strong-line);
+}
+
+.agent-chat__interaction-chip strong {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat__interaction-chip > span {
+  color: var(--agent-chat-secondary);
+  white-space: nowrap;
+}
+
+.agent-chat__interaction-chip svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--agent-chat-secondary);
+}
+
 .agent-chat__optimistic-interaction-status {
   display: flex;
   width: 100%;
