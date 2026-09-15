@@ -25,6 +25,16 @@ const SCAN_TRANSFORMS = [
   "translateY(368px)",
   "translateY(368px)",
 ] as const;
+const WORKING_SCAN_OFFSETS = [0, 120 / SCENE_DURATION_MS, 1_940 / SCENE_DURATION_MS,
+  2_120 / SCENE_DURATION_MS, 2_340 / SCENE_DURATION_MS, 1] as const;
+const WORKING_SCAN_TRANSFORMS = [
+  "translateY(0px)",
+  "translateY(0px)",
+  "translateY(368px)",
+  "translateY(368px)",
+  "translateY(0px)",
+  "translateY(0px)",
+] as const;
 const MASK_TRANSFORMS = [
   "translateY(0px)",
   "translateY(0px)",
@@ -63,6 +73,26 @@ function sceneTrack(
   };
 }
 
+function sceneWorkingScanTrack(): AgentRoleMotionTrack {
+  return {
+    part: "scene-scan",
+    keyframes: WORKING_SCAN_OFFSETS.map((offset, index) => ({
+      offset,
+      opacity: index < 1 || index > 3 ? 0 : index === 1 || index === 2 ? 1 : 0,
+      transform: WORKING_SCAN_TRANSFORMS[index],
+      ...(index === 0 ? { easing: EXIT_EASING } : {}),
+      ...(index === 1 ? { easing: INTERVAL_EASING } : {}),
+      ...(index === 3 ? { easing: EXIT_EASING } : {}),
+    })),
+    options: {
+      duration: SCENE_DURATION_MS,
+      iterations: Infinity,
+      easing: "linear",
+      fill: "both",
+    },
+  };
+}
+
 const SCENE_ACCENT_TRACK: AgentRoleMotionTrack = {
   part: "scene-accent",
   keyframes: [{ opacity: 0.78 }, { opacity: 1 }, { opacity: 0.78 }],
@@ -72,10 +102,13 @@ const SCENE_ACCENT_TRACK: AgentRoleMotionTrack = {
 export const SCENE_DESIGNER_MOTION_PROGRAM: AgentRoleMotionProgram = {
   workingEntryTimeMs: 120,
   workingTransitionDurationMs: 120,
-  working: [
+  workingIntro: [
     sceneTrack("scene-reveal", [1, 1, 1, 1, 1], MASK_TRANSFORMS),
     sceneTrack("construction-hide", [1, 1, 1, 1, 1], MASK_TRANSFORMS),
     sceneTrack("scene-scan", [0, 1, 1, 0, 0]),
+  ],
+  working: [
+    sceneWorkingScanTrack(),
     SCENE_ACCENT_TRACK,
   ],
 };

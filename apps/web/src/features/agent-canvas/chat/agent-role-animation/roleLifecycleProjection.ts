@@ -10,17 +10,30 @@ export interface RoleLifecycleProjection {
   revision: number;
   attempt: number;
   terminal: Terminal | null;
+  /** Start sequence of the role currently owning the handoff window. */
+  activeRoleStartSequence: number;
   motionState: AgentRoleMotionState;
 }
 interface Input {
   workflowId: string;
   threads: readonly StageThreadUnit[];
   turnsById: Readonly<Record<string, AgentCanvasChatTurnV2>>;
+  /** Whether the conversation is still advancing and can hand off later. */
+  conversationWorking?: boolean;
 }
-type Candidate = Omit<RoleLifecycleProjection, "motionState">;
+type Candidate = Omit<RoleLifecycleProjection, "motionState" | "activeRoleStartSequence">;
 export function roleTerminal(status: string | null | undefined): Terminal | null {
   return status === "completed" || status === "failed" || status === "cancelled" || status === "superseded"
     ? status : null;
+}
+
+function roleStartSequence(unit: StageThreadUnit): number {
+  const activeActivitySequences = unit.activities
+    .filter(({ status }) => status === "working")
+    .map(({ sequence }) => sequence);
+  return activeActivitySequences.length > 0
+    ? Math.max(...activeActivitySequences)
+    : unit.sequence;
 }
 
 function projectThread(input: Input, unit: StageThreadUnit): RoleLifecycleProjection {
@@ -101,14 +114,38 @@ function projectThread(input: Input, unit: StageThreadUnit): RoleLifecycleProjec
   const value = latest ?? {
     attemptKey: unit.key, sequence: unit.sequence, revision: 0, attempt: 0, terminal: roleTerminal(unit.status),
   };
-  return { ...value, motionState: value.terminal ? "idle" : "working" };
+  return {
+    ...value,
+    activeRoleStartSequence: roleStartSequence(unit),
+    motionState: "idle",
+  };
 }
 
-/** Timeline appearance starts motion; only that operation's terminal stops it.
- * No Journey/Runtime dependency and no next-role handoff rule.
+/** Timeline appearance starts motion; later role entry owns the handoff.
+ * Intermediate proposal/materialization states do not stop the current role.
  */
 export function projectRoleLifecycles(input: Input): ReadonlyMap<string, RoleLifecycleProjection> {
-  return new Map(input.threads.map(unit => [unit.key, projectThread(input, unit)]));
+  const projected = input.threads.map((unit) => ({
+    key: unit.key,
+    value: projectThread(input, unit),
+  }));
+  const owner = [...projected].sort((left, right) => (
+    right.value.activeRoleStartSequence - left.value.activeRoleStartSequence
+      || right.value.sequence - left.value.sequence
+  ))[0] ?? null;
+  const conversationWorking = input.conversationWorking ?? false;
+  return new Map(projected.map(({ key, value }) => {
+    const hardTerminal = value.terminal === "failed"
+      || value.terminal === "cancelled"
+      || value.terminal === "superseded";
+    const completedFinalRole = value.terminal === "completed" && !conversationWorking;
+    const isOwner = owner?.key === key;
+    return [key, {
+      ...value,
+      activeRoleStartSequence: owner?.value.activeRoleStartSequence ?? value.activeRoleStartSequence,
+      motionState: isOwner && !hardTerminal && !completedFinalRole ? "working" : "idle",
+    }];
+  }));
 }
 
 /** Retain terminal evidence through stale refreshes; newer operations restart.
@@ -124,15 +161,18 @@ export function mergeRoleLifecycles(
     if (old && (candidate.sequence < old.sequence
       || (candidate.sequence === old.sequence && candidate.revision < old.revision)
       || (candidate.sequence === old.sequence && candidate.revision === old.revision && candidate.attempt < old.attempt)
+      || candidate.activeRoleStartSequence < old.activeRoleStartSequence
       || (candidate.attemptKey === old.attemptKey && old.terminal !== null))) return;
     merged.set(key, candidate);
   });
   return merged;
 }
 
-export function useTimelineRoleLifecycles({ workflowId, threads, turnsById }: Input): ReadonlyMap<string, RoleLifecycleProjection> {
-  const projected = useMemo(() => projectRoleLifecycles({ workflowId, threads, turnsById }),
-    [workflowId, threads, turnsById]);
+export function useTimelineRoleLifecycles(input: Input): ReadonlyMap<string, RoleLifecycleProjection> {
+  const { workflowId, threads, turnsById, conversationWorking } = input;
+  const projected = useMemo(() => projectRoleLifecycles({
+    workflowId, threads, turnsById, conversationWorking,
+  }), [workflowId, threads, turnsById, conversationWorking]);
   const [history, setHistory] = useState(() => ({
     workflowId, projected, values: projected,
   }));

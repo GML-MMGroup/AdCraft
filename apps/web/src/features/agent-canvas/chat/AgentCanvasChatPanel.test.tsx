@@ -365,7 +365,7 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     expect(renderedRoleMotionStates()).toEqual({ world_setting: "working" });
   });
 
-  it("animates all ten concurrently working roles", () => {
+  it("hands animation to the latest role in the Timeline", () => {
     const roles = [
       "world_setting", "product_design", "prop_design", "character_design", "scene_design",
       "script_authoring", "storyboard_design", "video_direction", "bgm_direction", "quick_media",
@@ -380,10 +380,12 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       })
     ))));
     render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
-    expect(renderedRoleMotionStates()).toEqual(Object.fromEntries(roles.map((role) => [role, "working"])));
+    expect(renderedRoleMotionStates()).toEqual(Object.fromEntries(
+      roles.map((role) => [role, role === "quick_media" ? "working" : "idle"]),
+    ));
   });
 
-  it("lets concurrent role-owned working stages animate independently of global model wait", async () => {
+  it("keeps the latest role animated independently of global model wait", async () => {
     const items: ChatTimelineItemV2[] = [
       capabilityActivity(),
       capabilityActivity({
@@ -406,10 +408,10 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     );
 
     expect(renderedRoleMotionStates()).toEqual({
-      world_setting: "working",
+      world_setting: "idle",
       scene_design: "working",
     });
-    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
+    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "bitmap");
     expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("scene_design", "animated");
 
     panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(items, true));
@@ -423,12 +425,12 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     );
 
     expect(renderedRoleMotionStates()).toEqual({
-      world_setting: "working",
+      world_setting: "idle",
       scene_design: "working",
     });
     await waitFor(() => {
       expect(panelMocks.prepareRoleVisual.mock.calls.filter(([, mode]) => mode === "animated")
-        .map(([capabilityId]) => capabilityId)).toEqual(expect.arrayContaining(["world_setting", "scene_design"]));
+        .map(([capabilityId]) => capabilityId)).toEqual(expect.arrayContaining(["scene_design"]));
     });
   });
 
