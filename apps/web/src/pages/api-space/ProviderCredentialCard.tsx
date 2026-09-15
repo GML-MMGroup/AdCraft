@@ -31,12 +31,13 @@ export function ProviderCredentialCard({
   onModelsUpdated: (providerId: string, models: ProviderModelSummaryV1[]) => void;
 }) {
   const [draft, setDraft] = useState(() => emptyProviderCredentialDraft(provider.capabilities));
+  const [baseUrlDraft, setBaseUrlDraft] = useState(() => emptyProviderCredentialDraft(provider.capabilities));
   const [pending, setPending] = useState<"save" | "sync" | ProviderCapability | null>(null);
   const [notice, setNotice] = useState<ApiSpaceNotice>(null);
   const [testNotices, setTestNotices] = useState<CredentialNoticeByCapability>({});
   const [pendingClear, setPendingClear] = useState<ProviderCapability | null>(null);
   const hasSharedCredential = usesSharedOpenRouterCredential(provider);
-  const updateRequest = useMemo(() => credentialUpdateFromDraft(draft), [draft]);
+  const updateRequest = useMemo(() => credentialUpdateFromDraft(draft, baseUrlDraft), [draft, baseUrlDraft]);
   const availableModelCount = models.filter((model) => (
     modelEligibility(model, "default").selectable
   )).length;
@@ -47,6 +48,11 @@ export function ProviderCredentialCard({
     setTestNotices((current) => ({ ...current, [capability]: null }));
   };
 
+  const updateBaseUrlDraft = (capability: ProviderCapability, value: string) => {
+    setBaseUrlDraft((current) => ({ ...current, [capability]: value }));
+    setNotice(null);
+  };
+
   const save = async () => {
     if (!updateRequest || pending) return;
     setPending("save");
@@ -55,6 +61,7 @@ export function ProviderCredentialCard({
       const response = await api.updateProviderCredentials(provider.provider_id, updateRequest);
       onProviderUpdated(response.provider);
       setDraft(emptyProviderCredentialDraft(provider.capabilities));
+      setBaseUrlDraft(emptyProviderCredentialDraft(provider.capabilities));
       setTestNotices({});
       setNotice({ kind: "success", message: `${provider.display_name} credentials saved.` });
     } catch (error) {
@@ -76,6 +83,12 @@ export function ProviderCredentialCard({
       });
       onProviderUpdated(response.provider);
       setDraft((current) => Object.fromEntries(
+        Object.entries(current).map(([draftCapability, value]) => [
+          draftCapability,
+          clearCapabilities.includes(draftCapability as ProviderCapability) ? "" : value,
+        ]),
+      ));
+      setBaseUrlDraft((current) => Object.fromEntries(
         Object.entries(current).map(([draftCapability, value]) => [
           draftCapability,
           clearCapabilities.includes(draftCapability as ProviderCapability) ? "" : value,
@@ -223,6 +236,20 @@ export function ProviderCredentialCard({
                     />
                   </>
                 ) : null}
+                <label className="sr-only" htmlFor={`${provider.provider_id}-${capability}-base-url`}>
+                  {provider.display_name} {capabilityLabel(capability)} Base URL
+                </label>
+                <input
+                  id={`${provider.provider_id}-${capability}-base-url`}
+                  name={`${provider.provider_id}-${capability}-base-url`}
+                  type="text"
+                  value={baseUrlDraft[capability] ?? ""}
+                  placeholder={baseUrlPlaceholder(status)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={isBusy}
+                  onChange={(event) => updateBaseUrlDraft(capability, event.currentTarget.value)}
+                />
                 <div className="api-space-credential-actions">
                   {supportsCredentialTest(status) ? (
                     <button
@@ -302,6 +329,16 @@ function InlineNotice({ notice }: { notice: Exclude<ApiSpaceNotice, null> }) {
 
 function capabilityLabel(capability: ProviderCapability): string {
   return capability.charAt(0).toUpperCase() + capability.slice(1);
+}
+
+function baseUrlPlaceholder(
+  status: ProviderConnectionStatusV1["credentials"][ProviderCapability] | undefined,
+): string {
+  const endpoint = status?.endpoint;
+  if (endpoint) {
+    return `Current: ${endpoint.scheme}://${endpoint.host}${endpoint.path}`;
+  }
+  return "Base URL (leave empty to keep the provider default)";
 }
 
 function capabilityDescription(capability: ProviderCapability): string {
