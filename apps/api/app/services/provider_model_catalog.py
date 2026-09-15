@@ -539,8 +539,8 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
-        provider_model_id="doubao-seedream-5-0-260128",
-        display_name="Doubao Seedream 5.0",
+        provider_model_id="doubao-seedream-5-0-pro-260628",
+        display_name="Doubao Seedream 5.0 Pro",
         capability="image",
         capability_metadata={
             "accepted_input_types": ["text", "image"],
@@ -551,7 +551,7 @@ _TRUSTED_MANIFESTS = (
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
-                "volcengine_ark:doubao-seedream-5-0-260128",
+                "volcengine_ark:doubao-seedream-5-0-pro-260628",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -851,10 +851,13 @@ _TRUSTED_MANIFESTS = (
 _RETIRED_MODEL_REFS = frozenset(
     {
         "volcengine_ark:doubao-seed-2-0-mini-260428",
+        "volcengine_ark:doubao-seedream-5-0-250128",
+        "volcengine_ark:doubao-seedream-5-0-260128",
         "openai:gpt-image-2",
     }
 )
 _BLOCKING_RETIRED_DEFAULT_REFS = frozenset({"openai:gpt-image-2"})
+_CREDENTIAL_INDEPENDENT_SELECTION_REFS = frozenset({"openrouter:openai/gpt-image-2"})
 
 
 class StaticProviderCatalogAdapter:
@@ -1150,7 +1153,8 @@ class ProviderModelCatalogService:
                     available=self._capability_is_available(
                         manifest.provider_id,
                         manifest.capability,
-                    ),
+                    )
+                    or manifest.model_ref in _CREDENTIAL_INDEPENDENT_SELECTION_REFS,
                 )
             )
         previously_known = {
@@ -1161,6 +1165,21 @@ class ProviderModelCatalogService:
         for provider_model_id in sorted(previously_known.difference(visible_model_ids)):
             manifest = trusted.get(provider_model_id)
             if manifest is None:
+                model_ref = f"{provider_id}:{provider_model_id}"
+                if model_ref in _RETIRED_MODEL_REFS:
+                    previous = self._repository.get_model(model_ref)
+                    models.append(
+                        {
+                            "model_ref": model_ref,
+                            "provider_model_id": provider_model_id,
+                            "display_name": previous.display_name,
+                            "capability": previous.capability,
+                            "capability_metadata": previous.capability_metadata,
+                            "source": "built_in",
+                            "availability": "deprecated",
+                            "unavailable_reason": "model_retired",
+                        }
+                    )
                 continue
             if manifest.model_ref in _RETIRED_MODEL_REFS:
                 models.append(
@@ -1290,7 +1309,10 @@ class ProviderModelCatalogService:
         )
         if not credential_managed:
             return model
-        available = self._capability_is_available(model.provider_id, model.capability)
+        available = (
+            model.model_ref in _CREDENTIAL_INDEPENDENT_SELECTION_REFS
+            or self._capability_is_available(model.provider_id, model.capability)
+        )
         availability = "available" if available else "unavailable"
         unavailable_reason = None if available else "provider_credentials_missing"
         if model.availability == availability and model.unavailable_reason == unavailable_reason:
