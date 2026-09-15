@@ -1,9 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEventHandler } from "react";
 import type { FocusEventHandler } from "react";
 import type { RefObject } from "react";
 
 const FOUR_LINE_HEIGHT = 88;
+const PREPARING_PROMPT = "提示词正在准备...";
+const PREPARING_CHARACTER_DELAY = 150;
+const PREPARING_HOLD_DELAY = 900;
 
 export function FourLinePromptEditor({
   ariaLabel,
@@ -26,6 +29,24 @@ export function FourLinePromptEditor({
 }) {
   const internalEditorRef = useRef<HTMLTextAreaElement>(null);
   const editorRef = providedEditorRef ?? internalEditorRef;
+  const [preparingText, setPreparingText] = useState("");
+
+  useEffect(() => {
+    if (!preparing || value.trim()) {
+      setPreparingText("");
+      return undefined;
+    }
+
+    const delay = preparingText.length < PREPARING_PROMPT.length
+      ? PREPARING_CHARACTER_DELAY
+      : PREPARING_HOLD_DELAY;
+    const timer = window.setTimeout(() => {
+      setPreparingText((current) => current.length < PREPARING_PROMPT.length
+        ? PREPARING_PROMPT.slice(0, current.length + 1)
+        : "");
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [preparing, preparingText, value]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -55,7 +76,7 @@ export function FourLinePromptEditor({
     <span className="agent-node-workbench__editor-shell">
       {showPreparingPrompt ? (
         <span className="agent-node-workbench__preparing-prompt" aria-hidden="true">
-          提示词正在准备...
+          {preparingText}
         </span>
       ) : null}
       <textarea

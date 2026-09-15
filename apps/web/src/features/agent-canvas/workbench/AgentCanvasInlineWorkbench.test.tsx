@@ -493,11 +493,11 @@ describe("AgentCanvasInlineWorkbench", () => {
     renderWorkbench(node);
 
     expect(screen.queryByLabelText("Prompt preparation status")).toBeNull();
-    expect(screen.getByText("提示词正在准备...").classList.contains("agent-node-workbench__preparing-prompt")).toBe(true);
+    expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeTruthy();
     const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
     expect(editor.value).toBe("");
     fireEvent.change(editor, { target: { value: "Keep the user's direction." } });
-    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+    expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
   });
 
   describe.each(["image", "video", "audio", "text", "script"] as const)("%s preparing prompt", (nodeType) => {
@@ -510,7 +510,7 @@ describe("AgentCanvasInlineWorkbench", () => {
       };
       const props = renderWorkbench(node);
       const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
-      expect(screen.getAllByText("提示词正在准备...")).toHaveLength(1);
+      expect(document.querySelectorAll(".agent-node-workbench__preparing-prompt")).toHaveLength(1);
       expect(editor.value).toBe("");
       expect(editor.getAttribute("aria-busy")).toBe("true");
       expect(screen.queryByLabelText("Prompt preparation status")).toBeNull();
@@ -526,7 +526,7 @@ describe("AgentCanvasInlineWorkbench", () => {
           generation_prompt: null,
           prompt_preparation: status ? { ...base.prompt_preparation!, status } : null,
         });
-        expect(screen.queryByText("提示词正在准备...")).toBeNull();
+        expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
         expect(screen.getByRole("textbox").getAttribute("aria-busy")).toBe("false");
       },
     );
@@ -538,17 +538,17 @@ describe("AgentCanvasInlineWorkbench", () => {
         prompt_preparation: { ...base.prompt_preparation!, status: "working" },
       });
       const editor = screen.getByRole("textbox");
-      expect(screen.getByText("提示词正在准备...")).toBeTruthy();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeTruthy();
       fireEvent.change(editor, { target: { value: "User direction" } });
-      expect(screen.queryByText("提示词正在准备...")).toBeNull();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
       fireEvent.change(editor, { target: { value: "" } });
-      expect(screen.getByText("提示词正在准备...")).toBeTruthy();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeTruthy();
     });
 
     it("does not cover an existing prompt even if preparation is still working", () => {
       const base = makeNode(nodeType);
       renderWorkbench({ ...base, prompt_preparation: { ...base.prompt_preparation!, status: "working" } });
-      expect(screen.queryByText("提示词正在准备...")).toBeNull();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
       expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(base.generation_prompt);
     });
 
@@ -557,9 +557,9 @@ describe("AgentCanvasInlineWorkbench", () => {
       const node = { ...base, generation_prompt: null, prompt_preparation: { ...base.prompt_preparation!, status: "queued" as const } };
       const { view, ...props } = renderWorkbench(node);
       view.rerender(<AgentCanvasInlineWorkbench {...props} node={{ ...node, prompt_preparation: { ...node.prompt_preparation, status: "working" } }} />);
-      expect(screen.getByText("提示词正在准备...")).toBeTruthy();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeTruthy();
       view.rerender(<AgentCanvasInlineWorkbench {...props} node={{ ...node, prompt_preparation: { ...node.prompt_preparation, status } }} />);
-      expect(screen.queryByText("提示词正在准备...")).toBeNull();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
       expect(props.patchNode).not.toHaveBeenCalled();
     });
 
@@ -582,7 +582,7 @@ describe("AgentCanvasInlineWorkbench", () => {
         ...base, generation_prompt: null, structured_content: { content },
         prompt_preparation: { ...base.prompt_preparation!, status: "working" },
       });
-      expect(screen.queryByText("提示词正在准备...")).toBeNull();
+      expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
       expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(content);
       expect(screen.getByRole("textbox").getAttribute("aria-label")).toBe(nodeType === "text" ? "Text content" : "Script content");
     });
@@ -595,7 +595,7 @@ describe("AgentCanvasInlineWorkbench", () => {
       prompt_preparation: { ...base.prompt_preparation!, status: "working" },
     });
     expect(screen.getByLabelText("World Setting content")).toBeTruthy();
-    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+    expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
   });
 
   it.each(["video", "audio", "script"] as const)("keeps hidden %s preparation subscribed and refreshes once on stream completion", (nodeType) => {
@@ -644,7 +644,7 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     renderWorkbench(node);
 
-    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+    expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
     const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
     expect(editor.value).toBe(node.generation_prompt);
   });
@@ -664,7 +664,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     }} />);
 
     await waitFor(() => expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Prepared by the agent"));
-    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+    expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
     fireEvent.blur(screen.getByRole("textbox"));
     props.view.unmount();
     expect(props.patchNode).not.toHaveBeenCalled();
@@ -694,7 +694,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     fireEvent.change(editor, { target: { value: "Unsaved local direction" } });
     view.rerender(<AgentCanvasInlineWorkbench {...props} node={{ ...node, generation_prompt: "Remote direction" }} />);
     expect(editor.value).toBe("Unsaved local direction");
-    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+    expect(document.querySelector(".agent-node-workbench__preparing-prompt")).toBeNull();
   });
 
   it.each([
