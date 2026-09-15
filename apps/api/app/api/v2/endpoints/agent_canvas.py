@@ -1043,6 +1043,21 @@ def create_agent_canvas_runtime(
             plan_document=working_documents.get_document(workflow_id, plan_document_id),
         )
 
+    def _advance_after_storyboard_pipeline(
+        workflow_id: str,
+        plan_document_id: str,
+    ):
+        session = production_journey.record_storyboard_pipeline_prepared(
+            workflow_id,
+            source_id=f"planned-storyboard:{plan_document_id}",
+        )
+        if session is not None and session.journey.stage == "bgm":
+            guidance_advances.submit_fresh_next_action(
+                workflow_id,
+                idempotency_key=f"videos-prepared-next-action:{plan_document_id}",
+            )
+        return session
+
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
         authoring=storyboard_authoring,
@@ -1052,10 +1067,8 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
-        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
-            production_journey.record_storyboard_pipeline_prepared(
-                workflow_id, source_id=f"planned-storyboard:{plan_document_id}"
-            )
+        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: _advance_after_storyboard_pipeline(
+            workflow_id, plan_document_id
         ),
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(

@@ -1172,15 +1172,11 @@ def _seedance_grounding_plan(
     if not isinstance(provider_reference_limit, int):
         raise GroundingPlanError("v2_storyboard_grid_provider_payload_invalid")
     if grid_input is None:
-        return build_storyboard_grid_grounding_plan(
-            node=context.node,
-            grid_input=None,
-            storyboard_content={},
-            target_shot_id=sequence_id,
-            prompt_snapshot=context.node.generation_prompt or "",
-            ordered_references=(),
-            provider_reference_limit=provider_reference_limit,
-        )
+        # A persisted storyboard-video prompt already contains the ordered
+        # storyboard direction.  When the optional grid image is still a
+        # Draft output, continue with that prompt and the other available
+        # references; a published grid remains the strict grounding path.
+        return None
     revision = context.node.metadata.get("source_plan_revision")
     grid_with_revision = grid_input.model_copy(
         update={
