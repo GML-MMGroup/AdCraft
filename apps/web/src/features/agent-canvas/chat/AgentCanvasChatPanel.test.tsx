@@ -45,6 +45,7 @@ import type {
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
   ChatTimelineItemV2,
+  GuidanceAwaitingV1,
   GuidedInteractionV1,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -343,6 +344,16 @@ describe("AgentCanvasChatPanel role motion integration", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])("keeps the panel title without a status subtitle (working=%s)", (working) => {
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(working ? [capabilityActivity()] : []));
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
+    const identity = document.querySelector(".agent-chat__header .agent-chat__identity");
+    expect(identity?.textContent).toBe("AdCraft Video Agent");
+    expect(identity?.querySelector("span")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse AdCraft Bot panel" })).toBeTruthy();
+    if (working) expect(renderedRoleMotionStates()).toEqual({ world_setting: "working" });
   });
 
   it("animates a working activity before its exact turn is hydrated", () => {
@@ -2026,7 +2037,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     };
   }
 
-  function renderPanelWithInteraction(interaction: GuidedInteractionV1 = openInteraction()) {
+  function renderPanelWithInteraction(interaction: GuidedInteractionV1 = openInteraction(), guidanceAwaiting: GuidanceAwaitingV1 | null = null) {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       workflow_id: roleMotionWorkflow.workflow_id,
       conversation_id: null,
@@ -2035,7 +2046,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     }), { headers: { "Content-Type": "application/json" } })));
     const chat = mockChatResult();
     chat.state.guidedInteraction = interaction;
-    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: { ...chat.state, guidanceAwaiting } });
     return render(
       <AgentCanvasChatPanel
         workflow={roleMotionWorkflow}
@@ -2054,6 +2065,34 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     expect(overlay).not.toBeNull();
     expect(overlay?.querySelector(".agent-chat__decision-dock")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it("omits the top production notice while keeping the Product source interaction", () => {
+    const interaction: GuidedInteractionV1 = {
+      ...openInteraction(), kind: "product_source", title: "Product image source",
+      content: {
+        content_kind: "product_source", input_kind: "main", question_id: "product_main_source",
+        prompt: "Provide one Product Main image.", expected_guidance_revision: 3,
+        min_asset_count: 1, max_asset_count: 1,
+      },
+      allowed_actions: ["select_source"],
+    };
+    renderPanelWithInteraction(interaction, {
+      awaiting_id: "awaiting-product", workflow_id: roleMotionWorkflow.workflow_id,
+      session_id: "session-1", checkpoint_id: "checkpoint-1", kind: "product_source",
+      requires_user_action: true, resume_policy: "submit_interaction",
+      interaction_id: interaction.interaction_id, node_ids: [], stage: "product",
+      stage_revision: 1, created_at: "2026-09-15T00:00:00Z",
+    });
+    expect(screen.queryByRole("status", { name: "Current production step" })).toBeNull();
+    expect(screen.queryByText("A product source is needed")).toBeNull();
+    expect(screen.queryByText("Add or choose a product source to continue")).toBeNull();
+    expect(screen.getByText("Product image source")).toBeTruthy();
+    expect(screen.getByText("Provide one Product Main image.")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Use uploaded Product source" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Generate Product source" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+    expect(document.querySelector(".agent-chat__header")?.nextElementSibling?.className).toBe("agent-chat__timeline-shell");
   });
 
   it("collapses the overlay into a chip and re-expands it on demand", () => {

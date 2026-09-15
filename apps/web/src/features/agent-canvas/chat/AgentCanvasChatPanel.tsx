@@ -74,7 +74,6 @@ import { roleVisualMode } from "./agent-role-animation/useAgentRoleVisual.ts";
 import { useTimelineRoleLifecycles } from "./agent-role-animation/roleLifecycleProjection.ts";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
-import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
 import {
   getAgentChatResizeBounds,
   resizeAgentChatWidth,
@@ -88,7 +87,6 @@ import { ConversationRecoverySurface } from "./ConversationRecoverySurface.tsx";
 import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
-import { projectProductionFocus } from "./productionFocusProjection.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
 import { failureUserAction } from "./actionableFailure.ts";
 import { VirtualizedTimeline } from "./VirtualizedTimeline.tsx";
@@ -151,7 +149,6 @@ export function AgentCanvasChatPanel({
   onRuntimeRefresh,
   onAssetsRefresh,
   onProjectsRefresh,
-  runtime = null,
   collapsed: controlledCollapsed,
   onCollapsedChange,
   onViewNodes,
@@ -218,18 +215,6 @@ export function AgentCanvasChatPanel({
   useEffect(() => {
     setPendingContextFiles([]);
   }, [workflow.workflow_id]);
-  const currentTopic = useMemo(() => {
-    const session = chat.state.guidanceSession;
-    return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
-  }, [chat.state.guidanceSession]);
-  const activeContinuation = useMemo(
-    () => chat.state.continuations.find((continuation) => (
-      continuation.delivery_status === "queued"
-      || continuation.delivery_status === "leased"
-      || continuation.delivery_status === "retry_wait"
-    )) ?? null,
-    [chat.state.continuations],
-  );
   const standaloneGuidedInteraction = chat.state.guidedInteraction
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
@@ -432,11 +417,6 @@ export function AgentCanvasChatPanel({
     () => buildConversationCanvasLinkIndex(stageTimeline, chat.state.guidanceAwaiting),
     [chat.state.guidanceAwaiting, stageTimeline],
   );
-  const productionFocus = useMemo(() => projectProductionFocus({
-    nodes: workflow.nodes,
-    runtime,
-    guidanceAwaiting: chat.state.guidanceAwaiting,
-  }), [chat.state.guidanceAwaiting, runtime, workflow.nodes]);
   const viewNodes = onViewNodes ?? ((nodeIds: string[]) => {
     if (nodeIds[0]) onFocusNode(nodeIds[0]);
   });
@@ -803,19 +783,6 @@ export function AgentCanvasChatPanel({
       <header className="agent-chat__header">
         <div className="agent-chat__identity">
           <strong>AdCraft Video Agent</strong>
-          <span>
-            {chat.state.agentWorking
-              ? chat.state.agentWaitingForModel
-                ? "Waiting for model"
-                : "Working"
-              : activeContinuation
-                ? continuationLabel(activeContinuation)
-                : currentTopic
-                ? `${currentTopic.title} · ${currentTopic.status.replaceAll("_", " ")}`
-                : chat.state.guidanceSession
-                  ? chat.state.guidanceSession.status.replaceAll("_", " ")
-                : "Ready"}
-          </span>
         </div>
         <div className="agent-chat__header-actions">
           <AgentCanvasDocumentBrowser
@@ -841,8 +808,6 @@ export function AgentCanvasChatPanel({
           eventRevision={settingsRevision}
         />
       </header>
-
-      <CurrentProductionStep focus={productionFocus} onViewNodes={viewNodes} />
 
       <div className="agent-chat__timeline-shell">
         <div
