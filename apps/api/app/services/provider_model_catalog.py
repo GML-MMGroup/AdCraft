@@ -13,7 +13,7 @@ from app.persistence.provider_model_repository import (
     ProviderModelRecord,
     ProviderModelRepository,
 )
-from app.schemas.provider_models import ProviderAdapterProfileV1
+from app.schemas.provider_models import ImageResolutionCapabilitiesV1, ProviderAdapterProfileV1
 from app.services.openrouter_policy import build_openrouter_routing_policy
 from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
 
@@ -55,6 +55,84 @@ GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
     "4:3": "2304x1728",
     "3:4": "1728x2304",
 }
+
+
+def image_resolution_capabilities(
+    metadata: Mapping[str, object],
+) -> ImageResolutionCapabilitiesV1:
+    """Project provider-specific image dimensions into one public contract."""
+
+    profile = metadata.get("adapter_profile")
+    matrix = profile.get("parameter_matrix") if isinstance(profile, Mapping) else None
+    descriptors = matrix.get("descriptors") if isinstance(matrix, Mapping) else None
+    allowed_values: dict[str, tuple[str, ...]] = {}
+    if isinstance(descriptors, list):
+        for descriptor in descriptors:
+            if not isinstance(descriptor, Mapping) or not isinstance(descriptor.get("name"), str):
+                continue
+            values = descriptor.get("allowed_values")
+            if isinstance(values, list):
+                allowed_values[str(descriptor["name"])] = tuple(
+                    str(value) for value in values if isinstance(value, str)
+                )
+
+    raw_sizes = metadata.get("supported_sizes_by_aspect_ratio")
+    sizes_by_aspect_ratio = (
+        {
+            str(ratio): str(size)
+            for ratio, size in raw_sizes.items()
+            if isinstance(ratio, str) and isinstance(size, str)
+        }
+        if isinstance(raw_sizes, Mapping)
+        else {}
+    )
+    aspect_ratios = allowed_values.get("aspect_ratio", ())
+    if not aspect_ratios:
+        raw_ratios = metadata.get("supported_aspect_ratios")
+        aspect_ratios = (
+            tuple(str(value) for value in raw_ratios if isinstance(value, str))
+            if isinstance(raw_ratios, list)
+            else tuple(sizes_by_aspect_ratio)
+        )
+    size_options = allowed_values.get("size", ())
+    if not size_options:
+        size_options = tuple(
+            dict.fromkeys(
+                sizes_by_aspect_ratio[ratio]
+                for ratio in aspect_ratios
+                if ratio in sizes_by_aspect_ratio
+            )
+        )
+    resolution_options = allowed_values.get("resolution", ())
+    supported_parameters = metadata.get("supported_parameters")
+    parameter_names = (
+        frozenset(str(value) for value in supported_parameters if isinstance(value, str))
+        if isinstance(supported_parameters, list)
+        else frozenset(allowed_values)
+    )
+    modes = []
+    if "size" in parameter_names or size_options:
+        modes.append("size")
+    if resolution_options and aspect_ratios:
+        modes.append("resolution_with_aspect_ratio")
+    raw_bounds = metadata.get("pixel_bounds")
+    pixel_bounds = (
+        (int(raw_bounds[0]), int(raw_bounds[1]))
+        if isinstance(raw_bounds, list)
+        and len(raw_bounds) == 2
+        and all(isinstance(value, int) for value in raw_bounds)
+        else None
+    )
+    raw_defaults = metadata.get("default_parameters")
+    return ImageResolutionCapabilitiesV1(
+        parameter_modes=tuple(modes),
+        size_options=size_options,
+        resolution_options=resolution_options,
+        aspect_ratio_options=aspect_ratios,
+        sizes_by_aspect_ratio=sizes_by_aspect_ratio,
+        pixel_bounds=pixel_bounds,
+        default_parameters=(dict(raw_defaults) if isinstance(raw_defaults, Mapping) else {}),
+    )
 
 
 def _adapter_profile(
@@ -547,6 +625,9 @@ _TRUSTED_MANIFESTS = (
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
@@ -567,6 +648,9 @@ _TRUSTED_MANIFESTS = (
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
@@ -587,6 +671,9 @@ _TRUSTED_MANIFESTS = (
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,

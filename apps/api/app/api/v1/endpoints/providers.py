@@ -39,7 +39,10 @@ from app.services.provider_credentials import (
     ProviderConnectionService,
     ProviderConnectionSnapshot,
 )
-from app.services.provider_model_catalog import ProviderModelCatalogService
+from app.services.provider_model_catalog import (
+    ProviderModelCatalogService,
+    image_resolution_capabilities,
+)
 
 
 router = APIRouter(tags=["providers"], route_class=ProviderSettingsRoute)
@@ -217,6 +220,11 @@ def list_models(
                 availability=model.availability,
                 unavailable_reason=model.unavailable_reason,
                 catalog_revision=model.catalog_revision,
+                image_resolution_capabilities=(
+                    image_resolution_capabilities(model.capability_metadata)
+                    if model.capability == "image"
+                    else None
+                ),
                 **_adapter_response_fields(model.capability_metadata),
             )
             for model in service.list_models(

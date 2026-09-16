@@ -215,6 +215,23 @@ class ProviderModelSummaryV1(BaseModel):
     catalog_revision: int
 
 
+class ImageResolutionCapabilitiesV1(BaseModel):
+    """Frontend-ready image dimensions accepted by one exact model profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parameter_modes: tuple[Literal["size", "resolution_with_aspect_ratio"], ...] = Field(
+        default_factory=tuple,
+        max_length=2,
+    )
+    size_options: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    resolution_options: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    aspect_ratio_options: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    sizes_by_aspect_ratio: dict[str, str] = Field(default_factory=dict)
+    pixel_bounds: tuple[int, int] | None = None
+    default_parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class ProviderEndpointMetadataV1(BaseModel):
     """Non-secret identity for an approved provider endpoint."""
 
@@ -438,6 +455,7 @@ class ProviderModelSummaryV2(ProviderModelSummaryV1):
         max_length=64,
     )
     reference_policy: ReferenceInputPolicyV1 | None = None
+    image_resolution_capabilities: ImageResolutionCapabilitiesV1 | None = None
 
 
 ProviderCredentialCapabilityStatusV1.model_rebuild()
