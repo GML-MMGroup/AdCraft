@@ -30,6 +30,7 @@
 
 ## 📰 News
 
+- **[2026-09-16]** ⚙️ Improved the deployment workflow and creation pipeline stability.
 - **[2026-08-28]** ✨ Added Style Skill capabilities and optimized Agent conversation node generation.
 - **[2026-08-19]** 🚀 Strengthened and stabilized the Agent-guided creative workflow, alongside a visual refresh of the AdCraft frontend homepage.
 - **[2026-08-04]** ✨ Agent Canvas received a major upgrade, improving the interaction experience and introducing progressive AI-guided creation.
