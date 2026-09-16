@@ -3,6 +3,8 @@ import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2, NodeRuntimeV2 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
 import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
+import { ImageResolutionControls } from "./ImageResolutionControls.tsx";
+import { staleImageResolutionParameters } from "./imageResolutionCapabilities.ts";
 import { ModelParameterControls } from "./ModelParameterControls.tsx";
 import { VideoAudioToggle } from "./VideoAudioToggle.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
@@ -14,7 +16,7 @@ import {
   failureUserAction,
   nodeActionableFailure,
 } from "../chat/actionableFailure.ts";
-import type { RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 
 const VIDEO_TOOLBAR_PARAMETERS = ["duration_seconds", "resolution", "aspect_ratio"];
 
@@ -54,6 +56,16 @@ export function MediaPromptWorkbench({
     ? models.find((model) => model.model_ref === selectedModelRef) ?? null
     : null;
   const parameterDescriptors = selectedModel?.parameter_descriptors ?? [];
+  const resolutionCapabilities = selectedModel?.image_resolution_capabilities ?? null;
+  const setDraftParameters = draft.setParameters;
+  useEffect(() => {
+    if (node.node_type !== "image" || !resolutionCapabilities) return;
+    const stale = staleImageResolutionParameters(resolutionCapabilities, draft.parameters);
+    if (!stale.length) return;
+    const next = { ...draft.parameters };
+    stale.forEach((name) => delete next[name]);
+    setDraftParameters(next);
+  }, [draft.parameters, node.node_type, resolutionCapabilities, setDraftParameters]);
   const audioDescriptor = node.node_type === "video"
     ? parameterDescriptors.find((descriptor) => descriptor.name === "generate_audio" && descriptor.value_type === "boolean")
     : undefined;
@@ -139,6 +151,15 @@ export function MediaPromptWorkbench({
       {node.node_type !== "image" && canConfigureProvider && bodyDescriptors.length ? (
         <ModelParameterControls
           descriptors={bodyDescriptors}
+          parameters={draft.parameters}
+          disabled={draft.pending}
+          onChange={draft.setParameters}
+        />
+      ) : null}
+
+      {node.node_type === "image" && canConfigureProvider && resolutionCapabilities ? (
+        <ImageResolutionControls
+          capabilities={resolutionCapabilities}
           parameters={draft.parameters}
           disabled={draft.pending}
           onChange={draft.setParameters}

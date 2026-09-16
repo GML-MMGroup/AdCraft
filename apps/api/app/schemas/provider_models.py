@@ -215,6 +215,51 @@ class ProviderModelSummaryV1(BaseModel):
     catalog_revision: int
 
 
+ImageResolutionParameterModeV1 = Literal["size", "resolution_with_aspect_ratio"]
+
+
+class ImageResolutionPixelBoundsV1(BaseModel):
+    """Inclusive pixel-dimension bounds accepted by an image adapter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    minimum: int = Field(ge=1)
+    maximum: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "ImageResolutionPixelBoundsV1":
+        if self.minimum > self.maximum:
+            raise ValueError("image_resolution_pixel_bounds_invalid")
+        return self
+
+
+class ImageResolutionCapabilitiesV1(BaseModel):
+    """Declarative image resolution/size parameter surface for one model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parameter_modes: tuple[ImageResolutionParameterModeV1, ...] = Field(min_length=1, max_length=2)
+    size_options: tuple[str, ...] = Field(default_factory=tuple, max_length=32)
+    resolution_options: tuple[str, ...] = Field(default_factory=tuple, max_length=8)
+    aspect_ratio_options: tuple[str, ...] = Field(default_factory=tuple, max_length=16)
+    sizes_by_aspect_ratio: dict[str, str] = Field(default_factory=dict, max_length=16)
+    pixel_bounds: ImageResolutionPixelBoundsV1 | None = None
+    default_parameters: dict[str, object] = Field(default_factory=dict, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_modes(self) -> "ImageResolutionCapabilitiesV1":
+        if "size" in self.parameter_modes and not self.size_options:
+            raise ValueError("image_resolution_size_options_required")
+        if "resolution_with_aspect_ratio" in self.parameter_modes and (
+            not self.resolution_options or not self.aspect_ratio_options
+        ):
+            raise ValueError("image_resolution_pair_options_required")
+        for size in self.sizes_by_aspect_ratio.values():
+            if size not in self.size_options:
+                raise ValueError("image_resolution_size_mapping_unknown")
+        return self
+
+
 class ProviderEndpointMetadataV1(BaseModel):
     """Non-secret identity for an approved provider endpoint."""
 
@@ -304,6 +349,7 @@ class ProviderAdapterProfileV1(BaseModel):
     gateway_profile: LiteLLMGatewayProfileV1 | None = None
     parameter_schema_id: str = Field(min_length=1, max_length=120)
     parameter_matrix: ModelParameterMatrixV1 | None = None
+    image_resolution_capabilities: ImageResolutionCapabilitiesV1 | None = None
     result_protocol: str = Field(min_length=1, max_length=120)
     supports_remote_task_lookup: bool
     supports_provider_idempotency: bool
@@ -438,6 +484,7 @@ class ProviderModelSummaryV2(ProviderModelSummaryV1):
         max_length=64,
     )
     reference_policy: ReferenceInputPolicyV1 | None = None
+    image_resolution_capabilities: ImageResolutionCapabilitiesV1 | None = None
 
 
 ProviderCredentialCapabilityStatusV1.model_rebuild()

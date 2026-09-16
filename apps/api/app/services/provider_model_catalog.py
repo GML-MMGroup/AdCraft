@@ -130,8 +130,9 @@ def _image_profile(
     transport_kind: str,
     conformance_status: str = "compatible",
     parameter_matrix: Mapping[str, Any] | None = None,
+    image_resolution_capabilities: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return _adapter_profile(
+    profile = _adapter_profile(
         model_ref=model_ref,
         adapter_id=adapter_id,
         transport_kind=transport_kind,
@@ -153,6 +154,33 @@ def _image_profile(
         capability_revision=f"{model_ref.replace(':', '-')}-v1",
         parameter_matrix=parameter_matrix,
     )
+    if image_resolution_capabilities is not None:
+        profile["image_resolution_capabilities"] = dict(image_resolution_capabilities)
+    return profile
+
+
+def _seedream_resolution_capabilities() -> dict[str, Any]:
+    return {
+        "parameter_modes": ["size"],
+        "size_options": list(dict.fromkeys(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO.values())),
+        "resolution_options": [],
+        "aspect_ratio_options": [],
+        "sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+        "pixel_bounds": {"minimum": 512, "maximum": 4096},
+        "default_parameters": {},
+    }
+
+
+def _gpt_image_resolution_capabilities() -> dict[str, Any]:
+    return {
+        "parameter_modes": ["resolution_with_aspect_ratio"],
+        "size_options": [],
+        "resolution_options": ["1K", "2K", "4K"],
+        "aspect_ratio_options": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+        "sizes_by_aspect_ratio": {},
+        "pixel_bounds": None,
+        "default_parameters": {},
+    }
 
 
 def _ark_video_profile(
@@ -299,14 +327,10 @@ _OPENROUTER_IMAGE_PROFILE = _image_profile(
     adapter_id="openrouter-image-native",
     transport_kind="openrouter_images_native",
     conformance_status="unverified",
+    image_resolution_capabilities=_gpt_image_resolution_capabilities(),
     parameter_matrix=_parameter_matrix(
         schema_id="openrouter-gpt-image-2-v1",
         descriptors=(
-            {
-                "name": "size",
-                "value_type": "enum",
-                "allowed_values": ["1024x1024", "1536x1024", "1024x1536", "auto"],
-            },
             {
                 "name": "quality",
                 "value_type": "enum",
@@ -500,6 +524,7 @@ _TRUSTED_MANIFESTS = (
                 "volcengine_ark:doubao-seedream-5-0-lite-260128",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
+                image_resolution_capabilities=_seedream_resolution_capabilities(),
             ),
         },
     ),
@@ -554,6 +579,7 @@ _TRUSTED_MANIFESTS = (
                 "volcengine_ark:doubao-seedream-5-0-260128",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
+                image_resolution_capabilities=_seedream_resolution_capabilities(),
             ),
         },
     ),
@@ -574,6 +600,7 @@ _TRUSTED_MANIFESTS = (
                 "volcengine_ark:doubao-seedream-4-5-251128",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
+                image_resolution_capabilities=_seedream_resolution_capabilities(),
             ),
         },
     ),
@@ -594,6 +621,7 @@ _TRUSTED_MANIFESTS = (
                 "volcengine_ark:doubao-seedream-4-0-250828",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
+                image_resolution_capabilities=_seedream_resolution_capabilities(),
             ),
         },
     ),

@@ -102,6 +102,7 @@ export interface ProviderModelSummaryV1 {
   accepted_input_modes?: string[];
   parameter_schema_id?: string | null;
   parameter_descriptors?: ModelParameterDescriptorV1[];
+  image_resolution_capabilities?: ImageResolutionCapabilitiesV1 | null;
   reference_policy?: ReferenceInputPolicyV1 | null;
 }
 
@@ -113,6 +114,23 @@ export interface ModelParameterDescriptorV1 {
   minimum: number | null;
   maximum: number | null;
   default: unknown;
+}
+
+export type ImageResolutionParameterModeV1 = "size" | "resolution_with_aspect_ratio";
+
+export interface ImageResolutionPixelBoundsV1 {
+  minimum: number;
+  maximum: number;
+}
+
+export interface ImageResolutionCapabilitiesV1 {
+  parameter_modes: ImageResolutionParameterModeV1[];
+  size_options: string[];
+  resolution_options: string[];
+  aspect_ratio_options: string[];
+  sizes_by_aspect_ratio: Record<string, string>;
+  pixel_bounds: ImageResolutionPixelBoundsV1 | null;
+  default_parameters: Record<string, unknown>;
 }
 
 export interface ReferenceInputModeV1 {

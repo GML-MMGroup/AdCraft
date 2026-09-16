@@ -243,6 +243,7 @@ def _adapter_response_fields(metadata: dict[str, object]) -> dict[str, object]:
         "accepted_input_modes",
         "parameter_schema_id",
         "reference_policy",
+        "image_resolution_capabilities",
     ):
         if key in profile:
             fields[key] = profile[key]
