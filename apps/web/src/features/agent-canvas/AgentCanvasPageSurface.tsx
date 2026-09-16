@@ -190,10 +190,20 @@ export function AgentCanvasPage() {
     rollbackNodePositions,
     updateNodePositions,
   } = session.actions;
+  const reserveRevealNodeIdsRef = useRef<(nodeIds: readonly string[]) => void>(() => undefined);
   const runtimeCallbacks = useMemo(() => ({
     applyWorkflow,
     mergePublishedAsset,
     mergeNode,
+    beforeWorkflowApply: (nextWorkflow: AgentCanvasWorkflowV2) => {
+      // Reserve nodes that first appear through a workflow refresh before the
+      // canonical sync layout effect can render them at backend coordinates.
+      const knownNodeIds = new Set(workflowNodesRef.current.map((node) => node.node_id));
+      const createdNodeIds = nextWorkflow.nodes
+        .filter((node) => !knownNodeIds.has(node.node_id))
+        .map((node) => node.node_id);
+      if (createdNodeIds.length) reserveRevealNodeIdsRef.current(createdNodeIds);
+    },
   }), [
     applyWorkflow,
     mergeNode,
@@ -393,6 +403,7 @@ export function AgentCanvasPage() {
     syncCanonicalNodeIds: syncRevealCanonicalNodeIds,
     visibleNodeIds: visibleRevealNodeIds,
   } = revealQueue;
+  reserveRevealNodeIdsRef.current = reserveRevealNodeIds;
   const revealAvailableCanvasNodes = useCallback((nodeIds: string[]) => {
     const visibleNodeIds = new Set(flowNodesRef.current.map((node) => node.id));
     revealCanvasNodes(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));

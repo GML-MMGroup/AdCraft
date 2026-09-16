@@ -131,4 +131,29 @@ describe("useAgentCanvasNodeRevealQueue", () => {
     expect(result.current.visibleNodeIds).toEqual(new Set(["world", "script"]));
     expect(result.current.pendingNodeIds).toEqual([]);
   });
+
+  it("interrupt keeps reserved nodes hidden until their placement plan is queued", () => {
+    const focus = vi.fn();
+    const flow = createFlowRef();
+    const { result } = renderHook(() => useAgentCanvasNodeRevealQueue({
+      workflowId: "workflow-1",
+      flowRef: flow.ref,
+      onFocusNode: focus,
+      reducedMotion: true,
+    }));
+
+    act(() => {
+      result.current.reserveNodeIds(["world"]);
+      result.current.enqueue(plan(["script"]));
+      result.current.syncCanonicalNodeIds(["world", "script"]);
+      result.current.interrupt();
+    });
+    expect(result.current.visibleNodeIds).toEqual(new Set(["script"]));
+
+    act(() => {
+      flow.mounted(["world", "script"]);
+      result.current.enqueue(plan(["world"]));
+    });
+    expect(result.current.visibleNodeIds).toEqual(new Set(["script", "world"]));
+  });
 });
