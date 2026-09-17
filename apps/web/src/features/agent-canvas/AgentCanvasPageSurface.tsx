@@ -40,6 +40,7 @@ import type {
   CanvasLayoutPositionV2,
   CanvasNodeV2,
   CanvasPositionV2,
+  CanvasRuntimeEventV2,
   NodeRuntimeV2,
   ProjectAssetSummaryV2,
   SaveAgentCanvasImageToLibraryRequestV2,
@@ -131,6 +132,16 @@ import {
 } from "./model/nodeDefaults.ts";
 import { hasPromptReadyDraft } from "./model/promptPreparation.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
+import {
+  providerBalanceNoticeFromNode,
+  providerBalanceNoticeFromNodeRuntime,
+  providerBalanceNoticeFromRuntimeEvent,
+  providerBalanceNoticeFromText,
+} from "./notifications/providerBalanceNotice.ts";
+import {
+  reportProviderBalanceError,
+  reportProviderBalanceNotice,
+} from "./notifications/providerBalanceNoticeStore.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
 
@@ -195,6 +206,9 @@ export function AgentCanvasPage() {
     applyWorkflow,
     mergePublishedAsset,
     mergeNode,
+    onRuntimeEvent: (event: CanvasRuntimeEventV2) => {
+      reportProviderBalanceNotice(providerBalanceNoticeFromRuntimeEvent(event));
+    },
     beforeWorkflowApply: (nextWorkflow: AgentCanvasWorkflowV2) => {
       // Reserve nodes that first appear through a workflow refresh before the
       // canonical sync layout effect can render them at backend coordinates.
@@ -421,6 +435,39 @@ export function AgentCanvasPage() {
       if (ids.length) reserveRevealNodeIds(ids);
     });
   }, [live.state.chatEvents, reserveRevealNodeIds]);
+
+  // A provider credential that cannot pay shows up either on the node
+  // projection (submit and poll failures keep the provider message) or on the
+  // live runtime snapshot, so both sources feed the same notice store.
+  useEffect(() => {
+    if (!workflow) return;
+    const nodesById = new Map(workflow.nodes.map((node) => [node.node_id, node]));
+    workflow.nodes.forEach((node) => {
+      reportProviderBalanceNotice(providerBalanceNoticeFromNode(node));
+    });
+    const nodeRuntime = live.state.runtime?.node_runtime;
+    if (!nodeRuntime) return;
+    Object.values(nodeRuntime).forEach((runtime) => {
+      const node = nodesById.get(runtime.node_id);
+      if (!node) return;
+      reportProviderBalanceNotice(
+        providerBalanceNoticeFromNodeRuntime(node, runtime.error),
+      );
+    });
+  }, [live.state.runtime, workflow]);
+
+  // Fallback scan: any failure text the surface shows can be the only surviving
+  // trace of a provider billing rejection.
+  useEffect(() => {
+    [
+      surfaceError,
+      session.state.authoringError,
+      live.state.runtimeError,
+    ].forEach((text) => {
+      reportProviderBalanceNotice(providerBalanceNoticeFromText(text));
+    });
+  }, [live.state.runtimeError, session.state.authoringError, surfaceError]);
+
   useEffect(() => {
     let active = true;
     void agentCanvasApi.agentCanvasConnectionPolicy()
@@ -438,6 +485,7 @@ export function AgentCanvasPage() {
   const runNodeById = useCallback((nodeId: string, retryFailed = false) => {
     const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
     if (node) void runNode(node, { retryFailed }).catch((error) => {
+      reportProviderBalanceError(error);
       setSurfaceError(error instanceof Error ? error.message : "Node run failed.");
     });
   }, [runNode, workflow?.nodes]);
@@ -1486,6 +1534,7 @@ export function AgentCanvasPage() {
               title={hasRunnableDraft ? "Run all" : "No prompt-ready drafts"}
               disabled={live.state.runPending || !hasRunnableDraft}
               onClick={() => void runAll().catch((error) => {
+                reportProviderBalanceError(error);
                 setSurfaceError(error instanceof Error ? error.message : "Run could not start.");
               })}
             >

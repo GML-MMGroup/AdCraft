@@ -43,6 +43,7 @@ type RuntimeCallbacks = {
   beforeWorkflowApply?: (workflow: AgentCanvasWorkflowV2) => void;
   mergePublishedAsset: (asset: ProjectAssetSummaryV2, nodeId?: string | null) => void;
   mergeNode: (node: CanvasNodeV2) => void;
+  onRuntimeEvent?: (event: CanvasRuntimeEventV2) => void;
 };
 
 type RuntimeNodePatcher = (
@@ -288,6 +289,7 @@ export function useAgentCanvasRuntime(
         if (typeof oldest === "string") seenTransitionKeysRef.current.delete(oldest);
       }
     }
+    callbacks.onRuntimeEvent?.(event);
     const inputManifest = inputManifestAuditFromEvent(event);
     if (inputManifest) {
       setInputManifestsByNodeId((current) => ({
