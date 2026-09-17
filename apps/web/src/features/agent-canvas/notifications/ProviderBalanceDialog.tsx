@@ -46,7 +46,7 @@ export function ProviderBalanceDialog({
           {notice.providerLabel} 账户余额不足
         </h2>
         <p className="provider-balance-notice__body">
-          本次生成已停止：{notice.providerLabel} 认为当前 API Key 的余额或额度不足。
+          本次生成已停止：{notice.providerLabel}认为当前 API Key 的余额或额度不足。
           请为该供应商的 API Key 充值或更换 Key 后重新运行。
         </p>
         {notice.detail ? (
