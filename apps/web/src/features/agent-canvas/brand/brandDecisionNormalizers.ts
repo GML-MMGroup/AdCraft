@@ -1,7 +1,9 @@
 import type {
+  BrandOptionCardV1,
   BrandDecisionLogEntryV1,
   BrandDecisionPanelV1,
   BrandInspectionConversationTurnV1,
+  BrandJourneyStateV1,
 } from "./brandDecisions.ts";
 
 const BRAND_STAGES = [
@@ -278,4 +280,40 @@ export function normalizeBrandInspectionDecisionLog(
 export function normalizeBrandInspectionTraces(value: unknown): unknown[] {
   const root = record(value, "brandInspection");
   return Array.isArray(root.traces) ? root.traces : [];
+}
+
+export function normalizeBrandOptionCardV1(
+  value: unknown,
+): BrandOptionCardV1 {
+  const card = record(value, "brandOptionCard");
+  const options = arr(card.options ?? [], "brandOptionCard.options").map((item, index) => {
+    const option = record(item, `brandOptionCard.options[${index}]`);
+    return {
+      option_id: nonEmptyStr(option.option_id, `brandOptionCard.options[${index}].option_id`),
+      label: nonEmptyStr(option.label, `brandOptionCard.options[${index}].label`),
+      why: optionalStr(option.why, `brandOptionCard.options[${index}].why`),
+    };
+  });
+  return {
+    card_id: nonEmptyStr(card.card_id, "brandOptionCard.card_id"),
+    stage: stage(card.stage, "brandOptionCard.stage"),
+    stage_revision: int(card.stage_revision, "brandOptionCard.stage_revision"),
+    target_slot_id: optionalStr(card.target_slot_id, "brandOptionCard.target_slot_id"),
+    question: str(card.question, "brandOptionCard.question"),
+    options,
+  };
+}
+
+export function normalizeBrandJourneyStateV1(value: unknown): BrandJourneyStateV1 {
+  const root = record(value, "brandJourney");
+  const status = root.stage_status;
+  return {
+    policy_version: str(root.policy_version ?? "brand_professional_v1", "brandJourney.policy_version"),
+    stage: stage(root.stage, "brandJourney.stage"),
+    treatment_substep: optionalStr(root.treatment_substep, "brandJourney.treatment_substep"),
+    stage_revision: int(root.stage_revision, "brandJourney.stage_revision"),
+    stage_status: status === "working" || status === "waiting_user" || status === "completed"
+      ? status
+      : "ready",
+  };
 }

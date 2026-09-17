@@ -107,6 +107,14 @@ export interface BrandInspectionConversationTurnV1 {
   created_at: string | null;
 }
 
+export interface BrandJourneyStateV1 {
+  policy_version: string;
+  stage: BrandStageV2;
+  treatment_substep: string | null;
+  stage_revision: number;
+  stage_status: "ready" | "working" | "waiting_user" | "completed";
+}
+
 export interface BrandDecisionLogEntryV1 {
   log_id: string;
   stage: BrandStageV2;

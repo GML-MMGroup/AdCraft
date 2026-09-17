@@ -170,6 +170,7 @@ import type {
   BrandDecisionLogEntryV1,
   BrandDecisionPanelV1,
   BrandInspectionConversationTurnV1,
+  BrandJourneyStateV1,
 } from "../features/agent-canvas/brand/brandDecisions.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
@@ -209,7 +210,9 @@ import {
   normalizeProviderModelCapabilityListV2,
 } from "../features/agent-canvas/model/normalizers.ts";
 import {
+  normalizeBrandJourneyStateV1,
   normalizeBrandDecisionPanelV1,
+  normalizeBrandOptionCardV1,
   normalizeBrandInspectionConversation,
   normalizeBrandInspectionDecisionLog,
   normalizeBrandInspectionTraces,
@@ -650,6 +653,78 @@ export const v2Api = {
       `/brand/inspection/traces?${query.toString()}`,
       {},
       normalizeBrandInspectionTraces,
+    );
+  },
+
+  brandNextQuestion(workflowId: string): Promise<NonNullable<BrandDecisionPanelV1["open_card"]>> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
+      { method: "POST" },
+      normalizeBrandOptionCardV1,
+    );
+  },
+
+  brandSelectSlot(
+    workflowId: string,
+    body: {
+      card_id: string;
+      option_id: string;
+      value_text: string;
+      provenance?: "user_confirmed" | "agent_recommended";
+    },
+  ): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-slot`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
+  brandSelectHypothesis(workflowId: string, hypothesisId: string): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-hypothesis`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hypothesis_id: hypothesisId }),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
+  brandSelectTreatment(
+    workflowId: string,
+    body: {
+      card_id: string;
+      option_id: string;
+      selected_label: string;
+      detail?: string;
+    },
+  ): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-treatment`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
+  brandLockTreatment(workflowId: string): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/lock-treatment`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      },
+      normalizeBrandJourneyStateV1,
     );
   },
 
