@@ -24,6 +24,7 @@ import {
 } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
+import { v2Api } from "../../api/v2Client.ts";
 import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
@@ -88,6 +89,8 @@ import {
   type FrozenCanvasEdgeSnapshot,
 } from "./canvas/frozenCanvasEdges.ts";
 import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
+import { BrandDecisionPanel } from "./brand/BrandDecisionPanel.tsx";
+import type { BrandDecisionPanelV1 } from "./brand/brandDecisions.ts";
 import {
   installAgentCanvasWorkflowViewport,
   readAgentCanvasViewport,
@@ -262,6 +265,41 @@ export function AgentCanvasPage() {
     }
   ) | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
+  const [brandDecisions, setBrandDecisions] = useState<BrandDecisionPanelV1 | null>(null);
+  const [brandDecisionsRefreshing, setBrandDecisionsRefreshing] = useState(false);
+  const brandWorkflowId = workflow?.workflow_id ?? null;
+  const refreshBrandDecisions = useCallback(async () => {
+    if (!brandWorkflowId) return;
+    setBrandDecisionsRefreshing(true);
+    try {
+      setBrandDecisions(await v2Api.brandDecisions(brandWorkflowId));
+    } catch {
+      setBrandDecisions(null);
+    } finally {
+      setBrandDecisionsRefreshing(false);
+    }
+  }, [brandWorkflowId]);
+  useEffect(() => {
+    if (!brandWorkflowId) {
+      setBrandDecisions(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setBrandDecisionsRefreshing(true);
+    v2Api.brandDecisions(brandWorkflowId)
+      .then((response) => {
+        if (!cancelled) setBrandDecisions(response);
+      })
+      .catch(() => {
+        if (!cancelled) setBrandDecisions(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBrandDecisionsRefreshing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandWorkflowId]);
   const { displayEdges, submit: submitOptimisticConnection, cancelForNodes: cancelPendingNodeConnections, nextOrder: nextConnectionOrder } = useOptimisticCanvasConnections({
     workflow,
     edges,
@@ -1309,7 +1347,16 @@ export function AgentCanvasPage() {
     : null;
   const running = Boolean(live.state.runtime?.active_execution_id);
   return (
-    <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}`}>
+    <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}${brandDecisions ? " is-brand-mode" : ""}`}>
+      {brandDecisions ? (
+        <BrandDecisionPanel
+          decisions={brandDecisions}
+          refreshing={brandDecisionsRefreshing}
+          onRefresh={() => {
+            void refreshBrandDecisions();
+          }}
+        />
+      ) : null}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}

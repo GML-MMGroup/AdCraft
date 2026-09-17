@@ -27,6 +27,14 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.agent-canvas-page.is-brand-mode {
+  grid-template-columns: 300px minmax(0, 1fr) 390px;
+}
+
+.agent-canvas-page.is-brand-mode.is-chat-collapsed {
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
 .agent-canvas-page.is-chat-collapsed .agent-canvas-board {
   border-right: 0;
 }
@@ -1184,8 +1192,13 @@
 }
 
 @media (max-width: 1180px) {
-  .agent-canvas-page {
+  .agent-canvas-page,
+  .agent-canvas-page.is-brand-mode {
     grid-template-columns: minmax(0, 1fr) 330px;
+  }
+
+  .agent-canvas-page.is-brand-mode.is-chat-collapsed {
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 }
 

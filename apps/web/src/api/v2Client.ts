@@ -166,6 +166,11 @@ import {
   normalizeWorkflowAssetListResponseV2,
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
+import type {
+  BrandDecisionLogEntryV1,
+  BrandDecisionPanelV1,
+  BrandInspectionConversationTurnV1,
+} from "../features/agent-canvas/brand/brandDecisions.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasChatTimelineV2,
@@ -203,6 +208,12 @@ import {
   normalizeProjectAssetUploadResponseV2,
   normalizeProviderModelCapabilityListV2,
 } from "../features/agent-canvas/model/normalizers.ts";
+import {
+  normalizeBrandDecisionPanelV1,
+  normalizeBrandInspectionConversation,
+  normalizeBrandInspectionDecisionLog,
+  normalizeBrandInspectionTraces,
+} from "../features/agent-canvas/brand/brandDecisionNormalizers.ts";
 import { v2EtagStore, type V2AuthoringResource } from "./v2EtagStore.ts";
 
 const API_V2_BASE = "/api/v2";
@@ -603,6 +614,42 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}`,
       { signal: options.signal },
       normalizeAgentCanvasWorkflowV2,
+    );
+  },
+
+  brandDecisions(workflowId: string): Promise<BrandDecisionPanelV1> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/decisions?${query.toString()}`,
+      {},
+      normalizeBrandDecisionPanelV1,
+    );
+  },
+
+  brandInspectionConversation(workflowId: string): Promise<BrandInspectionConversationTurnV1[]> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/inspection/conversation?${query.toString()}`,
+      {},
+      normalizeBrandInspectionConversation,
+    );
+  },
+
+  brandInspectionDecisionLog(workflowId: string): Promise<BrandDecisionLogEntryV1[]> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/inspection/decision-log?${query.toString()}`,
+      {},
+      normalizeBrandInspectionDecisionLog,
+    );
+  },
+
+  brandInspectionTraces(workflowId: string): Promise<unknown[]> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/inspection/traces?${query.toString()}`,
+      {},
+      normalizeBrandInspectionTraces,
     );
   },
 

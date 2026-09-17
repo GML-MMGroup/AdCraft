@@ -1535,8 +1535,15 @@ function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").Pro
     cover_updated_at: coverUpdatedAt ?? null,
     cover: normalizeProjectCoverV2(record.cover),
     project_version: requiredPositiveInteger(record, "project_version"),
+    mode: normalizeProjectModeV2(record.mode),
     updated_at: requiredProjectString(record, "updated_at"),
   };
+}
+
+function normalizeProjectModeV2(value: unknown): import("../types-v2.ts").ProjectV2Summary["mode"] {
+  if (value === undefined || value === null) return undefined;
+  if (value === "creation" || value === "brand") return value;
+  invalidProjectPayload();
 }
 
 function normalizeProjectCoverV2(value: unknown): import("../types-v2.ts").ProjectCoverV2 | null | undefined {

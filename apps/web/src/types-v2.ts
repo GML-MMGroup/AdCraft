@@ -124,6 +124,7 @@ export interface ProjectV2Summary {
   cover_updated_at?: string | null;
   cover?: ProjectCoverV2 | null;
   project_version: number;
+  mode?: "creation" | "brand";
   updated_at: string;
 }
 
@@ -3161,6 +3162,7 @@ export interface EditingNodeContentV2 {
 export interface AgentCanvasProjectCreateRequestV2 {
   name: string;
   description?: string;
+  mode?: "creation" | "brand";
   video_skill_id?: string | null;
   video_skill_version?: string | null;
 }
