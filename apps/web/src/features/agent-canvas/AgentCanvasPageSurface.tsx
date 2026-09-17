@@ -1352,6 +1352,7 @@ export function AgentCanvasPage() {
         <BrandDecisionPanel
           decisions={brandDecisions}
           refreshing={brandDecisionsRefreshing}
+          interactive={false}
           onRefresh={() => {
             void refreshBrandDecisions();
           }}
