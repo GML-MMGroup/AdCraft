@@ -12,6 +12,7 @@ from typing import cast
 from uuid import uuid4
 
 from sqlalchemy import delete, insert, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -274,17 +275,18 @@ class BrandDecisionRepository:
             .where(BrandOptionCardRow.status == "open")
             .values(status="superseded")
         )
+        insert_statement = sqlite_insert(BrandOptionCardRow).values(
+            card_id=card.card_id,
+            brand_id=brand_id,
+            stage=card.stage,
+            stage_revision=card.stage_revision,
+            target_slot_id=card.target_slot_id,
+            payload_json=card.model_dump_json(),
+            status="open",
+            created_at=_now(),
+        )
         connection.execute(
-            insert(BrandOptionCardRow).values(
-                card_id=card.card_id,
-                brand_id=brand_id,
-                stage=card.stage,
-                stage_revision=card.stage_revision,
-                target_slot_id=card.target_slot_id,
-                payload_json=card.model_dump_json(),
-                status="open",
-                created_at=_now(),
-            )
+            insert_statement.on_conflict_do_nothing(index_elements=[BrandOptionCardRow.card_id])
         )
 
     def get_open_card_in_transaction(
