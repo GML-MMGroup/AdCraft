@@ -101,6 +101,7 @@ from app.persistence.agent_working_document_repository import (
     AgentWorkingDocumentRepository,
 )
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -421,9 +422,12 @@ from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.agent_model_trace_sessions import isolated_agent_model_replay_enabled
 from app.services.durable_pi_run import DurablePiRunService
+from app.services.brand_production_handoff import check_locked_elements
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
 
+
+_BRAND_LOCKED_ELEMENT_ROLES = frozenset({"script", "storyboard_sequence", "storyboard_video"})
 
 router = APIRouter(tags=["v2-agent-canvas"])
 
@@ -833,6 +837,19 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+    brand_decisions = BrandDecisionRepository(database)
+
+    def enforce_brand_locked_elements(workflow_id: str, node, prompt: str) -> None:
+        if node.creative_role not in _BRAND_LOCKED_ELEMENT_ROLES:
+            return
+        project_id = brand_decisions.project_id_for_workflow(workflow_id)
+        if project_id is None:
+            return
+        brand_id = brand_decisions.get_brand_id_by_project(project_id)
+        if brand_id is None:
+            return
+        check_locked_elements(prompt, brand_decisions.locked_prohibited_elements(brand_id))
+
     prompt_preparation_service = NodePromptPreparationService(
         workflow_repository,
         role_brief_author=lambda role_context, request_identity: (
@@ -843,6 +860,7 @@ def create_agent_canvas_runtime(
         ),
         asset_resolver=asset_service.resolve_asset,
         presentation_publisher=presentation_publisher,
+        locked_element_guard=enforce_brand_locked_elements,
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime, timezone
-from typing import cast
+from typing import Literal, cast
 
 from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
@@ -64,6 +64,7 @@ class ProjectRepository:
                 cover_source=project.cover_source,
                 cover_updated_at=project.cover_updated_at,
                 project_version=1,
+                mode=project.mode,
                 created_at=project.created_at,
                 updated_at=project.updated_at,
                 deleted_at=None,
@@ -337,6 +338,7 @@ def _project_select():
         ProjectRow.cover_source,
         ProjectRow.cover_updated_at,
         ProjectRow.project_version,
+        ProjectRow.mode,
         ProjectRow.created_at,
         ProjectRow.updated_at,
         ProjectRow.deleted_at,
@@ -378,6 +380,10 @@ def _project_from_row(row: RowMapping) -> ProjectRecord:
         cover_source=cast(ProjectCoverSourceV2 | None, _optional_string(row["cover_source"])),
         cover_updated_at=_optional_string(row["cover_updated_at"]),
         project_version=int(row["project_version"]),
+        mode=cast(
+            Literal["creation", "brand"],
+            row["mode"] if row["mode"] in {"creation", "brand"} else "creation",
+        ),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         deleted_at=_optional_string(row["deleted_at"]),

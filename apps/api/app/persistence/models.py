@@ -81,6 +81,10 @@ class ProjectRow(Base):
             "'storyboard_grid','video_poster','migrated')",
             name="ck_projects_cover_source",
         ),
+        CheckConstraint(
+            "mode IS NULL OR mode IN ('creation', 'brand')",
+            name="ck_projects_mode",
+        ),
     )
 
     project_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -94,9 +98,194 @@ class ProjectRow(Base):
     cover_source: Mapped[str | None] = mapped_column(Text)
     cover_updated_at: Mapped[str | None] = mapped_column(Text)
     project_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    mode: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
     deleted_at: Mapped[str | None] = mapped_column(Text)
+
+
+class BrandRow(Base):
+    """One brand memory envelope, one-to-one with a project in phase 1."""
+
+    __tablename__ = "brands"
+
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandFactRow(Base):
+    """One slot value with provenance inside one brand stage table."""
+
+    __tablename__ = "brand_facts"
+    __table_args__ = (UniqueConstraint("brand_id", "stage", "slot_id", name="uq_brand_facts_slot"),)
+
+    fact_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    slot_id: Mapped[str] = mapped_column(Text, nullable=False)
+    value_text: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="fact")
+    provenance: Mapped[str] = mapped_column(Text, nullable=False)
+    confirmed_at: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandJourneyRow(Base):
+    """Deterministic brand journey state for one brand."""
+
+    __tablename__ = "brand_journeys"
+
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    policy_version: Mapped[str] = mapped_column(
+        Text, nullable=False, default="brand_professional_v1"
+    )
+    stage: Mapped[str] = mapped_column(Text, nullable=False, default="brand-memory")
+    treatment_substep: Mapped[str | None] = mapped_column(Text)
+    stage_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    stage_status: Mapped[str] = mapped_column(Text, nullable=False, default="ready")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandHypothesisRow(Base):
+    """One Creative Hypothesis candidate proposed for a brand."""
+
+    __tablename__ = "brand_hypotheses"
+
+    hypothesis_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    insight: Mapped[str] = mapped_column(Text, nullable=False)
+    mechanism: Mapped[str] = mapped_column(Text, nullable=False)
+    hypothesis_text: Mapped[str] = mapped_column(Text, nullable=False)
+    product_role: Mapped[str] = mapped_column(Text, nullable=False)
+    hook_mechanism: Mapped[str] = mapped_column(Text, nullable=False)
+    why: Mapped[str | None] = mapped_column(Text)
+    selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandAdSpecItemRow(Base):
+    """One AdSpec item with its decision state."""
+
+    __tablename__ = "brand_adspec_items"
+    __table_args__ = (UniqueConstraint("brand_id", "item_key", name="uq_brand_adspec_items_key"),)
+
+    item_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    item_key: Mapped[str] = mapped_column(Text, nullable=False)
+    item_text: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandSkillStackRow(Base):
+    """One selected or rejected skill inside the brand skill stack."""
+
+    __tablename__ = "brand_skill_stack"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "skill_kind", "skill_id", name="uq_brand_skill_stack_entry"),
+    )
+
+    entry_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    skill_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    skill_id: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandTreatmentStepRow(Base):
+    """One confirmed treatment sub-step result."""
+
+    __tablename__ = "brand_treatment_steps"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "step_key", name="uq_brand_treatment_steps_key"),
+    )
+
+    step_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    step_key: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_label: Mapped[str] = mapped_column(Text, nullable=False)
+    detail_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    confirmed_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandOptionCardRow(Base):
+    """One proposed option card awaiting user selection."""
+
+    __tablename__ = "brand_option_cards"
+
+    card_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    stage_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    target_slot_id: Mapped[str | None] = mapped_column(Text)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandInvocationRow(Base):
+    """Durable bounded capability invocation authority for one brand turn."""
+
+    __tablename__ = "brand_invocations"
+
+    invocation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
+    worker_id: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[str] = mapped_column(Text, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    prompt_text: Mapped[str | None] = mapped_column(Text)
+    output_text: Mapped[str | None] = mapped_column(Text)
+    model_id: Mapped[str | None] = mapped_column(Text)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[str | None] = mapped_column(Text)
+    completed_at: Mapped[str | None] = mapped_column(Text)
+
+
+class BrandDecisionLogRow(Base):
+    """Append-only decision log entry."""
+
+    __tablename__ = "brand_decision_log"
+
+    log_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[str | None] = mapped_column(Text)
+    detail_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class CreativeSkillCatalogRow(Base):
+    """One imported creative skill version; runtime source of truth."""
+
+    __tablename__ = "creative_skill_catalog"
+    __table_args__ = (
+        UniqueConstraint("skill_id", "version", name="uq_creative_skill_catalog_version"),
+    )
+
+    entry_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    skill_id: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[str] = mapped_column(Text, nullable=False)
+    skill_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    body_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class WorkflowRow(Base):

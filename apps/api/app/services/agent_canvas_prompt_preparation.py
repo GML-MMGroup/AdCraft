@@ -50,6 +50,7 @@ from app.services.agent_canvas_presentation import PresentationStreamPublisher
 
 
 RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
+LockedElementGuard = Callable[[str, CanvasNodeV2, str], None]
 _GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
 
 
@@ -71,6 +72,7 @@ class NodePromptPreparationService:
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         presentation_publisher: PresentationStreamPublisher | None = None,
         recipe_registry: RolePromptRecipeRegistry | None = None,
+        locked_element_guard: LockedElementGuard | None = None,
     ) -> None:
         self._workflows = workflows
         self._role_brief_author = role_brief_author
@@ -78,6 +80,7 @@ class NodePromptPreparationService:
         self._presentation_publisher = presentation_publisher
         self._projector = RolePromptContextProjector()
         self._recipes = recipe_registry or RolePromptRecipeRegistry()
+        self._locked_element_guard = locked_element_guard
         self._parameter_resolver = RolePromptParameterResolver()
         self._compiler = AgentCanvasRolePromptCompiler(self._recipes)
 
@@ -222,6 +225,8 @@ class NodePromptPreparationService:
                     "authoring_provenance": provenance,
                 }
             digest = sha256(prompt.encode("utf-8")).hexdigest()
+            if self._locked_element_guard is not None:
+                self._locked_element_guard(workflow_id, working, prompt)
             recipe = self._recipes.resolve(role_context.role_variant)
             ready = working.model_copy(
                 update={

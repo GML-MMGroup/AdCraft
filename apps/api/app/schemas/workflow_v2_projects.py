@@ -47,6 +47,7 @@ class ProjectCreate(BaseModel):
     cover_state: ProjectCoverStateV2 = "none"
     cover_source: ProjectCoverSourceV2 | None = None
     cover_updated_at: str | None = None
+    mode: Literal["creation", "brand"] = "creation"
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
 
@@ -67,6 +68,7 @@ class ProjectRecord(BaseModel):
     cover_source: ProjectCoverSourceV2 | None = None
     cover_updated_at: str | None = None
     project_version: int = Field(ge=1)
+    mode: Literal["creation", "brand"] = "creation"
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
     deleted_at: str | None = None
@@ -113,6 +115,7 @@ class ProjectV2(BaseModel):
     cover_source: ProjectCoverSourceV2 | None = None
     cover_updated_at: str | None = None
     project_version: int = Field(ge=1)
+    mode: Literal["creation", "brand"] = "creation"
     semantic_revision_no: int = Field(ge=1)
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
@@ -136,6 +139,7 @@ class ProjectV2Summary(BaseModel):
     cover_updated_at: str | None = None
     cover: ProjectCoverV2 | None = None
     project_version: int = Field(ge=1)
+    mode: Literal["creation", "brand"] = "creation"
     updated_at: str = Field(min_length=1)
 
 

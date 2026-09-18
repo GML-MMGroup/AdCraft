@@ -1,0 +1,477 @@
+"""Bounded brand capability invocation and validated persistence.
+
+Each brand creative operation loads exactly one capability. Python validates
+every structured output against the slot schema and option constraints before
+anything is persisted, and appends the decision log in the same transaction.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Literal, cast
+from uuid import uuid4
+
+from app.core.config import Settings, get_settings
+from app.persistence.brand_decision_repository import BrandDecisionRepository
+from app.persistence.database import V2Database
+from app.persistence.errors import V2PersistenceError
+from app.schemas.brand_professional_mode import (
+    BrandDecisionLogEntryV1,
+    BrandJourneyStateV1,
+    BrandOptionCardV1,
+    BrandSlotValueV1,
+    BrandStage,
+    BrandStrategyOutputV1,
+    BrandTreatmentSubstep,
+    CreativeHypothesisCandidateV1,
+    CreativeStrategyOutputV1,
+    CreativeTreatmentOutputV1,
+    CreativeTreatmentStepOutputV1,
+    SlotProvenance,
+    TreatmentStepResultV1,
+)
+from app.services.brand_journey_state import (
+    TREATMENT_SUBSTEP_ORDER,
+    advance_brand_stage,
+    advance_treatment_substep,
+)
+from app.services.brand_slot_schema import (
+    missing_required_slots,
+    slots_for_stage,
+    validate_slot_values,
+)
+from app.services.creative_method_skill_catalog import CreativeMethodSkillCatalogService
+from app.services.creative_method_skill_catalog import creative_method_seed_dir
+from app.services.v2_structured_generation_runtime import (
+    StructuredGenerationRuntime,
+    StructuredGenerationSpec,
+)
+
+_LogAction = Literal["select", "reject", "fusion", "recommend", "edit", "confirm", "lock"]
+
+
+class BrandCapabilityInvocationService:
+    """Invoke one bounded capability and persist its validated output."""
+
+    def __init__(
+        self,
+        database: V2Database,
+        *,
+        settings: Settings | None = None,
+        generation_runtime: StructuredGenerationRuntime | None = None,
+    ) -> None:
+        self._database = database
+        self._settings = settings or get_settings()
+        self._runtime = generation_runtime or StructuredGenerationRuntime(settings=self._settings)
+        self._repository = BrandDecisionRepository(database)
+        self._catalog = CreativeMethodSkillCatalogService(database, creative_method_seed_dir())
+
+    # ---- Slot question -----------------------------------------------------
+
+    def run_slot_question(
+        self,
+        brand_id: str,
+        stage: BrandStage,
+        *,
+        model_id: str | None = None,
+        output: BrandStrategyOutputV1 | None = None,
+    ) -> BrandOptionCardV1:
+        """Run one slot-question capability operation and persist it."""
+
+        values = self._repository.get_slot_values(brand_id)
+        validate_slot_values(values)
+        journey = self._repository.get_journey(brand_id)
+        if journey is None:
+            raise _not_found()
+        if journey.stage != stage:
+            raise _stage_mismatch()
+        if output is None:
+            spec = StructuredGenerationSpec[BrandStrategyOutputV1](
+                stage_name="brand_slot_question",
+                contract_name="BrandStrategyOutputV1",
+                model_id=model_id or self._settings.llm_creative_model,
+                system_prompt=_BRAND_STRATEGY_PROMPT,
+                input_payload={
+                    "stage": stage,
+                    "slots": [
+                        {
+                            "slot_id": slot.slot_id,
+                            "question": slot.question,
+                            "required": slot.required,
+                        }
+                        for slot in slots_for_stage(stage)
+                    ],
+                    "confirmed_values": [value.model_dump(mode="json") for value in values],
+                },
+                output_model=BrandStrategyOutputV1,
+                quality_validator=lambda out: _validate_strategy(out, stage),
+            )
+            output = self._runtime.run(spec).output
+        card = output.question_card
+        if card is None:
+            raise _card_invalid("Brand strategy output requires one question card.")
+        _validate_card(card, stage)
+        validate_slot_values(output.slot_values)
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            self._repository.upsert_slot_values_in_transaction(
+                connection, brand_id, output.slot_values
+            )
+            self._repository.save_option_card_in_transaction(connection, brand_id, card)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage=stage,
+                action="recommend",
+                target_type="option_card",
+                target_id=card.card_id,
+                detail={"question": card.question},
+                now=now,
+            )
+        return card
+
+    # ---- Slot selection ----------------------------------------------------
+
+    def apply_slot_selection(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        option_id: str,
+        value_text: str,
+        provenance: SlotProvenance,
+    ) -> None:
+        """Commit the user choice for the open card and advance when done."""
+
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id:
+                raise _stage_mismatch()
+            if not any(option.option_id == option_id for option in card.options):
+                raise _card_invalid("Selected option is not on the open card.")
+            slot_id = card.target_slot_id
+            if slot_id is None:
+                raise _card_invalid("Card does not target a slot.")
+            self._repository.upsert_slot_values_in_transaction(
+                connection,
+                brand_id,
+                (
+                    BrandSlotValueV1(
+                        slot_id=slot_id,
+                        stage=card.stage,
+                        value=value_text,
+                        provenance=provenance,
+                    ),
+                ),
+            )
+            self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage=card.stage,
+                action="select",
+                target_type="option",
+                target_id=option_id,
+                detail={"card_id": card_id, "slot_id": slot_id},
+                now=now,
+            )
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is not None and card.stage == journey.stage:
+                values = self._repository.get_slot_values_in_transaction(connection, brand_id)
+                if not missing_required_slots(card.stage, values):
+                    self._repository.save_journey_in_transaction(
+                        connection,
+                        brand_id,
+                        advance_brand_stage(journey),
+                    )
+
+    # ---- Hypotheses --------------------------------------------------------
+
+    def run_hypotheses(
+        self,
+        brand_id: str,
+        *,
+        model_id: str | None = None,
+        output: CreativeStrategyOutputV1 | None = None,
+    ) -> tuple[CreativeHypothesisCandidateV1, ...]:
+        journey = self._repository.get_journey(brand_id)
+        if journey is None or journey.stage != "hypothesis":
+            raise _stage_mismatch()
+        if output is None:
+            spec = StructuredGenerationSpec[CreativeStrategyOutputV1](
+                stage_name="brand_hypothesis",
+                contract_name="CreativeStrategyOutputV1",
+                model_id=model_id or self._settings.llm_creative_model,
+                system_prompt=_CREATIVE_STRATEGY_PROMPT,
+                input_payload={
+                    "skills": list(self._catalog.injection_summaries()),
+                    "confirmed_values": [
+                        value.model_dump(mode="json")
+                        for value in self._repository.get_slot_values(brand_id)
+                    ],
+                },
+                output_model=CreativeStrategyOutputV1,
+            )
+            output = self._runtime.run(spec).output
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            self._repository.replace_hypotheses_in_transaction(
+                connection, brand_id, output.candidates
+            )
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="hypothesis",
+                action="recommend",
+                target_type="hypothesis_batch",
+                target_id=None,
+                detail={"count": len(output.candidates)},
+                now=now,
+            )
+        return output.candidates
+
+    def apply_hypothesis_selection(self, brand_id: str, hypothesis_id: str) -> None:
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None or journey.stage != "hypothesis":
+                raise _stage_mismatch()
+            self._repository.select_hypothesis_in_transaction(connection, brand_id, hypothesis_id)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="hypothesis",
+                action="select",
+                target_type="hypothesis",
+                target_id=hypothesis_id,
+                detail={},
+                now=now,
+            )
+            self._repository.save_journey_in_transaction(
+                connection, brand_id, advance_brand_stage(journey)
+            )
+
+    # ---- Treatment ---------------------------------------------------------
+
+    def run_treatment_step(
+        self,
+        brand_id: str,
+        *,
+        model_id: str | None = None,
+        output: CreativeTreatmentOutputV1 | None = None,
+    ) -> CreativeTreatmentStepOutputV1:
+        journey = self._repository.get_journey(brand_id)
+        if journey is None or journey.stage != "treatment":
+            raise _stage_mismatch()
+        if output is None:
+            spec = StructuredGenerationSpec[CreativeTreatmentOutputV1](
+                stage_name="brand_treatment_step",
+                contract_name="CreativeTreatmentOutputV1",
+                model_id=model_id or self._settings.llm_creative_model,
+                system_prompt=_CREATIVE_TREATMENT_PROMPT,
+                input_payload={
+                    "substep": journey.treatment_substep,
+                    "confirmed_values": [
+                        value.model_dump(mode="json")
+                        for value in self._repository.get_slot_values(brand_id)
+                    ],
+                },
+                output_model=CreativeTreatmentOutputV1,
+            )
+            output = self._runtime.run(spec).output
+        step = output.step
+        now = datetime.now(timezone.utc)
+        card = BrandOptionCardV1(
+            card_id=f"bcard_{uuid4().hex[:12]}",
+            stage="treatment",
+            stage_revision=journey.stage_revision,
+            target_slot_id=step.step_key,
+            question=step.question,
+            options=step.options,
+        )
+        _validate_card(card, "treatment")
+        with self._database.engine.begin() as connection:
+            self._repository.save_option_card_in_transaction(connection, brand_id, card)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="treatment",
+                action="recommend",
+                target_type="treatment_step",
+                target_id=step.step_key,
+                detail={"card_id": card.card_id},
+                now=now,
+            )
+        return step
+
+    def apply_treatment_selection(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        option_id: str,
+        selected_label: str,
+        detail: str,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "treatment":
+                raise _stage_mismatch()
+            if not any(option.option_id == option_id for option in card.options):
+                raise _card_invalid("Selected option is not on the open card.")
+            step_key = cast_step(card.target_slot_id)
+            self._repository.save_treatment_step_in_transaction(
+                connection,
+                brand_id,
+                TreatmentStepResultV1(
+                    step_key=step_key,
+                    selected_label=selected_label,
+                    detail=detail,
+                    confirmed_at=now,
+                ),
+            )
+            self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="treatment",
+                action="select",
+                target_type="treatment_step",
+                target_id=step_key,
+                detail={"card_id": card_id, "option_id": option_id},
+                now=now,
+            )
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is not None:
+                self._repository.save_journey_in_transaction(
+                    connection, brand_id, advance_treatment_substep(journey)
+                )
+
+    def lock_treatment(self, brand_id: str) -> BrandJourneyStateV1:
+        """Lock the treatment once all eight sub-steps are confirmed.
+
+        A lock that arrives early fails with `brand_slot_required_missing` and
+        leaves the journey at its current sub-step.
+        """
+
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None or journey.stage != "treatment":
+                raise _stage_mismatch()
+            steps = self._repository.get_treatment_steps_in_transaction(connection, brand_id)
+            confirmed = {step.step_key for step in steps}
+            missing = [key for key in TREATMENT_SUBSTEP_ORDER if key not in confirmed]
+            if missing:
+                raise V2PersistenceError(
+                    "brand_slot_required_missing",
+                    "Treatment lock requires all eight sub-steps; missing: " + ", ".join(missing),
+                    stage="brand_capability_invocation",
+                )
+            locked = advance_brand_stage(journey)
+            self._repository.save_journey_in_transaction(connection, brand_id, locked)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="treatment",
+                action="lock",
+                target_type="treatment",
+                target_id=None,
+                detail={"stage": locked.stage},
+                now=now,
+            )
+        return locked
+
+    # ---- helpers -----------------------------------------------------------
+
+    def _append_log(
+        self,
+        connection,
+        *,
+        brand_id: str,
+        stage: BrandStage,
+        action: str,
+        target_type: str,
+        target_id: str | None,
+        detail: dict[str, object],
+        now: datetime,
+    ) -> None:
+        self._repository.append_decision_log_in_transaction(
+            connection,
+            BrandDecisionLogEntryV1(
+                log_id=f"blog_{uuid4().hex[:16]}",
+                stage=stage,
+                action=cast(_LogAction, action),
+                target_type=target_type,
+                target_id=target_id,
+                detail=detail,
+                created_at=now,
+            ),
+            brand_id=brand_id,
+        )
+
+
+def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
+    if output.question_card is not None and output.question_card.stage != stage:
+        raise ValueError("Question card does not match the current stage.")
+
+
+def _validate_card(card: BrandOptionCardV1, stage: BrandStage) -> None:
+    if card.stage != stage:
+        raise _card_invalid("Option card stage does not match the current stage.")
+
+
+def cast_step(slot_id: str | None) -> BrandTreatmentSubstep:
+    valid = {
+        "hook",
+        "story",
+        "character",
+        "scene",
+        "visual",
+        "camera",
+        "editing",
+        "sound",
+    }
+    if slot_id not in valid:
+        raise _card_invalid("Treatment card does not target a treatment sub-step.")
+    return cast(BrandTreatmentSubstep, slot_id)
+
+
+def _not_found() -> V2PersistenceError:
+    return V2PersistenceError(
+        "brand_decision_not_found",
+        "Brand state not found.",
+        stage="brand_capability_invocation",
+    )
+
+
+def _stage_mismatch() -> V2PersistenceError:
+    return V2PersistenceError(
+        "brand_stage_action_mismatch",
+        "Stage action does not match the current brand stage.",
+        stage="brand_capability_invocation",
+    )
+
+
+def _card_invalid(message: str) -> V2PersistenceError:
+    return V2PersistenceError(
+        "brand_option_card_invalid",
+        message,
+        stage="brand_capability_invocation",
+    )
+
+
+_BRAND_STRATEGY_PROMPT = (
+    "You are the Brand Strategy capability of the AdCraft Brand Professional Mode. "
+    "Collect one slot at a time using exactly three short options."
+)
+_CREATIVE_STRATEGY_PROMPT = (
+    "You are the Creative Strategy capability of the AdCraft Brand Professional "
+    "Mode. Diverge 8-12 directions internally and return 2-4 candidates."
+)
+_CREATIVE_TREATMENT_PROMPT = (
+    "You are the Creative Treatment capability of the AdCraft Brand Professional "
+    "Mode. Propose exactly three short options for the current treatment step."
+)
