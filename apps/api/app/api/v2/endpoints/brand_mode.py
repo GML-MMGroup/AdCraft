@@ -26,6 +26,9 @@ from app.schemas.brand_professional_mode import (
 from app.services.brand_capability_invocation import (
     BrandCapabilityInvocationService,
 )
+from app.services.brand_guided_interaction_bridge import (
+    BrandGuidedInteractionBridge,
+)
 
 router = APIRouter()
 
@@ -94,10 +97,13 @@ def post_next_question(
     journey = service._repository.get_journey(brand_id)
     if journey is None or journey.stage in {"production"}:
         _raise_not_found()
+    bridge = BrandGuidedInteractionBridge(database)
+    locale = service._workflow_response_locale(brand_id) or "und"
     try:
+        card: BrandOptionCardV1
         if journey.stage == "hypothesis":
             candidates = service.run_hypotheses(brand_id)
-            return BrandOptionCardV1(
+            card = BrandOptionCardV1(
                 card_id="hypothesis_candidates",
                 stage="hypothesis",
                 stage_revision=journey.stage_revision,
@@ -112,9 +118,9 @@ def post_next_question(
                     for candidate in candidates
                 ),
             )
-        if journey.stage == "treatment":
+        elif journey.stage == "treatment":
             step = service.run_treatment_step(brand_id)
-            return BrandOptionCardV1(
+            card = BrandOptionCardV1(
                 card_id=f"treatment_{step.step_key}_{journey.stage_revision}",
                 stage="treatment",
                 stage_revision=journey.stage_revision,
@@ -122,7 +128,10 @@ def post_next_question(
                 question=step.question,
                 options=step.options,
             )
-        return service.run_slot_question(brand_id, journey.stage)
+        else:
+            card = service.run_slot_question(brand_id, journey.stage)
+        bridge.publish_card_interaction(workflow_id, card, locale)
+        return card
     except V2PersistenceError as error:
         raise _map_brand_error(error) from error
 

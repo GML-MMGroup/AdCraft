@@ -423,6 +423,9 @@ from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.agent_model_trace_sessions import isolated_agent_model_replay_enabled
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.brand_production_handoff import check_locked_elements
+from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
+from app.services.brand_guided_interaction_submit import BrandGuidedInteractionSubmitter
+from app.services.brand_capability_invocation import BrandCapabilityInvocationService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
 
@@ -1630,6 +1633,10 @@ def create_agent_canvas_runtime(
     )
     guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
     guided_interactions.set_reference_submitter(guided_reference_sources.submit_interaction)
+    brand_bridge = BrandGuidedInteractionBridge(database)
+    brand_service = BrandCapabilityInvocationService(database)
+    brand_submitter = BrandGuidedInteractionSubmitter(database, brand_service, brand_bridge)
+    guided_interactions.set_brand_submitter(brand_submitter.submit_interaction)
     materialization_prompt_barrier = AgentCanvasMaterializationPromptPreparationBarrier(
         dispatches=prompt_dispatches,
         continuations=continuation_outbox,

@@ -64,6 +64,7 @@ class GuidedInteractionService:
         reference_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
         reference_snapshot: Callable[[str, ProposedDraftReferenceV2], tuple[int | None, str | None]]
         | None = None,
+        brand_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -71,6 +72,7 @@ class GuidedInteractionService:
         self._media_submit = media_submit
         self._product_submit = product_submit
         self._reference_submit = reference_submit
+        self._brand_submit = brand_submit
         self._proposal_submissions = ProposalPublicationSubmissionService(
             conversations,
             materializations,
@@ -99,6 +101,14 @@ class GuidedInteractionService:
         """Attach the typed reference-source authority after runtime wiring."""
 
         self._reference_submit = submitter
+
+    def set_brand_submitter(
+        self,
+        submitter: Callable[..., GuidedInteractionAcceptedV1],
+    ) -> None:
+        """Attach the brand capability authority after runtime wiring."""
+
+        self._brand_submit = submitter
 
     def get_interaction(self, workflow_id: str, interaction_id: str) -> GuidedInteractionV1:
         interaction = self._interactions.get(interaction_id)
@@ -281,6 +291,23 @@ class GuidedInteractionService:
                     "Reference source actions are unavailable.",
                 )
             return self._reference_submit(
+                workflow_id,
+                interaction,
+                request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
+            )
+        if (
+            isinstance(request, GuidedConceptSubmitV2)
+            and isinstance(interaction.content, GuidedConceptChoiceV2)
+            and interaction.content.capability_id.startswith("brand_")
+        ):
+            if self._brand_submit is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Brand guided interaction actions are unavailable.",
+                )
+            return self._brand_submit(
                 workflow_id,
                 interaction,
                 request,
