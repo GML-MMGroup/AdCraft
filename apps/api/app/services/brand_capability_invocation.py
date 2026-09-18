@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from typing import Literal, cast
 from uuid import uuid4
 
+from sqlalchemy import text as sql_text
+
 from app.core.config import Settings, get_settings
 from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database
@@ -66,6 +68,25 @@ class BrandCapabilityInvocationService:
         self._repository = BrandDecisionRepository(database)
         self._catalog = CreativeMethodSkillCatalogService(database, creative_method_seed_dir())
 
+    def _workflow_response_locale(self, brand_id: str) -> str:
+        """Resolve the conversation response locale for one brand's workflow."""
+
+        workflow_id = self._repository.workflow_id_for_brand(brand_id)
+        if workflow_id is None:
+            return "und"
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    sql_text(
+                        "SELECT response_locale FROM agent_canvas_guidance_sessions "
+                        "WHERE workflow_id = :workflow_id LIMIT 1"
+                    ),
+                    {"workflow_id": workflow_id},
+                ).first()
+            return str(row[0]) if row and row[0] else "und"
+        except Exception:  # noqa: BLE001 - locale lookup is best-effort
+            return "und"
+
     # ---- Slot question -----------------------------------------------------
 
     def run_slot_question(
@@ -93,6 +114,7 @@ class BrandCapabilityInvocationService:
                 system_prompt=_BRAND_STRATEGY_PROMPT,
                 input_payload={
                     "stage": stage,
+                    "response_locale": self._workflow_response_locale(brand_id),
                     "slots": [
                         {
                             "slot_id": slot.slot_id,
@@ -206,6 +228,7 @@ class BrandCapabilityInvocationService:
                 system_prompt=_CREATIVE_STRATEGY_PROMPT,
                 input_payload={
                     "skills": list(self._catalog.injection_summaries()),
+                    "response_locale": self._workflow_response_locale(brand_id),
                     "confirmed_values": [
                         value.model_dump(mode="json")
                         for value in self._repository.get_slot_values(brand_id)
@@ -272,6 +295,7 @@ class BrandCapabilityInvocationService:
                 system_prompt=_CREATIVE_TREATMENT_PROMPT,
                 input_payload={
                     "substep": journey.treatment_substep,
+                    "response_locale": self._workflow_response_locale(brand_id),
                     "confirmed_values": [
                         value.model_dump(mode="json")
                         for value in self._repository.get_slot_values(brand_id)
@@ -466,12 +490,18 @@ def _card_invalid(message: str) -> V2PersistenceError:
 _BRAND_STRATEGY_PROMPT = (
     "You are the Brand Strategy capability of the AdCraft Brand Professional Mode. "
     "Collect one slot at a time using exactly three short options."
+    " The input_payload response_locale gives the user's conversation language;"
+    " write question and option text in that language."
 )
 _CREATIVE_STRATEGY_PROMPT = (
     "You are the Creative Strategy capability of the AdCraft Brand Professional "
     "Mode. Diverge 8-12 directions internally and return 2-4 candidates."
+    " The input_payload response_locale gives the user's conversation language;"
+    " write candidate text in that language."
 )
 _CREATIVE_TREATMENT_PROMPT = (
     "You are the Creative Treatment capability of the AdCraft Brand Professional "
     "Mode. Propose exactly three short options for the current treatment step."
+    " The input_payload response_locale gives the user's conversation language;"
+    " write question and option text in that language."
 )

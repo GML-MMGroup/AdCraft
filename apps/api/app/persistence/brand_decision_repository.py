@@ -63,6 +63,19 @@ class BrandDecisionRepository:
 
     # ---- Brand and journey -------------------------------------------------
 
+    def workflow_id_for_brand(self, brand_id: str) -> str | None:
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    select(WorkflowRow.workflow_id)
+                    .join(BrandRow, BrandRow.project_id == WorkflowRow.project_id)
+                    .where(BrandRow.brand_id == brand_id)
+                    .limit(1)
+                ).first()
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return row[0] if row is not None else None
+
     def project_id_for_workflow(self, workflow_id: str) -> str | None:
         try:
             with self._database.engine.connect() as connection:
