@@ -286,7 +286,17 @@ class BrandDecisionRepository:
             created_at=_now(),
         )
         connection.execute(
-            insert_statement.on_conflict_do_nothing(index_elements=[BrandOptionCardRow.card_id])
+            insert_statement.on_conflict_do_update(
+                index_elements=[BrandOptionCardRow.card_id],
+                set_={
+                    "status": "open",
+                    "stage": insert_statement.excluded.stage,
+                    "stage_revision": insert_statement.excluded.stage_revision,
+                    "target_slot_id": insert_statement.excluded.target_slot_id,
+                    "payload_json": insert_statement.excluded.payload_json,
+                    "created_at": insert_statement.excluded.created_at,
+                },
+            )
         )
 
     def get_open_card_in_transaction(
