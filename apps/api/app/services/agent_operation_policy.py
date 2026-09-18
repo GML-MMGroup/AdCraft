@@ -40,6 +40,8 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
     "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
 _ROUTING_OPERATIONS = {
+    "brand_hypothesis",
+    "brand_slot_question",
     "command_replan",
     "compile_video_parameters",
     "conversation_summary",
@@ -88,6 +90,7 @@ _PROPOSAL_OPERATIONS = {
     "storyboard_prompt",
 }
 _MATERIALIZATION_OPERATIONS = {
+    "brand_treatment_step",
     "execute_canvas_text",
     "materialize_storyboard_segment",
     "materialize_quick_media",

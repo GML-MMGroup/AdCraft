@@ -245,6 +245,9 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition("workflow_creation", "FrontDeskIntentAgentContext", "FrontDeskIntentOutput"),
     _definition("intent_contract_planner", "IntentContractAgentContext", "V2IntentPlan"),
+    _definition("brand_slot_question", "AgentRunContext", "BrandStrategyOutputV1"),
+    _definition("brand_hypothesis", "AgentRunContext", "CreativeStrategyOutputV1"),
+    _definition("brand_treatment_step", "AgentRunContext", "CreativeTreatmentOutputV1"),
     _definition(
         "script_writer",
         "ScriptWriterAgentContext",

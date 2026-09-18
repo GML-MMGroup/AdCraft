@@ -37,6 +37,11 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
+from app.schemas.brand_professional_mode import (
+    BrandStrategyOutputV1,
+    CreativeStrategyOutputV1,
+    CreativeTreatmentOutputV1,
+)
 from app.schemas.agent_canvas_role_prompt_preparation import RoleCreativeBriefV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
@@ -160,6 +165,9 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     V2ShotCellPromptPlan,
     V2ShotVideoPromptPlan,
     V2BgmPromptPlan,
+    BrandStrategyOutputV1,
+    CreativeStrategyOutputV1,
+    CreativeTreatmentOutputV1,
     GuidedScriptCheckpointDraftV1,
     *CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS.values(),
 )

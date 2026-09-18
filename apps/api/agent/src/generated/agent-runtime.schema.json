@@ -18817,6 +18817,84 @@
       "title": "IdentitySafetyDecisionV1",
       "type": "object"
     },
+    "ImageResolutionCapabilitiesV1": {
+      "additionalProperties": false,
+      "description": "Frontend-ready image dimensions accepted by one exact model profile.",
+      "properties": {
+        "aspect_ratio_options": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Aspect Ratio Options",
+          "type": "array"
+        },
+        "default_parameters": {
+          "additionalProperties": true,
+          "title": "Default Parameters",
+          "type": "object"
+        },
+        "parameter_modes": {
+          "items": {
+            "enum": [
+              "resolution_with_aspect_ratio",
+              "size"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Parameter Modes",
+          "type": "array"
+        },
+        "pixel_bounds": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pixel Bounds"
+        },
+        "resolution_options": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Resolution Options",
+          "type": "array"
+        },
+        "size_options": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Size Options",
+          "type": "array"
+        },
+        "sizes_by_aspect_ratio": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Sizes By Aspect Ratio",
+          "type": "object"
+        }
+      },
+      "title": "ImageResolutionCapabilitiesV1",
+      "type": "object"
+    },
     "InitializeAnchorRegistryPatchV2": {
       "additionalProperties": false,
       "properties": {
@@ -25349,6 +25427,17 @@
         "display_name": {
           "title": "Display Name",
           "type": "string"
+        },
+        "image_resolution_capabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageResolutionCapabilitiesV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "model_ref": {
           "title": "Model Ref",
@@ -36750,6 +36839,9 @@
     "V2ShotCellPromptPlan",
     "V2ShotVideoPromptPlan",
     "V2BgmPromptPlan",
+    "BrandStrategyOutputV1",
+    "CreativeStrategyOutputV1",
+    "CreativeTreatmentOutputV1",
     "GuidedScriptCheckpointDraftV1",
     "WorldSettingMaterializationResultV1",
     "ProductMaterializationResultV1",
@@ -37204,6 +37296,42 @@
       "max_skill_context_bytes": 8192,
       "operation": "intent_contract_planner",
       "result_contract_name": "V2IntentPlan",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_slot_question",
+      "result_contract_name": "BrandStrategyOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_hypothesis",
+      "result_contract_name": "CreativeStrategyOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_treatment_step",
+      "result_contract_name": "CreativeTreatmentOutputV1",
       "style_projection_role": null,
       "validation_profile": null
     },
