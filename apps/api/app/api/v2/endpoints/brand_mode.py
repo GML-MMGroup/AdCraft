@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -15,6 +15,16 @@ from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.models import AgentCanvasChatTurnRow
 from app.schemas.brand_professional_mode import (
     BrandDecisionPanelV1,
+    BrandHypothesisActionRequestV1,
+    BrandJourneyStateV1,
+    BrandLockActionRequestV1,
+    BrandOptionCardV1,
+    BrandSlotActionRequestV1,
+    BrandShortOptionV1,
+    BrandTreatmentActionRequestV1,
+)
+from app.services.brand_capability_invocation import (
+    BrandCapabilityInvocationService,
 )
 
 router = APIRouter()
@@ -26,6 +36,28 @@ def _brand_database() -> Iterator[V2Database]:
         yield database
     finally:
         database.dispose()
+
+
+_STATUS_BY_CODE = {
+    "brand_slot_unknown": 422,
+    "brand_slot_required_missing": 409,
+    "brand_option_card_invalid": 409,
+    "brand_stage_action_mismatch": 409,
+    "brand_journey_terminal_conflict": 409,
+    "brand_decision_not_found": 404,
+    "brand_decision_persistence_failed": 503,
+}
+
+
+def _brand_runtime(database: V2Database) -> BrandCapabilityInvocationService:
+    return BrandCapabilityInvocationService(database)
+
+
+def _map_brand_error(error: V2PersistenceError) -> HTTPException:
+    return HTTPException(
+        status_code=_STATUS_BY_CODE.get(error.code, 422),
+        detail={"code": error.code, "message": str(error)},
+    )
 
 
 def _brand_id_for_workflow(database: V2Database, workflow_id: str) -> str:
@@ -47,6 +79,162 @@ def _raise_not_found() -> None:
             "message": "Brand decisions not found for this workflow.",
         },
     )
+
+
+@router.post("/brand/decisions/{workflow_id}/next-question", response_model=BrandOptionCardV1)
+def post_next_question(
+    workflow_id: str,
+    database: V2Database = Depends(_brand_database),
+) -> BrandOptionCardV1:
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+    except V2PersistenceError:
+        _raise_not_found()
+    service = _brand_runtime(database)
+    journey = service._repository.get_journey(brand_id)
+    if journey is None or journey.stage in {"production"}:
+        _raise_not_found()
+    try:
+        if journey.stage == "hypothesis":
+            candidates = service.run_hypotheses(brand_id)
+            return BrandOptionCardV1(
+                card_id="hypothesis_candidates",
+                stage="hypothesis",
+                stage_revision=journey.stage_revision,
+                target_slot_id=None,
+                question="Which creative hypothesis should lead the campaign?",
+                options=tuple(
+                    BrandShortOptionV1(
+                        option_id=candidate.candidate_id,
+                        label=candidate.label,
+                        why=candidate.why,
+                    )
+                    for candidate in candidates
+                ),
+            )
+        if journey.stage == "treatment":
+            step = service.run_treatment_step(brand_id)
+            return BrandOptionCardV1(
+                card_id=f"treatment_{step.step_key}_{journey.stage_revision}",
+                stage="treatment",
+                stage_revision=journey.stage_revision,
+                target_slot_id=step.step_key,
+                question=step.question,
+                options=step.options,
+            )
+        return service.run_slot_question(brand_id, journey.stage)
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+
+
+@router.post(
+    "/brand/decisions/{workflow_id}/select-slot",
+    response_model=BrandJourneyStateV1,
+)
+def post_slot_selection(
+    workflow_id: str,
+    request: BrandSlotActionRequestV1,
+    database: V2Database = Depends(_brand_database),
+) -> BrandJourneyStateV1:
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+    except V2PersistenceError:
+        _raise_not_found()
+    service = _brand_runtime(database)
+    try:
+        service.apply_slot_selection(
+            brand_id,
+            card_id=request.card_id,
+            option_id=request.option_id,
+            value_text=request.value_text,
+            provenance=request.provenance,
+        )
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+    journey = service._repository.get_journey(brand_id)
+    if journey is None:
+        _raise_not_found()
+    return journey
+
+
+@router.post(
+    "/brand/decisions/{workflow_id}/select-hypothesis",
+    response_model=BrandJourneyStateV1,
+)
+def post_hypothesis_selection(
+    workflow_id: str,
+    request: BrandHypothesisActionRequestV1,
+    database: V2Database = Depends(_brand_database),
+) -> BrandJourneyStateV1:
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+    except V2PersistenceError:
+        _raise_not_found()
+    service = _brand_runtime(database)
+    try:
+        service.apply_hypothesis_selection(brand_id, request.hypothesis_id)
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+    journey = service._repository.get_journey(brand_id)
+    if journey is None:
+        _raise_not_found()
+    return journey
+
+
+@router.post(
+    "/brand/decisions/{workflow_id}/select-treatment",
+    response_model=BrandJourneyStateV1,
+)
+def post_treatment_selection(
+    workflow_id: str,
+    request: BrandTreatmentActionRequestV1,
+    database: V2Database = Depends(_brand_database),
+) -> BrandJourneyStateV1:
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+    except V2PersistenceError:
+        _raise_not_found()
+    service = _brand_runtime(database)
+    try:
+        service.apply_treatment_selection(
+            brand_id,
+            card_id=request.card_id,
+            option_id=request.option_id,
+            selected_label=request.selected_label,
+            detail=request.detail,
+        )
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+    journey = service._repository.get_journey(brand_id)
+    if journey is None:
+        _raise_not_found()
+    return journey
+
+
+@router.post(
+    "/brand/decisions/{workflow_id}/lock-treatment",
+    response_model=BrandJourneyStateV1,
+)
+def post_lock_treatment(
+    workflow_id: str,
+    request: BrandLockActionRequestV1,
+    database: V2Database = Depends(_brand_database),
+) -> BrandJourneyStateV1:
+    if not request.confirm:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "brand_lock_confirm_required", "message": "confirm must be true."},
+        )
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+    except V2PersistenceError:
+        _raise_not_found()
+    service = _brand_runtime(database)
+    try:
+        locked = service.lock_treatment(brand_id)
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+    return locked
 
 
 @router.get("/brand/decisions", response_model=BrandDecisionPanelV1)

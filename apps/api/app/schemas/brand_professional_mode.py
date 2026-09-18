@@ -205,3 +205,33 @@ class BrandInspectionConversationTurnV1(_BrandModel):
     text: str = ""
     selected_option_ids: tuple[str, ...] = Field(default=(), max_length=8)
     created_at: datetime
+
+
+class BrandSlotActionRequestV1(_BrandModel):
+    """User selection for one open option card."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    option_id: str = Field(min_length=1, max_length=80)
+    value_text: str = Field(min_length=1, max_length=2000)
+    provenance: SlotProvenance = "user_confirmed"
+
+
+class BrandHypothesisActionRequestV1(_BrandModel):
+    """User selection of one creative hypothesis candidate."""
+
+    hypothesis_id: str = Field(min_length=1, max_length=80)
+
+
+class BrandTreatmentActionRequestV1(_BrandModel):
+    """User selection for one open treatment option card."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    option_id: str = Field(min_length=1, max_length=80)
+    selected_label: str = Field(min_length=1, max_length=160)
+    detail: str = Field(default="", max_length=2000)
+
+
+class BrandLockActionRequestV1(_BrandModel):
+    """Treatment lock request; accepted only after all eight sub-steps."""
+
+    confirm: bool = True
