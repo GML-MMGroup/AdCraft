@@ -131,7 +131,7 @@ class BrandGuidedInteractionBridge:
             options=options,
             allow_exclusion=False,
         )
-        awaiting_id = f"awaiting_{sha256(interaction_id.encode())[:32]}"
+        awaiting_id = f"awaiting_{sha256(interaction_id.encode()).hexdigest()[:32]}"
         awaiting = GuidanceAwaitingV2(
             awaiting_id=awaiting_id,
             workflow_id=workflow_id,

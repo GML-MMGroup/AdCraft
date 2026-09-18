@@ -78,7 +78,7 @@ class BrandGuidedInteractionSubmitter:
                 provenance="user_confirmed",
             )
         self._bridge.close_current_interaction(workflow_id)
-        submission_identity = f"submission_{sha256(submission_id.encode())[:32]}"
+        submission_identity = f"submission_{sha256(submission_id.encode()).hexdigest()[:32]}"
         revision = self._session_revision(workflow_id) or 1
         accepted = GuidedInteractionAcceptedV1(
             workflow_id=workflow_id,
