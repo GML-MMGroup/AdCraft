@@ -40,8 +40,10 @@ const NON_TERMINAL_RUNTIME_REFRESH_WINDOW_MS = 120;
 
 type RuntimeCallbacks = {
   applyWorkflow: (workflow: AgentCanvasWorkflowV2) => void;
+  beforeWorkflowApply?: (workflow: AgentCanvasWorkflowV2) => void;
   mergePublishedAsset: (asset: ProjectAssetSummaryV2, nodeId?: string | null) => void;
   mergeNode: (node: CanvasNodeV2) => void;
+  onRuntimeEvent?: (event: CanvasRuntimeEventV2) => void;
 };
 
 type RuntimeNodePatcher = (
@@ -186,7 +188,10 @@ export function useAgentCanvasRuntime(
         workflowRefreshQueuedRef.current = false;
         try {
           const { value } = await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId);
-          if (activeWorkflowIdRef.current === workflowId) callbacks.applyWorkflow(value);
+          if (activeWorkflowIdRef.current === workflowId) {
+            callbacks.beforeWorkflowApply?.(value);
+            callbacks.applyWorkflow(value);
+          }
         } catch (error) {
           if (activeWorkflowIdRef.current === workflowId) {
             setRuntimeError(error instanceof Error ? error.message : "Workflow refresh failed.");
@@ -284,6 +289,7 @@ export function useAgentCanvasRuntime(
         if (typeof oldest === "string") seenTransitionKeysRef.current.delete(oldest);
       }
     }
+    callbacks.onRuntimeEvent?.(event);
     const inputManifest = inputManifestAuditFromEvent(event);
     if (inputManifest) {
       setInputManifestsByNodeId((current) => ({

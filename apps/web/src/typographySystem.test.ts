@@ -22,6 +22,7 @@ const fontFiles = [
   "instrument-serif-latin-italic.woff2",
   "jetbrains-mono-latin-variable.woff2",
   "water-brush-ad-film.woff2",
+  "literata-latin-italic-700.woff2",
 ];
 const approvedWeights = new Set([400, 500, 600, 700, 800, 900]);
 const invalidWeights = [...styles.matchAll(/font-weight:\s*(\d+)/g)]
@@ -36,7 +37,7 @@ describe("typography system", () => {
       ['[data-home-typography-region="heroBody"]', 'Arial', '16px', '400', 'italic', '1.5', '0.006em'],
       ['[data-home-typography-region="heroAction"]', '"JetBrains Mono"', '14px', '400', 'normal', '1.1', '0.004em'],
       ['[data-home-typography-region="navigation"]', '"Manrope"', '14px', '400', 'normal', '1.2', '0'],
-      ['[data-home-typography-region="sectionHeading"]', '"JetBrains Mono"', '37px', '400', 'normal', '1.05', '-0.004em'],
+      ['[data-home-typography-region="sectionHeading"]', '"Literata"', '53px', '700', 'italic', '1.05', '0.028em'],
       ['[data-home-typography-region="sectionBody"]', '"Manrope"', '18px', '400', 'normal', '1.6', '0'],
       ['[data-home-typography-region="cardTitle"]', '"Manrope"', '15px', '400', 'normal', '1.15', '-0.002em'],
       ['[data-home-typography-region="cardMeta"]', '"Manrope"', '13px', '400', 'normal', '1.4', '0'],
@@ -92,7 +93,7 @@ describe("typography system", () => {
 
   it("keeps operational headings compact and gives the homepage its exported display scale", () => {
     expect(styles).toMatch(/\.page-title\s*\{[^}]*font-size:\s*clamp\(40px, 3\.4vw, 48px\)/s);
-    expect(homeStyles).toMatch(/\[data-home-typography-region="sectionHeading"\]\s*\{[^}]*font-size:\s*37px/s);
+    expect(homeStyles).toMatch(/\[data-home-typography-region="sectionHeading"\]\s*\{[^}]*font-size:\s*53px/s);
     expect(homeStyles).toMatch(/\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-size:\s*60px/s);
     expect(homeStyles).toMatch(/\[data-home-typography-region="heroAccent"\]\s*\{[^}]*font-size:\s*80px/s);
     expect(homeStyles).toMatch(/@media \(max-width: 620px\)\s*\{\s*\.home-page \.home-product-hero__title\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-size:\s*40px/s);

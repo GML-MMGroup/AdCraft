@@ -19,6 +19,7 @@ interface PromptAutosaveSession {
   persistedValue: string | null;
   enabled: boolean;
   localEdited: boolean;
+  awaitingAcknowledgement: boolean;
   timer: ReturnType<typeof setTimeout> | null;
   flushPromise: Promise<boolean> | null;
 }
@@ -30,6 +31,7 @@ function createSession(nodeId: string, value: string, enabled: boolean): PromptA
     persistedValue: persistedPrompt(value),
     enabled,
     localEdited: false,
+    awaitingAcknowledgement: false,
     timer: null,
     flushPromise: null,
   };
@@ -92,6 +94,7 @@ export function useNodePromptAutosave({
           const patch: CanvasNodePatchRequestV2 = { generation_prompt: valueBeingSaved };
           await patchNode(session.nodeId, patch, { coalesce: true });
           session.persistedValue = valueBeingSaved;
+          session.awaitingAcknowledgement = true;
           session.localEdited = false;
           if (mountedRef.current && activeSessionRef.current === session) setLastSavedValue(valueBeingSaved);
           if (persistedPrompt(session.latestValue) !== valueBeingSaved) {
@@ -165,6 +168,20 @@ export function useNodePromptAutosave({
     return nextValue;
   }, [setSessionStatus]);
 
+  const acceptAuthoritativeValue = useCallback((value: string): boolean => {
+    const session = activeSessionRef.current;
+    if (!session || session.localEdited || session.flushPromise) return false;
+    const nextValue = persistedPrompt(value);
+    // A successful local save may arrive before its updated Workflow snapshot.
+    if (session.awaitingAcknowledgement && session.persistedValue !== nextValue) return false;
+    session.latestValue = value;
+    session.persistedValue = nextValue;
+    session.awaitingAcknowledgement = false;
+    setLastSavedValue(nextValue);
+    setSessionStatus(session, "clean");
+    return true;
+  }, [setSessionStatus]);
+
   useEffect(() => {
     const session = activeSessionRef.current;
     if (!session) return undefined;
@@ -199,5 +216,6 @@ export function useNodePromptAutosave({
     flush,
     retry,
     discard,
+    acceptAuthoritativeValue,
   };
 }

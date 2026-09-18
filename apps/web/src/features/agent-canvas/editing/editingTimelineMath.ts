@@ -15,7 +15,7 @@ export interface TimelineClipInput {
   sourceDuration: number;
   trimStart: number;
   trimEnd: number | null;
-  timelineStart?: number;
+  timelineStart?: number | null;
 }
 
 interface TrimRangeInput {
@@ -91,7 +91,7 @@ export function buildTimelineSegments(
     const sourceDuration = sourceDurationOf(clip.sourceDuration);
     const range = normalizeTrimRange(sourceDuration, clip.trimStart, clip.trimEnd ?? sourceDuration);
     const duration = Math.min(sourceDuration, Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start));
-    const explicitTimelineStart = clip.timelineStart === undefined
+    const explicitTimelineStart = clip.timelineStart === undefined || clip.timelineStart === null
       ? null
       : Math.max(0, finiteOr(clip.timelineStart, timelineStart));
     const segment = {

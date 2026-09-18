@@ -678,6 +678,34 @@
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.78);
 }
 
+.project-card-mode-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+}
+
+.project-mode-select-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-mode-select-label select {
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+
 .project-card p {
   color: var(--muted);
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.72);

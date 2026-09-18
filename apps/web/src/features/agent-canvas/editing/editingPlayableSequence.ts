@@ -23,7 +23,7 @@ export function isPlayableEditingVideo(input: EditingVideoInput): boolean {
 
 export function buildPlayableEditingSequence(
   inputs: readonly EditingVideoInput[],
-  fixedTimelineDuration?: number,
+  fixedTimelineDuration?: number | null,
 ): PlayableEditingSequence {
   const videos = inputs.filter(isPlayableEditingVideo);
   const sourceDurations = inputs.map((input) => (

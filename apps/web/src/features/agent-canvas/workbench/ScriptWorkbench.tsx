@@ -25,6 +25,7 @@ export function ScriptWorkbench({
   modelsError,
   modelResolution,
   promptEditorRef,
+  preparingPrompt = false,
 }: {
   node: CanvasNodeV2;
   status: CanvasNodeStatusV2;
@@ -34,6 +35,7 @@ export function ScriptWorkbench({
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
+  preparingPrompt?: boolean;
 }) {
   const canRun = status === "draft" || status === "failed";
   const isWorking = status === "working";
@@ -48,6 +50,7 @@ export function ScriptWorkbench({
         <FourLinePromptEditor
           ariaLabel={canRun ? "Script prompt" : "Script content"}
           value={canRun ? draft.prompt : draft.textContent}
+          preparing={canRun && preparingPrompt}
           disabled={editorDisabled}
           placeholder={canRun
             ? "Describe the script the Script Writer should create."

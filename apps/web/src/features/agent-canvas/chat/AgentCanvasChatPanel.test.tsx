@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const panelMocks = vi.hoisted(() => ({
@@ -39,12 +39,14 @@ vi.mock("./agent-role-animation/AgentRoleAnimation.tsx", () => ({
 
 import type {
   AgentCanvasChatTurnV2,
+  CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
   AgentCanvasWorkflowV2,
   ChatCapabilityActivityV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
   ChatTimelineItemV2,
+  GuidanceAwaitingV1,
   GuidedInteractionV1,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -345,15 +347,25 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not animate a working activity before its exact turn is hydrated", () => {
+  it.each([false, true])("keeps the panel title without a status subtitle (working=%s)", (working) => {
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(working ? [capabilityActivity()] : []));
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
+    const identity = document.querySelector(".agent-chat__header .agent-chat__identity");
+    expect(identity?.textContent).toBe("AdCraft Video Agent");
+    expect(identity?.querySelector("span")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse AdCraft Bot panel" })).toBeTruthy();
+    if (working) expect(renderedRoleMotionStates()).toEqual({ world_setting: "working" });
+  });
+
+  it("animates a working activity before its exact turn is hydrated", () => {
     const chat = mockChatResult([capabilityActivity()]);
     chat.state.turnsById = {};
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
-    expect(renderedRoleMotionStates()).toEqual({ world_setting: "idle" });
+    expect(renderedRoleMotionStates()).toEqual({ world_setting: "working" });
   });
 
-  it("animates all ten concurrently working roles", () => {
+  it("hands animation to the latest role in the Timeline", () => {
     const roles = [
       "world_setting", "product_design", "prop_design", "character_design", "scene_design",
       "script_authoring", "storyboard_design", "video_direction", "bgm_direction", "quick_media",
@@ -368,10 +380,12 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       })
     ))));
     render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
-    expect(renderedRoleMotionStates()).toEqual(Object.fromEntries(roles.map((role) => [role, "working"])));
+    expect(renderedRoleMotionStates()).toEqual(Object.fromEntries(
+      roles.map((role) => [role, role === "quick_media" ? "working" : "idle"]),
+    ));
   });
 
-  it("lets concurrent role-owned working stages animate independently of global model wait", async () => {
+  it("keeps the latest role animated independently of global model wait", async () => {
     const items: ChatTimelineItemV2[] = [
       capabilityActivity(),
       capabilityActivity({
@@ -394,10 +408,10 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     );
 
     expect(renderedRoleMotionStates()).toEqual({
-      world_setting: "working",
+      world_setting: "idle",
       scene_design: "working",
     });
-    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
+    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "bitmap");
     expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("scene_design", "animated");
 
     panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(items, true));
@@ -411,12 +425,12 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     );
 
     expect(renderedRoleMotionStates()).toEqual({
-      world_setting: "working",
+      world_setting: "idle",
       scene_design: "working",
     });
     await waitFor(() => {
       expect(panelMocks.prepareRoleVisual.mock.calls.filter(([, mode]) => mode === "animated")
-        .map(([capabilityId]) => capabilityId)).toEqual(expect.arrayContaining(["world_setting", "scene_design"]));
+        .map(([capabilityId]) => capabilityId)).toEqual(expect.arrayContaining(["scene_design"]));
     });
   });
 
@@ -462,7 +476,7 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       "world_setting",
     ],
     ["waiting-user", [proposalCard], "character_design"],
-  ] as const)("keeps a %s current stage idle", (_label, items, capabilityId) => {
+  ] as const)("only settles a terminal %s current stage", (label, items, capabilityId) => {
     panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult([...items], true));
 
     render(
@@ -474,7 +488,7 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       />,
     );
 
-    expect(renderedRoleMotionStates()).toEqual({ [capabilityId]: "idle" });
+    expect(renderedRoleMotionStates()).toEqual({ [capabilityId]: label === "completed" ? "idle" : "working" });
   });
 
   it("does not expose a failed working Role as a static or waiting visual", async () => {
@@ -497,7 +511,8 @@ describe("AgentCanvasChatPanel role motion integration", () => {
 
     await waitFor(() => expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" })).toBeTruthy());
     expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
-    expect(document.querySelector(".agent-chat__stage-thread")).toBeNull();
+    expect(screen.getByText("Role animation could not be loaded.")).toBeTruthy();
+    expect(screen.queryByText("World Setting Designer")).toBeNull();
     expect(document.querySelector("[data-role-waiting-motion=\"true\"]")).toBeNull();
   });
 });
@@ -2025,7 +2040,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     };
   }
 
-  function renderPanelWithInteraction(interaction: GuidedInteractionV1 = openInteraction()) {
+  function renderPanelWithInteraction(interaction: GuidedInteractionV1 = openInteraction(), guidanceAwaiting: GuidanceAwaitingV1 | null = null) {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       workflow_id: roleMotionWorkflow.workflow_id,
       conversation_id: null,
@@ -2034,8 +2049,8 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     }), { headers: { "Content-Type": "application/json" } })));
     const chat = mockChatResult();
     chat.state.guidedInteraction = interaction;
-    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
-    return render(
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: { ...chat.state, guidanceAwaiting } });
+    const rendered = render(
       <AgentCanvasChatPanel
         workflow={roleMotionWorkflow}
         chatRevision={0}
@@ -2043,7 +2058,73 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
         onFocusNode={vi.fn()}
       />,
     );
+    return { ...rendered, chat };
   }
+
+  function directionInteraction(): GuidedInteractionV1 {
+    return {
+      ...openInteraction(), kind: "concept_choice", context: "Choose your direction",
+      content: {
+        content_kind: "concept_choice", proposal_id: null, stage: "world_view", stage_revision: 3,
+        action_id: "action-world", occurrence_id: "world-1", capability_id: "world_setting",
+        allow_custom: true, allow_exclusion: false,
+        options: [{ option_id: "option-world", title: "Quiet world", summary: "A calm setting.",
+          difference_tags: [], recommended: true, reference_preview: [] }],
+      },
+      allowed_actions: ["select", "custom"],
+    };
+  }
+
+  function submitDirection() {
+    fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit guided direction" }));
+  }
+
+  it("removes the submitted card and overlay during acceptance without a replacement notice", async () => {
+    const { chat, rerender } = renderPanelWithInteraction(directionInteraction());
+    let accept!: (accepted: boolean) => void;
+    chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
+    submitDirection();
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledTimes(1);
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "select", option_id: "option-world" }));
+    expect(screen.queryByRole("status", { name: "Guided interaction submitted" })).toBeNull();
+    expect(screen.queryByText("Generating nodes…")).toBeNull();
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(screen.queryByRole("radio", { name: /Quiet world/ })).toBeNull();
+    await act(async () => { accept(true); });
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    chat.state.guidedInteraction = { ...openInteraction(), interaction_id: "next-interaction" };
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it.each(["rejected", "throws"])("restores the original choices after submission %s", async outcome => {
+    const { chat } = renderPanelWithInteraction(directionInteraction());
+    if (outcome === "throws") chat.actions.submitGuidedInteraction.mockRejectedValue(new Error("Submission failed"));
+    else chat.actions.submitGuidedInteraction.mockResolvedValue(false);
+    submitDirection();
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Quiet world/ })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+    expect(screen.queryByText("Generating nodes…")).toBeNull();
+  });
+
+  it("restores the interaction when the submitted materialization explicitly fails", async () => {
+    const interaction = directionInteraction();
+    const { chat, rerender } = renderPanelWithInteraction(interaction);
+    chat.actions.submitGuidedInteraction.mockResolvedValue(true);
+    submitDirection();
+    await act(async () => {});
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    const event: CanvasRuntimeEventV2 = {
+      seq: 1, workflow_id: roleMotionWorkflow.workflow_id, event_type: "proposal_materialization_failed",
+      project_id: null, execution_id: null, node_id: null, asset_id: null, binding_id: null,
+      conversation_id: null, turn_id: null, action_id: interaction.interaction_id, trace_id: null,
+      span_id: null, created_at: "2026-09-15T00:00:01Z", payload: null,
+    };
+    rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[event]} onFocusNode={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Quiet world/ })).toBeTruthy());
+  });
 
   it("renders open interactions as a floating overlay that no longer squeezes the timeline", () => {
     renderPanelWithInteraction();
@@ -2053,6 +2134,34 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     expect(overlay).not.toBeNull();
     expect(overlay?.querySelector(".agent-chat__decision-dock")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it("omits the top production notice while keeping the Product source interaction", () => {
+    const interaction: GuidedInteractionV1 = {
+      ...openInteraction(), kind: "product_source", title: "Product image source",
+      content: {
+        content_kind: "product_source", input_kind: "main", question_id: "product_main_source",
+        prompt: "Provide one Product Main image.", expected_guidance_revision: 3,
+        min_asset_count: 1, max_asset_count: 1,
+      },
+      allowed_actions: ["select_source"],
+    };
+    renderPanelWithInteraction(interaction, {
+      awaiting_id: "awaiting-product", workflow_id: roleMotionWorkflow.workflow_id,
+      session_id: "session-1", checkpoint_id: "checkpoint-1", kind: "product_source",
+      requires_user_action: true, resume_policy: "submit_interaction",
+      interaction_id: interaction.interaction_id, node_ids: [], stage: "product",
+      stage_revision: 1, created_at: "2026-09-15T00:00:00Z",
+    });
+    expect(screen.queryByRole("status", { name: "Current production step" })).toBeNull();
+    expect(screen.queryByText("A product source is needed")).toBeNull();
+    expect(screen.queryByText("Add or choose a product source to continue")).toBeNull();
+    expect(screen.getByText("Product image source")).toBeTruthy();
+    expect(screen.getByText("Provide one Product Main image.")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Use uploaded Product source" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Generate Product source" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+    expect(document.querySelector(".agent-chat__header")?.nextElementSibling?.className).toBe("agent-chat__timeline-shell");
   });
 
   it("collapses the overlay into a chip and re-expands it on demand", () => {

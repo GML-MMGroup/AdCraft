@@ -4323,6 +4323,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           conversation_id: entry.conversation_id,
           speaker: "adcraft_video_agent",
           text: entry.content,
+          ...(Object.keys(entry.metadata).length > 0 ? { metadata: entry.metadata } : {}),
           linked_node_ids: [],
           script_node_id: null,
           proposal_id: typeof entry.metadata.proposal_id === "string"
@@ -4457,8 +4458,8 @@ export function normalizeEditingVideoEntryV2(
   if (transition === "cut" && transitionDuration !== 0) {
     fail(`${path}.transition_duration_seconds`, "cut transitions cannot have a duration");
   }
-  const timelineStart = record.timeline_start_seconds === undefined
-    ? undefined
+  const timelineStart = record.timeline_start_seconds === undefined || record.timeline_start_seconds === null
+    ? record.timeline_start_seconds
     : editingNumberInRange(
       record.timeline_start_seconds,
       `${path}.timeline_start_seconds`,
@@ -4554,8 +4555,8 @@ export function normalizeEditingManifestV2(value: unknown, path = "editing.manif
   if (bgmKey && sourceKeys.includes(bgmKey)) {
     fail(`${path}.bgm`, "BGM input cannot also be a video input");
   }
-  const timelineDuration = record.timeline_duration_seconds === undefined
-    ? undefined
+  const timelineDuration = record.timeline_duration_seconds === undefined || record.timeline_duration_seconds === null
+    ? record.timeline_duration_seconds
     : editingNumberInRange(
       record.timeline_duration_seconds,
       `${path}.timeline_duration_seconds`,
@@ -4612,7 +4613,7 @@ export function normalizeEditingPreviewV2(value: unknown, path = "editing.previe
     bgm_binding_id: record.bgm_binding_id === undefined ? null : nullableString(record.bgm_binding_id, `${path}.bgm_binding_id`),
     bgm_node_id: record.bgm_node_id === undefined ? null : nullableString(record.bgm_node_id, `${path}.bgm_node_id`),
     bgm_asset_id: record.bgm_asset_id === undefined ? null : nullableString(record.bgm_asset_id, `${path}.bgm_asset_id`),
-    bgm_availability: record.bgm_availability === undefined
+    bgm_availability: record.bgm_availability === undefined || record.bgm_availability === null
       ? null
       : expectLiteral(record.bgm_availability, EDITING_SOURCE_AVAILABILITIES, `${path}.bgm_availability`),
     estimated_duration_seconds: expectFiniteNumber(record.estimated_duration_seconds, `${path}.estimated_duration_seconds`),

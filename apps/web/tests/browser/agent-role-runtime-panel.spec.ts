@@ -37,7 +37,7 @@ test("real chat panel plays concurrent roles independently and keeps messages si
   await expect.poll(() => running(character)).toBe(true);
 });
 
-test("an owning terminal turn stops its role while a queued turn uses a static icon", async ({ page }) => {
+test("an owning terminal turn stops its role while a queued turn keeps animating", async ({ page }) => {
   await page.goto(URL);
   const scene = page.locator(role("scene-design"));
   const character = page.locator(role("character-design"));
@@ -48,10 +48,10 @@ test("an owning terminal turn stops its role while a queued turn uses a static i
   await page.getByRole("button", { name: "New parallel attempt", exact: true }).click();
   await expect.poll(() => running(scene)).toBe(true);
   await page.getByRole("button", { name: "Queue Scene turn only", exact: true }).click();
-  await expect(scene.getByTestId("agent-role-animation-frame")).toHaveAttribute("data-motion-state", "waiting");
-  await expect(scene.locator("img")).toHaveCount(1);
-  await expect(scene.locator("svg")).toHaveCount(0);
-  await expect.poll(() => scene.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+  await expect(scene.getByTestId("agent-role-animation-frame")).toHaveAttribute("data-motion-state", "working");
+  await expect(scene.locator("img")).toHaveCount(0);
+  await expect(scene.locator("svg")).toHaveCount(1);
+  await expect.poll(() => running(scene)).toBe(true);
   await expect.poll(() => running(character)).toBe(true);
 });
 
@@ -98,6 +98,8 @@ test("working Artwork is bundled and never falls back to a static role", async (
 test("all ten approved roles play inside real stage headers and settle on completion", async ({ page }) => {
   await page.goto(URL);
   await page.getByRole("button", { name: "Run all ten roles", exact: true }).click();
+  await expect(page.locator(role("world-setting")).getByTestId("agent-role-animation-frame"))
+    .toHaveAttribute("data-motion-state", "working");
   const names = ["world-setting", "product-design", "prop-design", "character-design", "scene-design",
     "script-authoring", "storyboard-design", "video-direction", "bgm-direction", "quick-media"];
   for (const name of names) {
@@ -110,27 +112,29 @@ test("all ten approved roles play inside real stage headers and settle on comple
   for (const name of names) await expect.poll(() => running(page.locator(role(name)))).toBe(false);
 });
 
-test("queued roles use static icons and never create waiting motion", async ({ page }) => {
+test("queued roles keep artwork, respect reduced motion, and settle only on completion", async ({ page }) => {
   await page.goto(URL);
   await page.getByRole("button", { name: "Run all ten roles", exact: true }).click();
   await page.getByRole("button", { name: "Queue all roles", exact: true }).click();
   const world = page.locator(role("world-setting"));
   await world.scrollIntoViewIfNeeded();
-  await expect(world.getByTestId("agent-role-animation-frame")).toHaveAttribute("data-motion-state", "waiting");
-  await expect(world.locator("img")).toHaveCount(1);
-  await expect(world.locator("svg")).toHaveCount(0);
-  await expect.poll(() => world.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+  await expect(world.getByTestId("agent-role-animation-frame")).toHaveAttribute("data-motion-state", "working");
+  await expect(world.locator("img")).toHaveCount(0);
+  await expect(world.locator("svg")).toHaveCount(1);
+  await expect.poll(() => running(world)).toBe(true);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect.poll(() => world.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await expect.poll(() => world.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+  await expect.poll(() => running(world)).toBe(true);
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => world.evaluate(element => element.getAnimations({ subtree: true }).every(animation => animation.playState === "paused"))).toBe(true);
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await page.getByRole("button", { name: "Complete all", exact: true }).click();

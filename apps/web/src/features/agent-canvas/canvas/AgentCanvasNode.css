@@ -857,7 +857,7 @@
   }
 
   .agent-canvas-node__generation-dots--dynamic {
-    opacity: 0.7;
+    opacity: 0.86;
   }
 
   .agent-canvas-audio-player__waveform i {
@@ -925,8 +925,8 @@
 }
 
 @keyframes agent-canvas-node-dots-breathe {
-  0%, 100% { opacity: 0.62; }
-  50% { opacity: 0.88; }
+  0%, 100% { opacity: 0.76; }
+  50% { opacity: 1; }
 }
 
 :root .agent-canvas-node {

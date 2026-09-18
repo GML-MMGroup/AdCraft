@@ -97,17 +97,23 @@ type HydratableTimelinePointer = Extract<
   ChatTimelineItemV2,
   { item_type: "proposal_pointer" | "decision_bundle_pointer" }
 >;
+type HydratableTimelineItem = Extract<
+  ChatTimelineItemV2,
+  { item_type: "proposal_pointer" | "decision_bundle_pointer" | "proposal" | "decision_bundle" }
+>;
 
 const MESSAGE_TURN_HYDRATION_CONCURRENCY = 4;
 
 function matchesTimelinePointer(
   item: ChatTimelineItemV2,
   pointer: HydratableTimelinePointer,
-): boolean {
+): item is HydratableTimelineItem {
   if (pointer.item_type === "proposal_pointer") {
-    return item.item_type === "proposal_pointer" && item.proposal_id === pointer.proposal_id;
+    return (item.item_type === "proposal_pointer" && item.proposal_id === pointer.proposal_id)
+      || (item.item_type === "proposal" && item.proposal.proposal_id === pointer.proposal_id);
   }
-  return item.item_type === "decision_bundle_pointer" && item.bundle_id === pointer.bundle_id;
+  return (item.item_type === "decision_bundle_pointer" && item.bundle_id === pointer.bundle_id)
+    || (item.item_type === "decision_bundle" && item.decision_bundle.bundle_id === pointer.bundle_id);
 }
 
 const PROPOSAL_ACTION_ERROR_CODES = new Set([
@@ -488,7 +494,7 @@ export function useAgentCanvasChat({
     });
   }, [applyTurnProjection, workflowId]);
 
-  const hydrateTimelineItem = useCallback((item: ChatTimelineItemV2): Promise<ChatTimelineItemV2> => {
+  const hydrateTimelineItem = useCallback((item: HydratableTimelinePointer): Promise<HydratableTimelineItem> => {
     if (!workflowId) return Promise.resolve(item);
     if (item.item_type === "proposal_pointer") {
       const cached = proposalPointerHydrationsRef.current.get(item.proposal_id);
@@ -537,7 +543,11 @@ export function useAgentCanvasChat({
     const pointers = items.filter((item): item is HydratableTimelinePointer => (
       item.item_type === "proposal_pointer" || item.item_type === "decision_bundle_pointer"
     ));
-    pointers.forEach((pointer) => {
+    const uniquePointers = new Map(pointers.map(pointer => [
+      pointer.item_type === "proposal_pointer" ? `proposal:${pointer.proposal_id}` : `bundle:${pointer.bundle_id}`,
+      pointer,
+    ]));
+    uniquePointers.forEach((pointer) => {
       void hydrateTimelineItem(pointer).then((hydrated) => {
         if (generation !== refreshGenerationRef.current) return;
         if (usingPresentationProjection) {
@@ -545,7 +555,11 @@ export function useAgentCanvasChat({
           let changed = false;
           nextPresentationItems.forEach((presentation, key) => {
             if (!matchesTimelinePointer(presentation.item, pointer)) return;
-            nextPresentationItems.set(key, { ...presentation, item: hydrated });
+            // Entity detail changes independently of the presentation revision.
+            // Keep the winning placement even when the incoming pointer is older.
+            nextPresentationItems.set(key, { ...presentation, item: {
+              ...hydrated, sequence: presentation.item.sequence, created_at: presentation.item.created_at,
+            } });
             changed = true;
           });
           if (changed) {
@@ -555,7 +569,8 @@ export function useAgentCanvasChat({
           return;
         }
         setPersistedItems((current) => current.map((existing) => {
-          return matchesTimelinePointer(existing, pointer) ? hydrated : existing;
+          return matchesTimelinePointer(existing, pointer)
+            ? { ...hydrated, sequence: existing.sequence, created_at: existing.created_at } : existing;
         }));
       }).catch(() => {
         // Pointer detail is optional enrichment and retries on a later Timeline refresh.
@@ -578,6 +593,7 @@ export function useAgentCanvasChat({
     let timelineReadComplete = false;
     try {
       const rawItems: ChatTimelineItemV2[] = [];
+      const hydrationItems: ChatTimelineItemV2[] = [];
       let presentationItems = new Map(presentationItemsByKeyRef.current);
       let usingPresentationProjection = false;
       let nextGuidanceSession: GuidedSessionStateV2 | null = null;
@@ -597,12 +613,14 @@ export function useAgentCanvasChat({
         });
         if (timeline.presentationItems !== null) {
           usingPresentationProjection = true;
+          hydrationItems.push(...timeline.presentationItems.map(presentation => presentation.item));
           presentationItems = mergeTimelinePresentationItems(
             presentationItems,
             timeline.presentationItems,
           );
         } else {
           rawItems.push(...timeline.items);
+          hydrationItems.push(...timeline.items);
         }
         if (timeline.items.length < 200 || timeline.next_cursor <= cursor) break;
         cursor = timeline.next_cursor;
@@ -636,7 +654,9 @@ export function useAgentCanvasChat({
         const bubblesById = new Map(merged.map((bubble) => [bubble.bubble_id, bubble]));
         return [...bubblesById.values()].sort((left, right) => left.sequence - right.sequence);
       });
-      hydrateTimelineItems(items, generation, usingPresentationProjection);
+      // Revalidate wire references even when presentation reconciliation retained
+      // an already-hydrated card; otherwise mutable detail stays frozen forever.
+      hydrateTimelineItems(hydrationItems, generation, usingPresentationProjection);
       hydrateCapabilityTurns(items, generation);
       hydrateMessageTurns(items, generation);
       items.forEach((item) => {
@@ -1763,7 +1783,8 @@ export function useAgentCanvasChat({
       presentationStreams,
       loading,
       sending,
-      agentWorking: sending || advancingGuidance || Boolean(postReadyBarrier) || pendingAgentTurnIds.length > 0,
+      // Guided submission can precede the next Turn; keep feedback until authority releases its lock.
+      agentWorking: sending || advancingGuidance || Boolean(actingInteractionId) || Boolean(postReadyBarrier) || pendingAgentTurnIds.length > 0,
       postReadyCheckpoint,
       agentWaitingForModel,
       actingProposalId,

@@ -24,6 +24,7 @@ import {
 } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
+import { v2Api } from "../../api/v2Client.ts";
 import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
@@ -40,6 +41,7 @@ import type {
   CanvasLayoutPositionV2,
   CanvasNodeV2,
   CanvasPositionV2,
+  CanvasRuntimeEventV2,
   NodeRuntimeV2,
   ProjectAssetSummaryV2,
   SaveAgentCanvasImageToLibraryRequestV2,
@@ -87,6 +89,8 @@ import {
   type FrozenCanvasEdgeSnapshot,
 } from "./canvas/frozenCanvasEdges.ts";
 import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
+import { BrandDecisionPanel } from "./brand/BrandDecisionPanel.tsx";
+import type { BrandDecisionPanelV1 } from "./brand/brandDecisions.ts";
 import {
   installAgentCanvasWorkflowViewport,
   readAgentCanvasViewport,
@@ -131,6 +135,16 @@ import {
 } from "./model/nodeDefaults.ts";
 import { hasPromptReadyDraft } from "./model/promptPreparation.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
+import {
+  providerBalanceNoticeFromNode,
+  providerBalanceNoticeFromNodeRuntime,
+  providerBalanceNoticeFromRuntimeEvent,
+  providerBalanceNoticeFromText,
+} from "./notifications/providerBalanceNotice.ts";
+import {
+  reportProviderBalanceError,
+  reportProviderBalanceNotice,
+} from "./notifications/providerBalanceNoticeStore.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
 
@@ -190,10 +204,23 @@ export function AgentCanvasPage() {
     rollbackNodePositions,
     updateNodePositions,
   } = session.actions;
+  const reserveRevealNodeIdsRef = useRef<(nodeIds: readonly string[]) => void>(() => undefined);
   const runtimeCallbacks = useMemo(() => ({
     applyWorkflow,
     mergePublishedAsset,
     mergeNode,
+    onRuntimeEvent: (event: CanvasRuntimeEventV2) => {
+      reportProviderBalanceNotice(providerBalanceNoticeFromRuntimeEvent(event));
+    },
+    beforeWorkflowApply: (nextWorkflow: AgentCanvasWorkflowV2) => {
+      // Reserve nodes that first appear through a workflow refresh before the
+      // canonical sync layout effect can render them at backend coordinates.
+      const knownNodeIds = new Set(workflowNodesRef.current.map((node) => node.node_id));
+      const createdNodeIds = nextWorkflow.nodes
+        .filter((node) => !knownNodeIds.has(node.node_id))
+        .map((node) => node.node_id);
+      if (createdNodeIds.length) reserveRevealNodeIdsRef.current(createdNodeIds);
+    },
   }), [
     applyWorkflow,
     mergeNode,
@@ -238,6 +265,41 @@ export function AgentCanvasPage() {
     }
   ) | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
+  const [brandDecisions, setBrandDecisions] = useState<BrandDecisionPanelV1 | null>(null);
+  const [brandDecisionsRefreshing, setBrandDecisionsRefreshing] = useState(false);
+  const brandWorkflowId = workflow?.workflow_id ?? null;
+  const refreshBrandDecisions = useCallback(async () => {
+    if (!brandWorkflowId) return;
+    setBrandDecisionsRefreshing(true);
+    try {
+      setBrandDecisions(await v2Api.brandDecisions(brandWorkflowId));
+    } catch {
+      setBrandDecisions(null);
+    } finally {
+      setBrandDecisionsRefreshing(false);
+    }
+  }, [brandWorkflowId]);
+  useEffect(() => {
+    if (!brandWorkflowId) {
+      setBrandDecisions(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setBrandDecisionsRefreshing(true);
+    v2Api.brandDecisions(brandWorkflowId)
+      .then((response) => {
+        if (!cancelled) setBrandDecisions(response);
+      })
+      .catch(() => {
+        if (!cancelled) setBrandDecisions(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBrandDecisionsRefreshing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandWorkflowId]);
   const { displayEdges, submit: submitOptimisticConnection, cancelForNodes: cancelPendingNodeConnections, nextOrder: nextConnectionOrder } = useOptimisticCanvasConnections({
     workflow,
     edges,
@@ -393,6 +455,7 @@ export function AgentCanvasPage() {
     syncCanonicalNodeIds: syncRevealCanonicalNodeIds,
     visibleNodeIds: visibleRevealNodeIds,
   } = revealQueue;
+  reserveRevealNodeIdsRef.current = reserveRevealNodeIds;
   const revealAvailableCanvasNodes = useCallback((nodeIds: string[]) => {
     const visibleNodeIds = new Set(flowNodesRef.current.map((node) => node.id));
     revealCanvasNodes(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));
@@ -410,6 +473,39 @@ export function AgentCanvasPage() {
       if (ids.length) reserveRevealNodeIds(ids);
     });
   }, [live.state.chatEvents, reserveRevealNodeIds]);
+
+  // A provider credential that cannot pay shows up either on the node
+  // projection (submit and poll failures keep the provider message) or on the
+  // live runtime snapshot, so both sources feed the same notice store.
+  useEffect(() => {
+    if (!workflow) return;
+    const nodesById = new Map(workflow.nodes.map((node) => [node.node_id, node]));
+    workflow.nodes.forEach((node) => {
+      reportProviderBalanceNotice(providerBalanceNoticeFromNode(node));
+    });
+    const nodeRuntime = live.state.runtime?.node_runtime;
+    if (!nodeRuntime) return;
+    Object.values(nodeRuntime).forEach((runtime) => {
+      const node = nodesById.get(runtime.node_id);
+      if (!node) return;
+      reportProviderBalanceNotice(
+        providerBalanceNoticeFromNodeRuntime(node, runtime.error),
+      );
+    });
+  }, [live.state.runtime, workflow]);
+
+  // Fallback scan: any failure text the surface shows can be the only surviving
+  // trace of a provider billing rejection.
+  useEffect(() => {
+    [
+      surfaceError,
+      session.state.authoringError,
+      live.state.runtimeError,
+    ].forEach((text) => {
+      reportProviderBalanceNotice(providerBalanceNoticeFromText(text));
+    });
+  }, [live.state.runtimeError, session.state.authoringError, surfaceError]);
+
   useEffect(() => {
     let active = true;
     void agentCanvasApi.agentCanvasConnectionPolicy()
@@ -427,6 +523,7 @@ export function AgentCanvasPage() {
   const runNodeById = useCallback((nodeId: string, retryFailed = false) => {
     const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
     if (node) void runNode(node, { retryFailed }).catch((error) => {
+      reportProviderBalanceError(error);
       setSurfaceError(error instanceof Error ? error.message : "Node run failed.");
     });
   }, [runNode, workflow?.nodes]);
@@ -1250,7 +1347,17 @@ export function AgentCanvasPage() {
     : null;
   const running = Boolean(live.state.runtime?.active_execution_id);
   return (
-    <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}`}>
+    <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}${brandDecisions ? " is-brand-mode" : ""}`}>
+      {brandDecisions ? (
+        <BrandDecisionPanel
+          decisions={brandDecisions}
+          refreshing={brandDecisionsRefreshing}
+          interactive={false}
+          onRefresh={() => {
+            void refreshBrandDecisions();
+          }}
+        />
+      ) : null}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}
@@ -1475,6 +1582,7 @@ export function AgentCanvasPage() {
               title={hasRunnableDraft ? "Run all" : "No prompt-ready drafts"}
               disabled={live.state.runPending || !hasRunnableDraft}
               onClick={() => void runAll().catch((error) => {
+                reportProviderBalanceError(error);
                 setSurfaceError(error instanceof Error ? error.message : "Run could not start.");
               })}
             >

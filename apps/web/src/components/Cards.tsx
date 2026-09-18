@@ -7,6 +7,7 @@ import { memo, useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, 
 export const ProjectCard = memo(function ProjectCard({
   projectId,
   name,
+  modeBadge,
   time,
   favorite,
   cover,
@@ -25,6 +26,7 @@ export const ProjectCard = memo(function ProjectCard({
 }: {
   projectId: string;
   name: string;
+  modeBadge?: string;
   time: string;
   favorite: boolean;
   cover?: V2ProjectCover | null;
@@ -89,7 +91,10 @@ export const ProjectCard = memo(function ProjectCard({
       >
         <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} coverPriority={coverPriority} name={name} />
         <div className="card-body">
-          <h3>{name}</h3>
+          <h3>
+            {name}
+            {modeBadge ? <span className="project-card-mode-badge">{modeBadge}</span> : null}
+          </h3>
           <p>{time}</p>
         </div>
       </button>

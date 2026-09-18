@@ -178,12 +178,20 @@ export function useAgentCanvasNodeRevealQueue({
   const interrupt = useCallback(() => {
     generationRef.current += 1;
     clearTimers();
+    // Queued nodes already have a persisted placement plan, so their reveal
+    // can be short-circuited. Reserved nodes may still be waiting for their
+    // placement to be persisted and must stay hidden to avoid flashing
+    // backend placeholder coordinates.
+    queuedNodeIdsRef.current.forEach((nodeId) => {
+      reservedNodeIdsRef.current.delete(nodeId);
+    });
     queuedNodeIdsRef.current = [];
-    reservedNodeIdsRef.current.clear();
     activeNodeIdRef.current = null;
     setActiveNodeId(null);
     const nextVisible = new Set(visibleNodeIdsRef.current);
-    canonicalNodeIdsRef.current.forEach((nodeId) => nextVisible.add(nodeId));
+    canonicalNodeIdsRef.current.forEach((nodeId) => {
+      if (!reservedNodeIdsRef.current.has(nodeId)) nextVisible.add(nodeId);
+    });
     updateVisibleNodeIds(nextVisible);
     updatePendingNodeIds([]);
   }, [clearTimers, updatePendingNodeIds, updateVisibleNodeIds]);

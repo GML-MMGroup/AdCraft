@@ -44,6 +44,9 @@ export function QuestionnaireDecisionDock({
     !question.required || answerIsValid(answers[question.question_id])
   ));
   const canSubmit = complete && interaction.allowed_actions.includes("answer");
+  const isProductionDurationQuestionnaire = questions.some(
+    (question) => question.question_id === "production_duration_seconds",
+  );
 
   const submit = () => {
     if (!canSubmit) return;
@@ -85,7 +88,7 @@ export function QuestionnaireDecisionDock({
   return (
     <DecisionDockFrame
       title={interaction.title}
-      context={interaction.context}
+      context={isProductionDurationQuestionnaire ? undefined : interaction.context}
       pending={pending}
       issue={issue}
       footerSummary={`${answeredCount} of ${questions.length} answered`}
@@ -100,9 +103,11 @@ export function QuestionnaireDecisionDock({
           const errorId = `${fieldIdBase}-${question.question_id}-error`;
           const isDuration = question.question_id === "production_duration_seconds";
 
+          const compactDurationCopy = question.question_id === "production_duration_seconds";
+
           return (
             <fieldset key={question.question_id} disabled={pending}>
-              <legend>{question.prompt}</legend>
+              <legend className={compactDurationCopy ? "sr-only" : undefined}>{question.prompt}</legend>
               <div className="agent-chat__decision-dock-question-options">
                 {question.options.map((option) => (
                   <label key={option.option_id}>
@@ -121,7 +126,7 @@ export function QuestionnaireDecisionDock({
                         {option.title}
                         {option.recommended ? <em>Recommended</em> : null}
                       </strong>
-                      <small>{option.summary}</small>
+                      {compactDurationCopy ? null : <small>{option.summary}</small>}
                     </span>
                   </label>
                 ))}

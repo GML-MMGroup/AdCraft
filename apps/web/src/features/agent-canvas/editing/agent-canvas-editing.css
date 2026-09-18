@@ -1223,7 +1223,14 @@
 
 .agent-editing-panel__unavailable {
   flex: 1;
+  min-width: 0;
   margin: 20px;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+
+.agent-editing-panel__unavailable pre {
+  white-space: pre-wrap;
 }
 
 .agent-editing-panel__omitted {

@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type {
   AgentCanvasChatTurnV2,
-  AgentCanvasWorkflowV2,
-  CanvasNodeV2,
-  CanvasRuntimeSnapshotV2,
   ChatCapabilityActivityV2,
   ChatProposalCardV2,
-  GuidedSessionStateV2,
   ChatMessageV2,
 } from "../../../../types-v2.ts";
-import type { StageThreadUnit } from "../stageThreadProjection.ts";
-import { projectRoleLifecycles } from "./roleLifecycleProjection.ts";
+import { buildStageThreadTimeline, type StageThreadUnit } from "../stageThreadProjection.ts";
+import { normalizeAgentCanvasChatTimelineV2 } from "../../model/normalizers.ts";
+import { mergeRoleLifecycles, projectRoleLifecycles, roleTerminal, useTimelineRoleLifecycles } from "./roleLifecycleProjection.ts";
+import { renderHook } from "@testing-library/react";
 
 function turn(id: string, status: AgentCanvasChatTurnV2["status"], request: Record<string, unknown> = {}): AgentCanvasChatTurnV2 {
   return { turn_id: id, workflow_id: "workflow-1", conversation_id: "conversation-1", status,
@@ -50,477 +48,202 @@ function thread(proposals: ChatProposalCardV2[] = []): StageThreadUnit {
     activities: [], proposals, receipts: [], selected_option: null, completed_activity_count: 0 };
 }
 
-function node(id: string, occurrenceId: string, promptStatus: NonNullable<CanvasNodeV2["prompt_preparation"]>["status"], attemptNo = 1): CanvasNodeV2 {
-  return { node_id: id, workflow_id: "workflow-1", node_type: "image", creative_role: "character",
-    role_contract_version: "1", title: "opaque", status: "draft", execution_mode: "generative", summary_prompt: null,
-    generation_prompt: null, structured_content: {}, model_id: null, model_selection_mode: "automatic", model_ref: null,
-    model_summary: null, parameters: {}, metadata: {}, parameter_provenance: {}, prompt_context_snapshot_id: null,
-    output_asset_id: null, output_asset_version_id: null, latest_attempt: { execution_id: "execution-1", member_id: "member-1",
-      run_intent_snapshot_id: null, status: "running", created_at: "2026-09-07T00:00:00Z",
-      updated_at: "2026-09-07T00:00:00Z", error: null }, position: { x: 0, y: 0 }, revision: 1,
-    error: null, prompt_presentation: null, prompt_preparation: { status: promptStatus,
-      operation_id: `prompt-${id}`, presentation_stream_id: null, attempt_no: attemptNo, context_snapshot_id: null,
-      occurrence_id: occurrenceId, character_phase: "main", prompt_digest: null, role_variant: "character_main",
-      recipe_id: null, recipe_version: null, recipe_digest: null, requirement_revision_id: null,
-      requirement_revision_no: null, document_revisions: {}, binding_digest: null,
-      character_identity_projection_digest: null, scene_environment_projection_digest: null,
-      style_projection_digest: null, brief_digest: null, parameter_origins: [], compaction_policy_version: null,
-      compaction_policy_digest: null, compaction_decisions: [], assertion_evidence: null, attempt_stage: null,
-      error: promptStatus === "failed" ? { code: "failed", message: "failed", retryable: false } : null,
-      updated_at: "2026-09-07T00:00:00Z" }, created_at: "2026-09-07T00:00:00Z", updated_at: "2026-09-07T00:00:00Z" } as CanvasNodeV2;
+
+function input(activities: ChatCapabilityActivityV2[] = [activity("a", "t", "working")]) {
+  return { workflowId: "workflow-1", threads: [{ ...thread(), activities }], turnsById: {} as Record<string, AgentCanvasChatTurnV2> };
+}
+function state(value = input()) {
+  return projectRoleLifecycles(value).get("stage:character_design")!;
 }
 
-function workflow(nodes: CanvasNodeV2[]): AgentCanvasWorkflowV2 {
-  return { workflow_id: "workflow-1", project_id: "project-1", workflow_schema_version: 2,
-    canvas_model: "agent_canvas_v1", revision: 1, layout_revision: 1, nodes, bindings: [], assets: [], active_style_skill: null };
+function planning(card: ChatProposalCardV2, metadata: Record<string, unknown> = {}, presentation = false): ChatMessageV2 {
+  const entry = {
+    entry_id: "planning-selected", workflow_id: "workflow-1", conversation_id: "conversation-1",
+    entry_type: "planning_progress", sequence_no: 8, speaker: null,
+    content: "Preparing the selected direction.", created_at: "2026-09-07T00:00:00Z",
+    metadata: { capability_id: card.proposal.capability_id, proposal_id: card.proposal.proposal_id,
+      materialization_id: card.proposal.materialization?.materialization_id, status: "queued", ...metadata },
+  };
+  const normalized = normalizeAgentCanvasChatTimelineV2({
+    workflow_id: "workflow-1", conversation_id: "conversation-1", items: [entry], next_cursor: 8,
+    ...(presentation ? { presentation_items: [{ ...entry, presentation_key: "planning:selected",
+      presentation_revision: 1, source_entry_ids: [entry.entry_id], message_key: "planning_progress.next_action",
+      message_args: {}, response_locale: "en-US" }] } : {}),
+  });
+  return (presentation ? normalized.presentationItems![0]!.item : normalized.items[0]) as ChatMessageV2;
 }
 
-function planning(turnId: string): ChatMessageV2 {
-  return { item_type: "message", message_kind: "planning_progress", message_id: `message-${turnId}`,
-    conversation_id: "conversation-1", speaker: "adcraft_video_agent", text: "Planning", linked_node_ids: [],
-    script_node_id: null, proposal_id: null, capability_id: "character_design", metadata: { turn_id: turnId },
-    sequence: 1, created_at: "2026-09-07T00:00:00Z" };
-}
-
-function runtime(nodeId: string, phase: "queued" | "running" | "waiting_provider", attemptNo = 1): CanvasRuntimeSnapshotV2 {
-  return { workflow_id: "workflow-1", active_execution_id: "execution-1", execution_status: "running",
-    node_runtime: { [nodeId]: { node_id: nodeId, visible_status: "working", phase, execution_id: "execution-1",
-      provider_task_id: null, run_intent_snapshot_id: null, parameter_compilation_snapshot_id: null,
-      effective_parameters: {}, normalizations: [], omitted_optional_inputs: [], waiting_for_node_ids: [],
-      blocked_by_node_ids: [], attempt_no: attemptNo, updated_at: "2026-09-07T00:00:00Z", error: null } },
-    queued_node_ids: phase === "queued" ? [nodeId] : [], working_node_ids: phase !== "queued" ? [nodeId] : [],
-    waiting_node_ids: [], ready_node_ids: [], failed_node_ids: [], events_cursor: 1,
-    updated_at: "2026-09-07T00:00:00Z" };
-}
-
-function session(action: Partial<GuidedSessionStateV2["journey"]["active_action"]> | null = null): GuidedSessionStateV2 {
-  return { session_id: "session-1", workflow_id: "workflow-1", status: "active", response_locale: "en-US",
-    goal: {} as GuidedSessionStateV2["goal"], creative_authority: null, current_checkpoint: null,
-    narrative_direction: null, element_decisions: [], current_topic_id: null, topics: [], active_proposal_id: null,
-    active_style_skill_run_id: null, completion: {} as GuidedSessionStateV2["completion"], interaction: null, awaiting: null,
-    revision: 1, updated_at: "2026-09-07T00:00:00Z", journey: { policy_version: "fixed_ad_production_v2",
-      stage: "character", stage_status: "working", stage_revision: 1, decisions: [], active_occurrence_id: null,
-      active_action: action ? { action_id: "action-1", action_kind: "invoke_capability", stage: "character",
-        stage_revision: 1, status: "working", turn_id: null, occurrence_id: null, character_phase: null, ...action } : null,
-      suspended_action: null, transition_evidence: [] } };
-}
-
-function project(input: Partial<Parameters<typeof projectRoleLifecycles>[0]> = {}) {
-  return projectRoleLifecycles({ threads: [thread()], workflow: workflow([]), runtime: null, session: null,
-    turnsById: {}, ...input }).get("stage:character_design")!;
-}
-
-describe("projectRoleLifecycles", () => {
-  it("keeps working after the materialization turn completes while its prompt is working", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "working")]),
-      turnsById: { "materialize-1": turn("materialize-1", "completed") } })).toMatchObject({
-      phase: "working", motionState: "working", evidence: { source: "prompt_preparation", nodeId: "node-1" },
-    });
+describe("planning ownership through the real Timeline normalizer", () => {
+  it.each([false, true])("settles a completed World Setting despite later queued planning (presentation=%s)", presentation => {
+    const card = proposal("world", "materialization-turn", [], 7);
+    card.proposal.capability_id = "world_setting";
+    card.proposal.proposal_kind = "world_setting";
+    const message = planning(card, {}, presentation);
+    expect(message.metadata).toMatchObject({ materialization_id: "materialization-world", status: "queued" });
+    const threads = buildStageThreadTimeline([card, message]).filter((unit): unit is StageThreadUnit => unit.unit_type === "stage_thread");
+    const result = projectRoleLifecycles({ workflowId: "workflow-1", threads, turnsById: {} }).get("stage:world_setting");
+    expect(result).toMatchObject({ motionState: "idle", terminal: "completed", sequence: 8,
+      attemptKey: "materialization:materialization-world:1" });
   });
 
-  it("projects queued work as static and typed awaiting as working motion", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "queued")]) }))
-      .toMatchObject({ phase: "queued", motionState: "idle" });
-    const waitingSession = session({ status: "waiting_user", occurrence_id: "character-1", character_phase: "main" });
-    waitingSession.awaiting = { awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "session-1",
-      checkpoint_id: "checkpoint-1", kind: "reference_source", requires_user_action: true,
-      resume_policy: "submit_interaction", interaction_id: "interaction-1", node_ids: ["node-1"],
-      stage: "character", stage_revision: 1, created_at: "2026-09-07T00:00:00Z" };
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "ready")]),
-      session: waitingSession })).toMatchObject({ phase: "awaiting_user", motionState: "working" });
+  it.each(["queued", "working", "completed", "failed"] as const)("inherits owning materialization %s, not planning copy", status => {
+    const card = proposal("one", "m", [], 7);
+    card.proposal.materialization!.status = status;
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [planning(card)] }] }).motionState)
+      .toBe(status === "queued" || status === "working" ? "working" : "idle");
   });
 
-  it("keeps a conversation-driven concept_selection awaiting in the working stretch", () => {
-    // Regression: world_view concept selection parks the session on an awaiting
-    // checkpoint with empty node_ids and a null occurrence, while the active
-    // action stalls in "reserved". The projection used to fall through to
-    // "queued" (static) even though the role is still waiting on its proposal.
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const reservedSession = session({ status: "reserved" });
-    reservedSession.awaiting = { awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "session-1",
-      checkpoint_id: "checkpoint-1", kind: "concept_selection", requires_user_action: true,
-      resume_policy: "submit_interaction", interaction_id: "interaction-1", node_ids: [],
-      stage: "character", stage_revision: 1, created_at: "2026-09-07T00:00:00Z" };
-    expect(project({ threads: [thread([card])], session: reservedSession }))
-      .toMatchObject({ phase: "awaiting_user", motionState: "working", evidence: { source: "guidance_awaiting" } });
+  it("accepts terminal hydration at the planning sequence and rejects stale working refresh", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card);
+    const before = { ...input([]), threads: [{ ...thread(), planning: [message] }] };
+    const after = { ...before, threads: [{ ...thread([card]), planning: [message] }] };
+    const pending = projectRoleLifecycles(before);
+    const settled = mergeRoleLifecycles(pending, projectRoleLifecycles(after));
+    expect(settled.get("stage:character_design")).toMatchObject({ motionState: "idle", sequence: 8 });
+    card.proposal.materialization!.status = "working";
+    expect(mergeRoleLifecycles(settled, projectRoleLifecycles(after)).get("stage:character_design")?.motionState).toBe("idle");
+    card.proposal.materialization!.attempt_no = 2;
+    expect(mergeRoleLifecycles(settled, projectRoleLifecycles(after)).get("stage:character_design")?.motionState).toBe("working");
   });
 
-  it("does not treat prompt ready as success while associated media is running", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "ready")]),
-      runtime: runtime("node-1", "waiting_provider") })).toMatchObject({
-      phase: "working", motionState: "working", evidence: { source: "node_runtime" },
-    });
-  });
-
-  it("keeps a ready Draft static when no authoritative terminal operation exists", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const readyNode = node("node-1", "character-1", "ready");
-    readyNode.latest_attempt = null;
-    expect(project({ threads: [thread([card])], workflow: workflow([readyNode]) }))
-      .toMatchObject({ phase: "queued", motionState: "idle",
-        evidence: { source: "prompt_preparation", nodeId: "node-1" } });
+  it("uses legacy proposal-only planning identity without requiring a Turn", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card, { materialization_id: undefined });
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("idle");
   });
 
   it.each([
-    ["succeeded", "ready", "succeeded"],
-    ["failed", "failed", "failed"],
-    ["cancelled", "draft", "cancelled"],
-  ] as const)("uses persisted latest-attempt %s after runtime becomes inactive", (attemptStatus, nodeStatus, phase) => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const terminalNode = node("node-1", "character-1", "ready");
-    terminalNode.status = nodeStatus;
-    terminalNode.latest_attempt = { ...terminalNode.latest_attempt!, status: attemptStatus };
-    expect(project({ threads: [thread([card])], workflow: workflow([terminalNode]), runtime: null }))
-      .toMatchObject({ phase, motionState: "idle", evidence: { source: "node_attempt", nodeId: "node-1" } });
+    { materialization_id: "unrelated-materialization" },
+    { proposal_id: "unrelated-proposal" },
+  ])("does not use another task's terminal when explicit identity differs: %j", metadata => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card, metadata);
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("working");
   });
 
-  it("uses source-only readiness and persisted output as terminal authority", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const sourceNode = node("node-1", "character-1", "ready");
-    sourceNode.execution_mode = "source_only";
-    sourceNode.status = "ready";
-    sourceNode.latest_attempt = null;
-    expect(project({ threads: [thread([card])], workflow: workflow([sourceNode]) }))
-      .toMatchObject({ phase: "succeeded", motionState: "idle", evidence: { source: "node" } });
-
-    const outputNode = node("node-1", "character-1", "ready");
-    outputNode.status = "ready";
-    outputNode.output_asset_id = "asset-1";
-    outputNode.output_asset_version_id = "version-1";
-    outputNode.latest_attempt = null;
-    expect(project({ threads: [thread([card])], workflow: workflow([outputNode]) }))
-      .toMatchObject({ phase: "succeeded", motionState: "idle", evidence: { source: "node" } });
+  it("does not inherit a terminal from a cross-workflow proposal", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card);
+    card.proposal.workflow_id = "different-workflow";
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("working");
   });
 
-  it("treats superseded prompt preparation as terminal", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "superseded")]) }))
-      .toMatchObject({ phase: "superseded", motionState: "idle", evidence: { source: "prompt_preparation" } });
+  it("keeps a genuinely new unassociated planning task working after old work completed", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card, { proposal_id: undefined, materialization_id: undefined, turn_id: "new-turn" });
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("working");
   });
 
-  it("ignores stale node runtime and failed indexes from a prior execution", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const currentNode = node("node-1", "character-1", "ready");
-    currentNode.latest_attempt = { ...currentNode.latest_attempt!, execution_id: "execution-2", status: "queued" };
-    const staleRuntime = runtime("node-1", "running");
-    staleRuntime.failed_node_ids = ["node-1"];
-    expect(project({ threads: [thread([card])], workflow: workflow([currentNode]), runtime: staleRuntime }))
-      .toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "node_attempt" } });
+  it("preserves exact Turn terminal for standalone planning", () => {
+    const message = planning(proposal("one", "m", []), { proposal_id: undefined, materialization_id: undefined, turn_id: "planning-turn" });
+    expect(state({ ...input([]), threads: [{ ...thread(), planning: [message] }], turnsById: { "planning-turn": turn("planning-turn", "completed") } }).motionState).toBe("idle");
   });
-
-  it("stops the same task on an authoritative failure", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "failed")]),
-      runtime: runtime("node-1", "running") })).toMatchObject({ phase: "failed", motionState: "idle" });
+});
+describe("Timeline role presentation lifecycle", () => {
+  it("starts without Turn hydration", () => {
+    expect(state().motionState).toBe("working");
   });
-
-  it("attributes a current runtime failure to its execution identity", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const failedNode = node("node-1", "character-1", "ready");
-    const failedRuntime = runtime("node-1", "running");
-    failedRuntime.failed_node_ids = ["node-1"];
-    expect(project({ threads: [thread([card])], workflow: workflow([failedNode]), runtime: failedRuntime }))
-      .toMatchObject({ identity: { attemptKey: "node:node-1:execution-1" }, phase: "failed", motionState: "idle",
-        evidence: { source: "node_runtime", nodeId: "node-1" } });
+  it.each(["queued", "running"] as const)("ignores %s intermediate Turn state", status => {
+    expect(state({ ...input(), turnsById: { t: turn("t", status) } }).motionState).toBe("working");
   });
-
-  it("keeps a sibling node working when another node in the same materialization fails", () => {
-    const card = proposal("character-1", "materialize-1", ["node-failed", "node-working"]);
-    expect(project({ threads: [thread([card])], workflow: workflow([
-      node("node-failed", "character-1", "failed"), node("node-working", "character-1", "working"),
-    ]) })).toMatchObject({ phase: "working", motionState: "working",
-      evidence: { source: "prompt_preparation", nodeId: "node-working" } });
+  it.each(["reserved", "provider_waiting", "waiting", "publishing"])("ignores operation stage %s", stage => {
+    expect(state({ ...input(), turnsById: { t: { ...turn("t", "running"), operation_stage: stage } } }).motionState).toBe("working");
   });
-
-  it("does not leak node state across occurrences", () => {
-    const first = proposal("character-1", "materialize-1", ["node-1"], 2);
-    const second = proposal("character-2", "materialize-2", ["node-2"], 4);
-    expect(project({ threads: [thread([first, second])], workflow: workflow([
-      node("node-1", "character-1", "working"), node("node-2", "character-2", "failed"),
-    ]), session: session({ status: "working", turn_id: "materialize-2", occurrence_id: "character-2", character_phase: "main" }) }))
-      .toMatchObject({ identity: { occurrenceId: "character-2" }, phase: "failed", motionState: "idle" });
+  it.each(["completed", "failed", "superseded"] as const)("settles explicit activity %s even with stale running Turn", status => {
+    expect(state({ ...input([activity("a", "t", status)]), turnsById: { t: turn("t", "running") } }))
+      .toMatchObject({ terminal: status, motionState: "idle" });
   });
-
-  it("does not leak Main node state into the Turnaround phase", () => {
-    const turnaround = proposal("character-1", "materialize-turnaround", ["node-main"], 4);
-    turnaround.proposal.character_phase = "turnaround";
-    expect(project({ threads: [thread([turnaround])], workflow: workflow([
-      node("node-main", "character-1", "working"),
-    ]) })).toMatchObject({ identity: { characterPhase: "turnaround" }, phase: "succeeded", motionState: "idle",
-      evidence: { source: "materialization" } });
+  it.each(["completed", "failed", "superseded"] as const)("settles exact Turn %s even with stale working activity", status => {
+    expect(state({ ...input(), turnsById: { t: turn("t", status) } }))
+      .toMatchObject({ terminal: status, motionState: "idle" });
   });
-
-  it("does not attach a current occurrence action to an unrelated historical header", () => {
-    const historical = proposal("character-old", "materialize-old", ["node-old"], 2);
-    const current = proposal("character-current", "materialize-current", ["node-current"], 4);
-    const historicalThread = { ...thread([historical]), key: "stage:character_design:old" };
-    const currentThread = { ...thread([current]), key: "stage:character_design:current" };
-    const projected = projectRoleLifecycles({ threads: [historicalThread, currentThread], workflow: workflow([]), runtime: null,
-      session: session({ status: "working", turn_id: "turn-current", occurrence_id: "character-current",
-        character_phase: "main" }), turnsById: { "turn-current": turn("turn-current", "running") } });
-    expect(projected.get(historicalThread.key)).toMatchObject({ phase: "unknown", motionState: "idle",
-      evidence: { source: "unresolved" } });
-    expect(projected.get(currentThread.key)).toMatchObject({ identity: { occurrenceId: "character-current" },
-      phase: "working", motionState: "working", evidence: { source: "journey_action" } });
+  it("settles explicitly cancelled operation without adding a new wire status", () => {
+    expect(state({ ...input(), turnsById: { t: { ...turn("t", "running"), operation_stage: "cancelled" } } }))
+      .toMatchObject({ terminal: "cancelled", motionState: "idle" });
+    expect(roleTerminal("cancelled")).toBe("cancelled");
   });
-
-  it("lets a newer retry attempt replace an older failed attempt", () => {
-    const card = proposal("character-1", "retry-2", ["node-1"]);
-    const retried = turn("retry-2", "running", { occurrence_id: "character-1", character_phase: "main" });
-    retried.retry_of_turn_id = "attempt-1";
-    retried.retry_attempt_no = 2;
-    expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "working", 2)]),
-      runtime: runtime("node-1", "running", 2), turnsById: {
-        "attempt-1": turn("attempt-1", "failed", { occurrence_id: "character-1", character_phase: "main" }),
-        "retry-2": retried,
-      } })).toMatchObject({ identity: { attemptKey: "node:node-1:execution-1" }, phase: "working", motionState: "working" });
+  it("ignores unrelated and cross-workflow terminal turns", () => {
+    expect(state({ ...input(), turnsById: { other: turn("other", "failed"), t: { ...turn("t", "failed"), workflow_id: "elsewhere" } } }).motionState).toBe("working");
   });
-
-  it.each(["failed", "succeeded"] as const)(
-    "lets an exact current action supersede an old %s node attempt in the same occurrence",
-    (oldStatus) => {
-      const old = proposal("character-1", "old-materialization", ["old-node"]);
-      const oldNode = node("old-node", "character-1", "ready");
-      oldNode.latest_attempt = { ...oldNode.latest_attempt!, status: oldStatus };
-      const currentTurn = turn("current-turn", "running", { occurrence_id: "character-1", character_phase: "main" });
-      const currentActivity = activity("current-activity", "current-turn", "working", 5);
-      expect(project({ threads: [{ ...thread([old]), activities: [currentActivity] }], workflow: workflow([oldNode]),
-        session: session({ status: "working", turn_id: "current-turn", occurrence_id: "character-1",
-          character_phase: "main" }), turnsById: { "current-turn": currentTurn } }))
-        .toMatchObject({ identity: { occurrenceId: "character-1", attemptKey: "current-turn:0" },
-          phase: "working", motionState: "working", evidence: { source: "journey_action", turnId: "current-turn" } });
-    },
-  );
-
-  it("lets an exact failed current action stop an older working node", () => {
-    const old = proposal("character-1", "old-materialization", ["old-node"]);
-    const failedTurn = turn("current-turn", "failed", { occurrence_id: "character-1", character_phase: "main" });
-    expect(project({ threads: [{ ...thread([old]), activities: [
-      activity("current-activity", "current-turn", "working", 5),
-    ] }], workflow: workflow([node("old-node", "character-1", "working")]),
-    session: session({ status: "working", turn_id: "current-turn", occurrence_id: "character-1",
-      character_phase: "main" }), turnsById: { "current-turn": failedTurn } }))
-      .toMatchObject({ identity: { attemptKey: "current-turn:0" }, phase: "failed", motionState: "idle",
-        evidence: { source: "journey_action", turnId: "current-turn" } });
+  it("does not use a previous activity terminal to stop a new attempt", () => {
+    expect(state(input([activity("old", "old", "failed", 1), activity("new", "new", "working", 2)])).motionState).toBe("working");
   });
-
-  it("keeps current prompt work active after its exact materialization turn completes", () => {
-    const current = proposal("character-1", "current-materialization", ["current-node"]);
-    expect(project({ threads: [thread([current])], workflow: workflow([node("current-node", "character-1", "working")]),
-      session: session({ status: "working", turn_id: "current-materialization", occurrence_id: "character-1",
-        character_phase: "main" }), turnsById: {
-        "current-materialization": turn("current-materialization", "completed", {
-          occurrence_id: "character-1", character_phase: "main",
-        }),
-      } })).toMatchObject({ phase: "working", motionState: "working",
-        evidence: { source: "prompt_preparation", nodeId: "current-node" } });
+  it("open proposal keeps working without consulting its completed creation Turn", () => {
+    const card = proposal("one", "m", []);
+    card.proposal.materialization = null;
+    card.proposal.availability = "open";
+    expect(state({ ...input(), threads: [thread([card])], turnsById: { [card.proposal.turn_id]: turn(card.proposal.turn_id, "completed") } }).motionState).toBe("working");
   });
-
-  it("keeps exact queued materialization static after its action turn completes", () => {
-    const current = proposal("character-1", "current-materialization", []);
-    current.proposal.materialization!.status = "queued";
-    expect(project({ threads: [thread([current])], session: session({ status: "working",
-      turn_id: "current-materialization", occurrence_id: "character-1", character_phase: "main" }),
-    turnsById: { "current-materialization": turn("current-materialization", "completed") } }))
-      .toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "materialization" } });
+  it.each(["queued", "working", "completed", "failed"] as const)("uses materialization %s only for an explicit terminal", status => {
+    const card = proposal("one", "m", []);
+    card.proposal.materialization!.status = status;
+    expect(state({ ...input(), threads: [thread([card])] }).motionState)
+      .toBe(status === "queued" || status === "working" ? "working" : "idle");
   });
-
-  it("keeps historical proposals while attaching a new occurrence action through its exact current activity", () => {
-    const historical = proposal("character-old", "old-materialization", ["old-node"]);
-    const currentTurn = turn("current-turn", "queued", { occurrence_id: "character-current", character_phase: "main" });
-    expect(project({ threads: [{ ...thread([historical]), activities: [
-      activity("current-activity", "current-turn", "working", 5),
-    ] }], workflow: workflow([]), session: session({ status: "reserved", turn_id: "current-turn",
-      occurrence_id: "character-current", character_phase: "main" }), turnsById: { "current-turn": currentTurn } }))
-      .toMatchObject({ identity: { occurrenceId: "character-current", attemptKey: "current-turn:0" },
-        phase: "queued", motionState: "idle", evidence: { source: "journey_action", turnId: "current-turn" } });
+  it("hands motion from the previous role to the newly entered role", () => {
+    const first = input().threads[0]!;
+    const second = { ...first, key: "stage:scene_design", capability_id: "scene_design" as const,
+      activities: [activity("second", "second", "working", 2)] };
+    const both = projectRoleLifecycles({ ...input(), threads: [first, second] });
+    expect([...both.values()].map(x => x.motionState)).toEqual(["idle", "working"]);
+    first.activities = [activity("a", "t", "completed")];
+    expect([...projectRoleLifecycles({ ...input(), threads: [first, second] }).values()].map(x => x.motionState)).toEqual(["idle", "working"]);
   });
+  it("keeps a completed role working while the conversation can still hand off", () => {
+    const completed = input([activity("a", "t", "completed")]);
+    expect(projectRoleLifecycles({ ...completed, conversationWorking: true })
+      .get("stage:character_design")?.motionState).toBe("working");
 
-  it("keeps an orphan reserved action unknown and static", () => {
-    expect(project({ session: session({ status: "reserved", turn_id: "missing", occurrence_id: "character-1",
-      character_phase: "main" }) })).toMatchObject({ phase: "unknown", motionState: "idle",
-      evidence: { source: "unresolved" } });
+    const next = {
+      ...completed,
+      conversationWorking: true,
+      threads: [
+        completed.threads[0]!,
+        {
+          ...completed.threads[0]!,
+          key: "stage:scene_design",
+          capability_id: "scene_design" as const,
+          activities: [activity("scene", "scene-turn", "working", 2)],
+        },
+      ],
+    };
+    const projected = projectRoleLifecycles(next);
+    expect(projected.get("stage:character_design")?.motionState).toBe("idle");
+    expect(projected.get("stage:scene_design")?.motionState).toBe("working");
   });
-
-  it("does not keep a working activity alive after its exact owning turn fails", () => {
-    expect(project({ turnsById: { failed: turn("failed", "failed") },
-      workflow: workflow([]), session: null, runtime: null,
-      // The activity status can lag the authoritative turn projection during refresh.
-      threads: [{ ...thread(), activities: [activity("activity-1", "failed", "working")] }],
-    })).toMatchObject({ phase: "failed", motionState: "idle", evidence: { source: "activity", turnId: "failed" } });
+  it("keeps terminal across stale refresh and permits a newer retry", () => {
+    const done = projectRoleLifecycles(input([activity("a", "t", "failed")]));
+    const stale = mergeRoleLifecycles(done, projectRoleLifecycles(input()));
+    expect(stale.get("stage:character_design")?.motionState).toBe("idle");
+    const retry = mergeRoleLifecycles(stale, projectRoleLifecycles(input([activity("retry", "retry", "working", 2)])));
+    expect(retry.get("stage:character_design")?.motionState).toBe("working");
+    expect(mergeRoleLifecycles(retry, done).get("stage:character_design")?.motionState).toBe("working");
   });
-
-  it("shows queued motion as static when a working activity's exact owning turn is queued", () => {
-    expect(project({ turnsById: { queued: turn("queued", "queued") }, workflow: workflow([]), session: null,
-      runtime: null, threads: [{ ...thread(), activities: [activity("activity-1", "queued", "working")] }],
-    })).toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "activity" } });
+  it("resets retained evidence on Workflow change", () => {
+    const { result, rerender } = renderHook(useTimelineRoleLifecycles, { initialProps: input([activity("a", "t", "failed")]) });
+    rerender(input());
+    expect(result.current.get("stage:character_design")?.motionState).toBe("idle");
+    rerender({ ...input(), workflowId: "workflow-2" });
+    expect(result.current.get("stage:character_design")?.motionState).toBe("working");
   });
-
-  it("keeps an active activity unknown until its exact turn is hydrated", () => {
-    expect(project({ workflow: workflow([]), session: null, runtime: null, turnsById: {},
-      threads: [{ ...thread(), activities: [activity("activity-1", "missing", "working")] }],
-    })).toMatchObject({ phase: "unknown", motionState: "idle", evidence: { source: "unresolved" } });
+  it("does not compare proposal revision against materialization attempt number", () => {
+    const card = proposal("one", "m", []);
+    card.proposal.proposal_revision = 5;
+    const materialization = card.proposal.materialization!;
+    card.proposal.materialization = null;
+    const before = projectRoleLifecycles({ ...input(), threads: [thread([card])] });
+    card.proposal.materialization = { ...materialization, status: "queued" };
+    const started = mergeRoleLifecycles(before, projectRoleLifecycles({ ...input(), threads: [thread([card])] }));
+    expect(started.get("stage:character_design")?.motionState).toBe("working");
+    card.proposal.materialization.status = "failed";
+    const failed = mergeRoleLifecycles(started, projectRoleLifecycles({ ...input(), threads: [thread([card])] }));
+    card.proposal.materialization = { ...materialization, status: "queued", attempt_no: 2 };
+    const retry = mergeRoleLifecycles(failed, projectRoleLifecycles({ ...input(), threads: [thread([card])] }));
+    expect(retry.get("stage:character_design")?.motionState).toBe("working");
+    expect(mergeRoleLifecycles(retry, failed).get("stage:character_design")?.motionState).toBe("working");
   });
-
-  it("uses only an exact existing planning metadata turn", () => {
-    expect(project({ threads: [{ ...thread(), planning: [planning("planning-turn")] }],
-      turnsById: { "planning-turn": turn("planning-turn", "queued") } }))
-      .toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "planning", turnId: "planning-turn" } });
-  });
-
-  it("accepts an explicitly application-associated node without prompt identity for a non-occurrence role", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    card.proposal.capability_id = "scene_design";
-    card.proposal.proposal_kind = "scene";
-    card.proposal.occurrence_id = null;
-    card.proposal.character_phase = null;
-    const sceneThread = { ...thread([card]), key: "stage:scene_design", capability_id: "scene_design" as const };
-    const sceneNode = node("node-1", "character-1", "ready");
-    sceneNode.creative_role = "scene";
-    sceneNode.prompt_preparation = null;
-    sceneNode.status = "ready";
-    sceneNode.output_asset_id = "asset-scene";
-    sceneNode.latest_attempt = null;
-    expect(projectRoleLifecycles({ threads: [sceneThread], workflow: workflow([sceneNode]), runtime: null,
-      session: null, turnsById: {} }).get(sceneThread.key))
-      .toMatchObject({ phase: "succeeded", motionState: "idle", evidence: { source: "node", nodeId: "node-1" } });
-  });
-
-  it("uses a persisted active latest attempt when runtime is absent", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    card.proposal.capability_id = "scene_design";
-    card.proposal.proposal_kind = "scene";
-    card.proposal.occurrence_id = null;
-    card.proposal.character_phase = null;
-    const sceneThread = { ...thread([card]), key: "stage:scene_design", capability_id: "scene_design" as const };
-    const sceneNode = node("node-1", "character-1", "ready");
-    sceneNode.creative_role = "scene";
-    sceneNode.prompt_preparation = null;
-    sceneNode.latest_attempt = { ...sceneNode.latest_attempt!, status: "running" };
-    const projected = projectRoleLifecycles({ threads: [sceneThread], workflow: workflow([sceneNode]), runtime: null,
-      session: null, turnsById: {} });
-    expect(projected.get(sceneThread.key)).toMatchObject({ phase: "working", motionState: "working",
-      evidence: { source: "node_attempt", nodeId: "node-1" } });
-  });
-
-  it("lets a new working prompt attempt supersede an older terminal media attempt", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const retryNode = node("node-1", "character-1", "working", 2);
-    retryNode.latest_attempt = { ...retryNode.latest_attempt!, status: "succeeded" };
-    expect(project({ threads: [thread([card])], workflow: workflow([retryNode]) }))
-      .toMatchObject({ identity: { attemptKey: "prompt-node-1:2" }, phase: "working", motionState: "working",
-        evidence: { source: "prompt_preparation" } });
-  });
-
-  it("uses active media execution identity after prompt preparation becomes ready", () => {
-    const card = proposal("character-1", "materialize-1", ["node-1"]);
-    const mediaNode = node("node-1", "character-1", "ready");
-    mediaNode.latest_attempt = { ...mediaNode.latest_attempt!, execution_id: "execution-media", status: "running" };
-    expect(project({ threads: [thread([card])], workflow: workflow([mediaNode]) }))
-      .toMatchObject({ identity: { attemptKey: "node:node-1:execution-media" }, phase: "working", motionState: "working",
-        evidence: { source: "node_attempt" } });
-  });
-
-  it("keeps an orphan working action unknown when it has no live owner", () => {
-    const card = proposal("character-1", "old-materialization", [], 2);
-    expect(project({ threads: [thread([card])], session: session({ status: "working", turn_id: "missing",
-      occurrence_id: "character-1", character_phase: "main" }) }))
-      .toMatchObject({ phase: "unknown", motionState: "idle", evidence: { source: "unresolved" } });
-  });
-
-  it("does not let a Main reference awaiting checkpoint authorize Turnaround", () => {
-    const card = proposal("character-1", "old-materialization", [], 2);
-    card.proposal.character_phase = "turnaround";
-    const awaitingSession = session({ status: "waiting_user", turn_id: null, occurrence_id: "character-1",
-      character_phase: "turnaround" });
-    awaitingSession.awaiting = { awaiting_id: "awaiting-main", workflow_id: "workflow-1", session_id: "session-1",
-      checkpoint_id: "checkpoint-main", kind: "reference_source", requires_user_action: true,
-      resume_policy: "submit_interaction", interaction_id: "interaction-main", node_ids: [], stage: "character",
-      stage_revision: 1, created_at: "2026-09-07T00:00:00Z" };
-    awaitingSession.interaction = { content: { content_kind: "reference_source", reference_kind: "character_main",
-      occurrence_id: "character-1" } } as GuidedSessionStateV2["interaction"];
-    expect(project({ threads: [thread([card])], session: awaitingSession }))
-      .toMatchObject({ phase: "unknown", motionState: "idle", evidence: { source: "unresolved" } });
-  });
-
-  it("treats an omitted Character concept-choice phase as schema-defined Main", () => {
-    const card = proposal("character-1", "old-materialization", [], 2);
-    const awaitingSession = session({ status: "waiting_user", turn_id: null, occurrence_id: "character-1",
-      character_phase: "main" });
-    awaitingSession.awaiting = { awaiting_id: "awaiting-concept", workflow_id: "workflow-1", session_id: "session-1",
-      checkpoint_id: "checkpoint-concept", kind: "concept_selection", requires_user_action: true,
-      resume_policy: "submit_interaction", interaction_id: "interaction-concept", node_ids: [], stage: "character",
-      stage_revision: 1, created_at: "2026-09-07T00:00:00Z" };
-    awaitingSession.interaction = { content: { content_kind: "concept_choice", occurrence_id: "character-1",
-      stage: "character", stage_revision: 1 } } as GuidedSessionStateV2["interaction"];
-    expect(project({ threads: [thread([card])], session: awaitingSession }))
-      .toMatchObject({ phase: "awaiting_user", motionState: "working", evidence: { source: "journey_action" } });
-  });
-
-  it("keeps a delivered role animating while the next role is still queued", () => {
-    const deliveredCard = proposal("character-1", "materialize-1", ["node-1"]);
-    const nextCard = proposal("character-2", "materialize-2", ["node-2"]);
-    const deliveredNode = node("node-1", "character-1", "ready");
-    deliveredNode.execution_mode = "source_only";
-    deliveredNode.status = "ready";
-    deliveredNode.latest_attempt = null;
-    const threads = [
-      { ...thread([deliveredCard]), sequence: 1 },
-      { ...thread([nextCard]), key: "stage:prop_design", capability_id: "prop_design" as const,
-        capability_display_name: "Prop Designer", sequence: 2 },
-    ];
-    const projected = projectRoleLifecycles({
-      threads,
-      workflow: workflow([deliveredNode, node("node-2", "character-2", "queued")]),
-      runtime: null, session: null, turnsById: {},
-    });
-    expect(projected.get("stage:character_design"))
-      .toMatchObject({ phase: "succeeded", motionState: "working" });
-    expect(projected.get("stage:prop_design"))
-      .toMatchObject({ phase: "queued", motionState: "idle" });
-  });
-
-  it("settles a delivered role once the next role has started working", () => {
-    const deliveredCard = proposal("character-1", "materialize-1", ["node-1"]);
-    const nextCard = proposal("character-2", "materialize-2", ["node-2"]);
-    const deliveredNode = node("node-1", "character-1", "ready");
-    deliveredNode.execution_mode = "source_only";
-    deliveredNode.status = "ready";
-    deliveredNode.latest_attempt = null;
-    const threads = [
-      { ...thread([deliveredCard]), sequence: 1 },
-      { ...thread([nextCard]), key: "stage:prop_design", capability_id: "prop_design" as const,
-        capability_display_name: "Prop Designer", sequence: 2 },
-    ];
-    const projected = projectRoleLifecycles({
-      threads,
-      workflow: workflow([deliveredNode, node("node-2", "character-2", "working")]),
-      runtime: runtime("node-2", "running"), session: null, turnsById: {},
-    });
-    expect(projected.get("stage:character_design"))
-      .toMatchObject({ phase: "succeeded", motionState: "idle" });
-    expect(projected.get("stage:prop_design"))
-      .toMatchObject({ phase: "working", motionState: "working" });
-  });
-
-  it("rejects stale session, turn, runtime, and node authority from another workflow", () => {
-    const card = proposal("character-1", "old-turn", ["old-node"]);
-    card.proposal.workflow_id = "workflow-old";
-    const staleNode = node("old-node", "character-1", "working");
-    staleNode.workflow_id = "workflow-old";
-    const staleRuntime = runtime("old-node", "running");
-    staleRuntime.workflow_id = "workflow-old";
-    const staleSession = session({ status: "working", turn_id: "old-turn", occurrence_id: "character-1",
-      character_phase: "main" });
-    staleSession.workflow_id = "workflow-old";
-    const staleTurn = turn("old-turn", "running", { occurrence_id: "character-1", character_phase: "main" });
-    staleTurn.workflow_id = "workflow-old";
-    expect(project({ threads: [{ ...thread([card]), activities: [activity("old-activity", "old-turn", "working", 3)] }],
-      workflow: workflow([staleNode]), runtime: staleRuntime, session: staleSession,
-      turnsById: { "old-turn": staleTurn } })).toMatchObject({ phase: "unknown", motionState: "idle",
-        evidence: { source: "unresolved" } });
+  it("retains completed historical roles on reload", () => {
+    expect(state(input([activity("a", "t", "completed")])).motionState).toBe("idle");
   });
 });

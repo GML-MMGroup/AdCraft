@@ -132,6 +132,7 @@ export function useNodeWorkbenchDraft({
     onConflict: handlePromptConflict,
     onError: handlePromptError,
   });
+  const acceptAuthoritativePrompt = promptAutosave.acceptAuthoritativeValue;
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.title);
@@ -154,21 +155,18 @@ export function useNodeWorkbenchDraft({
 
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
-    const authoritativePrompt = (node.generation_prompt ?? "").trim() || null;
-    const waitingForPromptResponse = !changedNode
-      && promptAutosave.lastSavedValue !== authoritativePrompt;
     if (!changedNode && (
       dirty
       || promptAutosave.status === "dirty"
       || promptAutosave.status === "saving"
       || promptAutosave.status === "conflict"
       || promptAutosave.hasLocalChanges
-      || waitingForPromptResponse
     )) return;
+    if (!acceptAuthoritativePrompt(node.generation_prompt ?? "")) return;
     draftNodeIdRef.current = node.node_id;
     restoreFromNode();
     if (changedNode) setDirty(false);
-  }, [dirty, node, promptAutosave.hasLocalChanges, promptAutosave.lastSavedValue, promptAutosave.status, restoreFromNode]);
+  }, [acceptAuthoritativePrompt, dirty, node, promptAutosave.hasLocalChanges, promptAutosave.lastSavedValue, promptAutosave.status, restoreFromNode]);
 
   useEffect(() => {
     const discardConflictDraft = (event: Event) => {

@@ -102,4 +102,34 @@ describe("useNodePromptAutosave", () => {
       { coalesce: true },
     );
   });
+
+  it("adopts an authoritative baseline without writing on flush or unmount", async () => {
+    const patchNode = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender, unmount } = renderHook(({ value }) => useNodePromptAutosave({
+      nodeId: "node-1", value, enabled: true, patchNode,
+    }), { initialProps: { value: "" } });
+    act(() => expect(result.current.acceptAuthoritativeValue("Agent prompt")).toBe(true));
+    rerender({ value: "Agent prompt" });
+    await act(async () => { await result.current.flush(); });
+    unmount();
+    expect(patchNode).not.toHaveBeenCalled();
+  });
+
+  it.each(["New local prompt", ""])("protects saved local value %j until acknowledged", async (value) => {
+    const patchNode = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender, unmount } = renderHook(({ value }) => useNodePromptAutosave({
+      nodeId: "node-1", value, enabled: true, patchNode,
+    }), { initialProps: { value: "Original prompt" } });
+    act(() => result.current.schedule(value));
+    rerender({ value });
+    act(() => expect(result.current.acceptAuthoritativeValue("Remote prompt")).toBe(false));
+    await act(async () => { await result.current.flush(); });
+    act(() => expect(result.current.acceptAuthoritativeValue("Original prompt")).toBe(false));
+    act(() => expect(result.current.acceptAuthoritativeValue(value)).toBe(true));
+    act(() => expect(result.current.acceptAuthoritativeValue("Next agent prompt")).toBe(true));
+    rerender({ value: "Next agent prompt" });
+    unmount();
+    expect(patchNode).toHaveBeenCalledTimes(1);
+    expect(patchNode).toHaveBeenCalledWith("node-1", { generation_prompt: value || null }, { coalesce: true });
+  });
 });

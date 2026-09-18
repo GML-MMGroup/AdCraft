@@ -19,6 +19,7 @@ export type ProjectListItem = {
   time: string;
   updatedAt: string;
   favorite: boolean;
+  mode?: "creation" | "brand";
   workflowId: string;
   coverAssetId: string | null;
   coverVersionId?: string | null;
@@ -144,6 +145,7 @@ export function ProjectList({
       <ProjectListCard
         key={project.key}
         project={project}
+        modeBadge={project.mode === "brand" ? "Brand" : undefined}
         coverPriority={row === firstVisibleRow ? 3 : row < lastVisibleRow ? 2 : 1}
         onOpenProject={onOpenProject}
         onTrashProject={onTrashProject}
@@ -186,6 +188,7 @@ export function ProjectList({
 
 const ProjectListCard = memo(function ProjectListCard({
   project,
+  modeBadge,
   coverPriority,
   onOpenProject,
   onTrashProject,
@@ -198,6 +201,7 @@ const ProjectListCard = memo(function ProjectListCard({
   onToggleSelect,
 }: {
   project: ProjectListItem;
+  modeBadge?: string;
   coverPriority: number;
   onOpenProject: (projectId: string, workflowId?: string) => void;
   onTrashProject: (project: ProjectListItem) => void;
@@ -225,6 +229,7 @@ const ProjectListCard = memo(function ProjectListCard({
     <ProjectCard
       projectId={project.projectId}
       name={project.name}
+        modeBadge={modeBadge}
       time={project.time}
       favorite={project.favorite}
       cover={cover}

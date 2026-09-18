@@ -96,6 +96,36 @@ function binding(bindingId: string, sourceNodeId: string, targetNodeId: string) 
   };
 }
 
+test("opens nullable automatic composition with two videos and BGM without issuing writes", async ({ page }) => {
+  const writes: string[] = [];
+  await page.route("**/api/v2/**", async route => {
+    if (route.request().method() !== "GET") writes.push(route.request().url());
+    await route.abort();
+  });
+  await page.goto("/tests/browser/agent-canvas-editing-mock.html?manifest=nullable");
+  await expect(page.getByRole("group", { name: "Video track" })).toBeVisible();
+  await expect(page.getByText("2 clips · 0:30")).toBeVisible();
+  await expect(page.getByTestId("editing-preview-video")).toHaveAttribute("src", /\/api\/v2\/assets\/asset-video-source\/content/);
+  await expect(page.getByTestId("editing-preview-bgm")).toHaveAttribute("src", /\/api\/v2\/assets\/asset-audio-source\/content/);
+  await expect(page.getByRole("button", { name: "Play preview" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+test("shows specific contract diagnostics for malformed composition without overflowing the panel", async ({ page }) => {
+  await page.route("**/api/v2/**", route => route.abort());
+  await page.setViewportSize({ width: 800, height: 800 });
+  await page.goto("/tests/browser/agent-canvas-editing-mock.html?manifest=invalid");
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("composition manifest could not be read");
+  await page.getByText("Technical details").click();
+  await expect(alert.locator("pre")).toBeVisible();
+  await expect(alert.locator("pre")).toContainText("timeline_duration_seconds: expected finite number");
+  expect(await alert.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
+});
+
 test("exports, downloads, and imports a 30 second Editing result without creating Provider work", async ({ page }) => {
   const providerRequests: string[] = [];
   const downloadRequests: string[] = [];

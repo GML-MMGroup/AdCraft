@@ -2,12 +2,46 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "./client.ts";
 import { credentialUpdateFromDraft } from "./providerRegistry.ts";
+import { subscribeProviderConfigurationChanges } from "./providerConfigurationEvents.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("provider registry client", () => {
+  const mutations = [
+    ["save credentials", "all", () => api.updateProviderCredentials("mock", { api_keys: { video: "test-only-value" } })],
+    ["clear credentials", "all", () => api.updateProviderCredentials("mock", { api_keys: {}, clear_capabilities: ["video"] })],
+    ["test credentials", "all", () => api.testProviderCredential("mock", { capability: "video" })],
+    ["sync models", "all", () => api.syncProviderModels("mock")],
+    ["save defaults", "defaults", () => api.patchModelDefaults({ defaults: { video: "mock:video" } })],
+  ] as const;
+
+  it.each(mutations)("invalidates safe model metadata after successful %s", async (_name, scope, mutate) => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeProviderConfigurationChanges(listener);
+    const payload = { accepted: true };
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(payload)));
+    try {
+      expect(await mutate()).toEqual(payload);
+      expect(listener).toHaveBeenCalledExactlyOnceWith(scope);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each(mutations)("does not invalidate metadata after failed %s", async (_name, _scope, mutate) => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeProviderConfigurationChanges(listener);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+    try {
+      await expect(mutate()).rejects.toThrow();
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("builds a capability-scoped credential update without retaining blank endpoints", () => {
     expect(credentialUpdateFromDraft(
       { image: " image-secret ", video: "" },
