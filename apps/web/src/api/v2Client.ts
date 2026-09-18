@@ -656,11 +656,11 @@ export const v2Api = {
     );
   },
 
-  brandNextQuestion(workflowId: string): Promise<NonNullable<BrandDecisionPanelV1["open_card"]>> {
+  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"]> {
     return requestV2(
       `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
       { method: "POST" },
-      normalizeBrandOptionCardV1,
+      (payload) => payload === null ? null : normalizeBrandOptionCardV1(payload),
     );
   },
 

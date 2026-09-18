@@ -10,6 +10,8 @@ const WorkflowPage = lazy(() => import("./pages/WorkflowPage").then((module) => 
 const TrashPage = lazy(() => import("./pages/TrashPage").then((module) => ({ default: module.TrashPage })));
 const ApiSpacePage = lazy(() => import("./pages/ApiSpacePage").then((module) => ({ default: module.ApiSpacePage })));
 const HomeTypographyLabPage = lazy(() => import("./pages/HomeTypographyLabPage").then((module) => ({ default: module.HomeTypographyLabPage })));
+const ModeLauncherPrototypePage = lazy(() => import("./pages/ModeLauncherPrototypePage").then((module) => ({ default: module.ModeLauncherPrototypePage })));
+const ModeIconLabPrototypePage = lazy(() => import("./pages/ModeIconLabPrototypePage").then((module) => ({ default: module.ModeIconLabPrototypePage })));
 const BrandDevPage = lazy(() => import("./pages/BrandDevPage").then((module) => ({ default: module.BrandDevPage })));
 const WorkspaceRoute = lazy(() => import("./app/WorkspaceRoute").then((module) => ({ default: module.WorkspaceRoute })));
 
@@ -42,6 +44,8 @@ function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/design-lab/home-typography" element={<HomeTypographyLabPage />} />
+        <Route path="/design-lab/mode-launcher" element={<ModeLauncherPrototypePage />} />
+        <Route path="/design-lab/mode-icons" element={<ModeIconLabPrototypePage />} />
         <Route path="/dev/brand" element={<BrandDevPage />} />
         <Route element={<LightweightShell />}>
           <Route path="/" element={<HomePage navigate={navigateRoute} />} />

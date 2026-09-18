@@ -64,6 +64,7 @@ import {
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
 import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
+import { BrandTreatmentConfirmation } from "./BrandTreatmentConfirmation.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
@@ -88,6 +89,7 @@ import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
+import type { BrandStageV2 } from "../brand/brandDecisions.ts";
 import { failureUserAction } from "./actionableFailure.ts";
 import { VirtualizedTimeline } from "./VirtualizedTimeline.tsx";
 import { FailedTurnBubble } from "./FailedTurnBubble.tsx";
@@ -148,6 +150,11 @@ export function AgentCanvasChatPanel({
   onWorkflowRefresh,
   onRuntimeRefresh,
   onAssetsRefresh,
+  brandMode = false,
+  brandStage = null,
+  brandContextReady = true,
+  brandTreatmentReady = false,
+  onBrandDecisionsRefresh,
   onProjectsRefresh,
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -163,6 +170,11 @@ export function AgentCanvasChatPanel({
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
   onAssetsRefresh?: () => Promise<void> | void;
+  brandMode?: boolean;
+  brandStage?: BrandStageV2 | null;
+  brandContextReady?: boolean;
+  brandTreatmentReady?: boolean;
+  onBrandDecisionsRefresh?: () => Promise<BrandStageV2 | null> | BrandStageV2 | null;
   onProjectsRefresh?: () => Promise<boolean> | void;
   runtime?: CanvasRuntimeSnapshotV2 | null;
   collapsed?: boolean;
@@ -177,6 +189,10 @@ export function AgentCanvasChatPanel({
     onWorkflowRefresh,
     onRuntimeRefresh,
     onAssetsRefresh,
+    brandMode,
+    brandStage,
+    brandContextReady,
+    onBrandDecisionsRefresh,
   });
   const [draft, setDraft] = useState("");
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -1004,6 +1020,17 @@ export function AgentCanvasChatPanel({
       ) : null}
 
       <div className="agent-chat__composer">
+        {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
+          <BrandTreatmentConfirmation
+            key={workflow.workflow_id}
+            workflowId={workflow.workflow_id}
+            responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}
+            onConfirmed={async () => {
+              await onBrandDecisionsRefresh?.();
+              await chat.actions.refresh();
+            }}
+          />
+        ) : null}
         {pendingContextFiles.length ? (
           <div className="agent-chat__product-upload-choice" role="status">
             <span>

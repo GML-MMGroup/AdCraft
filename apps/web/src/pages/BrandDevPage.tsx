@@ -82,7 +82,6 @@ export function BrandDevPage() {
               <BrandDecisionPanel
                 decisions={state.decisions}
                 refreshing={loading}
-                interactive={false}
                 onRefresh={() => {
                   void load(state.workflowId);
                 }}
