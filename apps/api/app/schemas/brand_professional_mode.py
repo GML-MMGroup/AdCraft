@@ -56,8 +56,8 @@ class BrandShortOptionV1(_BrandModel):
     """One short option label with an optional collapsed explanation."""
 
     option_id: str = Field(min_length=1, max_length=80)
-    label: str = Field(min_length=1, max_length=24)
-    why: str | None = Field(default=None, max_length=120)
+    label: str = Field(min_length=1, max_length=48)
+    why: str | None = Field(default=None, max_length=240)
 
 
 class BrandOptionCardV1(_BrandModel):
@@ -82,13 +82,13 @@ class CreativeHypothesisCandidateV1(_BrandModel):
     """One candidate creative hypothesis."""
 
     candidate_id: str = Field(min_length=1, max_length=80)
-    label: str = Field(min_length=1, max_length=24)
-    insight: str = Field(min_length=1, max_length=600)
-    mechanism: str = Field(min_length=1, max_length=120)
+    label: str = Field(min_length=1, max_length=48)
+    insight: str = Field(min_length=1, max_length=800)
+    mechanism: str = Field(min_length=1, max_length=300)
     hypothesis: str = Field(min_length=1, max_length=1200)
     product_role: str = Field(min_length=1, max_length=300)
     hook_mechanism: str = Field(min_length=1, max_length=300)
-    why: str | None = Field(default=None, max_length=120)
+    why: str | None = Field(default=None, max_length=240)
 
 
 class CreativeStrategyOutputV1(_BrandModel):
