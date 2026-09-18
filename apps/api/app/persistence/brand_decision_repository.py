@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import (
+    AgentCanvasWorkflowRow,
     BrandAdSpecItemRow,
     BrandDecisionLogRow,
     BrandFactRow,
@@ -67,6 +68,12 @@ class BrandDecisionRepository:
                 row = connection.execute(
                     select(WorkflowRow.project_id).where(WorkflowRow.workflow_id == workflow_id)
                 ).first()
+                if row is None:
+                    row = connection.execute(
+                        select(AgentCanvasWorkflowRow.project_id).where(
+                            AgentCanvasWorkflowRow.workflow_id == workflow_id
+                        )
+                    ).first()
         except SQLAlchemyError as error:
             raise _persistence_error() from error
         return row[0] if row is not None else None
