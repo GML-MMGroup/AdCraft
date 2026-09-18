@@ -72,6 +72,13 @@ class BrandDecisionRepository:
                     .where(BrandRow.brand_id == brand_id)
                     .limit(1)
                 ).first()
+                if row is None:
+                    row = connection.execute(
+                        select(AgentCanvasWorkflowRow.workflow_id)
+                        .join(BrandRow, BrandRow.project_id == AgentCanvasWorkflowRow.project_id)
+                        .where(BrandRow.brand_id == brand_id)
+                        .limit(1)
+                    ).first()
         except SQLAlchemyError as error:
             raise _persistence_error() from error
         return row[0] if row is not None else None
