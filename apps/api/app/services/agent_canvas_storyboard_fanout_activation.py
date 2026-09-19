@@ -10,8 +10,50 @@ from typing import Callable
 
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_production_journey import FIXED_JOURNEY_STAGE_DESCRIPTORS
 from app.services.agent_canvas_stage_authoring_context import combined_style_guidance
+
+
+# The journey stage that owns each fan-out media role. A Draft whose owning
+# stage is already behind the authoring cursor must not become a prerequisite of
+# a later stage: the persisted manual wait only owns that Node Run.
+_MEDIA_STAGE_BY_ROLE: dict[str, JourneyStageV2] = {
+    "storyboard_sequence": "storyboard_grids",
+    "storyboard_video": "videos",
+    "bgm": "bgm",
+}
+
+
+def _journey_stage_order() -> tuple[JourneyStageV2, ...]:
+    order: list[JourneyStageV2] = []
+    stage: JourneyStageV2 | None = "intake"
+    while stage is not None:
+        order.append(stage)
+        descriptor = FIXED_JOURNEY_STAGE_DESCRIPTORS.get(stage)
+        stage = descriptor.successor if descriptor is not None else None
+    return tuple(order)
+
+
+_JOURNEY_STAGE_ORDER = _journey_stage_order()
+
+
+def _stage_rank(stage: JourneyStageV2) -> int:
+    return _JOURNEY_STAGE_ORDER.index(stage)
+
+
+def _media_stage_precedes_cursor(
+    node_role: str | None,
+    *,
+    stage: JourneyStageV2,
+) -> bool:
+    """Report whether one media role belongs to a stage behind the cursor."""
+
+    owning_stage = _MEDIA_STAGE_BY_ROLE.get(node_role or "")
+    if owning_stage is None:
+        return False
+    return _stage_rank(owning_stage) < _stage_rank(stage)
 
 
 @dataclass(frozen=True)
@@ -124,6 +166,11 @@ class StoryboardFanoutActivationService:
             node_revision=next(
                 node.revision for node in workflow.nodes if node.node_id == next_node_id
             ),
+            node_role=next(
+                getattr(node, "creative_role", None)
+                for node in workflow.nodes
+                if node.node_id == next_node_id
+            ),
             source_action_id=_run_identity(fanout.fanout_plan_id, next_node_id),
             prepared_node_ids=tuple(prepared_node_ids),
         )
@@ -162,21 +209,11 @@ class StoryboardFanoutActivationService:
         if next_node_id is None:
             return StoryboardFanoutActivationResult(node_ids, None, ())
         node = next(node for node in workflow.nodes if node.node_id == next_node_id)
-        if (
-            execution_settings.media_execution_mode == "manual"
-            and node.creative_role == "bgm"
-            and self._conversations.get_guidance_session(workflow_id).journey.stage == "editing"
-        ):
-            # BGM publication already advanced authoring. Retain an existing
-            # scoped wait, but do not make media a prerequisite of Editing.
-            owned = self._awaiting.inspect(workflow_id, node_id=next_node_id)
-            return StoryboardFanoutActivationResult(
-                node_ids, owned.awaiting_id if owned is not None else None, ()
-            )
         return self._activate_runnable_node(
             workflow_id=workflow_id,
             node_id=next_node_id,
             node_revision=node.revision,
+            node_role=getattr(node, "creative_role", None),
             source_action_id=f"planned-media:{source_id}:{next_node_id}",
             prepared_node_ids=node_ids,
         )
@@ -187,6 +224,7 @@ class StoryboardFanoutActivationService:
         workflow_id: str,
         node_id: str,
         node_revision: int,
+        node_role: str | None,
         source_action_id: str,
         prepared_node_ids: tuple[str, ...],
     ) -> StoryboardFanoutActivationResult:
@@ -204,6 +242,16 @@ class StoryboardFanoutActivationService:
                 prepared_node_ids,
                 None,
                 (command.command_id,),
+            )
+
+        if _media_stage_precedes_cursor(node_role, stage=session.journey.stage):
+            # Authoring already advanced past this media's stage, so the late
+            # Draft stays a runnable Node without gating the current stage.
+            owned = self._awaiting.inspect(workflow_id, node_id=node_id)
+            return StoryboardFanoutActivationResult(
+                prepared_node_ids,
+                owned.awaiting_id if owned is not None else None,
+                (),
             )
 
         current = self._awaiting.inspect(workflow_id)
