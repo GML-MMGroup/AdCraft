@@ -129,6 +129,7 @@ from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.services.agent_canvas_production_journey import (
+    CURRENT_GUIDED_JOURNEY_POLICY_REVISION,
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
     initial_production_journey,
     parse_production_journey,
@@ -280,7 +281,9 @@ class AgentCanvasConversationRepository:
                                     update={
                                         "journey_policy_id": journey_policy_id,
                                         "journey_policy_revision": (
-                                            1 if journey_policy_id is not None else None
+                                            CURRENT_GUIDED_JOURNEY_POLICY_REVISION
+                                            if journey_policy_id is not None
+                                            else None
                                         ),
                                     }
                                 )

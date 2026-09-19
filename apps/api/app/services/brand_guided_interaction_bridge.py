@@ -25,6 +25,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedConceptChoiceV2,
 )
 from app.services.agent_canvas_production_journey import (
+    apply_current_guided_journey_policy,
     initial_production_journey,
 )
 from app.schemas.brand_professional_mode import BrandOptionCardV1
@@ -73,7 +74,7 @@ class BrandGuidedInteractionBridge:
                         .values(response_locale=response_locale)
                     )
                 return session_id
-        journey = initial_production_journey(())
+        journey = apply_current_guided_journey_policy(initial_production_journey(()))
         completion = GuidanceCompletionProjectionV2()
         now = _now_iso()
         with self._database.engine.begin() as connection:
