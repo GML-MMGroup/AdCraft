@@ -333,6 +333,12 @@ class BrandDecisionRepository:
             return None
         return BrandOptionCardV1.model_validate_json(row.payload_json)
 
+    def get_open_card(self, brand_id: str) -> BrandOptionCardV1 | None:
+        """Return the current open card without requiring a caller transaction."""
+
+        with self._database.engine.connect() as connection:
+            return self.get_open_card_in_transaction(connection, brand_id)
+
     def resolve_card_in_transaction(
         self,
         connection: Connection,
@@ -554,6 +560,15 @@ class BrandDecisionRepository:
                 for row in rows
             )
         )
+
+    def get_skill_stack(self, brand_id: str) -> SkillStackV1 | None:
+        """Read the persisted skill stack for one brand."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                return self.get_skill_stack_in_transaction(connection, brand_id)
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
 
     # ---- Treatment ---------------------------------------------------------
 

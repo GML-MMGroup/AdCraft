@@ -423,6 +423,7 @@ class AgentCanvasConversationRepository:
         interaction_title: str | None = None,
         interaction_context: str | None = None,
         expected_requirement_revision: int | None = None,
+        assistant_metadata: Mapping[str, object] | None = None,
     ) -> ChatTurnV2:
         """Atomically publish clarification authority and complete its source Turn."""
 
@@ -585,6 +586,7 @@ class AgentCanvasConversationRepository:
                         events=self._events,
                         turn=turn,
                         assistant_message=assistant_message,
+                        assistant_metadata=assistant_metadata,
                         now=now,
                     )
                     connection.commit()

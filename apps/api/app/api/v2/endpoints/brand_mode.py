@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.brand_decision_repository import BrandDecisionRepository
-from app.persistence.models import AgentCanvasChatTurnRow
+from app.persistence.models import AgentCanvasChatEntryRow, AgentCanvasChatTurnRow
 from app.schemas.brand_professional_mode import (
     BrandDecisionPanelV1,
     BrandHypothesisActionRequestV1,
@@ -29,6 +29,7 @@ from app.services.brand_capability_invocation import (
 from app.services.brand_guided_interaction_bridge import (
     BrandGuidedInteractionBridge,
 )
+from app.services.brand_production_handoff import BrandProductionHandoffService
 
 router = APIRouter()
 
@@ -42,10 +43,12 @@ def _brand_database() -> Iterator[V2Database]:
 
 
 _STATUS_BY_CODE = {
+    "brand_guided_production_required": 409,
     "brand_slot_unknown": 422,
     "brand_slot_required_missing": 409,
     "brand_option_card_invalid": 409,
     "brand_stage_action_mismatch": 409,
+    "brand_treatment_confirmation_required": 409,
     "brand_journey_terminal_conflict": 409,
     "brand_decision_not_found": 404,
     "brand_decision_persistence_failed": 503,
@@ -84,11 +87,17 @@ def _raise_not_found() -> None:
     )
 
 
-@router.post("/brand/decisions/{workflow_id}/next-question", response_model=BrandOptionCardV1)
+@router.post(
+    "/brand/decisions/{workflow_id}/next-question",
+    response_model=BrandOptionCardV1,
+    responses={
+        204: {"description": "Treatment is complete and awaits explicit lock confirmation."}
+    },
+)
 def post_next_question(
     workflow_id: str,
     database: V2Database = Depends(_brand_database),
-) -> BrandOptionCardV1:
+) -> BrandOptionCardV1 | Response:
     try:
         brand_id = _brand_id_for_workflow(database, workflow_id)
     except V2PersistenceError:
@@ -97,11 +106,25 @@ def post_next_question(
     journey = service._repository.get_journey(brand_id)
     if journey is None or journey.stage in {"production"}:
         _raise_not_found()
+    if not _has_guided_production_turn(database, workflow_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "brand_guided_production_required",
+                "message": "Brand Professional questions require a guided production request.",
+            },
+        )
     bridge = BrandGuidedInteractionBridge(database)
     locale = service._workflow_response_locale(brand_id) or "und"
     try:
         card: BrandOptionCardV1
-        if journey.stage == "hypothesis":
+        if service.prepare_treatment_confirmation(brand_id):
+            bridge.close_current_interaction(workflow_id, status="superseded")
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        existing_card = service._repository.get_open_card(brand_id)
+        if existing_card is not None and existing_card.stage == journey.stage:
+            card = existing_card
+        elif journey.stage == "hypothesis":
             candidates = service.run_hypotheses(brand_id)
             card = BrandOptionCardV1(
                 card_id="hypothesis_candidates",
@@ -119,15 +142,19 @@ def post_next_question(
                 ),
             )
         elif journey.stage == "treatment":
-            step = service.run_treatment_step(brand_id)
-            card = BrandOptionCardV1(
-                card_id=f"treatment_{step.step_key}_{journey.stage_revision}",
-                stage="treatment",
-                stage_revision=journey.stage_revision,
-                target_slot_id=step.step_key,
-                question=step.question,
-                options=step.options,
-            )
+            service.run_treatment_step(brand_id)
+            # ``run_treatment_step`` persists the authoritative option card
+            # (including its collision-safe ID). Reuse that card for the
+            # guided interaction so submitting the interaction resolves the
+            # same card instead of a transient projection ID.
+            card = service._repository.get_open_card(brand_id)
+            if card is None:
+                raise V2PersistenceError(
+                    "brand_option_card_invalid",
+                    "Treatment step did not persist an option card.",
+                )
+        elif journey.stage == "skill-stack":
+            card = service.run_skill_stack_question(brand_id)
         else:
             card = service.run_slot_question(brand_id, journey.stage)
         bridge.publish_card_interaction(workflow_id, card, locale)
@@ -240,9 +267,13 @@ def post_lock_treatment(
         _raise_not_found()
     service = _brand_runtime(database)
     try:
+        BrandProductionHandoffService(database).prepare_guided_production(workflow_id, brand_id)
         locked = service.lock_treatment(brand_id)
     except V2PersistenceError as error:
         raise _map_brand_error(error) from error
+    BrandGuidedInteractionBridge(database).close_current_interaction(
+        workflow_id, status="superseded"
+    )
     return locked
 
 
@@ -269,6 +300,8 @@ def get_brand_decisions(
         skill_stack = repository.get_skill_stack_in_transaction(connection, brand_id)
         steps = repository.get_treatment_steps_in_transaction(connection, brand_id)
     treatment_locked = journey.stage == "production"
+    if not _has_guided_production_turn(database, workflow_id):
+        open_card = None
     return BrandDecisionPanelV1(
         project_id=project_id or "",
         workflow_id=workflow_id,
@@ -363,6 +396,28 @@ def _turn_text(request_json: str) -> str:
         if isinstance(text_value, str):
             return text_value
     return ""
+
+
+def _has_guided_production_turn(database: V2Database, workflow_id: str) -> bool:
+    with database.engine.connect() as connection:
+        rows = connection.execute(
+            select(AgentCanvasChatEntryRow.metadata_json)
+            .where(
+                AgentCanvasChatEntryRow.workflow_id == workflow_id,
+                AgentCanvasChatEntryRow.entry_type == "message",
+                AgentCanvasChatEntryRow.speaker == "adcraft_video_agent",
+            )
+            .order_by(AgentCanvasChatEntryRow.sequence_no.desc())
+            .limit(32)
+        ).scalars()
+        for metadata_json in rows:
+            try:
+                metadata = json.loads(str(metadata_json))
+            except json.JSONDecodeError:
+                continue
+            if isinstance(metadata, dict) and metadata.get("intent_mode") == "guided_production":
+                return True
+    return False
 
 
 def _not_found() -> V2PersistenceError:

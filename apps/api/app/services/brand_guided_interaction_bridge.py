@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -53,14 +53,26 @@ class BrandGuidedInteractionBridge:
     def ensure_session(self, workflow_id: str, response_locale: str) -> str:
         """Create or return the brand guidance session for one workflow."""
 
-        with self._database.engine.connect() as connection:
-            row = connection.execute(
-                select(AgentCanvasGuidanceSessionRow.session_id).where(
-                    AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+        with self._database.engine.begin() as connection:
+            row = (
+                connection.execute(
+                    select(
+                        AgentCanvasGuidanceSessionRow.session_id,
+                        AgentCanvasGuidanceSessionRow.response_locale,
+                    ).where(AgentCanvasGuidanceSessionRow.workflow_id == workflow_id)
                 )
-            ).scalar_one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             if row is not None:
-                return str(row)
+                session_id = str(row["session_id"])
+                if response_locale != "und" and str(row["response_locale"] or "und") == "und":
+                    connection.execute(
+                        AgentCanvasGuidanceSessionRow.__table__.update()
+                        .where(AgentCanvasGuidanceSessionRow.session_id == session_id)
+                        .values(response_locale=response_locale)
+                    )
+                return session_id
         journey = initial_production_journey(())
         completion = GuidanceCompletionProjectionV2()
         now = _now_iso()
@@ -107,12 +119,14 @@ class BrandGuidedInteractionBridge:
         session_id = self.ensure_session(workflow_id, response_locale)
         stage_revision = card.stage_revision
         capability_id = f"brand_{card.stage}"
-        checkpoint_id = f"checkpoint_{capability_id}_{stage_revision}"
-        interaction_id = f"interaction_{capability_id}_{stage_revision}"
+        workflow_key = sha256(workflow_id.encode()).hexdigest()[:16]
+        card_key = sha256(card.card_id.encode()).hexdigest()[:12]
+        checkpoint_id = f"checkpoint_{workflow_key}_{capability_id}_{stage_revision}_{card_key}"
+        interaction_id = f"interaction_{workflow_key}_{capability_id}_{stage_revision}_{card_key}"
         now = datetime.now(timezone.utc).astimezone(timezone.utc)
         now_iso = now.isoformat()
         title = card.question[:160]
-        context = f"Brand professional mode selection for stage {card.stage}"
+        context = _brand_interaction_context(card.stage, response_locale)
         options = tuple(
             GuidedChoiceOptionV1(
                 option_id=option.option_id,
@@ -124,6 +138,9 @@ class BrandGuidedInteractionBridge:
         )
         content = GuidedConceptChoiceV2(
             proposal_id=None,
+            # Brand Professional Mode is represented as one intake journey in
+            # the generic guided-interaction contract.  The brand stage is
+            # carried by capability_id and the authoritative card ID.
             stage="intake",
             stage_revision=stage_revision,
             action_id=card.card_id[:160],
@@ -146,13 +163,28 @@ class BrandGuidedInteractionBridge:
             created_at=now,
         )
         with self._database.engine.begin() as connection:
-            existing_status = connection.execute(
-                select(AgentCanvasGuidedInteractionRow.status).where(
-                    AgentCanvasGuidedInteractionRow.interaction_id == interaction_id
+            existing = (
+                connection.execute(
+                    select(
+                        AgentCanvasGuidedInteractionRow.status,
+                        AgentCanvasGuidedInteractionRow.response_locale,
+                        AgentCanvasGuidedInteractionRow.content_json,
+                        AgentCanvasGuidedInteractionRow.revision,
+                    ).where(AgentCanvasGuidedInteractionRow.interaction_id == interaction_id)
                 )
-            ).scalar_one_or_none()
-            if existing_status in ("open", "submitted"):
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None and str(existing["status"]) == "submitted":
                 return
+            if (
+                existing is not None
+                and str(existing["status"]) == "open"
+                and str(existing["response_locale"] or "und") == response_locale
+                and str(existing["content_json"] or "") == content.model_dump_json()
+            ):
+                return
+            existing_open = existing is not None and str(existing["status"]) == "open"
             session_row = (
                 connection.execute(
                     select(AgentCanvasGuidanceSessionRow).where(
@@ -164,40 +196,53 @@ class BrandGuidedInteractionBridge:
             )
             session_revision = int(session_row["revision"]) if session_row else 1
             connection.execute(
-                AgentCanvasGuidedInteractionRow.__table__.update()
-                .where(
-                    AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
-                    AgentCanvasGuidedInteractionRow.status == "open",
-                )
-                .values(status="superseded", updated_at=now_iso)
-            )
-            connection.execute(
                 AgentCanvasGuidanceAwaitingRow.__table__.delete().where(
                     AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
                 )
             )
-            connection.execute(
-                AgentCanvasGuidedInteractionRow.__table__.insert().values(
-                    interaction_id=interaction_id,
-                    workflow_id=workflow_id,
-                    session_id=session_id,
-                    checkpoint_id=checkpoint_id,
-                    kind="concept_choice",
-                    status="open",
-                    response_locale=response_locale,
-                    expected_session_revision=session_revision,
-                    revision=1,
-                    title=title,
-                    context=context,
-                    content_json=content.model_dump_json(),
-                    allowed_actions_json=json.dumps(["select", "custom"]),
-                    submit_path=(
-                        f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
-                    ),
-                    created_at=now_iso,
-                    updated_at=now_iso,
+            interaction_values = {
+                "workflow_id": workflow_id,
+                "session_id": session_id,
+                "checkpoint_id": checkpoint_id,
+                "kind": "concept_choice",
+                "status": "open",
+                "response_locale": response_locale,
+                "expected_session_revision": session_revision,
+                "title": title,
+                "context": context,
+                "content_json": content.model_dump_json(),
+                "allowed_actions_json": json.dumps(["select", "custom"]),
+                "submit_path": (
+                    f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
+                ),
+                "updated_at": now_iso,
+            }
+            if existing_open:
+                connection.execute(
+                    AgentCanvasGuidedInteractionRow.__table__.update()
+                    .where(AgentCanvasGuidedInteractionRow.interaction_id == interaction_id)
+                    .values(
+                        **interaction_values,
+                        revision=int(existing["revision"] or 1) + 1,
+                    )
                 )
-            )
+            else:
+                connection.execute(
+                    AgentCanvasGuidedInteractionRow.__table__.update()
+                    .where(
+                        AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                        AgentCanvasGuidedInteractionRow.status == "open",
+                    )
+                    .values(status="superseded", updated_at=now_iso)
+                )
+                connection.execute(
+                    AgentCanvasGuidedInteractionRow.__table__.insert().values(
+                        interaction_id=interaction_id,
+                        **interaction_values,
+                        revision=1,
+                        created_at=now_iso,
+                    )
+                )
             connection.execute(
                 AgentCanvasGuidanceAwaitingRow.__table__.insert().values(
                     awaiting_id=awaiting.awaiting_id,
@@ -215,7 +260,9 @@ class BrandGuidedInteractionBridge:
                 )
             )
 
-    def close_current_interaction(self, workflow_id: str) -> None:
+    def close_current_interaction(
+        self, workflow_id: str, *, status: Literal["submitted", "superseded"] = "submitted"
+    ) -> None:
         """Close the open interaction and awaiting for one workflow."""
 
         now_iso = _now_iso()
@@ -226,10 +273,27 @@ class BrandGuidedInteractionBridge:
                     AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
                     AgentCanvasGuidedInteractionRow.status == "open",
                 )
-                .values(status="submitted", updated_at=now_iso)
+                .values(status=status, updated_at=now_iso)
             )
             connection.execute(
                 AgentCanvasGuidanceAwaitingRow.__table__.delete().where(
                     AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
                 )
             )
+
+
+def _brand_interaction_context(stage: str, response_locale: str) -> str:
+    """Render the short interaction context in the persisted response locale."""
+
+    if response_locale.lower().startswith("zh"):
+        stage_labels = {
+            "brand-memory": "品牌记忆",
+            "campaign": "营销方向",
+            "hypothesis": "创意假设",
+            "adspec": "广告规格",
+            "skill-stack": "技能组合",
+            "treatment": "创意方案",
+            "production": "制作",
+        }
+        return f"品牌专业模式：请选择{stage_labels.get(stage, stage)}阶段的方向"
+    return f"Brand professional mode selection for stage {stage}"

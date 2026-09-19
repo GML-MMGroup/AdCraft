@@ -63,6 +63,7 @@ class SourceTurnReplyPublicationV1(BaseModel):
 
     content: str = Field(min_length=1, max_length=2_000)
     response_locale: BCP47Tag
+    intent_mode: str | None = None
 
     @field_validator("content", mode="before")
     @classmethod
@@ -279,6 +280,11 @@ class CapabilityDispatchService:
                             "response_locale": source_reply.response_locale,
                             "presentation_key": f"source-reply:{envelope_id}",
                             "dispatch_identity": envelope_id,
+                            **(
+                                {"intent_mode": source_reply.intent_mode}
+                                if source_reply.intent_mode is not None
+                                else {}
+                            ),
                         },
                     )
                 connection.execute(
@@ -461,6 +467,7 @@ def _validate_existing_source_reply(
         or str(row["speaker"]) != "adcraft_video_agent"
         or str(row["content"]) != source_reply.content
         or metadata.get("response_locale") != source_reply.response_locale
+        or metadata.get("intent_mode") != source_reply.intent_mode
     ):
         raise V2PersistenceError(
             "capability_source_reply_conflict",

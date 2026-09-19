@@ -8,10 +8,12 @@ anything is persisted, and appends the decision log in the same transaction.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
+import json
 from typing import Literal, cast
 from uuid import uuid4
 
-from sqlalchemy import text as sql_text
+from sqlalchemy import select, text as sql_text
 
 from app.core.config import Settings, get_settings
 from app.persistence.brand_decision_repository import BrandDecisionRepository
@@ -21,6 +23,7 @@ from app.schemas.brand_professional_mode import (
     BrandDecisionLogEntryV1,
     BrandJourneyStateV1,
     BrandOptionCardV1,
+    BrandShortOptionV1,
     BrandSlotValueV1,
     BrandStage,
     BrandStrategyOutputV1,
@@ -30,8 +33,11 @@ from app.schemas.brand_professional_mode import (
     CreativeTreatmentOutputV1,
     CreativeTreatmentStepOutputV1,
     SlotProvenance,
+    SkillStackEntryV1,
+    SkillStackV1,
     TreatmentStepResultV1,
 )
+from app.persistence.models import BrandOptionCardRow
 from app.services.brand_journey_state import (
     TREATMENT_SUBSTEP_ORDER,
     advance_brand_stage,
@@ -83,7 +89,27 @@ class BrandCapabilityInvocationService:
                     ),
                     {"workflow_id": workflow_id},
                 ).first()
-            return str(row[0]) if row and row[0] else "und"
+                if row and row[0] and str(row[0]) != "und":
+                    return str(row[0])
+                metadata_rows = connection.execute(
+                    sql_text(
+                        "SELECT metadata_json FROM agent_canvas_chat_entries "
+                        "WHERE workflow_id = :workflow_id "
+                        "AND entry_type = 'message' "
+                        "AND speaker = 'adcraft_video_agent' "
+                        "ORDER BY sequence_no DESC LIMIT 32"
+                    ),
+                    {"workflow_id": workflow_id},
+                ).scalars()
+                for metadata_json in metadata_rows:
+                    try:
+                        metadata = json.loads(str(metadata_json))
+                    except json.JSONDecodeError:
+                        continue
+                    locale = metadata.get("response_locale") if isinstance(metadata, dict) else None
+                    if isinstance(locale, str) and locale and locale != "und":
+                        return locale
+                return str(row[0]) if row and row[0] else "und"
         except Exception:  # noqa: BLE001 - locale lookup is best-effort
             return "und"
 
@@ -133,6 +159,7 @@ class BrandCapabilityInvocationService:
         if card is None:
             raise _card_invalid("Brand strategy output requires one question card.")
         _validate_card(card, stage)
+        card = self._namespace_colliding_card_id(brand_id, card)
         validate_slot_values(output.slot_values)
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
@@ -151,6 +178,23 @@ class BrandCapabilityInvocationService:
                 now=now,
             )
         return card
+
+    def _namespace_colliding_card_id(
+        self,
+        brand_id: str,
+        card: BrandOptionCardV1,
+    ) -> BrandOptionCardV1:
+        """Prevent model-provided card IDs from colliding across brands."""
+
+        with self._database.engine.connect() as connection:
+            owner = connection.execute(
+                select(BrandOptionCardRow.brand_id).where(
+                    BrandOptionCardRow.card_id == card.card_id
+                )
+            ).scalar_one_or_none()
+        if owner is None or str(owner) == brand_id:
+            return card
+        return card.model_copy(update={"card_id": f"{brand_id}_{card.card_id}"})
 
     # ---- Slot selection ----------------------------------------------------
 
@@ -275,7 +319,184 @@ class BrandCapabilityInvocationService:
                 connection, brand_id, advance_brand_stage(journey)
             )
 
+    # ---- Skill stack -------------------------------------------------------
+
+    def run_skill_stack_question(self, brand_id: str) -> BrandOptionCardV1:
+        """Persist a recommended skill stack and expose its confirmation card."""
+
+        journey = self._repository.get_journey(brand_id)
+        if journey is None or journey.stage != "skill-stack":
+            raise _stage_mismatch()
+        if self._repository.get_skill_stack(brand_id) is None:
+            stack = self._recommended_skill_stack(brand_id)
+            now = datetime.now(timezone.utc)
+            with self._database.engine.begin() as connection:
+                self._repository.replace_skill_stack_in_transaction(connection, brand_id, stack)
+                self._append_log(
+                    connection,
+                    brand_id=brand_id,
+                    stage="skill-stack",
+                    action="recommend",
+                    target_type="skill_stack",
+                    target_id=None,
+                    detail={"entry_count": len(stack.entries)},
+                    now=now,
+                )
+        card = BrandOptionCardV1(
+            card_id=f"{brand_id}_skill_stack_{journey.stage_revision}",
+            stage="skill-stack",
+            stage_revision=journey.stage_revision,
+            target_slot_id=None,
+            question=self._skill_stack_question(brand_id),
+            options=self._skill_stack_options(brand_id),
+        )
+        _validate_card(card, "skill-stack")
+        with self._database.engine.begin() as connection:
+            self._repository.save_option_card_in_transaction(connection, brand_id, card)
+        return card
+
+    def apply_skill_stack_selection(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        option_id: str,
+    ) -> None:
+        """Confirm the recommended stack and advance to the treatment stage."""
+
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "skill-stack":
+                raise _stage_mismatch()
+            if not any(option.option_id == option_id for option in card.options):
+                raise _card_invalid("Selected option is not on the open card.")
+            self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="skill-stack",
+                action="confirm",
+                target_type="skill_stack",
+                target_id=option_id,
+                detail={"card_id": card_id},
+                now=now,
+            )
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None:
+                raise _not_found()
+            self._repository.save_journey_in_transaction(
+                connection, brand_id, advance_brand_stage(journey)
+            )
+
+    def _recommended_skill_stack(self, brand_id: str) -> SkillStackV1:
+        """Choose deterministic creative and audiovisual skills from current decisions."""
+
+        with self._database.engine.connect() as connection:
+            hypotheses = self._repository.get_hypotheses_in_transaction(connection, brand_id)
+            selected_id = self._repository.get_selected_hypothesis_id_in_transaction(
+                connection, brand_id
+            )
+        selected = next((item for item in hypotheses if item.candidate_id == selected_id), None)
+        haystack = " ".join(
+            (selected.label, selected.mechanism, selected.hypothesis) if selected else ()
+        ).lower()
+        catalog = self._repository.list_creative_skills()
+        methods = tuple(item for item in catalog if item["skill_kind"] == "creative_method")
+        matching = next(
+            (
+                item
+                for item in methods
+                if str(item["skill_id"]).replace("-", " ") in haystack
+                or str(item["title"]).lower() in haystack
+            ),
+            methods[0] if methods else None,
+        )
+        entries: list[SkillStackEntryV1] = []
+        if matching is not None:
+            entries.append(
+                SkillStackEntryV1(
+                    skill_kind="creative_method",
+                    skill_id=str(matching["skill_id"]),
+                    title=str(matching["title"]),
+                )
+            )
+        style = next(
+            (
+                value.value
+                for value in self._repository.get_slot_values(brand_id)
+                if value.slot_id == "adspec_creative_style"
+            ),
+            None,
+        )
+        if style:
+            entries.append(
+                SkillStackEntryV1(
+                    skill_kind="audiovisual_style",
+                    skill_id=f"style_{sha256(style.encode()).hexdigest()[:12]}",
+                    title=style,
+                )
+            )
+        return SkillStackV1(entries=tuple(entries))
+
+    def _skill_stack_question(self, brand_id: str) -> str:
+        if self._workflow_response_locale(brand_id).lower().startswith("zh"):
+            return "请确认当前推荐的创意方法与视听风格组合，确认后进入创意方案。"
+        return "Please confirm the recommended creative method and audiovisual style stack."
+
+    def _skill_stack_options(self, brand_id: str) -> tuple[BrandShortOptionV1, ...]:
+        if self._workflow_response_locale(brand_id).lower().startswith("zh"):
+            return (
+                BrandShortOptionV1(
+                    option_id="confirm", label="确认推荐组合", why="按当前策略进入创意方案"
+                ),
+                BrandShortOptionV1(
+                    option_id="adjust", label="稍后再调整", why="先保留组合并继续后续创意方案"
+                ),
+                BrandShortOptionV1(
+                    option_id="delegate", label="交给 Agent 优化", why="由 Agent 按品牌目标优化组合"
+                ),
+            )
+        return (
+            BrandShortOptionV1(
+                option_id="confirm",
+                label="Confirm stack",
+                why="Continue with the recommended stack",
+            ),
+            BrandShortOptionV1(
+                option_id="adjust", label="Adjust later", why="Keep the stack and continue"
+            ),
+            BrandShortOptionV1(
+                option_id="delegate",
+                label="Let Agent optimize",
+                why="Optimize for the campaign goal",
+            ),
+        )
+
     # ---- Treatment ---------------------------------------------------------
+
+    def prepare_treatment_confirmation(self, brand_id: str) -> bool:
+        """Stop completed treatment questions while retaining every user decision."""
+
+        with self._database.engine.begin() as connection:
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None or journey.stage != "treatment":
+                return False
+            steps = self._repository.get_treatment_steps_in_transaction(connection, brand_id)
+            if not set(TREATMENT_SUBSTEP_ORDER).issubset(step.step_key for step in steps):
+                return False
+            connection.execute(
+                BrandOptionCardRow.__table__.update()
+                .where(BrandOptionCardRow.brand_id == brand_id, BrandOptionCardRow.status == "open")
+                .values(status="superseded")
+            )
+            if journey.stage_status != "waiting_user":
+                self._repository.save_journey_in_transaction(
+                    connection,
+                    brand_id,
+                    journey.model_copy(update={"stage_status": "waiting_user"}),
+                )
+            return True
 
     def run_treatment_step(
         self,
@@ -287,6 +508,12 @@ class BrandCapabilityInvocationService:
         journey = self._repository.get_journey(brand_id)
         if journey is None or journey.stage != "treatment":
             raise _stage_mismatch()
+        if self.prepare_treatment_confirmation(brand_id):
+            raise V2PersistenceError(
+                "brand_treatment_confirmation_required",
+                "All treatment decisions are confirmed. Confirm the treatment lock to continue.",
+                stage="brand_capability_invocation",
+            )
         if output is None:
             spec = StructuredGenerationSpec[CreativeTreatmentOutputV1](
                 stage_name="brand_treatment_step",
@@ -395,6 +622,11 @@ class BrandCapabilityInvocationService:
                     stage="brand_capability_invocation",
                 )
             locked = advance_brand_stage(journey)
+            connection.execute(
+                BrandOptionCardRow.__table__.update()
+                .where(BrandOptionCardRow.brand_id == brand_id, BrandOptionCardRow.status == "open")
+                .values(status="superseded")
+            )
             self._repository.save_journey_in_transaction(connection, brand_id, locked)
             self._append_log(
                 connection,

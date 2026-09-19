@@ -57,7 +57,13 @@ class BrandGuidedInteractionSubmitter:
         custom_text = request.custom_text or ""
         action_id = content.action_id
 
-        if "hypothesis" in content.capability_id:
+        if "skill-stack" in content.capability_id:
+            self._brand_service.apply_skill_stack_selection(
+                brand_id,
+                card_id=action_id,
+                option_id=option_id or "delegate",
+            )
+        elif "hypothesis" in content.capability_id:
             self._brand_service.apply_hypothesis_selection(brand_id, option_id)
         elif "treatment" in content.capability_id:
             selected_label = custom_text or self._option_label(content, option_id)

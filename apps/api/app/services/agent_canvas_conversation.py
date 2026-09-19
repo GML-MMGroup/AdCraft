@@ -36,12 +36,14 @@ from app.persistence.agent_canvas_capability_proposal_repository import (
 )
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
 )
+from app.schemas.brand_professional_mode import BrandJourneyStateV1
 from app.schemas.agent_canvas_conversation import (
     ChatTimelineListResponseV2,
     ChatTurnAcceptedV2,
@@ -1380,6 +1382,7 @@ class AgentConversationService:
         production_journey: GuidedProductionJourneyService | None = None,
     ) -> None:
         self._workflows = workflows
+        self._brand_decisions = BrandDecisionRepository(workflows.database)
         self._conversations = conversations
         self._nodes = nodes
         self._gateway = gateway
@@ -1794,6 +1797,25 @@ class AgentConversationService:
             ),
             turn_id=turn_id,
         )
+
+        def complete_message(
+            message: str | None,
+            *,
+            metadata: Mapping[str, object] | None = None,
+        ) -> ChatTurnV2:
+            assistant_metadata: dict[str, object] = {}
+            if intent.mode != "ordinary_conversation":
+                assistant_metadata["intent_mode"] = intent.mode
+                assistant_metadata["response_locale"] = intent.response_locale
+            if metadata:
+                assistant_metadata.update(metadata)
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                message,
+                assistant_metadata=assistant_metadata,
+            )
+
         requirement_changed = False
         if intent.requirement_patch is not None or intent.explicit_elements:
             applied = self._requirements.apply_user_turn_patch(
@@ -1846,11 +1868,9 @@ class AgentConversationService:
                 intent,
                 workflow_context=workflow_context,
             )
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 reply.message,
-                assistant_metadata={
+                metadata={
                     "answer_kind": reply.answer_kind,
                     "ordinary_intent_kind": ordinary_intent.intent_kind,
                     **(
@@ -1869,6 +1889,12 @@ class AgentConversationService:
                     ),
                 },
             )
+        if intent.mode == "guided_production":
+            brand_journey = self._brand_journey_for_workflow(turn.workflow_id)
+            if brand_journey is not None and brand_journey.stage != "production":
+                return complete_message(
+                    self._brand_gate_message(intent.response_locale),
+                )
         session = existing_session
         if session is None:
             decisions = tuple(
@@ -1956,6 +1982,10 @@ class AgentConversationService:
                 interaction_context=(
                     "Confirm the total duration before time-dependent authoring begins."
                 ),
+                assistant_metadata={
+                    "intent_mode": intent.mode,
+                    "response_locale": intent.response_locale,
+                },
             )
         clarification_required = bool(requirements.ledger.unresolved_conflicts) or (
             intent.mode == "guided_production"
@@ -1996,11 +2026,13 @@ class AgentConversationService:
                 transition_key=(
                     f"intake-clarification:{turn_id}:requirements:{requirements.revision_id}"
                 ),
+                assistant_metadata={
+                    "intent_mode": intent.mode,
+                    "response_locale": intent.response_locale,
+                },
             )
         if requirements.ledger.unresolved_conflicts:
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 intent.assistant_message or "Please clarify the conflicting campaign requirements.",
             )
         if (
@@ -2009,7 +2041,7 @@ class AgentConversationService:
             and intent.assistant_message is not None
             and session.journey.stage == "intake"
         ):
-            return self._complete_turn(turn_id, turn.workflow_id, intent.assistant_message)
+            return complete_message(intent.assistant_message)
         if (
             intent.mode == "guided_production"
             and session.journey.stage == "intake"
@@ -2054,9 +2086,7 @@ class AgentConversationService:
             stage=session.journey.stage,
             stage_revision=session.journey.stage_revision,
         ):
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 "Please complete the current guided interaction before continuing production.",
             )
         journey_capability = None
@@ -2113,12 +2143,10 @@ class AgentConversationService:
                     # with the same notice. Re-publishing it on each poll only
                     # spams the timeline; finish this poll silently until the
                     # user resolves the nodes or sends a new message.
-                    return self._complete_turn(turn_id, turn.workflow_id, None)
-                return self._complete_turn(turn_id, turn.workflow_id, message)
+                    return complete_message(None)
+                return complete_message(message)
             if journey_action.action == "complete":
-                return self._complete_turn(
-                    turn_id,
-                    turn.workflow_id,
+                return complete_message(
                     "Guided production is complete.",
                 )
             if journey_action.action != "invoke_capability":
@@ -2161,9 +2189,7 @@ class AgentConversationService:
         )
         if intent.mode in {"targeted_authoring", "quick_media"}:
             if intent.requested_capability is None:
-                return self._complete_turn(
-                    turn_id,
-                    turn.workflow_id,
+                return complete_message(
                     intent.assistant_message or "Choose a creative capability to continue.",
                 )
             command = self._capability_policy.validate_next_action(
@@ -2185,9 +2211,7 @@ class AgentConversationService:
                 policy,
             )
         if command.command.action in {"ask_user", "reply"}:
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 command.command.message or "Please provide more direction.",
             )
         if command.command.action == "author_decision_bundle":
@@ -2207,9 +2231,7 @@ class AgentConversationService:
                 source_turn_id=turn_id,
                 draft=draft,
             )
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 f"Decision Bundle ready: {bundle.title}",
             )
         if command.command.action == "finish":
@@ -2221,9 +2243,7 @@ class AgentConversationService:
                     delivery="ready",
                 ),
             )
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 command.command.message or "Guided production is complete.",
             )
         reference_plan = self._reference_planner.plan(
@@ -2276,12 +2296,28 @@ class AgentConversationService:
                 SourceTurnReplyPublicationV1(
                     content=intent.assistant_message,
                     response_locale=intent.response_locale,
+                    intent_mode=intent.mode,
                 )
                 if intent.assistant_message is not None
                 else None
             ),
         )
         return self._conversations.get_turn(turn_id)
+
+    def _brand_journey_for_workflow(self, workflow_id: str) -> BrandJourneyStateV1 | None:
+        project_id = self._brand_decisions.project_id_for_workflow(workflow_id)
+        if project_id is None:
+            return None
+        brand_id = self._brand_decisions.get_brand_id_by_project(project_id)
+        if brand_id is None:
+            return None
+        return self._brand_decisions.get_journey(brand_id)
+
+    @staticmethod
+    def _brand_gate_message(response_locale: str) -> str:
+        if response_locale.lower().startswith("zh"):
+            return "好的，我们先完成品牌信息与品牌专业模式，再开始广告创作。请先回答当前品牌问题。"
+        return "Let’s complete the brand information and Brand Professional Mode before starting ad production. Please answer the current brand question first."
 
     def _apply_targeted_authoring_command(
         self,
