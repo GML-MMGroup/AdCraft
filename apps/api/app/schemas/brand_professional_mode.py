@@ -134,6 +134,42 @@ class SkillStackEntryV1(_BrandModel):
     skill_id: str = Field(min_length=1, max_length=120)
     title: str = Field(min_length=1, max_length=160)
     selected: bool = True
+    version: str | None = Field(default=None, min_length=1, max_length=80)
+    reason: str | None = Field(default=None, min_length=1, max_length=600)
+
+
+class BrandSkillReferenceV1(_BrandModel):
+    skill_id: str = Field(min_length=1, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+
+
+class BrandSkillRecommendationV1(BrandSkillReferenceV1):
+    reason: str = Field(min_length=1, max_length=600)
+
+
+class BrandSkillRecommendationsV1(_BrandModel):
+    creative_methods: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=1, max_length=7)
+    audiovisual_styles: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=3, max_length=3)
+
+
+class BrandCreativeMethodV1(BrandSkillReferenceV1):
+    skill_kind: Literal["creative_method"] = "creative_method"
+    title: str
+    summary: str
+
+
+class BrandCreativeMethodCatalogV1(_BrandModel):
+    items: tuple[BrandCreativeMethodV1, ...]
+
+
+class BrandSkillSelectionRequestV1(_BrandModel):
+    """Save a user draft or explicitly confirm it; never infer choices from prose."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    expected_stage_revision: int = Field(ge=1)
+    creative_methods: tuple[BrandSkillReferenceV1, ...] = Field(min_length=1, max_length=7)
+    audiovisual_style: BrandSkillReferenceV1
+    confirm: bool = False
 
 
 class SkillStackV1(_BrandModel):

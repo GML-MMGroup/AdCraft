@@ -196,6 +196,8 @@ class BrandSkillStackRow(Base):
     skill_id: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 

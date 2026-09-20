@@ -535,6 +535,8 @@ class BrandDecisionRepository:
                     skill_id=entry.skill_id,
                     title=entry.title,
                     selected=entry.selected,
+                    version=entry.version,
+                    reason=entry.reason,
                     updated_at=_now(),
                 )
             )
@@ -556,6 +558,8 @@ class BrandDecisionRepository:
                     skill_id=row.skill_id,
                     title=row.title,
                     selected=row.selected,
+                    version=row.version,
+                    reason=row.reason,
                 )
                 for row in rows
             )
