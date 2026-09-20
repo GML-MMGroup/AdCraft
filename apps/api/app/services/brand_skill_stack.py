@@ -53,13 +53,24 @@ class BrandSkillStackService:
         }
 
     def treatment_context(self, brand_id: str, substep: str | None) -> dict[str, object]:
+        with self._database.engine.connect() as connection:
+            hypotheses = self._repository.get_hypotheses_in_transaction(connection, brand_id)
+            selected_id = self._repository.get_selected_hypothesis_id_in_transaction(
+                connection, brand_id
+            )
+            adspec = self._repository.get_adspec_in_transaction(connection, brand_id)
+            steps = self._repository.get_treatment_steps_in_transaction(connection, brand_id)
+        hypothesis = next((item for item in hypotheses if item.candidate_id == selected_id), None)
+        context: dict[str, object] = {
+            "selected_hypothesis": hypothesis.model_dump(mode="json") if hypothesis else None,
+            "adspec": adspec.model_dump(mode="json") if adspec else None,
+            "confirmed_treatment_steps": [step.model_dump(mode="json") for step in steps],
+        }
         stack = self._repository.get_skill_stack(brand_id)
         if stack is None:
-            return {}
+            return context
         selected = tuple(entry for entry in stack.entries if entry.selected)
-        context: dict[str, object] = {
-            "skill_stack": SkillStackV1(entries=selected).model_dump(mode="json")
-        }
+        context["skill_stack"] = SkillStackV1(entries=selected).model_dump(mode="json")
         workflow_id = self._repository.workflow_id_for_brand(brand_id)
         if workflow_id is None or not any(entry.version for entry in selected):
             return context
