@@ -267,6 +267,7 @@ export function AgentCanvasPage() {
   const [brandDecisions, setBrandDecisions] = useState<BrandDecisionPanelV1 | null>(null);
   const [brandDecisionsRefreshing, setBrandDecisionsRefreshing] = useState(false);
   const [brandDecisionsResolved, setBrandDecisionsResolved] = useState(false);
+  const [brandSkillsWorkflowId, setBrandSkillsWorkflowId] = useState<string | null>(null);
   const brandWorkflowId = workflow?.workflow_id ?? null;
   const refreshBrandDecisions = useCallback(async () => {
     if (!brandWorkflowId) return null;
@@ -1361,6 +1362,7 @@ export function AgentCanvasPage() {
         <BrandDecisionPanel
           decisions={brandDecisions}
           refreshing={brandDecisionsRefreshing}
+          onChooseSkills={() => setBrandSkillsWorkflowId(brandDecisions.workflow_id)}
           onRefresh={() => {
             void refreshBrandDecisions();
           }}
@@ -1728,6 +1730,11 @@ export function AgentCanvasPage() {
           onAssetsRefresh={refreshAssets}
           brandMode={brandDecisions?.mode === "brand"}
           brandStage={brandDecisions?.journey.stage ?? null}
+          brandDecisions={brandDecisions}
+          brandSkillPickerOpen={brandSkillsWorkflowId === workflow.workflow_id}
+          onBrandSkillPickerOpen={() => setBrandSkillsWorkflowId(workflow.workflow_id)}
+          onBrandSkillPickerClose={() => setBrandSkillsWorkflowId(null)}
+          onBrandDecisionsUpdated={setBrandDecisions}
           brandContextReady={Boolean(
             !brandWorkflowId
             || (

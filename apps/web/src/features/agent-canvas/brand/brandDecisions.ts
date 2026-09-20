@@ -59,6 +59,27 @@ export interface BrandSkillStackEntryV1 {
   skill_id: string;
   title: string;
   selected: boolean;
+  version: string | null;
+  reason: string | null;
+}
+
+export interface BrandSkillIdentity {
+  skill_id: string;
+  version: string;
+}
+
+export interface BrandCreativeMethod extends BrandSkillIdentity {
+  skill_kind: "creative_method";
+  title: string;
+  summary: string;
+}
+
+export interface BrandSkillSelectionRequest {
+  card_id: string;
+  expected_stage_revision: number;
+  creative_methods: BrandSkillIdentity[];
+  audiovisual_style: BrandSkillIdentity;
+  confirm: boolean;
 }
 
 export interface BrandTreatmentStepResultV1 {

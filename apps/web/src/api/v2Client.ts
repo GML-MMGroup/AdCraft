@@ -171,6 +171,7 @@ import type {
   BrandDecisionPanelV1,
   BrandInspectionConversationTurnV1,
   BrandJourneyStateV1,
+  BrandSkillSelectionRequest,
 } from "../features/agent-canvas/brand/brandDecisions.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
@@ -211,6 +212,7 @@ import {
 } from "../features/agent-canvas/model/normalizers.ts";
 import {
   normalizeBrandJourneyStateV1,
+  normalizeBrandCreativeMethods,
   normalizeBrandDecisionPanelV1,
   normalizeBrandOptionCardV1,
   normalizeBrandInspectionConversation,
@@ -625,6 +627,18 @@ export const v2Api = {
     return requestV2(
       `/brand/decisions?${query.toString()}`,
       {},
+      normalizeBrandDecisionPanelV1,
+    );
+  },
+
+  brandCreativeMethodSkills() {
+    return requestV2("/brand/creative-method-skills", {}, normalizeBrandCreativeMethods);
+  },
+
+  brandSelectSkills(workflowId: string, body: BrandSkillSelectionRequest): Promise<BrandDecisionPanelV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-skills`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
       normalizeBrandDecisionPanelV1,
     );
   },

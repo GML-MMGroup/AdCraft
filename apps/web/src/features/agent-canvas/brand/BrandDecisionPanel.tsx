@@ -52,10 +52,12 @@ export function BrandDecisionPanel({
   decisions,
   refreshing,
   onRefresh,
+  onChooseSkills,
 }: {
   decisions: BrandDecisionPanelV1;
   refreshing: boolean;
   onRefresh: () => void;
+  onChooseSkills?: () => void;
 }) {
   const [collapsedStages, setCollapsedStages] = useState<ReadonlySet<BrandStageV2>>(
     () => new Set(),
@@ -210,6 +212,7 @@ export function BrandDecisionPanel({
                                 <li key={entry.skill_id}>
                                   <span aria-hidden="true">{entry.selected ? "☑" : "☐"}</span>
                                   {entry.title}
+                                  {entry.reason ? <p className="brand-decision-panel__option-why">{entry.reason}</p> : null}
                                 </li>
                               ))}
                             </ul>
@@ -217,6 +220,11 @@ export function BrandDecisionPanel({
                         );
                       })}
                     </div>
+                  ) : null}
+                  {stage === "skill-stack" && isCurrent && onChooseSkills ? (
+                    <button type="button" className="brand-decision-panel__option"
+                      disabled={refreshing || decisions.open_card?.stage !== "skill-stack"}
+                      onClick={onChooseSkills}>选择 Skills / Choose Skills</button>
                   ) : null}
                   {stage === "treatment" && decisions.treatment_steps.length > 0 ? (
                     <>

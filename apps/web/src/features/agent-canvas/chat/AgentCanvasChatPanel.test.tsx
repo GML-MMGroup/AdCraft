@@ -2080,6 +2080,21 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit guided direction" }));
   }
 
+  it("opens brand Skill adjustment without submitting the old chat choice", () => {
+    const interaction = directionInteraction();
+    if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
+    interaction.content = { ...interaction.content, capability_id: "brand_skill-stack", options: [{ ...interaction.content.options[0], option_id: "adjust", title: "调整 Skills" }] };
+    const chat = mockChatResult();
+    chat.state.guidedInteraction = interaction;
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const onOpen = vi.fn();
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
+      brandMode brandStage="skill-stack" onBrandSkillPickerOpen={onOpen} />);
+    fireEvent.click(screen.getByRole("radio", { name: /调整 Skills/ }));
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
+  });
+
   it("removes the submitted card and overlay during acceptance without a replacement notice", async () => {
     const { chat, rerender } = renderPanelWithInteraction(directionInteraction());
     let accept!: (accepted: boolean) => void;

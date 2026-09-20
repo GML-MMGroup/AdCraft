@@ -41,6 +41,8 @@ export const agentCanvasApi = {
   agentCanvasDocument: v2Api.agentCanvasDocument,
   submitAgentCanvasGuidedInteraction: v2Api.submitAgentCanvasGuidedInteraction,
   brandDecisions: v2Api.brandDecisions,
+  brandCreativeMethodSkills: v2Api.brandCreativeMethodSkills,
+  brandSelectSkills: v2Api.brandSelectSkills,
   brandNextQuestion: v2Api.brandNextQuestion,
   brandLockTreatment: v2Api.brandLockTreatment,
   submitAgentCanvasChatMessage: v2Api.submitAgentCanvasChatMessage,
