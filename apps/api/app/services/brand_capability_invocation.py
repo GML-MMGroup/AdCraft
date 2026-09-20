@@ -60,6 +60,7 @@ from app.services.creative_method_skill_catalog import (
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
+    StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
 
@@ -750,7 +751,15 @@ class BrandCapabilityInvocationService:
             },
             trace_metadata={"workflow_id": self._repository.workflow_id_for_brand(brand_id)},
         )
-        return skills.recommendation_stack(self._runtime.run(spec).output)
+        try:
+            output = self._runtime.run(spec).output
+        except StructuredGenerationRuntimeError as error:
+            raise V2PersistenceError(
+                "brand_skill_recommendation_unavailable",
+                "Skill recommendations are unavailable. Retry the current step.",
+                stage="brand_skill_recommendation",
+            ) from error
+        return skills.recommendation_stack(output)
 
     def creative_method_catalog(self) -> BrandCreativeMethodCatalogV1:
         return BrandSkillStackService(self._database).creative_method_catalog()

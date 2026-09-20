@@ -51,6 +51,7 @@ _STATUS_BY_CODE = {
     "brand_stage_action_mismatch": 409,
     "brand_skill_selection_required": 409,
     "brand_skill_selection_invalid": 422,
+    "brand_skill_recommendation_unavailable": 503,
     "brand_treatment_confirmation_required": 409,
     "brand_journey_terminal_conflict": 409,
     "brand_decision_not_found": 404,
