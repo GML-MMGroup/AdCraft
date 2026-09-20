@@ -30,28 +30,12 @@ _CREATIVE_METHOD_REQUIRED_FIELDS: tuple[str, ...] = (
     "cross_category_examples",
 )
 
-_AUDIOVISUAL_STYLE_REQUIRED_FIELDS: tuple[str, ...] = (
-    "skill_id",
-    "version",
-    "skill_kind",
-    "title",
-    "objective",
-    "visual_principles",
-    "camera",
-    "product_treatment",
-    "editing",
-    "sound",
-    "suitable_cases",
-)
-
 _REQUIRED_FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
     "creative_method": _CREATIVE_METHOD_REQUIRED_FIELDS,
-    "audiovisual_style": _AUDIOVISUAL_STYLE_REQUIRED_FIELDS,
 }
 
 _SUMMARY_FIELD_BY_KIND: dict[str, str] = {
     "creative_method": "core_principle",
-    "audiovisual_style": "objective",
 }
 
 _CROSS_CATEGORY_MIN_EXAMPLES = 2
@@ -61,12 +45,6 @@ def creative_method_seed_dir() -> Path:
     """Return the repository seed directory for creative method skills."""
 
     return Path(__file__).resolve().parents[2] / "seed" / "creative_method_skills"
-
-
-def audiovisual_style_seed_dir() -> Path:
-    """Return the repository seed directory for audiovisual style skills."""
-
-    return Path(__file__).resolve().parents[2] / "seed" / "audiovisual_style_skills"
 
 
 @dataclass(frozen=True)
@@ -119,25 +97,15 @@ class CreativeMethodSkillCatalogService:
         self,
         database: V2Database,
         seed_dir: Path,
-        *,
-        style_seed_dir: Path | None = None,
     ) -> None:
         self._database = database
         self._seed_dir = seed_dir
-        self._style_seed_dir = style_seed_dir
         self._repository = BrandDecisionRepository(database)
-
-    @property
-    def _seed_dirs(self) -> tuple[Path, ...]:
-        dirs = [self._seed_dir]
-        if self._style_seed_dir is not None:
-            dirs.append(self._style_seed_dir)
-        return tuple(dirs)
 
     def import_seeds(self) -> int:
         """Import every seed file once; return the count of new inserts."""
 
-        seeds = sorted(path for directory in self._seed_dirs for path in directory.glob("*.md"))
+        seeds = sorted(self._seed_dir.glob("*.md"))
         inserted = 0
         try:
             with self._database.engine.begin() as connection:
@@ -175,6 +143,7 @@ class CreativeMethodSkillCatalogService:
                 "summary": row["summary"],
             }
             for row in rows
+            if row["skill_kind"] == "creative_method"
         )
 
 
