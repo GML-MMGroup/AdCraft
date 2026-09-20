@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal, Mapping, cast
@@ -1154,6 +1155,7 @@ class AgentCanvasConversationRepository:
         public_skill: VideoSkillPublicDetailV2,
         request_fingerprint: str,
         idempotency_key: str,
+        connection: Connection | None = None,
     ) -> VideoSkillRunV2:
         """Atomically activate one verified package and its frozen snapshot."""
 
@@ -1172,9 +1174,13 @@ class AgentCanvasConversationRepository:
                 "Style Skill activation state is inconsistent.",
             )
         now = _now()
+        owns_transaction = connection is None
         try:
-            with self._database.engine.connect() as connection:
-                connection.exec_driver_sql("BEGIN IMMEDIATE")
+            with (
+                self._database.engine.connect() if owns_transaction else nullcontext(connection)
+            ) as connection:
+                if owns_transaction:
+                    connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
                     replay = _load_style_activation_idempotency(
                         connection,
@@ -1182,7 +1188,8 @@ class AgentCanvasConversationRepository:
                         request_fingerprint=request_fingerprint,
                     )
                     if replay is not None:
-                        connection.commit()
+                        if owns_transaction:
+                            connection.commit()
                         return VideoSkillRunV2.model_validate_json(replay)
 
                     _require_workflow(connection, workflow_id)
@@ -1218,7 +1225,8 @@ class AgentCanvasConversationRepository:
                             response_json=result.model_dump_json(),
                             created_at=now,
                         )
-                        connection.commit()
+                        if owns_transaction:
+                            connection.commit()
                         return result
 
                     connection.execute(
@@ -1294,10 +1302,12 @@ class AgentCanvasConversationRepository:
                         response_json=result.model_dump_json(),
                         created_at=now,
                     )
-                    connection.commit()
+                    if owns_transaction:
+                        connection.commit()
                     return result
                 except BaseException:
-                    connection.rollback()
+                    if owns_transaction:
+                        connection.rollback()
                     raise
         except V2PersistenceError:
             raise
