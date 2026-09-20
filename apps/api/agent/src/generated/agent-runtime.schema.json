@@ -7445,6 +7445,268 @@
       "title": "BgmRoleBriefV2",
       "type": "object"
     },
+    "BrandOptionCardV1": {
+      "additionalProperties": false,
+      "description": "Exactly three short options for one slot question or sub-step.",
+      "properties": {
+        "card_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Card Id",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/BrandShortOptionV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "adspec",
+            "brand-memory",
+            "campaign",
+            "hypothesis",
+            "production",
+            "skill-stack",
+            "treatment"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        },
+        "target_slot_id": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Slot Id"
+        }
+      },
+      "required": [
+        "card_id",
+        "options",
+        "question",
+        "stage",
+        "stage_revision"
+      ],
+      "title": "BrandOptionCardV1",
+      "type": "object"
+    },
+    "BrandShortOptionV1": {
+      "additionalProperties": false,
+      "description": "One short option label with an optional collapsed explanation.",
+      "properties": {
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "label",
+        "option_id"
+      ],
+      "title": "BrandShortOptionV1",
+      "type": "object"
+    },
+    "BrandSkillRecommendationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "skill_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "skill_id",
+        "version"
+      ],
+      "title": "BrandSkillRecommendationV1",
+      "type": "object"
+    },
+    "BrandSkillRecommendationsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "audiovisual_styles": {
+          "items": {
+            "$ref": "#/$defs/BrandSkillRecommendationV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Audiovisual Styles",
+          "type": "array"
+        },
+        "creative_methods": {
+          "items": {
+            "$ref": "#/$defs/BrandSkillRecommendationV1"
+          },
+          "maxItems": 7,
+          "minItems": 1,
+          "title": "Creative Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "audiovisual_styles",
+        "creative_methods"
+      ],
+      "title": "BrandSkillRecommendationsV1",
+      "type": "object"
+    },
+    "BrandSlotValueV1": {
+      "additionalProperties": false,
+      "description": "One persisted slot value with decision provenance.",
+      "properties": {
+        "confirmed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed At"
+        },
+        "kind": {
+          "default": "fact",
+          "enum": [
+            "assumption",
+            "constraint",
+            "fact",
+            "preference"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "provenance": {
+          "enum": [
+            "agent_recommended",
+            "user_confirmed"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "slot_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "adspec",
+            "brand-memory",
+            "campaign",
+            "hypothesis",
+            "production",
+            "skill-stack",
+            "treatment"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenance",
+        "slot_id",
+        "stage",
+        "value"
+      ],
+      "title": "BrandSlotValueV1",
+      "type": "object"
+    },
+    "BrandStrategyOutputV1": {
+      "additionalProperties": false,
+      "description": "Structured output of the brand-strategy capability.",
+      "properties": {
+        "question_card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandOptionCardV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "slot_values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotValueV1"
+          },
+          "maxItems": 32,
+          "title": "Slot Values",
+          "type": "array"
+        }
+      },
+      "title": "BrandStrategyOutputV1",
+      "type": "object"
+    },
     "CanvasBindingSourceImageAssetV2": {
       "additionalProperties": false,
       "properties": {
@@ -12756,6 +13018,154 @@
         "summary"
       ],
       "title": "CreativeGoalV2",
+      "type": "object"
+    },
+    "CreativeHypothesisCandidateV1": {
+      "additionalProperties": false,
+      "description": "One candidate creative hypothesis.",
+      "properties": {
+        "candidate_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "hook_mechanism": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Hook Mechanism",
+          "type": "string"
+        },
+        "hypothesis": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "insight": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Insight",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "mechanism": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Mechanism",
+          "type": "string"
+        },
+        "product_role": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Product Role",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "hook_mechanism",
+        "hypothesis",
+        "insight",
+        "label",
+        "mechanism",
+        "product_role"
+      ],
+      "title": "CreativeHypothesisCandidateV1",
+      "type": "object"
+    },
+    "CreativeStrategyOutputV1": {
+      "additionalProperties": false,
+      "description": "Structured output of the creative-strategy capability.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/CreativeHypothesisCandidateV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "CreativeStrategyOutputV1",
+      "type": "object"
+    },
+    "CreativeTreatmentOutputV1": {
+      "additionalProperties": false,
+      "description": "Structured output of the creative-treatment capability.",
+      "properties": {
+        "step": {
+          "$ref": "#/$defs/CreativeTreatmentStepOutputV1"
+        }
+      },
+      "required": [
+        "step"
+      ],
+      "title": "CreativeTreatmentOutputV1",
+      "type": "object"
+    },
+    "CreativeTreatmentStepOutputV1": {
+      "additionalProperties": false,
+      "description": "Three options for one treatment sub-step.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/BrandShortOptionV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "options",
+        "question",
+        "step_key"
+      ],
+      "title": "CreativeTreatmentStepOutputV1",
       "type": "object"
     },
     "DecisionBundleActionAcceptedV1": {
@@ -36843,6 +37253,7 @@
     "CreativeStrategyOutputV1",
     "CreativeTreatmentOutputV1",
     "GuidedScriptCheckpointDraftV1",
+    "BrandSkillRecommendationsV1",
     "WorldSettingMaterializationResultV1",
     "ProductMaterializationResultV1",
     "PropMaterializationResultV1",
@@ -37237,6 +37648,18 @@
       "operation": "materialize_quick_media",
       "result_contract_name": "QuickMediaMaterializationResultV1",
       "style_projection_role": "quick_media",
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_creative_strategy",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_skill_recommendation",
+      "result_contract_name": "BrandSkillRecommendationsV1",
+      "style_projection_role": null,
       "validation_profile": null
     },
     {

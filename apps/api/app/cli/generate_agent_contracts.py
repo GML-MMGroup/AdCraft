@@ -45,12 +45,23 @@ from app.schemas import workflow_v2_prompt_contracts
 from app.schemas import v2_agent_conversations
 from app.schemas import v2_quick_media
 from app.schemas import style_skill_consultation
+from app.schemas import brand_professional_mode
 from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
 from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 CONTRACT_MODELS = (
+    brand_professional_mode.BrandSkillRecommendationV1,
+    brand_professional_mode.BrandSlotValueV1,
+    brand_professional_mode.BrandShortOptionV1,
+    brand_professional_mode.BrandOptionCardV1,
+    brand_professional_mode.CreativeHypothesisCandidateV1,
+    brand_professional_mode.CreativeTreatmentStepOutputV1,
+    brand_professional_mode.BrandSkillRecommendationsV1,
+    brand_professional_mode.BrandStrategyOutputV1,
+    brand_professional_mode.CreativeStrategyOutputV1,
+    brand_professional_mode.CreativeTreatmentOutputV1,
     style_skill_consultation.StyleSkillConsultationQueryV1,
     style_skill_consultation.StyleSkillPublicFactV1,
     style_skill_consultation.StyleSkillConsultationContextV1,
@@ -189,6 +200,7 @@ CONTRACT_MODELS = (
     provider_models.LiteLLMGatewayProjectionV1,
     provider_models.OpenRouterRoutingPolicyV1,
     provider_models.ModelParameterDescriptorV1,
+    provider_models.ImageResolutionCapabilitiesV1,
     provider_models.ModelParameterMatrixV1,
     provider_models.ReferenceInputModeV1,
     provider_models.ReferenceInputPolicyV1,

@@ -59,6 +59,7 @@
         "revise_scene_asset",
         "brand_slot_question",
         "brand_hypothesis",
+        "brand_skill_recommendation",
         "brand_treatment_step"
       ],
       "model_role": "agent"

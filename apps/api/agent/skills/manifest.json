@@ -1,6 +1,21 @@
 {
   "skills": [
     {
+      "path": "brand_agent_brand_strategy/SKILL.md",
+      "sha256": "6b37ffc5274339218a4411c1812fc96e49d1c6593e3d0bebb0913f214b294aac",
+      "skill_id": "brand_agent_brand_strategy"
+    },
+    {
+      "path": "brand_agent_creative_strategy/SKILL.md",
+      "sha256": "d800e84cdf7550a8739f864abacb714d2dbfb18352de8c0575a957f08c6e0b3e",
+      "skill_id": "brand_agent_creative_strategy"
+    },
+    {
+      "path": "brand_agent_creative_treatment/SKILL.md",
+      "sha256": "99dc0bc0b8fb0a0b1d1127d50e9b23b3874cc1c0ca1a481e7930a77919d2a199",
+      "skill_id": "brand_agent_creative_treatment"
+    },
+    {
       "path": "video_agent_bgm_direction/SKILL.md",
       "sha256": "3100e5e08ddf9462f814770c861df5f8ef0e28b02b14685da20956f25e4a26c8",
       "skill_id": "video_agent_bgm_direction"

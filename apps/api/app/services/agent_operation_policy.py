@@ -53,6 +53,7 @@ _ROUTING_OPERATIONS = {
     "workflow_creation",
 }
 _PROPOSAL_OPERATIONS = {
+    "brand_skill_recommendation",
     "author_decision_bundle",
     "author_role_brief",
     "bgm_expert_brief",

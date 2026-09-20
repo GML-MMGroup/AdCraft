@@ -39,6 +39,7 @@ from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 from app.schemas.brand_professional_mode import (
     BrandStrategyOutputV1,
+    BrandSkillRecommendationsV1,
     CreativeStrategyOutputV1,
     CreativeTreatmentOutputV1,
 )
@@ -169,6 +170,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     CreativeStrategyOutputV1,
     CreativeTreatmentOutputV1,
     GuidedScriptCheckpointDraftV1,
+    BrandSkillRecommendationsV1,
     *CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS.values(),
 )
 

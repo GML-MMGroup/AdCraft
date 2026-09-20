@@ -2,6 +2,26 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
+export type BrandSkillRecommendationV1 = { readonly "skill_id": string; readonly "version": string; readonly "reason": string };
+
+export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };
+
+export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null };
+
+export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
+
+export type CreativeHypothesisCandidateV1 = { readonly "candidate_id": string; readonly "label": string; readonly "insight": string; readonly "mechanism": string; readonly "hypothesis": string; readonly "product_role": string; readonly "hook_mechanism": string; readonly "why"?: string | null };
+
+export type CreativeTreatmentStepOutputV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
+
+export type BrandSkillRecommendationsV1 = { readonly "creative_methods": ReadonlyArray<BrandSkillRecommendationV1>; readonly "audiovisual_styles": ReadonlyArray<BrandSkillRecommendationV1> };
+
+export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "question_card"?: BrandOptionCardV1 | null };
+
+export type CreativeStrategyOutputV1 = { readonly "candidates": ReadonlyArray<CreativeHypothesisCandidateV1> };
+
+export type CreativeTreatmentOutputV1 = { readonly "step": CreativeTreatmentStepOutputV1 };
+
 export type StyleSkillConsultationQueryV1 = { readonly "scope": "catalog" | "compare" | "current" | "recommend"; readonly "skill_ids"?: ReadonlyArray<string> };
 
 export type StyleSkillPublicFactV1 = { readonly "skill_id": string; readonly "version": string; readonly "title": string; readonly "summary": string; readonly "category": string; readonly "tags"?: ReadonlyArray<string>; readonly "supported_use_cases"?: ReadonlyArray<string> };
@@ -277,6 +297,8 @@ export type LiteLLMGatewayProjectionV1 = { readonly "schema_version"?: "1"; read
 export type OpenRouterRoutingPolicyV1 = { readonly "routing_policy_id": string; readonly "routing_policy_digest": string; readonly "require_parameters": true; readonly "allow_fallbacks": false; readonly "provider_only": ReadonlyArray<"openai"> };
 
 export type ModelParameterDescriptorV1 = { readonly "name": string; readonly "value_type": "boolean" | "enum" | "integer" | "number" | "string"; readonly "required"?: boolean; readonly "allowed_values"?: ReadonlyArray<string>; readonly "minimum"?: number | number | null; readonly "maximum"?: number | number | null; readonly "default"?: unknown | null };
+
+export type ImageResolutionCapabilitiesV1 = { readonly "parameter_modes"?: ReadonlyArray<"resolution_with_aspect_ratio" | "size">; readonly "size_options"?: ReadonlyArray<string>; readonly "resolution_options"?: ReadonlyArray<string>; readonly "aspect_ratio_options"?: ReadonlyArray<string>; readonly "sizes_by_aspect_ratio"?: Readonly<Record<string, string>>; readonly "pixel_bounds"?: ReadonlyArray<unknown> | null; readonly "default_parameters"?: Readonly<Record<string, unknown>> };
 
 export type ModelParameterMatrixV1 = { readonly "schema_id": string; readonly "revision": string; readonly "descriptors": ReadonlyArray<ModelParameterDescriptorV1>; readonly "legal_combinations"?: ReadonlyArray<Readonly<Record<string, unknown>>> };
 
