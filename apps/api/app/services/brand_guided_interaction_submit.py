@@ -65,6 +65,12 @@ class BrandGuidedInteractionSubmitter:
             )
         elif "hypothesis" in content.capability_id:
             self._brand_service.apply_hypothesis_selection(brand_id, option_id)
+        elif "adspec" in content.capability_id:
+            self._brand_service.apply_adspec_selection(
+                brand_id,
+                card_id=action_id,
+                option_id=option_id or "recommended",
+            )
         elif "treatment" in content.capability_id:
             selected_label = custom_text or self._option_label(content, option_id)
             self._brand_service.apply_treatment_selection(

@@ -20,6 +20,7 @@ from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.schemas.brand_professional_mode import (
+    AdSpecItemV1,
     BrandDecisionLogEntryV1,
     BrandJourneyStateV1,
     BrandOptionCardV1,
@@ -58,6 +59,89 @@ from app.services.v2_structured_generation_runtime import (
 )
 
 _LogAction = Literal["select", "reject", "fusion", "recommend", "edit", "confirm", "lock"]
+
+# AdSpec execution dimensions.  These are the downstream choices the contract
+# either fixes, leaves open, or asks the Agent to offer several versions of.
+_ADSPEC_EXECUTION_KEYS: tuple[str, ...] = (
+    "hook",
+    "character",
+    "scene",
+    "product_reveal",
+    "location",
+    "wardrobe",
+    "narration",
+)
+
+_ADSPEC_PRESET_STATES: dict[str, dict[str, str]] = {
+    # PRD 8.6 default: the Agent offers several concrete Hooks, characters,
+    # scenes and product reveals, while execution details stay open.
+    "recommended": {
+        "hook": "variable",
+        "character": "variable",
+        "scene": "variable",
+        "product_reveal": "variable",
+        "location": "open",
+        "wardrobe": "open",
+        "narration": "open",
+    },
+    "locked": {key: "locked" for key in _ADSPEC_EXECUTION_KEYS},
+    "open": {key: "open" for key in _ADSPEC_EXECUTION_KEYS},
+}
+
+_ADSPEC_LABELS: dict[str, dict[str, str]] = {
+    "zh": {
+        "campaign_goal": "广告目标",
+        "audience": "受众",
+        "core_message": "核心信息",
+        "core_insight": "核心洞察",
+        "core_creative": "核心创意",
+        "product_role": "产品角色",
+        "hook_requirement": "Hook 要求",
+        "brand_boundary": "品牌边界",
+        "production_format": "制作规格",
+        "creative_method": "创意方法",
+        "audiovisual_style": "视听风格",
+        "hook": "具体 Hook",
+        "character": "角色",
+        "scene": "场景",
+        "product_reveal": "产品第一次出现方式",
+        "location": "地点",
+        "wardrobe": "服装细节",
+        "narration": "是否使用旁白",
+    },
+    "en": {
+        "campaign_goal": "Advertising goal",
+        "audience": "Audience",
+        "core_message": "Core message",
+        "core_insight": "Core insight",
+        "core_creative": "Core creative",
+        "product_role": "Product role",
+        "hook_requirement": "Hook requirement",
+        "brand_boundary": "Brand boundary",
+        "production_format": "Production format",
+        "creative_method": "Creative method",
+        "audiovisual_style": "Audiovisual style",
+        "hook": "Concrete Hook",
+        "character": "Character",
+        "scene": "Scene",
+        "product_reveal": "Product first appearance",
+        "location": "Location",
+        "wardrobe": "Wardrobe detail",
+        "narration": "Narration",
+    },
+}
+
+
+def _adspec_labels(response_locale: str) -> dict[str, str]:
+    """Return the AdSpec label table for one response locale."""
+
+    if response_locale.lower().startswith("zh"):
+        return _ADSPEC_LABELS["zh"]
+    return _ADSPEC_LABELS["en"]
+
+
+def _adspec_line(label: str, value: str) -> str:
+    return f"{label}: {value}"[:600]
 
 
 class BrandCapabilityInvocationService:
@@ -357,6 +441,190 @@ class BrandCapabilityInvocationService:
         if self._workflow_response_locale(brand_id).lower().startswith("zh"):
             return "哪一个创意假设应该主导这次广告？"
         return "Which creative hypothesis should lead the campaign?"
+
+    # ---- AdSpec ------------------------------------------------------------
+
+    def run_adspec_question(self, brand_id: str) -> BrandOptionCardV1:
+        """Project the confirmed authority into the AdSpec contract and ask to confirm it."""
+
+        journey = self._repository.get_journey(brand_id)
+        if journey is None or journey.stage != "adspec":
+            raise _stage_mismatch()
+        items = self._project_adspec_items(brand_id)
+        now = datetime.now(timezone.utc)
+        card = BrandOptionCardV1(
+            card_id=f"{brand_id}_adspec_{journey.stage_revision}",
+            stage="adspec",
+            stage_revision=journey.stage_revision,
+            target_slot_id=None,
+            question=self._adspec_question(brand_id),
+            options=self._adspec_options(brand_id),
+        )
+        _validate_card(card, "adspec")
+        with self._database.engine.begin() as connection:
+            self._repository.replace_adspec_items_in_transaction(connection, brand_id, items)
+            self._repository.save_option_card_in_transaction(connection, brand_id, card)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="adspec",
+                action="recommend",
+                target_type="adspec",
+                target_id=card.card_id,
+                detail={
+                    "state_counts": {
+                        state: sum(1 for item in items if item.state == state)
+                        for state in ("locked", "open", "variable")
+                    }
+                },
+                now=now,
+            )
+        return card
+
+    def apply_adspec_selection(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        option_id: str,
+    ) -> None:
+        """Apply the chosen execution preset to the AdSpec contract and continue."""
+
+        states = _ADSPEC_PRESET_STATES.get(option_id)
+        if states is None:
+            raise _card_invalid("AdSpec preset is not one of the published options.")
+        now = datetime.now(timezone.utc)
+        with self._database.engine.begin() as connection:
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "adspec":
+                raise _stage_mismatch()
+            if not any(option.option_id == option_id for option in card.options):
+                raise _card_invalid("Selected option is not on the open card.")
+            self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            for item_key, state in states.items():
+                self._repository.update_adspec_item_state_in_transaction(
+                    connection, brand_id, item_key, state
+                )
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="adspec",
+                action="confirm" if option_id == "recommended" else "edit",
+                target_type="adspec",
+                target_id=option_id,
+                detail={"card_id": card_id},
+                now=now,
+            )
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None:
+                raise _not_found()
+            self._repository.save_journey_in_transaction(
+                connection, brand_id, advance_brand_stage(journey)
+            )
+
+    def _project_adspec_items(self, brand_id: str) -> tuple[AdSpecItemV1, ...]:
+        """Derive the creation contract from confirmed brand, campaign and creative authority."""
+
+        labels = _adspec_labels(self._workflow_response_locale(brand_id))
+        with self._database.engine.connect() as connection:
+            slots = {
+                value.slot_id: value.value
+                for value in self._repository.get_slot_values_in_transaction(connection, brand_id)
+            }
+            hypotheses = self._repository.get_hypotheses_in_transaction(connection, brand_id)
+            selected_id = self._repository.get_selected_hypothesis_id_in_transaction(
+                connection, brand_id
+            )
+            stack = self._repository.get_skill_stack_in_transaction(connection, brand_id)
+        selected = next((item for item in hypotheses if item.candidate_id == selected_id), None)
+        items: list[AdSpecItemV1] = []
+
+        def lock(item_key: str, value: str | None) -> None:
+            if not value:
+                return
+            items.append(
+                AdSpecItemV1(
+                    item_key=item_key,
+                    item_text=_adspec_line(labels[item_key], value),
+                    state="locked",
+                )
+            )
+
+        lock("campaign_goal", slots.get("campaign_goal"))
+        lock("audience", slots.get("brand_audience"))
+        lock("core_message", slots.get("brand_positioning"))
+        if selected is not None:
+            lock("core_insight", selected.insight)
+            lock("core_creative", selected.hypothesis)
+            lock("product_role", selected.product_role)
+            lock("hook_requirement", selected.hook_mechanism)
+        lock("brand_boundary", slots.get("brand_avoid"))
+        production_format = " / ".join(
+            value
+            for value in (slots.get("campaign_duration"), slots.get("campaign_aspect_ratio"))
+            if value
+        )
+        lock("production_format", production_format or None)
+        if stack is not None:
+            for skill_kind in ("creative_method", "audiovisual_style"):
+                titles = ", ".join(
+                    entry.title for entry in stack.entries if entry.skill_kind == skill_kind
+                )
+                lock(skill_kind, titles or None)
+        items.extend(
+            AdSpecItemV1(
+                item_key=item_key,
+                item_text=labels[item_key],
+                state=_ADSPEC_PRESET_STATES["recommended"][item_key],
+            )
+            for item_key in _ADSPEC_EXECUTION_KEYS
+        )
+        return tuple(items)
+
+    def _adspec_question(self, brand_id: str) -> str:
+        if self._workflow_response_locale(brand_id).lower().startswith("zh"):
+            return "请确认这份广告规格：哪些执行维度固定、开放或需要多个方案？"
+        return (
+            "Confirm this advertising spec: which execution dimensions stay fixed, "
+            "open, or need several versions?"
+        )
+
+    def _adspec_options(self, brand_id: str) -> tuple[BrandShortOptionV1, ...]:
+        if self._workflow_response_locale(brand_id).lower().startswith("zh"):
+            return (
+                BrandShortOptionV1(
+                    option_id="recommended",
+                    label="按推荐执行",
+                    why="具体 Hook、角色、场景、产品首次出现由 Agent 各给多个方案",
+                ),
+                BrandShortOptionV1(
+                    option_id="locked",
+                    label="全部固定",
+                    why="执行维度全部按当前方案锁定，下游不得改动",
+                ),
+                BrandShortOptionV1(
+                    option_id="open",
+                    label="全部开放",
+                    why="执行维度全部交给下游自由发挥",
+                ),
+            )
+        return (
+            BrandShortOptionV1(
+                option_id="recommended",
+                label="Use the recommendation",
+                why="The Agent offers several Hooks, characters, scenes and reveals",
+            ),
+            BrandShortOptionV1(
+                option_id="locked",
+                label="Lock everything",
+                why="Freeze every execution dimension as the current plan states",
+            ),
+            BrandShortOptionV1(
+                option_id="open",
+                label="Open everything",
+                why="Leave every execution dimension to downstream freedom",
+            ),
+        )
 
     # ---- Skill stack -------------------------------------------------------
 

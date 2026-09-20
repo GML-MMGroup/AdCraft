@@ -137,6 +137,8 @@ def post_next_question(
                     "brand_option_card_invalid",
                     "Treatment step did not persist an option card.",
                 )
+        elif journey.stage == "adspec":
+            card = service.run_adspec_question(brand_id)
         elif journey.stage == "skill-stack":
             card = service.run_skill_stack_question(brand_id)
         else:
