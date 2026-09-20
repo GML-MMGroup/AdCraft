@@ -18,6 +18,7 @@ from app.services.v2_asset_metadata_import import V2AssetMetadataImportService
 from app.services.v2_project_catalog_repair import V2ProjectCatalogRepairService
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.creative_method_skill_catalog import (
+    audiovisual_style_seed_dir,
     CreativeMethodSkillCatalogService,
     creative_method_seed_dir,
 )
@@ -82,8 +83,13 @@ class PersistenceBootstrapService:
                 ProviderModelRepository(database),
             ).bootstrap(now=_utc_now())
             seed_dir = creative_method_seed_dir()
+            style_seed_dir = audiovisual_style_seed_dir()
             if seed_dir.is_dir():
-                CreativeMethodSkillCatalogService(database, seed_dir).import_seeds()
+                CreativeMethodSkillCatalogService(
+                    database,
+                    seed_dir,
+                    style_seed_dir=style_seed_dir if style_seed_dir.is_dir() else None,
+                ).import_seeds()
             return PersistenceBootstrapState(
                 database_path=resolve_v2_database_path(self._settings.media_data_dir),
                 schema_revision=schema_revision,

@@ -8,7 +8,6 @@ anything is persisted, and appends the decision log in the same transaction.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from hashlib import sha256
 import json
 from typing import Literal, cast
 from uuid import uuid4
@@ -51,8 +50,11 @@ from app.services.brand_slot_schema import (
     slots_for_stage,
     validate_slot_values,
 )
-from app.services.creative_method_skill_catalog import CreativeMethodSkillCatalogService
-from app.services.creative_method_skill_catalog import creative_method_seed_dir
+from app.services.creative_method_skill_catalog import (
+    audiovisual_style_seed_dir,
+    CreativeMethodSkillCatalogService,
+    creative_method_seed_dir,
+)
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationSpec,
@@ -99,8 +101,6 @@ _ADSPEC_LABELS: dict[str, dict[str, str]] = {
         "hook_requirement": "Hook 要求",
         "brand_boundary": "品牌边界",
         "production_format": "制作规格",
-        "creative_method": "创意方法",
-        "audiovisual_style": "视听风格",
         "hook": "具体 Hook",
         "character": "角色",
         "scene": "场景",
@@ -119,8 +119,6 @@ _ADSPEC_LABELS: dict[str, dict[str, str]] = {
         "hook_requirement": "Hook requirement",
         "brand_boundary": "Brand boundary",
         "production_format": "Production format",
-        "creative_method": "Creative method",
-        "audiovisual_style": "Audiovisual style",
         "hook": "Concrete Hook",
         "character": "Character",
         "scene": "Scene",
@@ -158,7 +156,11 @@ class BrandCapabilityInvocationService:
         self._settings = settings or get_settings()
         self._runtime = generation_runtime or StructuredGenerationRuntime(settings=self._settings)
         self._repository = BrandDecisionRepository(database)
-        self._catalog = CreativeMethodSkillCatalogService(database, creative_method_seed_dir())
+        self._catalog = CreativeMethodSkillCatalogService(
+            database,
+            creative_method_seed_dir(),
+            style_seed_dir=audiovisual_style_seed_dir(),
+        )
 
     def _workflow_response_locale(self, brand_id: str) -> str:
         """Resolve the conversation response locale for one brand's workflow."""
@@ -535,7 +537,6 @@ class BrandCapabilityInvocationService:
             selected_id = self._repository.get_selected_hypothesis_id_in_transaction(
                 connection, brand_id
             )
-            stack = self._repository.get_skill_stack_in_transaction(connection, brand_id)
         selected = next((item for item in hypotheses if item.candidate_id == selected_id), None)
         items: list[AdSpecItemV1] = []
 
@@ -565,12 +566,6 @@ class BrandCapabilityInvocationService:
             if value
         )
         lock("production_format", production_format or None)
-        if stack is not None:
-            for skill_kind in ("creative_method", "audiovisual_style"):
-                titles = ", ".join(
-                    entry.title for entry in stack.entries if entry.skill_kind == skill_kind
-                )
-                lock(skill_kind, titles or None)
         items.extend(
             AdSpecItemV1(
                 item_key=item_key,
@@ -704,44 +699,35 @@ class BrandCapabilityInvocationService:
             selected_id = self._repository.get_selected_hypothesis_id_in_transaction(
                 connection, brand_id
             )
+            adspec = self._repository.get_adspec_in_transaction(connection, brand_id)
         selected = next((item for item in hypotheses if item.candidate_id == selected_id), None)
         haystack = " ".join(
-            (selected.label, selected.mechanism, selected.hypothesis) if selected else ()
+            part
+            for part in (
+                *(value.value for value in self._repository.get_slot_values(brand_id)),
+                *((selected.label, selected.mechanism, selected.hypothesis) if selected else ()),
+                *((item.item_text for item in adspec.items) if adspec is not None else ()),
+            )
+            if part
         ).lower()
         catalog = self._repository.list_creative_skills()
         methods = tuple(item for item in catalog if item["skill_kind"] == "creative_method")
-        matching = next(
-            (
-                item
-                for item in methods
-                if str(item["skill_id"]).replace("-", " ") in haystack
-                or str(item["title"]).lower() in haystack
-            ),
-            methods[0] if methods else None,
-        )
+        styles = tuple(item for item in catalog if item["skill_kind"] == "audiovisual_style")
         entries: list[SkillStackEntryV1] = []
-        if matching is not None:
+        for method in _matching_skills(methods, haystack, limit=1):
             entries.append(
                 SkillStackEntryV1(
                     skill_kind="creative_method",
-                    skill_id=str(matching["skill_id"]),
-                    title=str(matching["title"]),
+                    skill_id=str(method["skill_id"]),
+                    title=str(method["title"]),
                 )
             )
-        style = next(
-            (
-                value.value
-                for value in self._repository.get_slot_values(brand_id)
-                if value.slot_id == "adspec_creative_style"
-            ),
-            None,
-        )
-        if style:
+        for style in _matching_skills(styles, haystack, limit=3):
             entries.append(
                 SkillStackEntryV1(
                     skill_kind="audiovisual_style",
-                    skill_id=f"style_{sha256(style.encode()).hexdigest()[:12]}",
-                    title=style,
+                    skill_id=str(style["skill_id"]),
+                    title=str(style["title"]),
                 )
             )
         return SkillStackV1(entries=tuple(entries))
@@ -979,6 +965,29 @@ class BrandCapabilityInvocationService:
 def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
     if output.question_card is not None and output.question_card.stage != stage:
         raise ValueError("Question card does not match the current stage.")
+
+
+def _skill_matches(item: dict[str, object], haystack: str) -> bool:
+    """Return whether one catalog entry is named by the confirmed brand authority."""
+
+    return (
+        str(item["skill_id"]).replace("-", " ") in haystack
+        or str(item["title"]).lower() in haystack
+    )
+
+
+def _matching_skills(
+    items: tuple[dict[str, object], ...],
+    haystack: str,
+    *,
+    limit: int,
+) -> tuple[dict[str, object], ...]:
+    """Return the matching catalog entries, falling back to the first one."""
+
+    matched = tuple(item for item in items if _skill_matches(item, haystack))
+    if matched:
+        return matched[:limit]
+    return items[:1]
 
 
 def _with_declared_information_nature(

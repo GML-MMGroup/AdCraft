@@ -14,7 +14,7 @@ from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 
-_REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = (
+_CREATIVE_METHOD_REQUIRED_FIELDS: tuple[str, ...] = (
     "skill_id",
     "version",
     "skill_kind",
@@ -30,6 +30,30 @@ _REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = (
     "cross_category_examples",
 )
 
+_AUDIOVISUAL_STYLE_REQUIRED_FIELDS: tuple[str, ...] = (
+    "skill_id",
+    "version",
+    "skill_kind",
+    "title",
+    "objective",
+    "visual_principles",
+    "camera",
+    "product_treatment",
+    "editing",
+    "sound",
+    "suitable_cases",
+)
+
+_REQUIRED_FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
+    "creative_method": _CREATIVE_METHOD_REQUIRED_FIELDS,
+    "audiovisual_style": _AUDIOVISUAL_STYLE_REQUIRED_FIELDS,
+}
+
+_SUMMARY_FIELD_BY_KIND: dict[str, str] = {
+    "creative_method": "core_principle",
+    "audiovisual_style": "objective",
+}
+
 _CROSS_CATEGORY_MIN_EXAMPLES = 2
 
 
@@ -37,6 +61,12 @@ def creative_method_seed_dir() -> Path:
     """Return the repository seed directory for creative method skills."""
 
     return Path(__file__).resolve().parents[2] / "seed" / "creative_method_skills"
+
+
+def audiovisual_style_seed_dir() -> Path:
+    """Return the repository seed directory for audiovisual style skills."""
+
+    return Path(__file__).resolve().parents[2] / "seed" / "audiovisual_style_skills"
 
 
 @dataclass(frozen=True)
@@ -61,20 +91,23 @@ def parse_seed_file(path: Path) -> CreativeSkillSeed:
     if end < 0:
         raise _invalid(path, "frontmatter delimiter")
     frontmatter = _parse_frontmatter(text[4:end], path)
-    for field in _REQUIRED_FRONTMATTER_FIELDS:
+    skill_kind = frontmatter.get("skill_kind", "").strip()
+    required_fields = _REQUIRED_FIELDS_BY_KIND.get(skill_kind)
+    if required_fields is None:
+        raise _invalid(path, f"unknown skill_kind: {skill_kind[:40] or '<missing>'}")
+    for field in required_fields:
         if not frontmatter.get(field, "").strip():
             raise _invalid(path, f"required field {field}")
-    if "skill_kind: creative_method" not in text and frontmatter["skill_kind"] != "creative_method":
-        raise _invalid(path, "skill_kind must be creative_method")
-    examples = _count_examples(frontmatter["cross_category_examples"])
-    if examples < _CROSS_CATEGORY_MIN_EXAMPLES:
-        raise _invalid(path, "at least two cross-category examples")
+    if skill_kind == "creative_method":
+        examples = _count_examples(frontmatter["cross_category_examples"])
+        if examples < _CROSS_CATEGORY_MIN_EXAMPLES:
+            raise _invalid(path, "at least two cross-category examples")
     return CreativeSkillSeed(
         skill_id=frontmatter["skill_id"],
         version=frontmatter["version"],
-        skill_kind=frontmatter["skill_kind"],
+        skill_kind=skill_kind,
         title=frontmatter["title"],
-        summary=frontmatter["core_principle"].strip().replace("\n", " "),
+        summary=frontmatter[_SUMMARY_FIELD_BY_KIND[skill_kind]].strip().replace("\n", " "),
         frontmatter=frontmatter,
     )
 
@@ -82,15 +115,29 @@ def parse_seed_file(path: Path) -> CreativeSkillSeed:
 class CreativeMethodSkillCatalogService:
     """Import seed files and expose the whole-catalog injection boundary."""
 
-    def __init__(self, database: V2Database, seed_dir: Path) -> None:
+    def __init__(
+        self,
+        database: V2Database,
+        seed_dir: Path,
+        *,
+        style_seed_dir: Path | None = None,
+    ) -> None:
         self._database = database
         self._seed_dir = seed_dir
+        self._style_seed_dir = style_seed_dir
         self._repository = BrandDecisionRepository(database)
+
+    @property
+    def _seed_dirs(self) -> tuple[Path, ...]:
+        dirs = [self._seed_dir]
+        if self._style_seed_dir is not None:
+            dirs.append(self._style_seed_dir)
+        return tuple(dirs)
 
     def import_seeds(self) -> int:
         """Import every seed file once; return the count of new inserts."""
 
-        seeds = sorted(self._seed_dir.glob("*.md"))
+        seeds = sorted(path for directory in self._seed_dirs for path in directory.glob("*.md"))
         inserted = 0
         try:
             with self._database.engine.begin() as connection:
