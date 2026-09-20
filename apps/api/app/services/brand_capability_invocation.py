@@ -45,6 +45,8 @@ from app.services.brand_journey_state import (
 )
 from app.services.brand_slot_schema import (
     missing_required_slots,
+    resolve_slot,
+    slot_value_kind,
     slots_for_stage,
     validate_slot_values,
 )
@@ -161,11 +163,10 @@ class BrandCapabilityInvocationService:
         _validate_card(card, stage)
         card = self._namespace_colliding_card_id(brand_id, card)
         validate_slot_values(output.slot_values)
+        slot_values = _with_declared_information_nature(output.slot_values)
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
-            self._repository.upsert_slot_values_in_transaction(
-                connection, brand_id, output.slot_values
-            )
+            self._repository.upsert_slot_values_in_transaction(connection, brand_id, slot_values)
             self._repository.save_option_card_in_transaction(connection, brand_id, card)
             self._append_log(
                 connection,
@@ -219,6 +220,7 @@ class BrandCapabilityInvocationService:
             slot_id = card.target_slot_id
             if slot_id is None:
                 raise _card_invalid("Card does not target a slot.")
+            slot = resolve_slot(card.stage, slot_id)
             self._repository.upsert_slot_values_in_transaction(
                 connection,
                 brand_id,
@@ -227,6 +229,7 @@ class BrandCapabilityInvocationService:
                         slot_id=slot_id,
                         stage=card.stage,
                         value=value_text,
+                        kind=slot_value_kind(slot, provenance),
                         provenance=provenance,
                     ),
                 ),
@@ -708,6 +711,24 @@ class BrandCapabilityInvocationService:
 def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
     if output.question_card is not None and output.question_card.stage != stage:
         raise ValueError("Question card does not match the current stage.")
+
+
+def _with_declared_information_nature(
+    values: tuple[BrandSlotValueV1, ...],
+) -> tuple[BrandSlotValueV1, ...]:
+    """Stamp each slot value with its declared nature instead of a default fact."""
+
+    return tuple(
+        value.model_copy(
+            update={
+                "kind": slot_value_kind(
+                    resolve_slot(value.stage, value.slot_id),
+                    value.provenance,
+                )
+            }
+        )
+        for value in values
+    )
 
 
 def _validate_card(card: BrandOptionCardV1, stage: BrandStage) -> None:

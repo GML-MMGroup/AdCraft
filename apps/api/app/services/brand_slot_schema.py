@@ -7,6 +7,7 @@ closed before any persistence write.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from app.schemas.brand_professional_mode import (
     BrandSlotValueV1,
@@ -15,6 +16,12 @@ from app.schemas.brand_professional_mode import (
 
 SLOT_SCHEMA_VERSION = "1"
 
+# A slot declares the information nature a user-confirmed value carries.  Values
+# the Agent inferred on its own are always tentative assumptions instead, so
+# "assumption" is derived from provenance rather than declared per slot.
+SlotKind = Literal["fact", "constraint", "preference"]
+SlotValueKind = Literal["fact", "constraint", "preference", "assumption"]
+
 
 @dataclass(frozen=True)
 class BrandSlotDefinition:
@@ -22,16 +29,33 @@ class BrandSlotDefinition:
     stage: BrandStage
     required: bool
     question: str
+    kind: SlotKind = "fact"
 
 
 _SLOTS: tuple[BrandSlotDefinition, ...] = (
-    BrandSlotDefinition("brand_positioning", "brand-memory", False, "How is the brand positioned?"),
+    BrandSlotDefinition(
+        "brand_positioning",
+        "brand-memory",
+        False,
+        "How is the brand positioned?",
+        kind="preference",
+    ),
     BrandSlotDefinition("brand_audience", "brand-memory", True, "Who is the main audience?"),
     BrandSlotDefinition(
-        "brand_personality", "brand-memory", False, "What is the brand personality?"
+        "brand_personality",
+        "brand-memory",
+        False,
+        "What is the brand personality?",
+        kind="preference",
     ),
     BrandSlotDefinition("brand_price_band", "brand-memory", False, "What is the price band?"),
-    BrandSlotDefinition("brand_avoid", "brand-memory", False, "What must the brand avoid?"),
+    BrandSlotDefinition(
+        "brand_avoid",
+        "brand-memory",
+        False,
+        "What must the brand avoid?",
+        kind="constraint",
+    ),
     BrandSlotDefinition(
         "brand_product_visual", "brand-memory", False, "Is there a product visual reference?"
     ),
@@ -39,9 +63,15 @@ _SLOTS: tuple[BrandSlotDefinition, ...] = (
         "campaign_goal", "campaign", True, "What is the advertising goal this time?"
     ),
     BrandSlotDefinition("campaign_platform", "campaign", True, "Which platform is this for?"),
-    BrandSlotDefinition("campaign_duration", "campaign", True, "How long is the video?"),
-    BrandSlotDefinition("campaign_aspect_ratio", "campaign", True, "What is the aspect ratio?"),
-    BrandSlotDefinition("campaign_cta", "campaign", False, "Is there a call to action?"),
+    BrandSlotDefinition(
+        "campaign_duration", "campaign", True, "How long is the video?", kind="constraint"
+    ),
+    BrandSlotDefinition(
+        "campaign_aspect_ratio", "campaign", True, "What is the aspect ratio?", kind="constraint"
+    ),
+    BrandSlotDefinition(
+        "campaign_cta", "campaign", False, "Is there a call to action?", kind="preference"
+    ),
 )
 
 _SLOT_INDEX: dict[tuple[str, str], BrandSlotDefinition] = {
@@ -56,6 +86,14 @@ def resolve_slot(stage: str, slot_id: str) -> BrandSlotDefinition:
     if slot is None:
         raise _unknown_slot(stage, slot_id)
     return slot
+
+
+def slot_value_kind(slot: BrandSlotDefinition, provenance: str) -> SlotValueKind:
+    """Derive the information nature persisted with one slot value."""
+
+    if provenance == "agent_recommended":
+        return "assumption"
+    return slot.kind
 
 
 def slots_for_stage(stage: BrandStage) -> tuple[BrandSlotDefinition, ...]:
