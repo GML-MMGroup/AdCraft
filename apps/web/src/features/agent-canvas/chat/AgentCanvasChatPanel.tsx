@@ -624,6 +624,8 @@ export function AgentCanvasChatPanel({
         onSelectConceptOption={(optionId) => {
           if (conceptInteraction?.content.content_kind === "concept_choice"
             && conceptInteraction.content.capability_id === "brand_skill-stack" && optionId === "adjust") {
+            setSelectedConceptOptionId(null);
+            setDraft("");
             onBrandSkillPickerOpen?.();
             return;
           }

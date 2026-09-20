@@ -536,7 +536,7 @@ describe("useAgentCanvasChat", () => {
     expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes timeline and brand decisions before requesting the next brand question", async () => {
+  it("refreshes brand decisions before and after the next question so Skill selection has a current card", async () => {
     const interaction = guidedBrandConceptInteraction();
     let session = { ...guidedSession(), interaction, awaiting: null };
     api.agentCanvasChatTimeline.mockImplementation(async () => emptyTimeline({
@@ -598,12 +598,15 @@ describe("useAgentCanvasChat", () => {
     });
 
     expect(api.agentCanvasChatTimeline).toHaveBeenCalled();
-    expect(onBrandDecisionsRefresh).toHaveBeenCalledTimes(1);
+    expect(onBrandDecisionsRefresh).toHaveBeenCalledTimes(2);
     expect(api.brandNextQuestion).toHaveBeenCalledTimes(1);
     expect(api.agentCanvasChatTimeline.mock.invocationCallOrder[0]).toBeLessThan(
       onBrandDecisionsRefresh.mock.invocationCallOrder[0],
     );
     expect(onBrandDecisionsRefresh.mock.invocationCallOrder[0]).toBeLessThan(
+      api.brandNextQuestion.mock.invocationCallOrder[0],
+    );
+    expect(onBrandDecisionsRefresh.mock.invocationCallOrder[1]).toBeGreaterThan(
       api.brandNextQuestion.mock.invocationCallOrder[0],
     );
   });

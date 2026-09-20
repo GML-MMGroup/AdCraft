@@ -792,6 +792,7 @@ export function useAgentCanvasChat({
     const request = agentCanvasApi.brandNextQuestion(workflowId)
       .then(async () => {
         if (workflowGeneration === workflowGenerationRef.current) await refresh();
+        if (workflowGeneration === workflowGenerationRef.current) await onBrandDecisionsRefresh?.();
       })
       .catch(() => {
         // Timeline polling and a later canvas entry can recover a transient
@@ -807,7 +808,7 @@ export function useAgentCanvasChat({
       });
     brandNextQuestionInFlightRef.current = request;
     return request;
-  }, [brandMode, openBrandInteractionId, refresh, workflowId]);
+  }, [brandMode, onBrandDecisionsRefresh, openBrandInteractionId, refresh, workflowId]);
 
   const presentationStreams = useAgentCanvasPresentationStreams(
     workflowId,
