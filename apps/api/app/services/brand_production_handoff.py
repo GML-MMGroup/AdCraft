@@ -9,6 +9,7 @@ request context so the existing intent planner owns validation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import ceil
 
 from sqlalchemy import text as sql_text
 
@@ -32,6 +33,9 @@ from app.schemas.agent_canvas_requirements import (
 )
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
+from app.services.agent_canvas_storyboard_sequence_windows import (
+    StoryboardSequenceWindowPlanner,
+)
 from app.services.workflow_v2 import WorkflowV2Service
 
 
@@ -151,18 +155,23 @@ class BrandProductionHandoffService:
             f"{duration_text}; {aspect_text}; one product; a storyboard; a video; BGM audio. "
             f"Locked Brand treatment: {brand_context_text}."
         )
+        duration_value = _duration_seconds(duration_text)
+        # Brand Professional Mode never declares a Storyboard sequence or video
+        # segment count, so the handoff projects the platform duration policy
+        # instead of freezing a count the duration authority would reject.
+        segment_count = _media_segment_count(duration_value)
         patch = RequirementPatchV1(
             controls_to_set=(
-                DurationSecondsControlPatchV1(
-                    value=_duration_seconds(duration_text), source_quote=duration_text
-                ),
+                DurationSecondsControlPatchV1(value=duration_value, source_quote=duration_text),
                 AspectRatioControlPatchV1(
                     value=_aspect_ratio(aspect_text), source_quote=aspect_text
                 ),
                 AudioModeControlPatchV1(value="bgm_only", source_quote="BGM audio"),
                 ProductCountControlPatchV1(value=1, source_quote="one product"),
-                StoryboardSequenceCountControlPatchV1(value=1, source_quote="a storyboard"),
-                VideoSegmentCountControlPatchV1(value=1, source_quote="a video"),
+                StoryboardSequenceCountControlPatchV1(
+                    value=segment_count, source_quote=duration_text
+                ),
+                VideoSegmentCountControlPatchV1(value=segment_count, source_quote=duration_text),
             ),
             directives_to_add=(
                 RequirementDirectivePatchV1(
@@ -240,6 +249,15 @@ def _duration_seconds(text: str) -> int:
     digits = "".join(ch for ch in text if ch.isdigit())
     value = int(digits) if digits else 30
     return max(1, min(value, 300))
+
+
+def _media_segment_count(duration_seconds: int) -> int:
+    """Split a duration into the platform's bounded media segment count."""
+
+    return max(
+        1,
+        ceil(duration_seconds / StoryboardSequenceWindowPlanner.MAX_SEQUENCE_DURATION_SECONDS),
+    )
 
 
 def _aspect_ratio(value: str) -> str:
