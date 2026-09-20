@@ -20,7 +20,6 @@ from app.schemas.brand_professional_mode import (
     BrandLockActionRequestV1,
     BrandOptionCardV1,
     BrandSlotActionRequestV1,
-    BrandShortOptionV1,
     BrandTreatmentActionRequestV1,
 )
 from app.services.brand_capability_invocation import (
@@ -125,22 +124,7 @@ def post_next_question(
         if existing_card is not None and existing_card.stage == journey.stage:
             card = existing_card
         elif journey.stage == "hypothesis":
-            candidates = service.run_hypotheses(brand_id)
-            card = BrandOptionCardV1(
-                card_id="hypothesis_candidates",
-                stage="hypothesis",
-                stage_revision=journey.stage_revision,
-                target_slot_id=None,
-                question="Which creative hypothesis should lead the campaign?",
-                options=tuple(
-                    BrandShortOptionV1(
-                        option_id=candidate.candidate_id,
-                        label=candidate.label,
-                        why=candidate.why,
-                    )
-                    for candidate in candidates
-                ),
-            )
+            card = service.run_hypothesis_question(brand_id)
         elif journey.stage == "treatment":
             service.run_treatment_step(brand_id)
             # ``run_treatment_step`` persists the authoritative option card

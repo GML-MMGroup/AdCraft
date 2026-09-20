@@ -94,7 +94,9 @@ class CreativeHypothesisCandidateV1(_BrandModel):
 class CreativeStrategyOutputV1(_BrandModel):
     """Structured output of the creative-strategy capability."""
 
-    candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=2, max_length=4)
+    # The MVP shows the user exactly three directions; the contract is exact so a
+    # model that diverges internally cannot publish a 2- or 4-option card.
+    candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=3, max_length=3)
 
 
 class CreativeTreatmentStepOutputV1(_BrandModel):

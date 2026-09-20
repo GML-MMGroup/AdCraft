@@ -319,6 +319,42 @@ class BrandCapabilityInvocationService:
                 connection, brand_id, advance_brand_stage(journey)
             )
 
+    def run_hypothesis_question(
+        self,
+        brand_id: str,
+        *,
+        model_id: str | None = None,
+        output: CreativeStrategyOutputV1 | None = None,
+    ) -> BrandOptionCardV1:
+        """Persist the hypothesis candidates and return their three-option card."""
+
+        journey = self._repository.get_journey(brand_id)
+        if journey is None or journey.stage != "hypothesis":
+            raise _stage_mismatch()
+        candidates = self.run_hypotheses(brand_id, model_id=model_id, output=output)
+        card = BrandOptionCardV1(
+            card_id=f"hypothesis_candidates_{journey.stage_revision}",
+            stage="hypothesis",
+            stage_revision=journey.stage_revision,
+            target_slot_id=None,
+            question=self._hypothesis_question(brand_id),
+            options=tuple(
+                BrandShortOptionV1(
+                    option_id=candidate.candidate_id,
+                    label=candidate.label,
+                    why=candidate.why,
+                )
+                for candidate in candidates
+            ),
+        )
+        _validate_card(card, "hypothesis")
+        return card
+
+    def _hypothesis_question(self, brand_id: str) -> str:
+        if self._workflow_response_locale(brand_id).lower().startswith("zh"):
+            return "哪一个创意假设应该主导这次广告？"
+        return "Which creative hypothesis should lead the campaign?"
+
     # ---- Skill stack -------------------------------------------------------
 
     def run_skill_stack_question(self, brand_id: str) -> BrandOptionCardV1:
@@ -727,7 +763,7 @@ _BRAND_STRATEGY_PROMPT = (
 )
 _CREATIVE_STRATEGY_PROMPT = (
     "You are the Creative Strategy capability of the AdCraft Brand Professional "
-    "Mode. Diverge 8-12 directions internally and return 2-4 candidates."
+    "Mode. Diverge 8-12 directions internally and return exactly 3 candidates."
     " The input_payload response_locale gives the user's conversation language;"
     " write candidate text in that language."
 )
