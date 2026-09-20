@@ -21,6 +21,8 @@ from app.schemas.brand_professional_mode import (
     BrandOptionCardV1,
     BrandSlotActionRequestV1,
     BrandTreatmentActionRequestV1,
+    BrandCreativeMethodCatalogV1,
+    BrandSkillSelectionRequestV1,
 )
 from app.services.brand_capability_invocation import (
     BrandCapabilityInvocationService,
@@ -47,9 +49,12 @@ _STATUS_BY_CODE = {
     "brand_slot_required_missing": 409,
     "brand_option_card_invalid": 409,
     "brand_stage_action_mismatch": 409,
+    "brand_skill_selection_required": 409,
+    "brand_skill_selection_invalid": 422,
     "brand_treatment_confirmation_required": 409,
     "brand_journey_terminal_conflict": 409,
     "brand_decision_not_found": 404,
+    "brand_decisions_not_found": 404,
     "brand_decision_persistence_failed": 503,
 }
 
@@ -84,6 +89,36 @@ def _raise_not_found() -> None:
             "message": "Brand decisions not found for this workflow.",
         },
     )
+
+
+@router.get("/brand/creative-method-skills", response_model=BrandCreativeMethodCatalogV1)
+def get_creative_method_skills(
+    database: V2Database = Depends(_brand_database),
+) -> BrandCreativeMethodCatalogV1:
+    """Reuse /video-skills separately for the existing audiovisual selector."""
+    return _brand_runtime(database).creative_method_catalog()
+
+
+@router.post("/brand/decisions/{workflow_id}/select-skills", response_model=BrandDecisionPanelV1)
+def post_skill_selection(
+    workflow_id: str,
+    request: BrandSkillSelectionRequestV1,
+    database: V2Database = Depends(_brand_database),
+) -> BrandDecisionPanelV1:
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+        service = _brand_runtime(database)
+        service.select_skills(brand_id, request)
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+    bridge = BrandGuidedInteractionBridge(database)
+    bridge.close_current_interaction(workflow_id, status="superseded")
+    card = service._repository.get_open_card(brand_id)
+    if card is not None and not request.confirm:
+        bridge.publish_card_interaction(
+            workflow_id, card, service._workflow_response_locale(brand_id)
+        )
+    return get_brand_decisions(workflow_id, database)
 
 
 @router.post(

@@ -3968,6 +3968,9 @@ def _agent_settings_expected_revision(value: str | None) -> int:
 
 def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
     status_code = {
+        "brand_skill_selection_required": 409,
+        "brand_skill_selection_invalid": 422,
+        "brand_stage_action_mismatch": 409,
         "project_not_found": 404,
         "project_not_trashed": 409,
         "project_state_conflict": 412,

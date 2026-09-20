@@ -28,16 +28,19 @@ from app.schemas.brand_professional_mode import (
     BrandStage,
     BrandStrategyOutputV1,
     BrandTreatmentSubstep,
+    BrandCreativeMethodCatalogV1,
+    BrandSkillRecommendationsV1,
+    BrandSkillSelectionRequestV1,
     CreativeHypothesisCandidateV1,
     CreativeStrategyOutputV1,
     CreativeTreatmentOutputV1,
     CreativeTreatmentStepOutputV1,
     SlotProvenance,
-    SkillStackEntryV1,
     SkillStackV1,
     TreatmentStepResultV1,
 )
 from app.persistence.models import BrandOptionCardRow
+from app.services.brand_skill_stack import BrandSkillStackService
 from app.services.brand_journey_state import (
     TREATMENT_SUBSTEP_ORDER,
     advance_brand_stage,
@@ -51,10 +54,10 @@ from app.services.brand_slot_schema import (
     validate_slot_values,
 )
 from app.services.creative_method_skill_catalog import (
-    audiovisual_style_seed_dir,
     CreativeMethodSkillCatalogService,
     creative_method_seed_dir,
 )
+from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationSpec,
@@ -159,8 +162,8 @@ class BrandCapabilityInvocationService:
         self._catalog = CreativeMethodSkillCatalogService(
             database,
             creative_method_seed_dir(),
-            style_seed_dir=audiovisual_style_seed_dir(),
         )
+        self._video_skills = VideoSkillRegistry()
 
     def _workflow_response_locale(self, brand_id: str) -> str:
         """Resolve the conversation response locale for one brand's workflow."""
@@ -629,21 +632,9 @@ class BrandCapabilityInvocationService:
         journey = self._repository.get_journey(brand_id)
         if journey is None or journey.stage != "skill-stack":
             raise _stage_mismatch()
-        if self._repository.get_skill_stack(brand_id) is None:
+        stack = self._repository.get_skill_stack(brand_id)
+        if stack is None:
             stack = self._recommended_skill_stack(brand_id)
-            now = datetime.now(timezone.utc)
-            with self._database.engine.begin() as connection:
-                self._repository.replace_skill_stack_in_transaction(connection, brand_id, stack)
-                self._append_log(
-                    connection,
-                    brand_id=brand_id,
-                    stage="skill-stack",
-                    action="recommend",
-                    target_type="skill_stack",
-                    target_id=None,
-                    detail={"entry_count": len(stack.entries)},
-                    now=now,
-                )
         card = BrandOptionCardV1(
             card_id=f"{brand_id}_skill_stack_{journey.stage_revision}",
             stage="skill-stack",
@@ -654,6 +645,26 @@ class BrandCapabilityInvocationService:
         )
         _validate_card(card, "skill-stack")
         with self._database.engine.begin() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            current = self._repository.get_journey_in_transaction(connection, brand_id)
+            if (
+                current is None
+                or current.stage != "skill-stack"
+                or current.stage_revision != journey.stage_revision
+            ):
+                raise _stage_mismatch()
+            if self._repository.get_skill_stack_in_transaction(connection, brand_id) is None:
+                self._repository.replace_skill_stack_in_transaction(connection, brand_id, stack)
+                self._append_log(
+                    connection,
+                    brand_id=brand_id,
+                    stage="skill-stack",
+                    action="recommend",
+                    target_type="skill_stack",
+                    target_id=None,
+                    detail=stack.model_dump(mode="json"),
+                    now=datetime.now(timezone.utc),
+                )
             self._repository.save_option_card_in_transaction(connection, brand_id, card)
         return card
 
@@ -666,13 +677,31 @@ class BrandCapabilityInvocationService:
     ) -> None:
         """Confirm the recommended stack and advance to the treatment stage."""
 
+        if option_id == "adjust":
+            raise V2PersistenceError(
+                "brand_skill_selection_required",
+                "Open the Skill selector and submit explicit Skill ids and versions.",
+            )
+
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
             card = self._repository.get_open_card_in_transaction(connection, brand_id)
             if card is None or card.card_id != card_id or card.stage != "skill-stack":
                 raise _stage_mismatch()
             if not any(option.option_id == option_id for option in card.options):
                 raise _card_invalid("Selected option is not on the open card.")
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if (
+                journey is None
+                or journey.stage != "skill-stack"
+                or journey.stage_revision != card.stage_revision
+            ):
+                raise _stage_mismatch()
+            stack = self._repository.get_skill_stack_in_transaction(connection, brand_id)
+            BrandSkillStackService(self._database).activate(
+                connection, brand_id, stack or SkillStackV1(), card_id
+            )
             self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
             self._append_log(
                 connection,
@@ -692,7 +721,7 @@ class BrandCapabilityInvocationService:
             )
 
     def _recommended_skill_stack(self, brand_id: str) -> SkillStackV1:
-        """Choose deterministic creative and audiovisual skills from current decisions."""
+        """Ask one bounded Pi capability for catalog-grounded recommendations."""
 
         with self._database.engine.connect() as connection:
             hypotheses = self._repository.get_hypotheses_in_transaction(connection, brand_id)
@@ -701,36 +730,82 @@ class BrandCapabilityInvocationService:
             )
             adspec = self._repository.get_adspec_in_transaction(connection, brand_id)
         selected = next((item for item in hypotheses if item.candidate_id == selected_id), None)
-        haystack = " ".join(
-            part
-            for part in (
-                *(value.value for value in self._repository.get_slot_values(brand_id)),
-                *((selected.label, selected.mechanism, selected.hypothesis) if selected else ()),
-                *((item.item_text for item in adspec.items) if adspec is not None else ()),
+        skills = BrandSkillStackService(self._database)
+        spec = StructuredGenerationSpec[BrandSkillRecommendationsV1](
+            stage_name="brand_skill_recommendation",
+            operation="brand_skill_recommendation",
+            contract_name="BrandSkillRecommendationsV1",
+            model_id=self._settings.llm_creative_model,
+            system_prompt="",
+            output_model=BrandSkillRecommendationsV1,
+            input_payload={
+                **skills.recommendation_catalogs(),
+                "response_locale": self._workflow_response_locale(brand_id),
+                "confirmed_values": [
+                    value.model_dump(mode="json")
+                    for value in self._repository.get_slot_values(brand_id)
+                ],
+                "selected_hypothesis": selected.model_dump(mode="json") if selected else None,
+                "adspec": adspec.model_dump(mode="json") if adspec else None,
+            },
+            trace_metadata={"workflow_id": self._repository.workflow_id_for_brand(brand_id)},
+        )
+        return skills.recommendation_stack(self._runtime.run(spec).output)
+
+    def creative_method_catalog(self) -> BrandCreativeMethodCatalogV1:
+        return BrandSkillStackService(self._database).creative_method_catalog()
+
+    def select_skills(self, brand_id: str, request: BrandSkillSelectionRequestV1) -> None:
+        """Save or confirm a versioned selection with atomic style activation."""
+        skills = BrandSkillStackService(self._database)
+        with self._database.engine.begin() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if (
+                journey is None
+                or journey.stage != "skill-stack"
+                or journey.stage_revision != request.expected_stage_revision
+                or card is None
+                or card.card_id != request.card_id
+                or card.stage_revision != journey.stage_revision
+            ):
+                raise _stage_mismatch()
+            previous = self._repository.get_skill_stack_in_transaction(connection, brand_id)
+            stack = skills.selection_stack(
+                request.creative_methods, request.audiovisual_style, previous
             )
-            if part
-        ).lower()
-        catalog = self._repository.list_creative_skills()
-        methods = tuple(item for item in catalog if item["skill_kind"] == "creative_method")
-        styles = tuple(item for item in catalog if item["skill_kind"] == "audiovisual_style")
-        entries: list[SkillStackEntryV1] = []
-        for method in _matching_skills(methods, haystack, limit=1):
-            entries.append(
-                SkillStackEntryV1(
-                    skill_kind="creative_method",
-                    skill_id=str(method["skill_id"]),
-                    title=str(method["title"]),
+            if request.confirm:
+                skills.activate(connection, brand_id, stack, card.card_id)
+            self._repository.replace_skill_stack_in_transaction(connection, brand_id, stack)
+            self._repository.resolve_card_in_transaction(connection, brand_id, card.card_id)
+            next_journey = (
+                advance_brand_stage(journey)
+                if request.confirm
+                else journey.model_copy(update={"stage_revision": journey.stage_revision + 1})
+            )
+            self._repository.save_journey_in_transaction(connection, brand_id, next_journey)
+            if not request.confirm:
+                self._repository.save_option_card_in_transaction(
+                    connection,
+                    brand_id,
+                    card.model_copy(
+                        update={
+                            "card_id": f"{brand_id}_skill_stack_{next_journey.stage_revision}",
+                            "stage_revision": next_journey.stage_revision,
+                        }
+                    ),
                 )
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="skill-stack",
+                action="confirm" if request.confirm else "edit",
+                target_type="skill_stack",
+                target_id=card.card_id,
+                detail=stack.model_dump(mode="json"),
+                now=datetime.now(timezone.utc),
             )
-        for style in _matching_skills(styles, haystack, limit=3):
-            entries.append(
-                SkillStackEntryV1(
-                    skill_kind="audiovisual_style",
-                    skill_id=str(style["skill_id"]),
-                    title=str(style["title"]),
-                )
-            )
-        return SkillStackV1(entries=tuple(entries))
 
     def _skill_stack_question(self, brand_id: str) -> str:
         if self._workflow_response_locale(brand_id).lower().startswith("zh"):
@@ -744,10 +819,14 @@ class BrandCapabilityInvocationService:
                     option_id="confirm", label="确认推荐组合", why="按当前策略进入创意方案"
                 ),
                 BrandShortOptionV1(
-                    option_id="adjust", label="稍后再调整", why="先保留组合并继续后续创意方案"
+                    option_id="adjust",
+                    label="选择 Skills",
+                    why="调整创意方法和视听风格，确认前不会继续",
                 ),
                 BrandShortOptionV1(
-                    option_id="delegate", label="交给 Agent 优化", why="由 Agent 按品牌目标优化组合"
+                    option_id="delegate",
+                    label="采用当前组合",
+                    why="确认当前推荐或调整后的组合并继续",
                 ),
             )
         return (
@@ -757,12 +836,12 @@ class BrandCapabilityInvocationService:
                 why="Continue with the recommended stack",
             ),
             BrandShortOptionV1(
-                option_id="adjust", label="Adjust later", why="Keep the stack and continue"
+                option_id="adjust", label="Choose Skills", why="Edit Skills before continuing"
             ),
             BrandShortOptionV1(
                 option_id="delegate",
-                label="Let Agent optimize",
-                why="Optimize for the campaign goal",
+                label="Use the current stack",
+                why="Confirm the current selection and continue",
             ),
         )
 
@@ -814,6 +893,9 @@ class BrandCapabilityInvocationService:
                 model_id=model_id or self._settings.llm_creative_model,
                 system_prompt=_CREATIVE_TREATMENT_PROMPT,
                 input_payload={
+                    **BrandSkillStackService(self._database).treatment_context(
+                        brand_id, journey.treatment_substep
+                    ),
                     "substep": journey.treatment_substep,
                     "response_locale": self._workflow_response_locale(brand_id),
                     "confirmed_values": [
@@ -965,29 +1047,6 @@ class BrandCapabilityInvocationService:
 def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
     if output.question_card is not None and output.question_card.stage != stage:
         raise ValueError("Question card does not match the current stage.")
-
-
-def _skill_matches(item: dict[str, object], haystack: str) -> bool:
-    """Return whether one catalog entry is named by the confirmed brand authority."""
-
-    return (
-        str(item["skill_id"]).replace("-", " ") in haystack
-        or str(item["title"]).lower() in haystack
-    )
-
-
-def _matching_skills(
-    items: tuple[dict[str, object], ...],
-    haystack: str,
-    *,
-    limit: int,
-) -> tuple[dict[str, object], ...]:
-    """Return the matching catalog entries, falling back to the first one."""
-
-    matched = tuple(item for item in items if _skill_matches(item, haystack))
-    if matched:
-        return matched[:limit]
-    return items[:1]
 
 
 def _with_declared_information_nature(

@@ -58,6 +58,11 @@ class BrandGuidedInteractionSubmitter:
         action_id = content.action_id
 
         if "skill-stack" in content.capability_id:
+            if custom_text or request.action not in {"select", "delegate"}:
+                raise V2PersistenceError(
+                    "brand_skill_selection_required",
+                    "Use the Skill selector to submit explicit catalog ids and versions.",
+                )
             self._brand_service.apply_skill_stack_selection(
                 brand_id,
                 card_id=action_id,

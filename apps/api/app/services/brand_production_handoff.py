@@ -140,12 +140,23 @@ class BrandProductionHandoffService:
         positioning = by_slot.get(("brand-memory", "brand_positioning"), "")
         audience = by_slot.get(("brand-memory", "brand_audience"), "")
         treatment_summary = "; ".join(self._treatment_lines(brand_id))
+        stack = self._repository.get_skill_stack(brand_id)
+        selected_methods = (
+            "; ".join(
+                f"{entry.skill_id}: {entry.title}"
+                for entry in stack.entries
+                if entry.selected and entry.skill_kind == "creative_method"
+            )
+            if stack is not None
+            else ""
+        )
         brand_context = "; ".join(
             item
             for item in (
                 f"positioning: {positioning}" if positioning else "",
                 f"audience: {audience}" if audience else "",
                 f"Locked Brand treatment: {treatment_summary}" if treatment_summary else "",
+                f"Selected creative methods: {selected_methods}" if selected_methods else "",
             )
             if item
         )
