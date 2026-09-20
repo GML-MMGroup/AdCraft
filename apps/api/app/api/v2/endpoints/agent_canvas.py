@@ -1100,8 +1100,8 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
-        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: _advance_after_storyboard_pipeline(
-            workflow_id, plan_document_id
+        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
+            _advance_after_storyboard_pipeline(workflow_id, plan_document_id)
         ),
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(

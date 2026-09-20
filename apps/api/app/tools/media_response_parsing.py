@@ -57,10 +57,7 @@ def _provider_user_action_hint(response_body: str, status: int) -> str | None:
             "or a wrong version). Select a different model and retry."
         )
     if "invalid api key" in lowered or (status == 401 and "unauthorized" in lowered):
-        return (
-            "The provider rejected the API key. "
-            "Check the API key configured in the API Space."
-        )
+        return "The provider rejected the API key. Check the API key configured in the API Space."
     if status == 429:
         return (
             "The provider rate limit or quota was hit. "

@@ -114,10 +114,14 @@ class ProgressiveStoryboardReadyService:
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
-        self._prompt_dispatches = AgentCanvasPromptPreparationDispatchRepository(
-            workflows.database,
-            events,
-        ) if events is not None else None
+        self._prompt_dispatches = (
+            AgentCanvasPromptPreparationDispatchRepository(
+                workflows.database,
+                events,
+            )
+            if events is not None
+            else None
+        )
 
     def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> tuple[str, ...]:
         """Continue the committed Plan through the existing topology and journey owners."""
@@ -255,9 +259,7 @@ class ProgressiveStoryboardReadyService:
         # The progressive path publishes a visible Draft first.  Its prompt
         # is authored by the durable prompt worker after publication, rather
         # than being copied from the in-memory fan-out plan.
-        members = tuple(
-            (_pending_prompt_node(node), bindings) for node, bindings in members
-        )
+        members = tuple((_pending_prompt_node(node), bindings) for node, bindings in members)
         next_content = _append_planned_nodes(
             content,
             plan_document_id=plan_document_id,
@@ -325,9 +327,7 @@ class ProgressiveStoryboardReadyService:
         contexts = {}
         for node, _ in members:
             sequence_id = node.metadata.get("source_sequence_id")
-            segment = next(
-                item for item in content.segments if item.sequence_id == sequence_id
-            )
+            segment = next(item for item in content.segments if item.sequence_id == sequence_id)
             rows = [
                 row.model_dump(mode="json")
                 for row in content.rows
@@ -347,9 +347,7 @@ class ProgressiveStoryboardReadyService:
                     "requirement_facts": (
                         {
                             **base.requirement_facts,
-                            "duration_seconds": float(
-                                segment.end_seconds - segment.start_seconds
-                            ),
+                            "duration_seconds": float(segment.end_seconds - segment.start_seconds),
                         }
                         if node.creative_role == "storyboard_video"
                         else base.requirement_facts
