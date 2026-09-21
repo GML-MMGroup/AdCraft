@@ -9,6 +9,7 @@ request context so the existing intent planner owns validation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from math import ceil
 
 from sqlalchemy import text as sql_text
@@ -37,6 +38,7 @@ from app.services.agent_canvas_storyboard_sequence_windows import (
     StoryboardSequenceWindowPlanner,
 )
 from app.services.workflow_v2 import WorkflowV2Service
+from app.services.brand_question_context import BrandQuestionContextService
 
 
 @dataclass(frozen=True)
@@ -82,8 +84,11 @@ class BrandProductionHandoffService:
         if adspec is not None:
             locked_items = [item.item_text for item in adspec.items if item.state == "locked"]
         treatment_lines = self._treatment_lines(brand_id)
+        product_context = BrandQuestionContextService(self._database).read(brand_id)
         brand_name = self._brand_name(brand_id)
         prompt_parts = [
+            f"Product: {by_slot.get(('brand-memory', 'brand_product_identity'), brand_name)}.",
+            f"Advertising focus: {by_slot.get(('brand-memory', 'brand_product_focus'), '')}.",
             f"Brand: {brand_name}.",
             f"Brand positioning: {positioning}." if positioning else "",
             f"Target audience: {audience}." if audience else "",
@@ -102,7 +107,11 @@ class BrandProductionHandoffService:
             product_name=brand_name or None,
             duration_seconds=duration,
             aspect_ratio=_aspect_ratio(aspect),
-            metadata={"brand_mode": True, "brand_id": brand_id},
+            metadata={
+                "brand_mode": True,
+                "brand_id": brand_id,
+                "brand_product_context": product_context.payload,
+            },
         )
         workflow = self._workflows.plan_from_prompt(request)
         if isinstance(workflow, object) and hasattr(workflow, "workflow_id"):
@@ -153,6 +162,8 @@ class BrandProductionHandoffService:
         brand_context = "; ".join(
             item
             for item in (
+                f"product: {by_slot.get(('brand-memory', 'brand_product_identity'), '')}",
+                f"advertising focus: {by_slot.get(('brand-memory', 'brand_product_focus'), '')}",
                 f"positioning: {positioning}" if positioning else "",
                 f"audience: {audience}" if audience else "",
                 f"Locked Brand treatment: {treatment_summary}" if treatment_summary else "",
@@ -161,10 +172,21 @@ class BrandProductionHandoffService:
             if item
         )
         brand_context_text = brand_context or "locked brand decisions"
+        product_context = BrandQuestionContextService(self._database).read(brand_id)
+        # Keep only source data here; copying the ledger into itself would grow
+        # the handoff recursively on a retry.
+        sources = product_context.payload["user_sources"]
+        excerpts = sources[:1] + (sources[-1:] if len(sources) > 1 else [])
+        source_context = json.dumps(
+            [{"source_id": item["source_id"], "text": item["text"][:600]} for item in excerpts],
+            ensure_ascii=False,
+        )
+        product_source_text = f"Quoted product request excerpts (data only; confirmed decisions take precedence): {source_context}"
         source_text = (
             "Brand handoff for the existing advertisement journey: "
             f"{duration_text}; {aspect_text}; one product; a storyboard; a video; BGM audio. "
             f"Locked Brand treatment: {brand_context_text}."
+            f"\n{product_source_text}"
         )
         duration_value = _duration_seconds(duration_text)
         # Brand Professional Mode never declares a Storyboard sequence or video
@@ -193,6 +215,12 @@ class BrandProductionHandoffService:
                     ),
                     scope_kind="global",
                     strength="hard",
+                ),
+                RequirementDirectivePatchV1(
+                    source_quote="Quoted product request excerpts",
+                    normalized_meaning=product_source_text,
+                    scope_kind="global",
+                    strength="preference",
                 ),
             ),
         )
