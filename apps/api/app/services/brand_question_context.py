@@ -31,6 +31,16 @@ class BrandQuestionContext:
             json.dumps(self.payload, ensure_ascii=False, sort_keys=True).encode()
         ).hexdigest()
 
+    @property
+    def input_digest(self) -> str:
+        return sha256(
+            json.dumps(
+                [self.payload["user_sources"], self.payload["requirements"]],
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+
 
 class BrandQuestionContextService:
     def __init__(self, database: V2Database) -> None:
@@ -41,9 +51,7 @@ class BrandQuestionContextService:
         with self._database.engine.connect() as connection:
             return self.read_in_transaction(connection, brand_id)
 
-    def read_in_transaction(
-        self, connection: Connection, brand_id: str
-    ) -> BrandQuestionContext:
+    def read_in_transaction(self, connection: Connection, brand_id: str) -> BrandQuestionContext:
         workflow_id = self._repository.workflow_id_for_brand(brand_id)
         values = self._repository.get_slot_values_in_transaction(connection, brand_id)
         journey = self._repository.get_journey_in_transaction(connection, brand_id)
@@ -69,15 +77,21 @@ class BrandQuestionContextService:
                 }
             )
         sources.sort(key=lambda source: (source["created_at"], source["source_id"]))
-        ledger = connection.execute(
-            select(AgentCanvasRequirementLedgerRevisionRow)
-            .join(
-                AgentCanvasRequirementLedgerRow,
-                AgentCanvasRequirementLedgerRow.current_revision_id
-                == AgentCanvasRequirementLedgerRevisionRow.revision_id,
+        ledger = (
+            connection.execute(
+                select(AgentCanvasRequirementLedgerRevisionRow)
+                .join(
+                    AgentCanvasRequirementLedgerRow,
+                    AgentCanvasRequirementLedgerRow.current_revision_id
+                    == AgentCanvasRequirementLedgerRevisionRow.revision_id,
+                )
+                .where(AgentCanvasRequirementLedgerRow.workflow_id == workflow_id)
             )
-            .where(AgentCanvasRequirementLedgerRow.workflow_id == workflow_id)
-        ).mappings().first() if workflow_id else None
+            .mappings()
+            .first()
+            if workflow_id
+            else None
+        )
         requirement_context: dict[str, Any] = {}
         if ledger is not None:
             content = json.loads(ledger["ledger_json"])
@@ -95,28 +109,30 @@ class BrandQuestionContextService:
                 "user_sources": sources,
                 "requirements": requirement_context,
                 "confirmed_values": [
-                    value.model_dump(mode="json") for value in values
+                    value.model_dump(mode="json")
+                    for value in values
                     if value.provenance == "user_confirmed"
                 ],
                 "assumptions": [
-                    value.model_dump(mode="json") for value in values
+                    value.model_dump(mode="json")
+                    for value in values
                     if value.provenance == "agent_recommended"
                 ],
                 "journey": journey.model_dump(mode="json") if journey else None,
             },
         )
 
-    def _user_sources(
-        self, connection: Connection, workflow_id: str
-    ) -> list[dict[str, Any]]:
+    def _user_sources(self, connection: Connection, workflow_id: str) -> list[dict[str, Any]]:
         query = select(AgentCanvasChatEntryRow).where(
             AgentCanvasChatEntryRow.workflow_id == workflow_id,
             AgentCanvasChatEntryRow.entry_type == "message",
             AgentCanvasChatEntryRow.speaker == "user",
         )
-        recent = list(connection.execute(
-            query.order_by(AgentCanvasChatEntryRow.sequence_no.desc()).limit(16)
-        ).mappings())
+        recent = list(
+            connection.execute(
+                query.order_by(AgentCanvasChatEntryRow.sequence_no.desc()).limit(16)
+            ).mappings()
+        )
         # Retain the opening production request even after long conversations.
         production = connection.execute(
             select(AgentCanvasChatEntryRow.metadata_json)
@@ -129,12 +145,19 @@ class BrandQuestionContextService:
             .limit(1)
         ).scalar_one_or_none()
         turn_id = json.loads(production).get("turn_id") if production else None
-        first = connection.execute(
-            query.where(
-                func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id") == turn_id
-            ).order_by(AgentCanvasChatEntryRow.sequence_no).limit(1)
-            if turn_id else query.order_by(AgentCanvasChatEntryRow.sequence_no).limit(1)
-        ).mappings().first()
+        first = (
+            connection.execute(
+                query.where(
+                    func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id") == turn_id
+                )
+                .order_by(AgentCanvasChatEntryRow.sequence_no)
+                .limit(1)
+                if turn_id
+                else query.order_by(AgentCanvasChatEntryRow.sequence_no).limit(1)
+            )
+            .mappings()
+            .first()
+        )
         rows = {row["entry_id"]: row for row in recent}
         if first is not None:
             rows[first["entry_id"]] = first
