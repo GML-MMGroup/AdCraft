@@ -58,6 +58,13 @@ export class WorkflowModelCallCapture {
   finish(payload: Readonly<Record<string, unknown>>, failed = false, complete = true): void {
     if (this.#finished || !this.#begun) return;
     this.#finished = true;
+    try {
+      redactStreamFragments(this.#chunks, this.options.secrets ?? []);
+    } catch {
+      this.#chunks.length = 0;
+      this.#truncated = true;
+      this.#warn();
+    }
     this.#enqueue("outcome", {
       ...payload,
       ...(this.#chunks.length ? { chunks: this.#chunks } : {}),
@@ -106,8 +113,54 @@ export class WorkflowModelCallCapture {
 
   #warn(): void {
     try {
-      (this.options.warn ?? console.warn)("agent_model_call_capture_unavailable");
+      (this.options.warn ?? console.warn)(JSON.stringify({
+        code: "agent_model_call_capture_unavailable", run_id: this.options.runId,
+        call_id: this.#id, stage: this.options.stage,
+      }));
     } catch { /* Diagnostics must never change the owning model operation. */ }
+  }
+}
+
+/** A credential can straddle SDK chunks; sanitize the joined field channel. */
+function redactStreamFragments(chunks: unknown[], secrets: ReadonlyArray<string>): void {
+  type Fragment = { parent: Record<string, unknown>; key: string; text: string };
+  const channels = new Map<string, Fragment[]>();
+  const visit = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) { for (const item of value) visit(item, `${path}[]`); return; }
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      const channel = `${path}/${key}`;
+      if (typeof child === "string") {
+        const fragments = channels.get(channel) ?? [];
+        fragments.push({ parent: value as Record<string, unknown>, key, text: child });
+        channels.set(channel, fragments);
+      } else visit(child, channel);
+    }
+  };
+  visit(chunks, "");
+  for (const fragments of channels.values()) {
+    const joined = fragments.map((fragment) => fragment.text).join("");
+    const ranges: Array<[number, number]> = [];
+    for (const secret of secrets) {
+      if (!secret) continue;
+      let position = joined.indexOf(secret);
+      while (position >= 0) {
+        ranges.push([position, position + secret.length]);
+        position = joined.indexOf(secret, position + secret.length);
+      }
+    }
+    for (const match of joined.matchAll(/\bBearer\s+[^\s"'\\,;]+|(?:api[_-]?key|access[_-]?token|password|secret|x-amz-signature|x-goog-signature|sig|token)["']?\s*[=:]\s*["']?[^\s&"'<>]+/gi)) {
+      ranges.push([match.index, match.index + match[0].length]);
+    }
+    ranges.sort((left, right) => left[0] - right[0]);
+    let offset = 0;
+    let rangeIndex = 0;
+    for (const fragment of fragments) {
+      const end = offset + fragment.text.length;
+      while (rangeIndex < ranges.length && ranges[rangeIndex]![1] <= offset) rangeIndex += 1;
+      if (ranges[rangeIndex] && ranges[rangeIndex]![0] < end) fragment.parent[fragment.key] = "[REDACTED]";
+      offset = end;
+    }
   }
 }
 
