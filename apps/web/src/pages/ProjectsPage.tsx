@@ -14,7 +14,6 @@ import { v2Api, V2ApiError } from "../api/v2Client.ts";
 
 export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");
-  const [newProjectMode, setNewProjectMode] = useState<"creation" | "brand">("creation");
   const [search, setSearch] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
@@ -26,7 +25,6 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
   const {
     savedProjects,
-    startNewProject,
     moveProjectToTrash,
     renameProject,
     toggleProjectFavorite,
@@ -35,10 +33,8 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
     refreshProjects,
   } = useApp();
   const createProject = useCallback(() => {
-    void startNewProject(newProjectMode).then((created) => {
-      if (created) navigate("workflow", { projectId: created });
-    });
-  }, [navigate, newProjectMode, startNewProject]);
+    navigate("projects/new");
+  }, [navigate]);
 
   const updateProjectCover = useCallback(async (projectId: string, selection: { assetId: string; versionId: string } | null) => {
     try {
@@ -215,17 +211,6 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
           </button>
         </div>
         <div className="project-toolbar-actions">
-          <label className="project-mode-select-label clear-glass-control">
-            <span>New project</span>
-            <select
-              value={newProjectMode}
-              onChange={(event) => setNewProjectMode(event.target.value === "brand" ? "brand" : "creation")}
-              aria-label="New project mode"
-            >
-              <option value="creation">Standard</option>
-              <option value="brand">Brand</option>
-            </select>
-          </label>
           <input className="search-box clear-glass-control is-active" placeholder="Search projects" value={search} onChange={(event) => changeSearch(event.target.value)} />
           {!selectionMode ? (
             <button className="filter-btn clear-glass-control" type="button" onClick={enterSelectionMode}>

@@ -17,6 +17,12 @@ type StyleSelectorProps = {
   activeStyle: ActiveStyleSkillSummaryV2 | null;
   onWorkflowRefresh: () => Promise<void> | void;
   onSkillSelected?: (title: string | null) => void;
+  draftSelection?: {
+    selected: { skill_id: string; version: string } | null;
+    onSelect: (skill: VideoSkillPublicDetailV2) => void;
+  };
+  triggerLabel?: string;
+  responseLocale?: string;
 };
 
 const STYLE_CATALOG_PAGE_SIZE = 100;
@@ -28,10 +34,10 @@ function compareDisplayOrder(
   return left.display_order - right.display_order;
 }
 
-function StyleLoadingState() {
+function StyleLoadingState({ chinese = false }: { chinese?: boolean }) {
   return (
-    <div className="agent-chat__style-loading" role="status" aria-label="Loading Style previews">
-      <span className="agent-chat__style-loading-label" aria-hidden="true">Loading Styles...</span>
+    <div className="agent-chat__style-loading" role="status" aria-label={chinese ? "正在加载风格预览" : "Loading Style previews"}>
+      <span className="agent-chat__style-loading-label" aria-hidden="true">{chinese ? "正在加载风格…" : "Loading Styles..."}</span>
       {Array.from({ length: 4 }, (_, index) => (
         <div
           key={index}
@@ -53,9 +59,10 @@ type StyleCardProps = {
   activating: boolean;
   disabled: boolean;
   onSelect: () => void;
+  chinese?: boolean;
 };
 
-function StyleCard({ skill, selected, activating, disabled, onSelect }: StyleCardProps) {
+function StyleCard({ skill, selected, activating, disabled, onSelect, chinese = false }: StyleCardProps) {
   return (
     <button
       type="button"
@@ -68,7 +75,7 @@ function StyleCard({ skill, selected, activating, disabled, onSelect }: StyleCar
       <span className="agent-chat__style-preview">
         <SkillPreview preview={skill.preview} />
         {selected ? (
-          <span className="agent-chat__style-selected-mark" aria-label="Selected">
+          <span className="agent-chat__style-selected-mark" aria-label={chinese ? "已选择" : "Selected"}>
             <ConfirmIcon />
           </span>
         ) : null}
@@ -104,7 +111,11 @@ export function AgentCanvasStyleSelector({
   activeStyle,
   onWorkflowRefresh,
   onSkillSelected,
+  draftSelection,
+  triggerLabel,
+  responseLocale = "en",
 }: StyleSelectorProps) {
+  const chinese = responseLocale.startsWith("zh");
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<VideoSkillCatalogResponseV2 | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -112,6 +123,7 @@ export function AgentCanvasStyleSelector({
   const [activatingSkillId, setActivatingSkillId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLElement>(null);
   const lastActiveStyleRunIdRef = useRef<string | null>(
     activeStyle?.skill_run_id ?? null,
   );
@@ -150,11 +162,11 @@ export function AgentCanvasStyleSelector({
         return nextCatalog.categories[0]?.category_id ?? null;
       });
     } catch (catalogError) {
-      setError(catalogError instanceof Error ? catalogError.message : "Styles could not be loaded.");
+      setError(chinese ? "视听风格加载失败，请重试。" : catalogError instanceof Error ? catalogError.message : "Styles could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, [activeStyle]);
+  }, [activeStyle, chinese]);
 
   useEffect(() => {
     setOpen(false);
@@ -179,6 +191,12 @@ export function AgentCanvasStyleSelector({
     const returnFocusTarget = triggerRef.current;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !activatingSkillId) setOpen(false);
+      if (event.key !== "Tab") return;
+      const controls = menuRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex="0"]');
+      const first = controls?.[0];
+      const last = controls?.[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
@@ -201,6 +219,11 @@ export function AgentCanvasStyleSelector({
   }
 
   async function activateStyle(skill: VideoSkillPublicDetailV2) {
+    if (draftSelection) {
+      draftSelection.onSelect(skill);
+      setOpen(false);
+      return;
+    }
     if (activatingSkillId) return;
     onSkillSelected?.(skill.title);
     setActivatingSkillId(skill.skill_id);
@@ -249,13 +272,14 @@ export function AgentCanvasStyleSelector({
         type="button"
         ref={triggerRef}
         className={`agent-chat__style-trigger${open ? " is-active" : ""}`}
-        aria-label="Skill"
-        title="Skill"
+        aria-label={triggerLabel ?? "Skill"}
+        title={triggerLabel ?? "Skill"}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => void togglePicker()}
       >
         <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
+        {triggerLabel ? <span>{triggerLabel}</span> : null}
       </button>
 
       {open && typeof document !== "undefined" ? createPortal(
@@ -263,25 +287,26 @@ export function AgentCanvasStyleSelector({
           <button
             type="button"
             className="agent-chat__style-backdrop"
-            aria-label="Dismiss Choose video Style"
+            aria-label={chinese ? "取消选择视听风格" : "Dismiss Choose video Style"}
             tabIndex={-1}
             onClick={() => {
               if (!activatingSkillId) setOpen(false);
             }}
           />
           <section
+            ref={menuRef}
             className="agent-chat__style-menu"
             role="dialog"
             aria-modal="true"
-            aria-label="Choose video Style"
+            aria-label={chinese ? "选择视听风格" : "Choose video Style"}
           >
           <header className="agent-chat__style-menu-header">
             <div>
-              <strong>Choose visual language</strong>
+              <strong>{chinese ? "选择视听风格" : "Choose visual language"}</strong>
             </div>
             <button
               type="button"
-              aria-label="Close Style picker"
+              aria-label={chinese ? "关闭视听风格选择" : "Close Style picker"}
               autoFocus
               disabled={Boolean(activatingSkillId)}
               onClick={() => setOpen(false)}
@@ -290,12 +315,12 @@ export function AgentCanvasStyleSelector({
             </button>
           </header>
 
-          {loading ? <StyleLoadingState /> : null}
+          {loading ? <StyleLoadingState chinese={chinese} /> : null}
           {error ? (
             <div className="agent-chat__style-error" role="alert">
               <span>{error}</span>
               {!catalog ? (
-                <button type="button" onClick={() => void loadCatalog()}>Retry</button>
+                <button type="button" onClick={() => void loadCatalog()}>{chinese ? "重试" : "Retry"}</button>
               ) : null}
             </div>
           ) : null}
@@ -317,11 +342,13 @@ export function AgentCanvasStyleSelector({
               </div>
               <div className="agent-chat__style-list">
                 {visibleSkills.map((skill) => {
-                  const selected = skill.skill_id === activeStyle?.skill_id
-                    && skill.version === activeStyle.skill_version;
+                  const selected = draftSelection
+                    ? skill.skill_id === draftSelection.selected?.skill_id && skill.version === draftSelection.selected.version
+                    : skill.skill_id === activeStyle?.skill_id && skill.version === activeStyle.skill_version;
                   const activating = activatingSkillId === skill.skill_id;
                   return (
                     <StyleCard
+                      chinese={chinese}
                       key={`${skill.skill_id}@${skill.version}`}
                       skill={skill}
                       selected={selected}
@@ -332,7 +359,7 @@ export function AgentCanvasStyleSelector({
                   );
                 })}
                 {!visibleSkills.length ? (
-                  <p className="agent-chat__style-empty">No Styles are available in this category.</p>
+                  <p className="agent-chat__style-empty">{chinese ? "此分类暂无可用风格。" : "No Styles are available in this category."}</p>
                 ) : null}
               </div>
             </>

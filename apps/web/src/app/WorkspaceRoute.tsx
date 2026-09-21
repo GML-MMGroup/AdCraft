@@ -58,9 +58,7 @@ export function WorkspaceRoute() {
       restoreActiveWorkflow={normalizedPath.startsWith("/workflow")}
       projectCatalogScope={normalizedPath === "/trash" ? "trashed" : "active"}
     >
-      <Layout>
-        <Outlet />
-      </Layout>
+      {normalizedPath === "/projects/new" ? <Outlet /> : <Layout><Outlet /></Layout>}
     </WorkspaceProvider>
   );
 }

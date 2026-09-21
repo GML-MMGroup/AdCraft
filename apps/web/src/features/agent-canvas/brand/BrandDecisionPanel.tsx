@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { v2Api, V2ApiError } from "../../../api/v2Client.ts";
+import { useCallback, useMemo, useState } from "react";
 import type {
   BrandDecisionPanelV1,
   BrandStageV2,
@@ -53,116 +52,17 @@ export function BrandDecisionPanel({
   decisions,
   refreshing,
   onRefresh,
-  interactive = true,
+  onChooseSkills,
 }: {
   decisions: BrandDecisionPanelV1;
   refreshing: boolean;
   onRefresh: () => void;
-  interactive?: boolean;
+  onChooseSkills?: () => void;
 }) {
   const [collapsedStages, setCollapsedStages] = useState<ReadonlySet<BrandStageV2>>(
     () => new Set(),
   );
-  const [activeCard, setActiveCard] = useState<BrandDecisionPanelV1["open_card"]>(null);
-  const [cardLoading, setCardLoading] = useState(false);
-  const [cardError, setCardError] = useState<string | null>(null);
-  const [pendingOptionId, setPendingOptionId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [locking, setLocking] = useState(false);
-  const loadedQuestionKeyRef = useRef<string | null>(null);
-
   const currentStageIndex = stageIndex(decisions.journey.stage);
-  const questionFlowActive = interactive && !decisions.treatment_locked
-    && decisions.journey.stage !== "production";
-
-  const loadNextQuestion = useCallback(async () => {
-    if (!interactive) return;
-    setCardLoading(true);
-    setCardError(null);
-    try {
-      const card = await v2Api.brandNextQuestion(decisions.workflow_id);
-      loadedQuestionKeyRef.current = `${card.stage}:${card.stage_revision}`;
-      setActiveCard(card);
-    } catch {
-      loadedQuestionKeyRef.current = null;
-      setActiveCard(null);
-      setCardError("Could not load the next question. Use retry to fetch a fresh card.");
-    } finally {
-      setCardLoading(false);
-    }
-  }, [decisions.workflow_id, interactive]);
-
-  useEffect(() => {
-    if (!questionFlowActive) {
-      loadedQuestionKeyRef.current = null;
-      setActiveCard(null);
-      setCardError(null);
-      return undefined;
-    }
-    const key = `${decisions.journey.stage}:${decisions.journey.stage_revision}`;
-    if (loadedQuestionKeyRef.current === key) return undefined;
-    void loadNextQuestion();
-    return undefined;
-  }, [
-    decisions.journey.stage,
-    decisions.journey.stage_revision,
-    loadNextQuestion,
-    questionFlowActive,
-  ]);
-
-  const handleOptionSelect = useCallback(async (optionId: string, label: string) => {
-    if (!activeCard) return;
-    setPendingOptionId(optionId);
-    setActionError(null);
-    try {
-      if (activeCard.stage === "hypothesis") {
-        await v2Api.brandSelectHypothesis(decisions.workflow_id, optionId);
-      } else if (activeCard.stage === "treatment") {
-        await v2Api.brandSelectTreatment(decisions.workflow_id, {
-          card_id: activeCard.card_id,
-          option_id: optionId,
-          selected_label: label,
-          detail: "",
-        });
-      } else {
-        await v2Api.brandSelectSlot(decisions.workflow_id, {
-          card_id: activeCard.card_id,
-          option_id: optionId,
-          value_text: label,
-          provenance: "user_confirmed",
-        });
-      }
-      loadedQuestionKeyRef.current = null;
-      setActiveCard(null);
-      onRefresh();
-    } catch (error) {
-      if (error instanceof V2ApiError && error.status === 409) {
-        setActionError("This question expired. Loading the latest card.");
-        loadedQuestionKeyRef.current = null;
-        setActiveCard(null);
-        void loadNextQuestion();
-      } else {
-        setActionError(error instanceof Error ? error.message : "Selection failed. Try again.");
-      }
-    } finally {
-      setPendingOptionId(null);
-    }
-  }, [activeCard, decisions.workflow_id, loadNextQuestion, onRefresh]);
-
-  const handleLockTreatment = useCallback(async () => {
-    setLocking(true);
-    setActionError(null);
-    try {
-      await v2Api.brandLockTreatment(decisions.workflow_id);
-      loadedQuestionKeyRef.current = null;
-      setActiveCard(null);
-      onRefresh();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Locking treatment failed. Try again.");
-    } finally {
-      setLocking(false);
-    }
-  }, [decisions.workflow_id, onRefresh]);
 
   const slotsByStage = useMemo(() => {
     const grouped = new Map<BrandStageV2, BrandDecisionPanelV1["slot_values"]>();
@@ -212,9 +112,6 @@ export function BrandDecisionPanel({
           Treatment locked. Decisions are read-only.
         </p>
       ) : null}
-      {actionError ? (
-        <p className="brand-decision-panel__action-error" role="alert">{actionError}</p>
-      ) : null}
       <div className="brand-decision-panel__sections">
         {STAGE_ORDER.map((stage) => {
           const stageSlots = slotsByStage.get(stage) ?? [];
@@ -259,43 +156,7 @@ export function BrandDecisionPanel({
                       ))}
                     </ul>
                   ) : null}
-                  {questionFlowActive && activeCard && activeCard.stage === stage ? (
-                    <div className="brand-decision-panel__open-card">
-                      <p>{activeCard.question}</p>
-                      <ul>
-                        {activeCard.options.map((option) => (
-                          <li key={option.option_id}>
-                            <button
-                              type="button"
-                              className="brand-decision-panel__option"
-                              disabled={pendingOptionId !== null}
-                              onClick={() => {
-                                void handleOptionSelect(option.option_id, option.label);
-                              }}
-                            >
-                              {pendingOptionId === option.option_id ? "Submitting…" : option.label}
-                            </button>
-                            {option.why ? <p className="brand-decision-panel__option-why">{option.why}</p> : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : questionFlowActive && cardLoading && stage === decisions.journey.stage ? (
-                    <p className="brand-decision-panel__empty">Loading question…</p>
-                  ) : questionFlowActive && cardError && stage === decisions.journey.stage ? (
-                    <div>
-                      <p className="brand-decision-panel__empty">{cardError}</p>
-                      <button
-                        type="button"
-                        className="brand-decision-panel__option"
-                        onClick={() => {
-                          void loadNextQuestion();
-                        }}
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : !questionFlowActive && decisions.open_card && decisions.open_card.stage === stage ? (
+                  {decisions.open_card && decisions.open_card.stage === stage ? (
                     <div className="brand-decision-panel__open-card">
                       <p>{decisions.open_card.question}</p>
                       <ul>
@@ -351,6 +212,7 @@ export function BrandDecisionPanel({
                                 <li key={entry.skill_id}>
                                   <span aria-hidden="true">{entry.selected ? "☑" : "☐"}</span>
                                   {entry.title}
+                                  {entry.reason ? <p className="brand-decision-panel__option-why">{entry.reason}</p> : null}
                                 </li>
                               ))}
                             </ul>
@@ -358,6 +220,11 @@ export function BrandDecisionPanel({
                         );
                       })}
                     </div>
+                  ) : null}
+                  {stage === "skill-stack" && isCurrent && onChooseSkills ? (
+                    <button type="button" className="brand-decision-panel__option"
+                      disabled={refreshing || decisions.open_card?.stage !== "skill-stack"}
+                      onClick={onChooseSkills}>选择 Skills / Choose Skills</button>
                   ) : null}
                   {stage === "treatment" && decisions.treatment_steps.length > 0 ? (
                     <>
@@ -369,18 +236,6 @@ export function BrandDecisionPanel({
                           </li>
                         ))}
                       </ul>
-                      {questionFlowActive && decisions.treatment_steps.length >= 8 ? (
-                        <button
-                          type="button"
-                          className="brand-decision-panel__option brand-decision-panel__lock"
-                          disabled={locking || pendingOptionId !== null}
-                          onClick={() => {
-                            void handleLockTreatment();
-                          }}
-                        >
-                          {locking ? "Locking…" : "Lock treatment"}
-                        </button>
-                      ) : null}
                     </>
                   ) : null}
                 </div>

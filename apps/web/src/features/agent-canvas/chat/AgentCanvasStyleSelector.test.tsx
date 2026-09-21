@@ -59,6 +59,19 @@ afterEach(() => {
 });
 
 describe("AgentCanvasStyleSelector", () => {
+  it("reuses the picker for a draft without activating a style Run", async () => {
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+    const activate = vi.spyOn(agentCanvasApi, "createAgentCanvasVideoSkillRun");
+    const onSelect = vi.fn();
+    render(<AgentCanvasStyleSelector workflowId="workflow-1" activeStyle={null} onWorkflowRefresh={vi.fn()}
+      draftSelection={{ selected: null, onSelect }} responseLocale="zh-CN" triggerLabel="选择视听风格" />);
+    fireEvent.click(screen.getByRole("button", { name: "选择视听风格" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Platform Default/ }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ skill_id: "platform-default", version: "1.0.0" }));
+    expect(activate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("renders the backend-provided Skill preview URL without a frontend Skill map", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response("image", { status: 200 }));

@@ -1,0 +1,46 @@
+@font-face {
+  font-family: "Literata";
+  src: url("/fonts/literata-italic-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+.particle-study {
+  min-height: 100vh;
+  min-width: 900px;
+  padding: 30px 48px;
+  background: #08090b;
+  color: #e5e6e9;
+  font-family: var(--font-ui), sans-serif;
+}
+.particle-study__header, .particle-study__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  color: #888a93;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+.particle-study__intro { margin: 70px auto 44px; max-width: 1280px; }
+.particle-study__intro > p { color: #9398a4; font-size: 10px; letter-spacing: 0.2em; }
+.particle-study__intro h1 { margin: 18px 0; font: italic 400 clamp(32px, 3.4vw, 52px)/1.2 "Literata", Georgia, serif; }
+.particle-study__intro > span { color: #92959e; font-size: 13px; }
+.particle-study__gallery { max-width: 1280px; margin: auto; border-top: 1px solid #25262c; }
+.particle-study__numbers { display: grid; grid-template-columns: 1fr 1fr; padding-top: 24px; color: #858893; font: 10px var(--font-mono), monospace; letter-spacing: 0.15em; }
+.particle-study__numbers span { padding-left: 28px; }
+.particle-study__art { display: block; position: relative; height: clamp(340px, 47vh, 520px); }
+.particle-study__art canvas { display: block; width: 100%; height: 100%; }
+.particle-study__controls { display: flex; justify-content: flex-end; padding: 16px 0; }
+.particle-study__controls button { border: 1px solid #484b56; border-radius: 4px; padding: 8px 12px; background: transparent; color: #bfc1c9; font: inherit; font-size: 12px; cursor: pointer; }
+.particle-study__controls button:focus-visible { outline: 2px solid #bfc1c9; outline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) {
+  .particle-study__controls button:hover { border-color: #8f939e; color: #e5e6e9; }
+  .particle-study__controls button:active { transform: scale(0.97); }
+}
+.particle-study__error { position: absolute; inset: 40% 20% auto; text-align: center; color: #bfc1c9; }
+.particle-study__captions { display: grid; grid-template-columns: 1fr 1fr; text-align: center; gap: 40px; padding: 12px 20px 44px; }
+.particle-study__captions h2 { margin: 0 0 14px; font: italic 400 clamp(26px, 2.5vw, 38px)/1.2 "Literata", Georgia, serif; }
+.particle-study__captions p { margin: 0; font-size: 12px; line-height: 1.7; color: #92959e; }
+.particle-study__footer { max-width: 1280px; margin: 24px auto 0; border-top: 1px solid #25262c; padding-top: 22px; font-size: 9px; }

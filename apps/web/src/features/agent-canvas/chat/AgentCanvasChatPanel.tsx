@@ -64,6 +64,7 @@ import {
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
 import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
+import { BrandTreatmentConfirmation } from "./BrandTreatmentConfirmation.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
@@ -88,6 +89,8 @@ import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
+import type { BrandDecisionPanelV1, BrandStageV2 } from "../brand/brandDecisions.ts";
+import { BrandSkillPicker } from "../brand/BrandSkillPicker.tsx";
 import { failureUserAction } from "./actionableFailure.ts";
 import { VirtualizedTimeline } from "./VirtualizedTimeline.tsx";
 import { FailedTurnBubble } from "./FailedTurnBubble.tsx";
@@ -148,6 +151,16 @@ export function AgentCanvasChatPanel({
   onWorkflowRefresh,
   onRuntimeRefresh,
   onAssetsRefresh,
+  brandMode = false,
+  brandStage = null,
+  brandContextReady = true,
+  brandTreatmentReady = false,
+  brandDecisions = null,
+  brandSkillPickerOpen = false,
+  onBrandSkillPickerOpen,
+  onBrandSkillPickerClose,
+  onBrandDecisionsUpdated,
+  onBrandDecisionsRefresh,
   onProjectsRefresh,
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -163,6 +176,16 @@ export function AgentCanvasChatPanel({
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
   onAssetsRefresh?: () => Promise<void> | void;
+  brandMode?: boolean;
+  brandStage?: BrandStageV2 | null;
+  brandContextReady?: boolean;
+  brandTreatmentReady?: boolean;
+  brandDecisions?: BrandDecisionPanelV1 | null;
+  brandSkillPickerOpen?: boolean;
+  onBrandSkillPickerOpen?: () => void;
+  onBrandSkillPickerClose?: () => void;
+  onBrandDecisionsUpdated?: (panel: BrandDecisionPanelV1) => void;
+  onBrandDecisionsRefresh?: () => Promise<BrandStageV2 | null> | BrandStageV2 | null;
   onProjectsRefresh?: () => Promise<boolean> | void;
   runtime?: CanvasRuntimeSnapshotV2 | null;
   collapsed?: boolean;
@@ -177,6 +200,10 @@ export function AgentCanvasChatPanel({
     onWorkflowRefresh,
     onRuntimeRefresh,
     onAssetsRefresh,
+    brandMode,
+    brandStage,
+    brandContextReady,
+    onBrandDecisionsRefresh,
   });
   const [draft, setDraft] = useState("");
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -479,6 +506,13 @@ export function AgentCanvasChatPanel({
     interaction: NonNullable<typeof standaloneGuidedInteraction>,
     request: Parameters<typeof chat.actions.submitGuidedInteraction>[1],
   ) {
+    if (interaction.content.content_kind === "concept_choice"
+      && interaction.content.capability_id === "brand_skill-stack"
+      && request.submission_kind === "concept_choice"
+      && (request.option_id === "adjust" || Boolean(request.custom_text))) {
+      onBrandSkillPickerOpen?.();
+      return false;
+    }
     optimisticInteractionSubmitSeqRef.current = chatEvents.reduce(
       (latest, event) => Math.max(latest, event.seq),
       -1,
@@ -588,6 +622,13 @@ export function AgentCanvasChatPanel({
         onProjectsRefresh={onProjectsRefresh}
         selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
         onSelectConceptOption={(optionId) => {
+          if (conceptInteraction?.content.content_kind === "concept_choice"
+            && conceptInteraction.content.capability_id === "brand_skill-stack" && optionId === "adjust") {
+            setSelectedConceptOptionId(null);
+            setDraft("");
+            onBrandSkillPickerOpen?.();
+            return;
+          }
           setSelectedConceptOptionId(optionId);
           setDraft("");
         }}
@@ -1004,6 +1045,27 @@ export function AgentCanvasChatPanel({
       ) : null}
 
       <div className="agent-chat__composer">
+        {brandSkillPickerOpen && brandDecisions?.workflow_id === workflow.workflow_id ? (
+          <BrandSkillPicker key={workflow.workflow_id} decisions={brandDecisions}
+            responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}
+            onClose={() => onBrandSkillPickerClose?.()}
+            onUpdated={(panel) => onBrandDecisionsUpdated?.(panel)}
+            onConversationRefresh={async () => {
+              await chat.actions.refresh();
+              await onWorkflowRefresh?.();
+            }} />
+        ) : null}
+        {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
+          <BrandTreatmentConfirmation
+            key={workflow.workflow_id}
+            workflowId={workflow.workflow_id}
+            responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}
+            onConfirmed={async () => {
+              await onBrandDecisionsRefresh?.();
+              await chat.actions.refresh();
+            }}
+          />
+        ) : null}
         {pendingContextFiles.length ? (
           <div className="agent-chat__product-upload-choice" role="status">
             <span>
@@ -1150,12 +1212,18 @@ export function AgentCanvasChatPanel({
                 />
               </>
               ) : null}
-            <AgentCanvasStyleSelector
+            {brandMode ? (
+              <button type="button" aria-label="选择 Skills / Choose Skills" title="选择 Skills / Choose Skills"
+                disabled={!brandContextReady || chat.state.sending || brandStage !== "skill-stack" || brandDecisions?.open_card?.stage !== "skill-stack"}
+                onClick={onBrandSkillPickerOpen}>
+                <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" width={20} height={20} />
+              </button>
+            ) : <AgentCanvasStyleSelector
               workflowId={workflow.workflow_id}
               activeStyle={workflow.active_style_skill}
               onWorkflowRefresh={() => onWorkflowRefresh?.()}
               onSkillSelected={setSelectedSkillTitle}
-            />
+            />}
           </div>
           <button
             type="button"

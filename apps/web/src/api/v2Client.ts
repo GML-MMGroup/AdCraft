@@ -171,6 +171,7 @@ import type {
   BrandDecisionPanelV1,
   BrandInspectionConversationTurnV1,
   BrandJourneyStateV1,
+  BrandSkillSelectionRequest,
 } from "../features/agent-canvas/brand/brandDecisions.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
@@ -211,6 +212,7 @@ import {
 } from "../features/agent-canvas/model/normalizers.ts";
 import {
   normalizeBrandJourneyStateV1,
+  normalizeBrandCreativeMethods,
   normalizeBrandDecisionPanelV1,
   normalizeBrandOptionCardV1,
   normalizeBrandInspectionConversation,
@@ -629,6 +631,18 @@ export const v2Api = {
     );
   },
 
+  brandCreativeMethodSkills() {
+    return requestV2("/brand/creative-method-skills", {}, normalizeBrandCreativeMethods);
+  },
+
+  brandSelectSkills(workflowId: string, body: BrandSkillSelectionRequest): Promise<BrandDecisionPanelV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-skills`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      normalizeBrandDecisionPanelV1,
+    );
+  },
+
   brandInspectionConversation(workflowId: string): Promise<BrandInspectionConversationTurnV1[]> {
     const query = new URLSearchParams({ workflow_id: workflowId });
     return requestV2(
@@ -656,11 +670,11 @@ export const v2Api = {
     );
   },
 
-  brandNextQuestion(workflowId: string): Promise<NonNullable<BrandDecisionPanelV1["open_card"]>> {
+  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"]> {
     return requestV2(
       `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
       { method: "POST" },
-      normalizeBrandOptionCardV1,
+      (payload) => payload === null ? null : normalizeBrandOptionCardV1(payload),
     );
   },
 

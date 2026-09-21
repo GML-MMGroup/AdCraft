@@ -4,6 +4,7 @@ import type {
   BrandDecisionPanelV1,
   BrandInspectionConversationTurnV1,
   BrandJourneyStateV1,
+  BrandCreativeMethod,
 } from "./brandDecisions.ts";
 
 const BRAND_STAGES = [
@@ -196,6 +197,8 @@ export function normalizeBrandDecisionPanelV1(value: unknown): BrandDecisionPane
             skill_kind: skillKind(entry.skill_kind, `brandDecisions.skill_stack.entries[${index}].skill_kind`),
             skill_id: nonEmptyStr(entry.skill_id, `brandDecisions.skill_stack.entries[${index}].skill_id`),
             title: str(entry.title, `brandDecisions.skill_stack.entries[${index}].title`),
+            version: optionalStr(entry.version, `brandDecisions.skill_stack.entries[${index}].version`),
+            reason: optionalStr(entry.reason, `brandDecisions.skill_stack.entries[${index}].reason`),
             selected: entry.selected === undefined ? true : bool(entry.selected, `brandDecisions.skill_stack.entries[${index}].selected`),
           };
         },
@@ -254,6 +257,22 @@ export function normalizeBrandInspectionConversation(
       created_at: optionalStr(turn.created_at, `brandInspection.turns[${index}].created_at`),
     } satisfies BrandInspectionConversationTurnV1;
   });
+}
+
+export function normalizeBrandCreativeMethods(value: unknown): { items: BrandCreativeMethod[] } {
+  const root = record(value, "brandCreativeMethods");
+  return { items: arr(root.items, "brandCreativeMethods.items").map((item, index) => {
+    const path = `brandCreativeMethods.items[${index}]`;
+    const entry = record(item, path);
+    if (entry.skill_kind !== "creative_method") fail(path, "expected creative method");
+    return {
+      skill_kind: "creative_method",
+      skill_id: nonEmptyStr(entry.skill_id, `${path}.skill_id`),
+      version: nonEmptyStr(entry.version, `${path}.version`),
+      title: str(entry.title, `${path}.title`),
+      summary: str(entry.summary, `${path}.summary`),
+    };
+  }) };
 }
 
 export function normalizeBrandInspectionDecisionLog(

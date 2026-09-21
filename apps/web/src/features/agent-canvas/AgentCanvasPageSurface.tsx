@@ -24,7 +24,6 @@ import {
 } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
-import { v2Api } from "../../api/v2Client.ts";
 import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
@@ -267,26 +266,34 @@ export function AgentCanvasPage() {
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
   const [brandDecisions, setBrandDecisions] = useState<BrandDecisionPanelV1 | null>(null);
   const [brandDecisionsRefreshing, setBrandDecisionsRefreshing] = useState(false);
+  const [brandDecisionsResolved, setBrandDecisionsResolved] = useState(false);
+  const [brandSkillsWorkflowId, setBrandSkillsWorkflowId] = useState<string | null>(null);
   const brandWorkflowId = workflow?.workflow_id ?? null;
   const refreshBrandDecisions = useCallback(async () => {
-    if (!brandWorkflowId) return;
+    if (!brandWorkflowId) return null;
     setBrandDecisionsRefreshing(true);
     try {
-      setBrandDecisions(await v2Api.brandDecisions(brandWorkflowId));
+      const decisions = await agentCanvasApi.brandDecisions(brandWorkflowId);
+      setBrandDecisions(decisions);
+      return decisions.journey.stage;
     } catch {
       setBrandDecisions(null);
+      return null;
     } finally {
       setBrandDecisionsRefreshing(false);
+      setBrandDecisionsResolved(true);
     }
   }, [brandWorkflowId]);
   useEffect(() => {
     if (!brandWorkflowId) {
       setBrandDecisions(null);
+      setBrandDecisionsResolved(true);
       return undefined;
     }
     let cancelled = false;
+    setBrandDecisionsResolved(false);
     setBrandDecisionsRefreshing(true);
-    v2Api.brandDecisions(brandWorkflowId)
+    agentCanvasApi.brandDecisions(brandWorkflowId)
       .then((response) => {
         if (!cancelled) setBrandDecisions(response);
       })
@@ -294,7 +301,10 @@ export function AgentCanvasPage() {
         if (!cancelled) setBrandDecisions(null);
       })
       .finally(() => {
-        if (!cancelled) setBrandDecisionsRefreshing(false);
+        if (!cancelled) {
+          setBrandDecisionsRefreshing(false);
+          setBrandDecisionsResolved(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -1352,7 +1362,7 @@ export function AgentCanvasPage() {
         <BrandDecisionPanel
           decisions={brandDecisions}
           refreshing={brandDecisionsRefreshing}
-          interactive={false}
+          onChooseSkills={() => setBrandSkillsWorkflowId(brandDecisions.workflow_id)}
           onRefresh={() => {
             void refreshBrandDecisions();
           }}
@@ -1565,6 +1575,16 @@ export function AgentCanvasPage() {
           >
             <AssetsIcon />
           </button>
+          {workflow ? (
+            <button
+              type="button"
+              aria-label="Open LLM call history"
+              title="LLM call history"
+              onClick={() => window.open(`/workflows/${encodeURIComponent(workflow.workflow_id)}/llm-calls`, "_blank", "noopener,noreferrer")}
+            >
+              LOG
+            </button>
+          ) : null}
           {running ? (
             <button
               type="button"
@@ -1718,6 +1738,24 @@ export function AgentCanvasPage() {
           onWorkflowRefresh={refreshWorkflow}
           onRuntimeRefresh={refreshRuntime}
           onAssetsRefresh={refreshAssets}
+          brandMode={brandDecisions?.mode === "brand"}
+          brandStage={brandDecisions?.journey.stage ?? null}
+          brandDecisions={brandDecisions}
+          brandSkillPickerOpen={brandSkillsWorkflowId === workflow.workflow_id}
+          onBrandSkillPickerOpen={() => setBrandSkillsWorkflowId(workflow.workflow_id)}
+          onBrandSkillPickerClose={() => setBrandSkillsWorkflowId(null)}
+          onBrandDecisionsUpdated={setBrandDecisions}
+          brandContextReady={Boolean(
+            !brandWorkflowId
+            || (
+              brandDecisionsResolved
+              && (brandDecisions === null || brandDecisions.workflow_id === brandWorkflowId)
+            )
+          )}
+          brandTreatmentReady={Boolean(brandDecisions && [
+            "hook", "story", "character", "scene", "visual", "camera", "editing", "sound",
+          ].every((key) => brandDecisions.treatment_steps.some((step) => step.step_key === key)))}
+          onBrandDecisionsRefresh={refreshBrandDecisions}
           onProjectsRefresh={refreshProjects}
           collapsed={chatCollapsed}
           onCollapsedChange={setChatCollapsed}
