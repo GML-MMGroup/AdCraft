@@ -2,6 +2,10 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
+export type WorkflowModelCallWriteV1 = { readonly "schema_version"?: "1"; readonly "run_id": string; readonly "call_id": string; readonly "phase": "outcome" | "request"; readonly "stage": "capability_fallback" | "initial" | "structured_repair" | "transport_retry"; readonly "recorded_at": string; readonly "boundary": "pi_assistant_events" | "sdk_response" | "sdk_stream_chunks"; readonly "payload": Readonly<Record<string, unknown>>; readonly "complete"?: boolean; readonly "failed"?: boolean };
+
+export type WorkflowModelCallReceiptV1 = { readonly "call_id": string; readonly "phase": "outcome" | "request"; readonly "recorded": boolean };
+
 export type BrandSkillRecommendationV1 = { readonly "skill_id": string; readonly "version": string; readonly "reason": string };
 
 export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };

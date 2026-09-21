@@ -31,6 +31,7 @@ import {
   runWithOneTransportRetry,
 } from "./operation-recovery.js";
 import { PiStructuredTransportRouter } from "./pi-structured-transport.js";
+import { workflowModelCallCapture, observeWorkflowAssistantStream } from "./workflow-model-calls.js";
 import { getPromptDescriptor } from "./prompts/registry.js";
 import {
   toolsForOperation,
@@ -235,12 +236,27 @@ export class PiModelAdapter implements AgentModelAdapter {
           if (replay) {
             return replayedAssistantMessageStream(traceContext, traceRequest, stage);
           }
-          const source = modelStreamForCredential(
+          const capture = workflowModelCallCapture(this.python, credential, request, stage, "pi_assistant_events");
+          const source = observeWorkflowAssistantStream(modelStreamForCredential(
             selectedModel as Model<"openai-completions">,
             context,
-            streamOptions,
+            {
+              ...streamOptions,
+              onPayload: async (payload, payloadModel) => {
+                const replacement = await streamOptions.onPayload?.(payload, payloadModel);
+                capture?.begin({
+                  agent_request: request, system_prompt: systemPrompt, user_prompt: userPrompt,
+                  output_schema: schema, loaded_skills: skills,
+                  provider_request: replacement ?? payload,
+                  provider: credential.provider, model_ref: credential.model_ref,
+                  base_url: credential.base_url, execution_policy: credential.execution_policy,
+                  stream_options: { ...streamOptions, apiKey: undefined, signal: undefined },
+                });
+                return replacement;
+              },
+            },
             credential,
-          );
+          ), capture);
           return credential.trace_mode === "live_record"
             ? recordedAssistantMessageStream(traceContext, traceRequest, stage, source)
             : source;

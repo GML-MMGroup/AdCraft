@@ -36401,6 +36401,113 @@
       "title": "WorkflowDocumentReferenceV1",
       "type": "object"
     },
+    "WorkflowModelCallReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "outcome",
+            "request"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "recorded": {
+          "title": "Recorded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "call_id",
+        "phase",
+        "recorded"
+      ],
+      "title": "WorkflowModelCallReceiptV1",
+      "type": "object"
+    },
+    "WorkflowModelCallWriteV1": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary": {
+          "enum": [
+            "pi_assistant_events",
+            "sdk_response",
+            "sdk_stream_chunks"
+          ],
+          "title": "Boundary",
+          "type": "string"
+        },
+        "call_id": {
+          "pattern": "^mcall-[A-Za-z0-9_-]{1,100}$",
+          "title": "Call Id",
+          "type": "string"
+        },
+        "complete": {
+          "default": true,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "failed": {
+          "default": false,
+          "title": "Failed",
+          "type": "boolean"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "phase": {
+          "enum": [
+            "outcome",
+            "request"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,160}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "capability_fallback",
+            "initial",
+            "structured_repair",
+            "transport_retry"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "boundary",
+        "call_id",
+        "payload",
+        "phase",
+        "recorded_at",
+        "run_id",
+        "stage"
+      ],
+      "title": "WorkflowModelCallWriteV1",
+      "type": "object"
+    },
     "WorkflowStateCapsuleV1": {
       "additionalProperties": false,
       "properties": {

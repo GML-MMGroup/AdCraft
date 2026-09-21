@@ -12,6 +12,7 @@ from pydantic import TypeAdapter
 from app.schemas import agent_capabilities
 from app.schemas import agent_runtime
 from app.schemas import agent_model_trace
+from app.schemas import workflow_model_calls
 from app.schemas import agent_canvas_video_parameters
 from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
@@ -52,6 +53,8 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    workflow_model_calls.WorkflowModelCallWriteV1,
+    workflow_model_calls.WorkflowModelCallReceiptV1,
     brand_professional_mode.BrandSkillRecommendationV1,
     brand_professional_mode.BrandSlotValueV1,
     brand_professional_mode.BrandSlotEvidenceV1,

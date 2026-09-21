@@ -1,5 +1,6 @@
 import type {
   AgentModelTraceClaimRequestV1,
+  WorkflowModelCallWriteV1,
   AgentModelTraceClaimResponseV1,
   AgentModelTraceRecordRequestV1,
   AgentModelTraceRecordReceiptV1,
@@ -171,6 +172,23 @@ export class PythonInternalClient {
       throw new Error("agent_protocol_mismatch");
     }
     return payload as unknown as AgentModelTraceRecordReceiptV1;
+  }
+
+  async recordWorkflowModelCall(record: WorkflowModelCallWriteV1): Promise<void> {
+    const response = await this.#fetch(`${this.#baseUrl}/internal/v1/agent-model-calls`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.#internalToken}`,
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      },
+      body: JSON.stringify(record),
+      signal: AbortSignal.timeout(2_000),
+    });
+    const payload = await boundedJson(response);
+    if (payload.call_id !== record.call_id || payload.phase !== record.phase || typeof payload.recorded !== "boolean") {
+      throw new Error("agent_model_call_capture_unavailable");
+    }
   }
 
   async claimModelTraceAttempt(
