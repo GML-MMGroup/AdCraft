@@ -18,7 +18,7 @@ import {
   RunBudget,
   RunBudgetFailure,
 } from "./run-budget.js";
-import { AgentOperationFailure } from "./operation-recovery.js";
+import { AgentOperationFailure, PROVIDER_INSUFFICIENT_BALANCE_MESSAGE } from "./operation-recovery.js";
 import { AgentPromptInputProjectionError } from "./prompt-input-projection.js";
 
 interface ServerOptions {
@@ -68,6 +68,7 @@ const safeAdapterErrorCodes = new Set([
   "agent_contract_validation_failed",
   "agent_provider_timeout",
   "agent_provider_transport_failed",
+  "agent_provider_insufficient_balance",
   "agent_run_budget_exceeded",
   "agent_tool_not_allowed",
   "agent_target_revision_conflict",
@@ -92,6 +93,7 @@ const structuredFailureCodes = new Set([
 const providerFailureCodes = new Set([
   "agent_provider_timeout",
   "agent_provider_transport_failed",
+  "agent_provider_insufficient_balance",
 ]);
 const safeFailureMessages: Readonly<Record<string, string>> = {
   agent_contract_validation_failed: "Agent contract validation failed.",
@@ -105,6 +107,7 @@ const safeFailureMessages: Readonly<Record<string, string>> = {
   agent_prompt_input_registry_invalid: "Agent Prompt input registry is invalid.",
   agent_provider_timeout: "Agent provider request timed out.",
   agent_provider_transport_failed: "Agent provider transport failed.",
+  agent_provider_insufficient_balance: PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
   agent_run_budget_exceeded: "Agent runtime policy rejected the operation.",
   agent_stream_backpressure_exceeded: "Agent runtime stream exceeded its byte budget.",
   agent_structured_output_invalid: "Agent structured output was invalid.",
@@ -560,10 +563,7 @@ function logTerminalProviderDiagnostic(
   request: AgentRunRequest,
   failure: RuntimeFailure | undefined,
 ): void {
-  if (
-    failure?.code !== "agent_provider_timeout" &&
-    failure?.code !== "agent_provider_transport_failed"
-  ) {
+  if (!failure || !providerFailureCodes.has(failure.code)) {
     return;
   }
   const audit = failure.attemptMetadata;

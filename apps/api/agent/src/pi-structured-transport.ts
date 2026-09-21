@@ -14,7 +14,9 @@ import type {
 } from "./generated/agent-runtime.js";
 import {
   AgentOperationFailure,
+  isProviderBalanceFailure,
   isProviderTimeoutFailure,
+  PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
 } from "./operation-recovery.js";
 import {
   isAcceptanceReplaySource,
@@ -1256,6 +1258,15 @@ function normalizeTransportFailure(
       "agent_structured_output_invalid",
       "agent_structured_output_invalid",
       manualRetryable,
+      stage,
+      attemptMetadata,
+    );
+  }
+  if (isProviderBalanceFailure(error)) {
+    return new AgentOperationFailure(
+      "agent_provider_insufficient_balance",
+      PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
+      false,
       stage,
       attemptMetadata,
     );

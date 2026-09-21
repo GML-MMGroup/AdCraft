@@ -64,6 +64,7 @@ _PRE_SUBMISSION_FAILURE_CODES = {
 _PROVIDER_FAILURE_CODES = {
     "agent_provider_timeout",
     "agent_provider_transport_failed",
+    "agent_provider_insufficient_balance",
 }
 _STRUCTURED_FAILURE_CODES = {
     "agent_contract_validation_failed",
@@ -82,6 +83,10 @@ _SAFE_FAILURE_MESSAGES = {
     "agent_publication_failed": "Agent result publication failed.",
     "agent_provider_timeout": "Agent provider request timed out.",
     "agent_provider_transport_failed": "Agent provider transport failed.",
+    "agent_provider_insufficient_balance": (
+        "The Agent provider has insufficient balance or credits. "
+        "Please top up your account or switch to another model provider."
+    ),
     "agent_run_cancelled": "Agent run was cancelled.",
     "agent_runtime_unavailable": "Agent runtime is unavailable.",
     "agent_stream_backpressure_exceeded": ("Agent runtime stream exceeded its byte budget."),
