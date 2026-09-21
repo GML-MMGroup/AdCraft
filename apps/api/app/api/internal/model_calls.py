@@ -72,9 +72,9 @@ async def record_model_call(
     # Parse explicitly so validation errors never echo private prompt/response data.
     body = bytearray()
     async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > 16 * 1024 * 1024:
+        if len(body) + len(chunk) > 16 * 1024 * 1024:
             raise HTTPException(413, detail={"code": "agent_model_call_too_large"})
+        body.extend(chunk)
     try:
         write = WorkflowModelCallWriteV1.model_validate_json(body)
     except ValidationError:

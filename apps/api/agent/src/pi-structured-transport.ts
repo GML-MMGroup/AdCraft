@@ -413,6 +413,7 @@ export class PiStructuredTransportRouter {
       loaded_skills: input.loadedSkills ?? [], provider_request: request,
       provider: input.credential.provider, model_ref: input.credential.model_ref,
       execution_policy: input.credential.execution_policy, effective_timeout_ms: timeoutMs,
+      transport_options: { timeout_ms: timeoutMs, max_retries: 0, max_output_bytes: input.request.policy?.max_output_bytes ?? 262_144 },
       ...(!isAcceptanceReplaySource(input.credential) ? { base_url: input.credential.base_url } : {}),
     });
     try {
