@@ -2,17 +2,17 @@
   "skills": [
     {
       "path": "brand_agent_brand_strategy/SKILL.md",
-      "sha256": "6b37ffc5274339218a4411c1812fc96e49d1c6593e3d0bebb0913f214b294aac",
+      "sha256": "4e478f8ae0654f1af275af4dc2e99087f18900e9fc12b63e60595c7edb534a36",
       "skill_id": "brand_agent_brand_strategy"
     },
     {
       "path": "brand_agent_creative_strategy/SKILL.md",
-      "sha256": "d800e84cdf7550a8739f864abacb714d2dbfb18352de8c0575a957f08c6e0b3e",
+      "sha256": "148a1dc0202111e8a58208f1c6f8fdc2b3ddcd13a2756d1c196594695e73d739",
       "skill_id": "brand_agent_creative_strategy"
     },
     {
       "path": "brand_agent_creative_treatment/SKILL.md",
-      "sha256": "99dc0bc0b8fb0a0b1d1127d50e9b23b3874cc1c0ca1a481e7930a77919d2a199",
+      "sha256": "089ab250f77f39fbe4780c102c2b6600adff92c9e14154acf5f3bbaf1b71dcfc",
       "skill_id": "brand_agent_creative_treatment"
     },
     {

@@ -131,8 +131,8 @@ metadata.set("compile_video_parameters", creativeMetadata(
 ));
 metadata.set("workflow_creation", { context_contract_name: "FrontDeskIntentAgentContext", result_contract_name: "FrontDeskIntentOutput" });
 metadata.set("intent_contract_planner", { context_contract_name: "IntentContractAgentContext", result_contract_name: "V2IntentPlan" });
-metadata.set("brand_slot_question", { context_contract_name: "AgentRunContext", result_contract_name: "BrandStrategyOutputV1" });
-metadata.set("brand_hypothesis", { context_contract_name: "AgentRunContext", result_contract_name: "CreativeStrategyOutputV1" });
+metadata.set("brand_slot_question", { context_contract_name: "AgentRunContext", result_contract_name: "BrandStrategyOutputV1", required_skill: "brand_agent_brand_strategy" });
+metadata.set("brand_hypothesis", { context_contract_name: "AgentRunContext", result_contract_name: "CreativeStrategyOutputV1", required_skill: "brand_agent_creative_strategy" });
 metadata.set("brand_skill_recommendation", { context_contract_name: "AgentRunContext", result_contract_name: "BrandSkillRecommendationsV1", required_skill: "brand_agent_creative_strategy" });
 metadata.set("brand_treatment_step", { context_contract_name: "AgentRunContext", result_contract_name: "CreativeTreatmentOutputV1", required_skill: "brand_agent_creative_treatment" });
 metadata.set("script_writer", creativeMetadata(

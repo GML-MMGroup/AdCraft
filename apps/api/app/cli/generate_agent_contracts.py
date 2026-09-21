@@ -54,6 +54,7 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 CONTRACT_MODELS = (
     brand_professional_mode.BrandSkillRecommendationV1,
     brand_professional_mode.BrandSlotValueV1,
+    brand_professional_mode.BrandSlotEvidenceV1,
     brand_professional_mode.BrandShortOptionV1,
     brand_professional_mode.BrandOptionCardV1,
     brand_professional_mode.CreativeHypothesisCandidateV1,

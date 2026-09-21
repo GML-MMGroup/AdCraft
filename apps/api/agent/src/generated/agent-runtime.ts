@@ -6,6 +6,8 @@ export type BrandSkillRecommendationV1 = { readonly "skill_id": string; readonly
 
 export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };
 
+export type BrandSlotEvidenceV1 = { readonly "stage": "brand-memory" | "campaign"; readonly "slot_id": string; readonly "source_id": string; readonly "source_quote": string };
+
 export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null };
 
 export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
@@ -16,7 +18,7 @@ export type CreativeTreatmentStepOutputV1 = { readonly "step_key": "camera" | "c
 
 export type BrandSkillRecommendationsV1 = { readonly "creative_methods": ReadonlyArray<BrandSkillRecommendationV1>; readonly "audiovisual_styles": ReadonlyArray<BrandSkillRecommendationV1> };
 
-export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "question_card"?: BrandOptionCardV1 | null };
+export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "slot_evidence"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "clarifications"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "question_card"?: BrandOptionCardV1 | null };
 
 export type CreativeStrategyOutputV1 = { readonly "candidates": ReadonlyArray<CreativeHypothesisCandidateV1> };
 

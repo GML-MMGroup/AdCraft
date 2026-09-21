@@ -245,8 +245,18 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition("workflow_creation", "FrontDeskIntentAgentContext", "FrontDeskIntentOutput"),
     _definition("intent_contract_planner", "IntentContractAgentContext", "V2IntentPlan"),
-    _definition("brand_slot_question", "AgentRunContext", "BrandStrategyOutputV1"),
-    _definition("brand_hypothesis", "AgentRunContext", "CreativeStrategyOutputV1"),
+    _definition(
+        "brand_slot_question",
+        "AgentRunContext",
+        "BrandStrategyOutputV1",
+        internal_skill_id="brand_agent_brand_strategy",
+    ),
+    _definition(
+        "brand_hypothesis",
+        "AgentRunContext",
+        "CreativeStrategyOutputV1",
+        internal_skill_id="brand_agent_creative_strategy",
+    ),
     _definition(
         "brand_skill_recommendation",
         "AgentRunContext",

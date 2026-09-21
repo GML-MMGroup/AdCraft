@@ -7608,6 +7608,46 @@
       "title": "BrandSkillRecommendationsV1",
       "type": "object"
     },
+    "BrandSlotEvidenceV1": {
+      "additionalProperties": false,
+      "description": "Private evidence for a semantic slot update or conflict clarification.",
+      "properties": {
+        "slot_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "brand-memory",
+            "campaign"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slot_id",
+        "source_id",
+        "source_quote",
+        "stage"
+      ],
+      "title": "BrandSlotEvidenceV1",
+      "type": "object"
+    },
     "BrandSlotValueV1": {
       "additionalProperties": false,
       "description": "One persisted slot value with decision provenance.",
@@ -7683,6 +7723,15 @@
       "additionalProperties": false,
       "description": "Structured output of the brand-strategy capability.",
       "properties": {
+        "clarifications": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotEvidenceV1"
+          },
+          "maxItems": 1,
+          "title": "Clarifications",
+          "type": "array"
+        },
         "question_card": {
           "anyOf": [
             {
@@ -7693,6 +7742,15 @@
             }
           ],
           "default": null
+        },
+        "slot_evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotEvidenceV1"
+          },
+          "maxItems": 32,
+          "title": "Slot Evidence",
+          "type": "array"
         },
         "slot_values": {
           "default": [],
@@ -37714,7 +37772,7 @@
       "capability_id": null,
       "context_contract_name": "AgentRunContext",
       "display_name": null,
-      "internal_skill_id": null,
+      "internal_skill_id": "brand_agent_brand_strategy",
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "brand_slot_question",
@@ -37726,7 +37784,7 @@
       "capability_id": null,
       "context_contract_name": "AgentRunContext",
       "display_name": null,
-      "internal_skill_id": null,
+      "internal_skill_id": "brand_agent_creative_strategy",
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "brand_hypothesis",
