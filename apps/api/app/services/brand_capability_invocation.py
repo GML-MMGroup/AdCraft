@@ -41,6 +41,7 @@ from app.schemas.brand_professional_mode import (
 )
 from app.persistence.models import BrandOptionCardRow
 from app.services.brand_skill_stack import BrandSkillStackService
+from app.services.brand_question_context import BrandQuestionContextService
 from app.services.brand_journey_state import (
     TREATMENT_SUBSTEP_ORDER,
     advance_brand_stage,
@@ -225,12 +226,14 @@ class BrandCapabilityInvocationService:
         if journey.stage != stage:
             raise _stage_mismatch()
         if output is None:
+            product_context = BrandQuestionContextService(self._database).read(brand_id)
             spec = StructuredGenerationSpec[BrandStrategyOutputV1](
                 stage_name="brand_slot_question",
                 contract_name="BrandStrategyOutputV1",
                 model_id=model_id or self._settings.llm_creative_model,
                 system_prompt=_BRAND_STRATEGY_PROMPT,
                 input_payload={
+                    "product_context": product_context.payload,
                     "stage": stage,
                     "response_locale": self._workflow_response_locale(brand_id),
                     "slots": [
@@ -244,6 +247,7 @@ class BrandCapabilityInvocationService:
                     "confirmed_values": [value.model_dump(mode="json") for value in values],
                 },
                 output_model=BrandStrategyOutputV1,
+                trace_metadata={"workflow_id": product_context.workflow_id},
                 quality_validator=lambda out: _validate_strategy(out, stage),
             )
             output = self._runtime.run(spec).output
