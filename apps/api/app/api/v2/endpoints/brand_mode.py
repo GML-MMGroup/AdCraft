@@ -31,6 +31,7 @@ from app.services.brand_guided_interaction_bridge import (
     BrandGuidedInteractionBridge,
 )
 from app.services.brand_production_handoff import BrandProductionHandoffService
+from app.services.brand_question_state import BrandQuestionState
 
 router = APIRouter()
 
@@ -44,6 +45,9 @@ def _brand_database() -> Iterator[V2Database]:
 
 
 _STATUS_BY_CODE = {
+    "brand_context_stale": 409,
+    "brand_slot_evidence_invalid": 422,
+    "brand_question_target_invalid": 422,
     "brand_guided_production_required": 409,
     "brand_slot_unknown": 422,
     "brand_slot_required_missing": 409,
@@ -153,10 +157,21 @@ def post_next_question(
     locale = service._workflow_response_locale(brand_id) or "und"
     try:
         card: BrandOptionCardV1
+        # At most two intake stages can complete without a user-facing card.
+        for _ in range(2):
+            if journey.stage not in {"brand-memory", "campaign"}:
+                break
+            intake_card = service.run_slot_question(brand_id, journey.stage)
+            if intake_card is not None:
+                bridge.publish_card_interaction(workflow_id, intake_card, locale)
+                return intake_card
+            journey = service._repository.get_journey(brand_id)
+            if journey is None:
+                _raise_not_found()
         if service.prepare_treatment_confirmation(brand_id):
             bridge.close_current_interaction(workflow_id, status="superseded")
             return Response(status_code=status.HTTP_204_NO_CONTENT)
-        existing_card = service._repository.get_open_card(brand_id)
+        existing_card = BrandQuestionState(database).current_card(brand_id)
         if existing_card is not None and existing_card.stage == journey.stage:
             card = existing_card
         elif journey.stage == "hypothesis":
@@ -178,7 +193,9 @@ def post_next_question(
         elif journey.stage == "skill-stack":
             card = service.run_skill_stack_question(brand_id)
         else:
-            card = service.run_slot_question(brand_id, journey.stage)
+            raise V2PersistenceError(
+                "brand_stage_action_mismatch", "No question is available for this stage."
+            )
         bridge.publish_card_interaction(workflow_id, card, locale)
         return card
     except V2PersistenceError as error:
@@ -316,6 +333,10 @@ def get_brand_decisions(
     with database.engine.connect() as connection:
         brand_name = repository.get_brand_name_in_transaction(connection, brand_id)
         open_card = repository.get_open_card_in_transaction(connection, brand_id)
+        if open_card and not BrandQuestionState(database).card_is_current(
+            connection, brand_id, open_card
+        ):
+            open_card = None
         hypotheses = repository.get_hypotheses_in_transaction(connection, brand_id)
         selected = repository.get_selected_hypothesis_id_in_transaction(connection, brand_id)
         adspec = repository.get_adspec_in_transaction(connection, brand_id)

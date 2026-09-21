@@ -132,7 +132,7 @@ class BrandGuidedInteractionBridge:
             GuidedChoiceOptionV1(
                 option_id=option.option_id,
                 title=option.label[:64],
-                summary=(option.why or "")[:240],
+                summary=(option.why or option.label)[:240],
                 recommended=(index == 0),
             )
             for index, option in enumerate(card.options)

@@ -13,6 +13,7 @@ from typing import Literal, cast
 from uuid import uuid4
 
 from sqlalchemy import select, text as sql_text
+from sqlalchemy.engine import Connection
 
 from app.core.config import Settings, get_settings
 from app.persistence.brand_decision_repository import BrandDecisionRepository
@@ -42,13 +43,15 @@ from app.schemas.brand_professional_mode import (
 from app.persistence.models import BrandOptionCardRow
 from app.services.brand_skill_stack import BrandSkillStackService
 from app.services.brand_question_context import BrandQuestionContextService
+from app.services.brand_question_policy import validate_question_output, unresolved_required_slots
+from app.services.brand_question_state import BrandQuestionState, stale_context
 from app.services.brand_journey_state import (
     TREATMENT_SUBSTEP_ORDER,
     advance_brand_stage,
     advance_treatment_substep,
 )
 from app.services.brand_slot_schema import (
-    missing_required_slots,
+    SLOT_SCHEMA_VERSION,
     resolve_slot,
     slot_value_kind,
     slots_for_stage,
@@ -215,18 +218,34 @@ class BrandCapabilityInvocationService:
         *,
         model_id: str | None = None,
         output: BrandStrategyOutputV1 | None = None,
-    ) -> BrandOptionCardV1:
+    ) -> BrandOptionCardV1 | None:
         """Run one slot-question capability operation and persist it."""
 
-        values = self._repository.get_slot_values(brand_id)
-        validate_slot_values(values)
-        journey = self._repository.get_journey(brand_id)
-        if journey is None:
+        state = BrandQuestionState(self._database)
+        product_context = state.context.read(brand_id)
+        if product_context.payload["journey"] is None:
             raise _not_found()
+        journey = BrandJourneyStateV1.model_validate(product_context.payload["journey"])
+        values = tuple(
+            BrandSlotValueV1.model_validate(value)
+            for value in (
+                product_context.payload["confirmed_values"] + product_context.payload["assumptions"]
+            )
+        )
+        validate_slot_values(values)
         if journey.stage != stage:
             raise _stage_mismatch()
+        with self._database.engine.connect() as connection:
+            delegated = state.delegated_slots(connection, brand_id)
         if output is None:
-            product_context = BrandQuestionContextService(self._database).read(brand_id)
+            existing = state.current_card(brand_id)
+            if existing is not None:
+                return existing
+            if not unresolved_required_slots(stage, values, delegated) and state.sources_normalized(
+                brand_id, product_context
+            ):
+                output = BrandStrategyOutputV1()
+        if output is None:
             spec = StructuredGenerationSpec[BrandStrategyOutputV1](
                 stage_name="brand_slot_question",
                 contract_name="BrandStrategyOutputV1",
@@ -235,14 +254,19 @@ class BrandCapabilityInvocationService:
                 input_payload={
                     "product_context": product_context.payload,
                     "stage": stage,
+                    "slot_schema_version": SLOT_SCHEMA_VERSION,
+                    "delegated_slots": [
+                        {"stage": key[0], "slot_id": key[1]} for key in sorted(delegated)
+                    ],
                     "response_locale": self._workflow_response_locale(brand_id),
                     "slots": [
                         {
+                            "stage": slot.stage,
                             "slot_id": slot.slot_id,
                             "question": slot.question,
                             "required": slot.required,
                         }
-                        for slot in slots_for_stage(stage)
+                        for slot in (*slots_for_stage("brand-memory"), *slots_for_stage("campaign"))
                     ],
                     "confirmed_values": [value.model_dump(mode="json") for value in values],
                 },
@@ -252,44 +276,77 @@ class BrandCapabilityInvocationService:
             )
             output = self._runtime.run(spec).output
         card = output.question_card
-        if card is None:
-            raise _card_invalid("Brand strategy output requires one question card.")
-        _validate_card(card, stage)
-        card = self._namespace_colliding_card_id(brand_id, card)
-        validate_slot_values(output.slot_values)
-        slot_values = _with_declared_information_nature(output.slot_values)
+        slot_values = validate_question_output(
+            output, stage, product_context, values, delegated=delegated
+        )
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
+            state.claim(connection, brand_id, journey.stage_revision)
+            state.require_snapshot(connection, brand_id, product_context)
             self._repository.upsert_slot_values_in_transaction(connection, brand_id, slot_values)
-            self._repository.save_option_card_in_transaction(connection, brand_id, card)
+            next_journey = (
+                advance_brand_stage(journey)
+                if card is None
+                else journey.model_copy(update={"stage_revision": journey.stage_revision + 1})
+            )
+            self._repository.save_journey_in_transaction(connection, brand_id, next_journey)
+            if card is None:
+                connection.execute(
+                    BrandOptionCardRow.__table__.update()
+                    .where(
+                        BrandOptionCardRow.brand_id == brand_id,
+                        BrandOptionCardRow.status == "open",
+                    )
+                    .values(status="superseded")
+                )
+            else:
+                card = self._namespace_colliding_card_id(connection, brand_id, card)
+                card = card.model_copy(update={"stage_revision": next_journey.stage_revision})
+                self._repository.save_option_card_in_transaction(connection, brand_id, card)
             self._append_log(
                 connection,
                 brand_id=brand_id,
                 stage=stage,
                 action="recommend",
                 target_type="option_card",
-                target_id=card.card_id,
-                detail={"question": card.question},
+                target_id=card.card_id if card else None,
+                detail={
+                    "question": card.question if card else None,
+                    "slot_evidence": [
+                        item.model_dump(mode="json") for item in output.slot_evidence
+                    ],
+                    "clarifications": [
+                        item.model_dump(mode="json") for item in output.clarifications
+                    ],
+                    "normalized_input_digest": product_context.input_digest,
+                    "context_digest": state.context.read_in_transaction(
+                        connection, brand_id
+                    ).digest,
+                },
                 now=now,
             )
         return card
 
     def _namespace_colliding_card_id(
         self,
+        connection: Connection,
         brand_id: str,
         card: BrandOptionCardV1,
     ) -> BrandOptionCardV1:
         """Prevent model-provided card IDs from colliding across brands."""
 
-        with self._database.engine.connect() as connection:
-            owner = connection.execute(
-                select(BrandOptionCardRow.brand_id).where(
-                    BrandOptionCardRow.card_id == card.card_id
-                )
-            ).scalar_one_or_none()
-        if owner is None or str(owner) == brand_id:
+        owner = connection.execute(
+            select(BrandOptionCardRow.brand_id).where(BrandOptionCardRow.card_id == card.card_id)
+        ).scalar_one_or_none()
+        if owner is None:
             return card
-        return card.model_copy(update={"card_id": f"{brand_id}_{card.card_id}"})
+        candidate = f"{brand_id}_{card.card_id}"
+        occupied = connection.execute(
+            select(BrandOptionCardRow.card_id).where(BrandOptionCardRow.card_id == candidate)
+        ).first()
+        if str(owner) == brand_id or occupied or len(candidate) > 120:
+            candidate = f"bcard_{uuid4().hex}"
+        return card.model_copy(update={"card_id": candidate})
 
     # ---- Slot selection ----------------------------------------------------
 
@@ -305,29 +362,59 @@ class BrandCapabilityInvocationService:
         """Commit the user choice for the open card and advance when done."""
 
         now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        observed = self._repository.get_journey(brand_id)
+        if observed is None:
+            raise _not_found()
         with self._database.engine.begin() as connection:
+            state.claim(connection, brand_id, observed.stage_revision)
             card = self._repository.get_open_card_in_transaction(connection, brand_id)
             if card is None or card.card_id != card_id:
                 raise _stage_mismatch()
-            if not any(option.option_id == option_id for option in card.options):
-                raise _card_invalid("Selected option is not on the open card.")
+            if not state.card_is_current(connection, brand_id, card):
+                raise stale_context()
             slot_id = card.target_slot_id
             if slot_id is None:
                 raise _card_invalid("Card does not target a slot.")
             slot = resolve_slot(card.stage, slot_id)
-            self._repository.upsert_slot_values_in_transaction(
-                connection,
-                brand_id,
-                (
-                    BrandSlotValueV1(
-                        slot_id=slot_id,
-                        stage=card.stage,
-                        value=value_text,
-                        kind=slot_value_kind(slot, provenance),
-                        provenance=provenance,
-                    ),
-                ),
+            selected = next(
+                (option for option in card.options if option.option_id == option_id), None
             )
+            custom = selected is None and option_id == "custom"
+            delegated = selected is None and option_id == "delegate"
+            if custom:
+                if not value_text.strip() or len(value_text) > 2048:
+                    raise _card_invalid("A custom answer requires bounded nonempty text.")
+                self._append_log(
+                    connection,
+                    brand_id=brand_id,
+                    stage=card.stage,
+                    action="select",
+                    target_type="custom_answer",
+                    target_id=card_id,
+                    detail={"text": value_text, "slot_id": slot_id},
+                    now=now,
+                )
+            else:
+                if delegated:
+                    selected = card.options[0]
+                if selected is None:
+                    raise _card_invalid("Selected option is not on the open card.")
+                value_text = selected.label
+                provenance = "agent_recommended" if delegated else "user_confirmed"
+                self._repository.upsert_slot_values_in_transaction(
+                    connection,
+                    brand_id,
+                    (
+                        BrandSlotValueV1(
+                            slot_id=slot_id,
+                            stage=card.stage,
+                            value=value_text,
+                            kind=slot_value_kind(slot, provenance),
+                            provenance=provenance,
+                        ),
+                    ),
+                )
             self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
             self._append_log(
                 connection,
@@ -336,13 +423,25 @@ class BrandCapabilityInvocationService:
                 action="select",
                 target_type="option",
                 target_id=option_id,
-                detail={"card_id": card_id, "slot_id": slot_id},
+                detail={
+                    "card_id": card_id,
+                    "slot_id": slot_id,
+                    "delegated": delegated,
+                    "value": value_text,
+                },
                 now=now,
             )
             journey = self._repository.get_journey_in_transaction(connection, brand_id)
             if journey is not None and card.stage == journey.stage:
                 values = self._repository.get_slot_values_in_transaction(connection, brand_id)
-                if not missing_required_slots(card.stage, values):
+                self._repository.save_journey_in_transaction(
+                    connection,
+                    brand_id,
+                    journey.model_copy(update={"stage_revision": journey.stage_revision + 1}),
+                )
+                if not custom and not unresolved_required_slots(
+                    card.stage, values, state.delegated_slots(connection, brand_id)
+                ):
                     self._repository.save_journey_in_transaction(
                         connection,
                         brand_id,
@@ -361,6 +460,7 @@ class BrandCapabilityInvocationService:
         journey = self._repository.get_journey(brand_id)
         if journey is None or journey.stage != "hypothesis":
             raise _stage_mismatch()
+        product_context = BrandQuestionContextService(self._database).read(brand_id)
         if output is None:
             spec = StructuredGenerationSpec[CreativeStrategyOutputV1](
                 stage_name="brand_hypothesis",
@@ -368,6 +468,7 @@ class BrandCapabilityInvocationService:
                 model_id=model_id or self._settings.llm_creative_model,
                 system_prompt=_CREATIVE_STRATEGY_PROMPT,
                 input_payload={
+                    "product_context": product_context.payload,
                     "skills": list(self._catalog.injection_summaries()),
                     "response_locale": self._workflow_response_locale(brand_id),
                     "confirmed_values": [
@@ -376,10 +477,14 @@ class BrandCapabilityInvocationService:
                     ],
                 },
                 output_model=CreativeStrategyOutputV1,
+                trace_metadata={"workflow_id": product_context.workflow_id},
             )
             output = self._runtime.run(spec).output
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
+            state = BrandQuestionState(self._database)
+            state.claim(connection, brand_id, journey.stage_revision)
+            state.require_snapshot(connection, brand_id, product_context)
             self._repository.replace_hypotheses_in_transaction(
                 connection, brand_id, output.candidates
             )
@@ -744,6 +849,9 @@ class BrandCapabilityInvocationService:
             system_prompt="",
             output_model=BrandSkillRecommendationsV1,
             input_payload={
+                "product_context": BrandQuestionContextService(self._database)
+                .read(brand_id)
+                .payload,
                 **skills.recommendation_catalogs(),
                 "response_locale": self._workflow_response_locale(brand_id),
                 "confirmed_values": [
@@ -899,6 +1007,7 @@ class BrandCapabilityInvocationService:
                 "All treatment decisions are confirmed. Confirm the treatment lock to continue.",
                 stage="brand_capability_invocation",
             )
+        product_context = BrandQuestionContextService(self._database).read(brand_id)
         if output is None:
             spec = StructuredGenerationSpec[CreativeTreatmentOutputV1](
                 stage_name="brand_treatment_step",
@@ -906,6 +1015,7 @@ class BrandCapabilityInvocationService:
                 model_id=model_id or self._settings.llm_creative_model,
                 system_prompt=_CREATIVE_TREATMENT_PROMPT,
                 input_payload={
+                    "product_context": product_context.payload,
                     **BrandSkillStackService(self._database).treatment_context(
                         brand_id, journey.treatment_substep
                     ),
@@ -917,6 +1027,7 @@ class BrandCapabilityInvocationService:
                     ],
                 },
                 output_model=CreativeTreatmentOutputV1,
+                trace_metadata={"workflow_id": product_context.workflow_id},
             )
             output = self._runtime.run(spec).output
         step = output.step
@@ -931,6 +1042,9 @@ class BrandCapabilityInvocationService:
         )
         _validate_card(card, "treatment")
         with self._database.engine.begin() as connection:
+            state = BrandQuestionState(self._database)
+            state.claim(connection, brand_id, journey.stage_revision)
+            state.require_snapshot(connection, brand_id, product_context)
             self._repository.save_option_card_in_transaction(connection, brand_id, card)
             self._append_log(
                 connection,

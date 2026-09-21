@@ -86,11 +86,16 @@ class BrandGuidedInteractionSubmitter:
                 detail="",
             )
         else:
+            if request.action not in {"select", "custom", "delegate"}:
+                raise V2PersistenceError(
+                    "guided_interaction_action_not_allowed",
+                    "Choose an option, provide a custom answer, or delegate this question.",
+                )
             value_text = custom_text or self._option_label(content, option_id)
             self._brand_service.apply_slot_selection(
                 brand_id,
                 card_id=action_id,
-                option_id=option_id,
+                option_id=option_id if request.action == "select" else request.action,
                 value_text=value_text,
                 provenance="user_confirmed",
             )
