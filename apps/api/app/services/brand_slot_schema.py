@@ -14,7 +14,7 @@ from app.schemas.brand_professional_mode import (
     BrandStage,
 )
 
-SLOT_SCHEMA_VERSION = "1"
+SLOT_SCHEMA_VERSION = "2"
 
 # A slot declares the information nature a user-confirmed value carries.  Values
 # the Agent inferred on its own are always tentative assumptions instead, so
@@ -33,6 +33,19 @@ class BrandSlotDefinition:
 
 
 _SLOTS: tuple[BrandSlotDefinition, ...] = (
+    BrandSlotDefinition(
+        "brand_product_identity",
+        "brand-memory",
+        True,
+        "What product or service are we advertising?",
+    ),
+    BrandSlotDefinition(
+        "brand_product_focus",
+        "brand-memory",
+        True,
+        "Which primary use case or supported benefit should this advertisement emphasize?",
+        kind="preference",
+    ),
     BrandSlotDefinition(
         "brand_positioning",
         "brand-memory",

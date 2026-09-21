@@ -71,10 +71,21 @@ class BrandOptionCardV1(_BrandModel):
     options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
+class BrandSlotEvidenceV1(_BrandModel):
+    """Private evidence for a semantic slot update or conflict clarification."""
+
+    stage: Literal["brand-memory", "campaign"]
+    slot_id: str = Field(min_length=1, max_length=80)
+    source_id: str = Field(min_length=1, max_length=160)
+    source_quote: str = Field(min_length=1, max_length=2000)
+
+
 class BrandStrategyOutputV1(_BrandModel):
     """Structured output of the brand-strategy capability."""
 
     slot_values: tuple[BrandSlotValueV1, ...] = Field(default=(), max_length=32)
+    slot_evidence: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=32)
+    clarifications: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=1)
     question_card: BrandOptionCardV1 | None = None
 
 
