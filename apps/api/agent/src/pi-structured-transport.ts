@@ -32,6 +32,7 @@ import {
   type AgentModelTraceClient,
 } from "./model-trace.js";
 import type { LoadedSkill } from "./skills.js";
+import { intakeRepairPolicy } from "./prompts/intake-repair.js";
 
 
 interface StructuredCompletionRequestBase {
@@ -819,16 +820,26 @@ function repairPayload(
 ): StructuredCompletionRequest {
   const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
+  const currentUserInput = "user_input" in input.request.context
+    ? input.request.context.user_input : undefined;
+  const isIntake = input.request.operation === "decide_turn_intent" &&
+    input.request.contract_name === "CompactTurnIntentDecisionV3" &&
+    typeof currentUserInput === "string";
   const common = {
     model: input.credential.model_id,
     messages: [
       {
         role: "system",
-        content: "Return exactly one JSON object matching the supplied schema.",
+        content: isIntake
+          ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
+          : "Return exactly one JSON object matching the supplied schema.",
       },
       {
         role: "user",
         content: [
+          ...(isIntake ? [
+            `Current user message (only source_quote evidence): ${JSON.stringify(currentUserInput)}`,
+          ] : []),
           `Validation violations: ${JSON.stringify(violations)}`,
           ...(boundedInvalidValue ? [`Invalid result: ${boundedInvalidValue}`] : []),
           `JSON Schema: ${JSON.stringify(input.schema)}`,
