@@ -1057,6 +1057,7 @@ export function AgentCanvasChatPanel({
         ) : null}
         {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
           <BrandTreatmentConfirmation
+            onProductionRefresh={onWorkflowRefresh}
             key={workflow.workflow_id}
             workflowId={workflow.workflow_id}
             responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}

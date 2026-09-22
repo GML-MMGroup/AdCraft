@@ -1,3 +1,4 @@
+import { TreatmentSections } from "./TreatmentSections";
 import { useCallback, useMemo, useState } from "react";
 import type {
   BrandDecisionPanelV1,
@@ -165,6 +166,7 @@ export function BrandDecisionPanel({
                             <details>
                               <summary>{option.label}</summary>
                               {option.why ? <p>{option.why}</p> : null}
+                              <TreatmentSections detail={option.detail}/>
                             </details>
                           </li>
                         ))}
@@ -233,6 +235,8 @@ export function BrandDecisionPanel({
                           <li key={step.step_key}>
                             <strong>{step.step_key}</strong>
                             <span>{step.selected_label}</span>
+                            <TreatmentSections detail={step.structured_detail}/>
+                            {!step.structured_detail && step.detail ? <p>{step.detail}</p> : null}
                           </li>
                         ))}
                       </ul>

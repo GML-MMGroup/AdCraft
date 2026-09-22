@@ -1,3 +1,4 @@
+import type { BrandTreatmentEdit, BrandTreatmentStepResultV1 } from "../features/agent-canvas/brand/brandDecisions";
 import type {
   AgentCanvasChatMessageRequestV2,
   AgentCanvasChatTurnRetryRequestV2,
@@ -730,13 +731,18 @@ export const v2Api = {
     );
   },
 
-  brandLockTreatment(workflowId: string): Promise<BrandJourneyStateV1> {
+  brandEditTreatment(workflowId: string, step: BrandTreatmentStepResultV1["step_key"], body: BrandTreatmentEdit): Promise<BrandDecisionPanelV1> {
+    return requestV2(`/brand/decisions/${encodeURIComponent(workflowId)}/treatment-steps/${encodeURIComponent(step)}`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, normalizeBrandDecisionPanelV1);
+  },
+
+  brandLockTreatment(workflowId: string, contentDigest: string): Promise<BrandJourneyStateV1> {
     return requestV2(
       `/brand/decisions/${encodeURIComponent(workflowId)}/lock-treatment`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
+        body: JSON.stringify({ confirm: true, content_digest: contentDigest }),
       },
       normalizeBrandJourneyStateV1,
     );

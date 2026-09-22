@@ -1658,6 +1658,11 @@ export function useAgentCanvasChat({
     request: GuidedInteractionSubmitRequestV1,
   ) => {
     if (!workflowId || actingInteractionId || interaction.status !== "open") return false;
+    if (brandMode && brandStage === "treatment" && request.submission_kind === "concept_choice"
+      && (request.action === "custom" || request.action === "delegate")) {
+      setGuidedInteractionIssue({ code: "guided_interaction_action_not_allowed", summary: "请先选择候选方案，再通过最终审阅中的步骤编辑器修改内容。", detail: null, fieldId: null, retryable: false });
+      return false;
+    }
     const workflowGeneration = workflowGenerationRef.current;
     setActingInteractionId(interaction.interaction_id);
     guidedInteractionSubmitSeqRef.current = chatEvents.reduce(
@@ -1732,6 +1737,7 @@ export function useAgentCanvasChat({
     }
   }, [
     actingInteractionId,
+    brandMode,
     brandStage,
     chatEvents,
     onBrandDecisionsRefresh,
