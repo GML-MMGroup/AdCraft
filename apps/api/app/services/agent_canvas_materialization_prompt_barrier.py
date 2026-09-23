@@ -122,12 +122,7 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
             if event.event_type != _WAIT_EVENT_TYPE:
                 continue
             operations = _wait_operations(event.payload)
-            resolved = (
-                self._resolve_wait_operations(dispatch.workflow_id, operations)
-                if operations is not None
-                else None
-            )
-            if resolved is not None and operation in resolved:
+            if operations is not None and operation in operations:
                 return True
         return False
 
