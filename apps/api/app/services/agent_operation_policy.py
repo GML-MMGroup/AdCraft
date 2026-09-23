@@ -39,6 +39,7 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
     "materialization": _OperationBudget(420, 270, 120, 30, 4_096, 3_072),
     "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
+_BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
 _ROUTING_OPERATIONS = {
     "brand_hypothesis",
     "brand_slot_question",
@@ -178,9 +179,17 @@ class AgentOperationPolicyRegistryV2:
             operation=operation,
             contract_id=contract_id,
         )
-        budget = self._budgets[policy_class]
+        budget = (
+            _BRAND_SLOT_BUDGET
+            if operation == "brand_slot_question"
+            else self._budgets[policy_class]
+        )
         return AgentOperationPolicyV2(
-            policy_id=f"agent.{policy_class}.v1",
+            policy_id=(
+                "agent.brand_slot_question.v1"
+                if operation == "brand_slot_question"
+                else f"agent.{policy_class}.v1"
+            ),
             agent_name=agent_name,
             operation=operation,
             contract_id=contract_id,

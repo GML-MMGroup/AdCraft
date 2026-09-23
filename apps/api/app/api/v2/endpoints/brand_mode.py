@@ -35,6 +35,7 @@ from app.services.brand_guided_interaction_bridge import (
 from app.services.brand_treatment_edit import edit_treatment_step
 from app.services.brand_question_state import BrandQuestionState
 from app.services.brand_decision_document import BrandDecisionDocumentService
+from app.services.v2_structured_generation_runtime import StructuredGenerationRuntimeError
 
 router = APIRouter()
 
@@ -80,6 +81,25 @@ def _map_brand_error(error: V2PersistenceError) -> HTTPException:
     return HTTPException(
         status_code=_STATUS_BY_CODE.get(error.code, 422),
         detail={"code": error.code, "message": str(error)},
+    )
+
+
+def _map_brand_runtime_error(error: StructuredGenerationRuntimeError) -> HTTPException:
+    """Expose model failures as a bounded, retryable API error."""
+
+    retryable = error.code in {
+        "agent_provider_timeout",
+        "agent_provider_transport_failed",
+        "agent_runtime_unavailable",
+        "structured_generation_unavailable",
+    }
+    return HTTPException(
+        status_code=503 if retryable else 422,
+        detail={
+            "code": error.code,
+            "message": str(error),
+            "retryable": retryable,
+        },
     )
 
 
@@ -206,6 +226,8 @@ def post_next_question(
             )
         bridge.publish_card_interaction(workflow_id, card, locale)
         return card
+    except StructuredGenerationRuntimeError as error:
+        raise _map_brand_runtime_error(error) from error
     except V2PersistenceError as error:
         raise _map_brand_error(error) from error
 

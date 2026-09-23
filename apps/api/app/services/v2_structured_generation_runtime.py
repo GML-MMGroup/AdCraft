@@ -587,11 +587,6 @@ class StructuredGenerationRuntime:
 def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
     payload = isolate_agent_input_payload(sanitize_context_for_llm_text(spec.input_payload))
     workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
-    timeout_seconds = (
-        spec.policy.timeout_seconds
-        if spec.policy is not None
-        else float(spec.trace_metadata.get("timeout_seconds", 120.0))
-    )
     operation = spec.operation or _agent_operation(spec)
     VideoAgentOperationRegistry().resolve(operation)
     invocation = spec.invocation
@@ -634,11 +629,15 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         if identity is not None
         else f"arun_{uuid4().hex}"
     )
-    deadline_cap = (
-        invocation.deadline_at
-        if invocation
-        else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
-    )
+    if invocation is not None:
+        deadline_cap = invocation.deadline_at
+    elif spec.policy is not None:
+        deadline_cap = datetime.now(timezone.utc) + timedelta(seconds=spec.policy.timeout_seconds)
+    else:
+        # Leave the cap open so AgentRunRequestFactory applies the operation's
+        # authoritative hard deadline. A generic 120-second fallback here
+        # silently shortened routing policies such as brand_slot_question.
+        deadline_cap = None
     return AgentRunRequestFactory().build(
         run_id=run_id,
         request_id=(
