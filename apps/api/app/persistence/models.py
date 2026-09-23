@@ -1159,12 +1159,17 @@ class ModelDefaultRow(Base):
             "selection_mode IN ('automatic', 'explicit')",
             name="ck_model_defaults_selection_mode",
         ),
+        CheckConstraint(
+            "thinking_mode IN ('disabled', 'enabled')",
+            name="ck_model_defaults_thinking_mode",
+        ),
         CheckConstraint("revision > 0", name="ck_model_defaults_positive_revision"),
     )
 
     default_key: Mapped[str] = mapped_column(Text, primary_key=True)
     model_ref: Mapped[str] = mapped_column(ForeignKey("provider_models.model_ref"), nullable=False)
     selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="explicit")
+    thinking_mode: Mapped[str] = mapped_column(Text, nullable=False, default="enabled")
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 

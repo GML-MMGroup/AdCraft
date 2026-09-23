@@ -24,6 +24,8 @@ from app.schemas.provider_models import ModelParameterMatrixV1, ProviderAdapterP
 
 _DEFAULT_KEYS = frozenset({"agent", "text", "image", "video", "audio"})
 _DEFAULT_SELECTION_MODES = frozenset({"automatic", "explicit"})
+_DEFAULT_THINKING_MODE_KEYS = frozenset({"agent", "text"})
+_DEFAULT_THINKING_MODES = frozenset({"disabled", "enabled"})
 _INITIAL_SELECTION_MODES = {
     key: ("automatic" if key == "audio" else "explicit") for key in _DEFAULT_KEYS
 }
@@ -65,6 +67,7 @@ class ModelDefaultRecord:
     revision: int
     updated_at: str
     selection_mode: str = "explicit"
+    thinking_mode: str = "enabled"
 
 
 @dataclass(frozen=True)
@@ -281,14 +284,20 @@ class ProviderModelRepository:
         values: Mapping[str, str],
         *,
         modes: Mapping[str, str] | None = None,
+        thinking_modes: Mapping[str, str] | None = None,
         updated_at: str,
     ) -> dict[str, ModelDefaultRecord]:
         mode_updates = dict(modes or {})
-        affected_keys = set(values).union(mode_updates)
+        thinking_mode_updates = dict(thinking_modes or {})
+        affected_keys = set(values).union(mode_updates).union(thinking_mode_updates)
         if not affected_keys or not affected_keys.issubset(_DEFAULT_KEYS):
             raise ValueError("model_default_update_invalid")
         if not set(mode_updates.values()).issubset(_DEFAULT_SELECTION_MODES):
             raise ValueError("model_default_mode_invalid")
+        if not set(thinking_mode_updates).issubset(_DEFAULT_THINKING_MODE_KEYS):
+            raise ValueError("model_default_thinking_mode_unsupported")
+        if not set(thinking_mode_updates.values()).issubset(_DEFAULT_THINKING_MODES):
+            raise ValueError("model_default_thinking_mode_invalid")
         try:
             with self._database.engine.begin() as connection:
                 known = _model_capabilities(connection, values.values())
@@ -318,12 +327,17 @@ class ProviderModelRepository:
                         if current is not None
                         else _INITIAL_SELECTION_MODES[default_key],
                     )
+                    thinking_mode = thinking_mode_updates.get(
+                        default_key,
+                        str(current["thinking_mode"]) if current is not None else "enabled",
+                    )
                     if current is None:
                         connection.execute(
                             insert(ModelDefaultRow).values(
                                 default_key=default_key,
                                 model_ref=model_ref,
                                 selection_mode=selection_mode,
+                                thinking_mode=thinking_mode,
                                 revision=1,
                                 updated_at=updated_at,
                             )
@@ -335,6 +349,7 @@ class ProviderModelRepository:
                             .values(
                                 model_ref=model_ref,
                                 selection_mode=selection_mode,
+                                thinking_mode=thinking_mode,
                                 revision=int(current["revision"]) + 1,
                                 updated_at=updated_at,
                             )
@@ -758,6 +773,7 @@ def _default_select():
         ModelDefaultRow.default_key,
         ModelDefaultRow.model_ref,
         ModelDefaultRow.selection_mode,
+        ModelDefaultRow.thinking_mode,
         ModelDefaultRow.revision,
         ModelDefaultRow.updated_at,
     )
@@ -832,6 +848,7 @@ def _default_from_row(row: RowMapping) -> ModelDefaultRecord:
         default_key=str(row["default_key"]),
         model_ref=str(row["model_ref"]),
         selection_mode=str(row["selection_mode"]),
+        thinking_mode=str(row["thinking_mode"]),
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
     )

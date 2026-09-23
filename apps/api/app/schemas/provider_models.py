@@ -17,6 +17,7 @@ ModelAvailabilityV1 = Literal[
 ]
 ModelDefaultKeyV1 = Literal["agent", "text", "image", "video", "audio"]
 ModelDefaultModeV1 = Literal["automatic", "explicit"]
+ModelThinkingModeV1 = Literal["disabled", "enabled"]
 ProviderTransportKindV1 = Literal[
     "pi_native_openai_compatible",
     "litellm_chat",
@@ -474,6 +475,7 @@ class ProviderModelListResponseV2(BaseModel):
 class ModelDefaultsResponseV1(BaseModel):
     defaults: dict[ModelDefaultKeyV1, str]
     modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1]
+    thinking_modes: dict[ModelDefaultKeyV1, ModelThinkingModeV1]
     revisions: dict[ModelDefaultKeyV1, int]
 
 
@@ -482,10 +484,11 @@ class ModelDefaultsPatchRequestV1(BaseModel):
 
     defaults: dict[ModelDefaultKeyV1, str] = Field(default_factory=dict)
     modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1] = Field(default_factory=dict)
+    thinking_modes: dict[ModelDefaultKeyV1, ModelThinkingModeV1] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_mutation(self) -> "ModelDefaultsPatchRequestV1":
-        if not self.defaults and not self.modes:
+        if not self.defaults and not self.modes and not self.thinking_modes:
             raise ValueError("At least one model default or mode must be supplied.")
         return self
 

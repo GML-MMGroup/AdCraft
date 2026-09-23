@@ -272,6 +272,7 @@ def get_model_defaults(
     return ModelDefaultsResponseV1(
         defaults={key: record.model_ref for key, record in records.items()},
         modes={key: record.selection_mode for key, record in records.items()},
+        thinking_modes={key: record.thinking_mode for key, record in records.items()},
         revisions={key: record.revision for key, record in records.items()},
     )
 
@@ -290,6 +291,7 @@ def update_model_defaults(
         service.set_defaults(
             payload.defaults,
             modes=payload.modes,
+            **({"thinking_modes": payload.thinking_modes} if payload.thinking_modes else {}),
             now=datetime.now(timezone.utc).isoformat(),
         )
     except ValueError as error:

@@ -504,7 +504,32 @@ _TRUSTED_MANIFESTS = (
             "supports_streaming": True,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
             "thinking_format": "zai",
+            "reasoning_control": "enable_thinking",
+            "structured_transport": "non_streaming_json_object",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="glm-5-2-260617",
+        display_name="GLM-5.2",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "capability_revision": "volcengine-ark-glm-5-2-260617-agent-v1",
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
+            "thinking_format": "none",
             "reasoning_control": "enable_thinking",
             "structured_transport": "non_streaming_json_object",
             "default_max_output_tokens": 8192,
@@ -552,6 +577,7 @@ _TRUSTED_MANIFESTS = (
             "supports_streaming": False,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
             "thinking_format": "none",
             "reasoning_control": "reasoning_effort",
             "structured_transport": "non_streaming_json_object",
@@ -1339,10 +1365,12 @@ class ProviderModelCatalogService:
         defaults: Mapping[str, str],
         *,
         modes: Mapping[str, str] | None = None,
+        thinking_modes: Mapping[str, str] | None = None,
         now: str,
     ) -> dict[str, ModelDefaultRecord]:
         mode_updates = dict(modes or {})
-        if not defaults and not mode_updates:
+        thinking_mode_updates = dict(thinking_modes or {})
+        if not defaults and not mode_updates and not thinking_mode_updates:
             raise ValueError("model_default_update_invalid")
         for default_key, model_ref in defaults.items():
             try:
@@ -1358,8 +1386,18 @@ class ProviderModelCatalogService:
                 raise ValueError("model_default_mode_invalid")
             if selection_mode == "automatic" and default_key != "audio":
                 raise ValueError("model_automatic_policy_unsupported")
+        for default_key, thinking_mode in thinking_mode_updates.items():
+            if default_key not in {"agent", "text"}:
+                raise ValueError("model_default_thinking_mode_unsupported")
+            if thinking_mode not in {"disabled", "enabled"}:
+                raise ValueError("model_default_thinking_mode_invalid")
         try:
-            return self._repository.set_defaults(defaults, modes=mode_updates, updated_at=now)
+            return self._repository.set_defaults(
+                defaults,
+                modes=mode_updates,
+                thinking_modes=thinking_mode_updates,
+                updated_at=now,
+            )
         except ValueError as exc:
             if str(exc) == "model_default_capability_invalid":
                 raise ValueError("model_capability_mismatch") from exc
