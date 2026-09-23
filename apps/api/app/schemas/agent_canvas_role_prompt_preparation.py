@@ -16,7 +16,7 @@ from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
-from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.schemas.brand_production_context import BrandProductionContextV1
 
 
 RolePromptVariantV2 = Literal[
@@ -311,7 +311,7 @@ class RolePromptViolationV1(_RolePromptModel):
 
 
 class RolePromptPreparationContextV2(_RolePromptModel):
-    brand_decisions: BrandTreatmentDocumentV1 | None = None
+    brand_decisions: BrandProductionContextV1 | None = None
     workflow_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
     node_revision: int = Field(ge=1)

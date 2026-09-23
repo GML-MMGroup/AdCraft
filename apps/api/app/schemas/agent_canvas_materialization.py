@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
-from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.schemas.brand_production_context import BrandProductionContextV1
 
 from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
@@ -301,7 +301,7 @@ ProposalApplicationEnvelopeV1: TypeAlias = (
 
 
 class CapabilityMaterializationContextV1(_MaterializationModel):
-    brand_decisions: BrandTreatmentDocumentV1 | None = None
+    brand_decisions: BrandProductionContextV1 | None = None
     context_kind: Literal["capability_materialization"] = "capability_materialization"
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)

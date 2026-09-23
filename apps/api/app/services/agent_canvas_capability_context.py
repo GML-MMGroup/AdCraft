@@ -28,6 +28,7 @@ from app.services.agent_canvas_requirement_projection import (
 from app.services.agent_canvas_requirements import character_occurrence_authority_for_authoring
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 from app.services.brand_production_handoff import BrandProductionHandoffService
+from app.services.brand_production_context import project_brand_production_context
 
 
 def build_capability_context_snapshot(
@@ -58,7 +59,9 @@ def build_capability_context_snapshot(
         workflow.workflow_id
     )
     if brand_document is not None:
-        capability_context["brand_decisions"] = brand_document.model_dump(mode="json")
+        capability_context["brand_decisions"] = project_brand_production_context(
+            brand_document, role=capability_id
+        ).model_dump(mode="json")
     if character_target is not None:
         _validate_character_target(
             character_target,

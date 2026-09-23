@@ -7642,6 +7642,181 @@
       "title": "BrandOptionCardV1",
       "type": "object"
     },
+    "BrandProductionContextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adspec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdSpecStateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "authorized_asset_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandAssetReferenceV1"
+          },
+          "title": "Authorized Asset References",
+          "type": "array"
+        },
+        "brand_profile": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "campaign_brief": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "execution_limitations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Execution Limitations",
+          "type": "array"
+        },
+        "missing_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sections",
+          "type": "array"
+        },
+        "omitted_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Omitted Sections",
+          "type": "array"
+        },
+        "projection_version": {
+          "const": "brand_role_v1",
+          "default": "brand_role_v1",
+          "title": "Projection Version",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "bgm",
+            "character",
+            "general",
+            "product",
+            "scene",
+            "script",
+            "storyboard",
+            "video"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "selected_hypothesis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeHypothesisCandidateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "skill_stack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillStackV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_content_digest": {
+          "title": "Source Content Digest",
+          "type": "string"
+        },
+        "treatment_steps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandProductionStepV1"
+          },
+          "maxItems": 8,
+          "title": "Treatment Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "brand_profile",
+        "campaign_brief",
+        "complete",
+        "role",
+        "source_content_digest"
+      ],
+      "title": "BrandProductionContextV1",
+      "type": "object"
+    },
+    "BrandProductionStepV1": {
+      "additionalProperties": false,
+      "properties": {
+        "legacy_detail": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Legacy Detail"
+        },
+        "sections": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TreatmentSectionV1"
+          },
+          "maxItems": 4,
+          "title": "Sections",
+          "type": "array"
+        },
+        "selected_label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Selected Label",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "selected_label",
+        "step_key"
+      ],
+      "title": "BrandProductionStepV1",
+      "type": "object"
+    },
     "BrandShortOptionV1": {
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",
@@ -9542,7 +9717,7 @@
         "brand_decisions": {
           "anyOf": [
             {
-              "$ref": "#/$defs/BrandTreatmentDocumentV1"
+              "$ref": "#/$defs/BrandProductionContextV1"
             },
             {
               "type": "null"
@@ -29005,7 +29180,7 @@
         "brand_decisions": {
           "anyOf": [
             {
-              "$ref": "#/$defs/BrandTreatmentDocumentV1"
+              "$ref": "#/$defs/BrandProductionContextV1"
             },
             {
               "type": "null"

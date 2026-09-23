@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Callable
 from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.services.brand_production_context import project_brand_production_context
 
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
@@ -366,7 +367,10 @@ class StoryboardFanoutActivationService:
         )
         return StageAuthoringContextV1(
             brand_decisions=(
-                self._brand_context_loader(fanout.workflow_id)
+                project_brand_production_context(
+                    self._brand_context_loader(fanout.workflow_id),
+                    role="storyboard" if node_role == "storyboard_grid" else "video",
+                )
                 if self._brand_context_loader is not None
                 else None
             ),

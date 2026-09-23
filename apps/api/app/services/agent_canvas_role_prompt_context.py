@@ -27,6 +27,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
 from app.services.agent_canvas_video_representation import resolve_video_representation_mode
+from app.services.brand_production_context import project_brand_production_context
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
 
 
@@ -285,7 +286,9 @@ class RolePromptContextProjector:
             else None
         )
         return RolePromptPreparationContextV2(
-            brand_decisions=stage_context.brand_decisions,
+            brand_decisions=project_brand_production_context(
+                stage_context.brand_decisions, role=role_variant
+            ),
             workflow_id=node.workflow_id,
             node_id=node.node_id,
             node_revision=node.revision,

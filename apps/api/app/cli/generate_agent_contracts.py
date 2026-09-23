@@ -48,12 +48,15 @@ from app.schemas import v2_quick_media
 from app.schemas import style_skill_consultation
 from app.schemas import brand_professional_mode
 from app.schemas import brand_treatment_detail
+from app.schemas import brand_production_context
 from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
 from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 CONTRACT_MODELS = (
+    brand_production_context.BrandProductionStepV1,
+    brand_production_context.BrandProductionContextV1,
     brand_treatment_detail.TreatmentSectionV1,
     brand_treatment_detail.TreatmentDetailV1,
     brand_professional_mode.TreatmentCandidateV1,
