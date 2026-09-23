@@ -6,6 +6,7 @@ import {
   chatCompletionChunkFailure,
   normalizeChatCompletionChunk,
 } from "./chat-completion-chunk-normalizer.js";
+import { workflowModelCallCapture, modelCallFailure, type WorkflowModelCallClient } from "./workflow-model-calls.js";
 import type {
   AgentRunRequest,
   AgentModelTraceStreamingChunkV1,
@@ -127,6 +128,7 @@ export type StructuredCompletionExecutor = (
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly onChunk?: (chunk: unknown) => void;
   },
 ) => Promise<StructuredCompletionResponse>;
 
@@ -143,7 +145,7 @@ interface StructuredTransportRunInput {
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
   readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
-  readonly traceClient?: AgentModelTraceClient;
+  readonly traceClient?: AgentModelTraceClient & WorkflowModelCallClient;
   readonly signal: AbortSignal;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
@@ -401,6 +403,19 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
+    const capture = workflowModelCallCapture(
+      input.traceClient, input.credential, input.request, stage,
+      request.stream ? "sdk_stream_chunks" : "sdk_response",
+    );
+    capture?.begin({
+      agent_request: input.request, system_prompt: input.systemPrompt,
+      user_prompt: input.userPrompt, output_schema: input.schema,
+      loaded_skills: input.loadedSkills ?? [], provider_request: request,
+      provider: input.credential.provider, model_ref: input.credential.model_ref,
+      execution_policy: input.credential.execution_policy, effective_timeout_ms: timeoutMs,
+      transport_options: { timeout_ms: timeoutMs, max_retries: 0, max_output_bytes: input.request.policy?.max_output_bytes ?? 262_144 },
+      ...(!isAcceptanceReplaySource(input.credential) ? { base_url: input.credential.base_url } : {}),
+    });
     try {
       const response = isAcceptanceReplaySource(input.credential)
         ? await claimAgentModelTraceOutcome(
@@ -417,7 +432,9 @@ export class PiStructuredTransportRouter {
           signal: input.signal,
           timeoutMs,
           maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
+          ...(capture ? { onChunk: (chunk: unknown) => capture.chunk(chunk) } : {}),
         });
+      capture?.finish({ response });
       await recordAgentModelTraceOutcome(
         {
           ...input,
@@ -443,6 +460,7 @@ export class PiStructuredTransportRouter {
         attemptStage: stage,
       };
     } catch (error) {
+      capture?.finish({ error: modelCallFailure(error) }, true, false);
       if (isAgentModelTraceFailure(error)) throw error;
       const normalized = normalizeTransportFailure(
         error,
@@ -496,6 +514,7 @@ export async function executeOpenAICompletion(
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly onChunk?: (chunk: unknown) => void;
   },
 ): Promise<StructuredCompletionResponse> {
   const client = new OpenAI({
@@ -525,6 +544,7 @@ export async function executeOpenAICompletion(
     return await aggregateStreamingJsonCompletion(stream as AsyncIterable<unknown>, {
       signal: controller.signal,
       maxOutputBytes: options.maxOutputBytes ?? 262_144,
+      ...(options.onChunk ? { onChunk: options.onChunk } : {}),
     });
   } finally {
     clearTimeout(timer);
@@ -538,6 +558,7 @@ export async function aggregateStreamingJsonCompletion(
     readonly signal: AbortSignal;
     readonly maxOutputBytes: number;
     readonly now?: () => Date;
+    readonly onChunk?: (chunk: unknown) => void;
   },
 ): Promise<StructuredCompletionResponse> {
   const now = options.now ?? (() => new Date());
@@ -555,6 +576,7 @@ export async function aggregateStreamingJsonCompletion(
     while (true) {
       const item = await abortableNext(iterator, options.signal);
       if (item.done) break;
+      try { options.onChunk?.(item.value); } catch { /* Diagnostic observers cannot affect parsing. */ }
       responseActivityObserved = true;
       const observedAt = now().toISOString();
       lastActivityAt = observedAt;
