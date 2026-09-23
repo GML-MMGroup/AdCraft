@@ -21,6 +21,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionToastExiting, setActionToastExiting] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [batchAction, setBatchAction] = useState<"favorite" | "trash" | null>(null);
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
@@ -100,8 +101,13 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
 
   useEffect(() => {
     if (!actionNotice) return undefined;
-    const timeout = window.setTimeout(() => setActionNotice(null), 2800);
-    return () => window.clearTimeout(timeout);
+    setActionToastExiting(false);
+    const exitTimeout = window.setTimeout(() => setActionToastExiting(true), 2500);
+    const removeTimeout = window.setTimeout(() => setActionNotice(null), 2800);
+    return () => {
+      window.clearTimeout(exitTimeout);
+      window.clearTimeout(removeTimeout);
+    };
   }, [actionNotice]);
 
   const openSavedProject = useCallback((projectId: string) => {
@@ -288,7 +294,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
         refreshing={projectCatalogRefreshing}
         onRetry={refreshProjects}
       />
-      {actionNotice ? <div className="project-action-toast" role="status" aria-live="polite">{actionNotice}</div> : null}
+      {actionNotice ? <div className={`project-action-toast${actionToastExiting ? " is-exiting" : ""}`} role="status" aria-live="polite">{actionNotice}</div> : null}
       <ProjectList
         leading={<CreateCard title="New Project" onClick={createProject} />}
         projects={projects}
