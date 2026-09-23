@@ -17,6 +17,9 @@ class WorkflowModelCallWriteV1(BaseModel):
     recorded_at: datetime
     boundary: Literal["sdk_response", "sdk_stream_chunks", "pi_assistant_events"]
     payload: dict[str, Any]
+    # Structured metadata for the skills that shaped this model call.  This is
+    # optional so previously persisted call records remain readable.
+    skill_context: dict[str, Any] | None = None
     complete: bool = True
     failed: bool = False
 
@@ -42,6 +45,7 @@ class WorkflowModelCallSummaryV1(BaseModel):
     stage: str
     started_at: datetime
     status: Literal["incomplete", "completed", "failed"]
+    skill_context: dict[str, Any] | None = None
 
 
 class WorkflowModelCallDetailV1(WorkflowModelCallSummaryV1):

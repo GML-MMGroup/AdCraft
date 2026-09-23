@@ -105,6 +105,7 @@ class WorkflowModelCallStore:
             stage=request.stage,
             started_at=request.recorded_at,
             status=status,
+            skill_context=request.skill_context,
             request=request,
             outcome=outcome,
         )
