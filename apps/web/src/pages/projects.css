@@ -45,20 +45,6 @@
   border-radius: 24px;
 }
 
-.projects-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.project-toolbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .project-selection-toolbar {
   display: flex;
   align-items: center;
@@ -134,29 +120,6 @@
   outline: 0;
 }
 
-.projects-toolbar .search-box {
-  caret-color: #9DAFE6;
-}
-
-.projects-toolbar .search-box.clear-glass-control.is-active:is(:hover, :focus, :focus-visible, :active) {
-  border-color: color-mix(in srgb, #9DAFE6 62%, rgba(255, 255, 255, 0.13));
-  background: color-mix(in srgb, #9DAFE6 10%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, #9DAFE6 22%, transparent),
-    0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent),
-    0 11px 26px rgba(0, 13, 24, 0.17);
-  outline: 0;
-  transform: none;
-}
-
-.projects-toolbar .search-box::placeholder {
-  color: rgba(255, 255, 255, 0.58);
-  opacity: 1;
-}
-
-.projects-toolbar .search-box:focus::placeholder {
-  color: transparent;
-}
 
 .grid {
   display: grid;
@@ -798,17 +761,11 @@
 }
 
 @media (max-width: 900px) {
-  .page-toolbar,
-  .projects-toolbar {
+  .page-toolbar {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .project-toolbar-actions {
-    width: 100%;
-    align-items: stretch;
-    flex-direction: column;
-  }
 
   .project-selection-toolbar {
     align-items: stretch;
