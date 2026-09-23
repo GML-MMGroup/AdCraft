@@ -1823,12 +1823,10 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
     const panelSource = readFileSync(panelPath, "utf8");
 
-    expect(panelSource).toMatch(
-      /unit\.activities\.map\(\(activity\) => renderTimelineItem\(\s*activity,\s*null,\s*\{\s*compactCapability:\s*true,?\s*\},?\s*\)\)\}/,
-    );
-    expect(panelSource).toMatch(
-      /unit\.proposals\.map\(\(proposal\) => renderTimelineItem\(\s*proposal,\s*null,\s*\{\s*compactCapability:\s*true,?\s*\},?\s*\)\)\}/,
-    );
+    expect(panelSource).toContain("...unit.planning");
+    expect(panelSource).toContain("...unit.activities");
+    expect(panelSource).toContain("...unit.proposals");
+    expect(panelSource).toContain(".sort((left, right) => left.sequence - right.sequence)");
     expect(panelSource).toMatch(/<StageThread\s+\n?\s+unit=\{unit\}/);
   });
 
