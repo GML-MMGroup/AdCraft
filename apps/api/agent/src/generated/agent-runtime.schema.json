@@ -37180,6 +37180,19 @@
           "title": "Schema Version",
           "type": "string"
         },
+        "skill_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Context"
+        },
         "stage": {
           "enum": [
             "capability_fallback",

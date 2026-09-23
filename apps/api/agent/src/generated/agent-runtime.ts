@@ -28,7 +28,7 @@ export type SkillStackEntryV1 = { readonly "skill_kind": "audiovisual_style" | "
 
 export type SkillStackV1 = { readonly "entries"?: ReadonlyArray<SkillStackEntryV1> };
 
-export type WorkflowModelCallWriteV1 = { readonly "schema_version"?: "1"; readonly "run_id": string; readonly "call_id": string; readonly "phase": "outcome" | "request"; readonly "stage": "capability_fallback" | "initial" | "structured_repair" | "transport_retry"; readonly "recorded_at": string; readonly "boundary": "pi_assistant_events" | "sdk_response" | "sdk_stream_chunks"; readonly "payload": Readonly<Record<string, unknown>>; readonly "complete"?: boolean; readonly "failed"?: boolean };
+export type WorkflowModelCallWriteV1 = { readonly "schema_version"?: "1"; readonly "run_id": string; readonly "call_id": string; readonly "phase": "outcome" | "request"; readonly "stage": "capability_fallback" | "initial" | "structured_repair" | "transport_retry"; readonly "recorded_at": string; readonly "boundary": "pi_assistant_events" | "sdk_response" | "sdk_stream_chunks"; readonly "payload": Readonly<Record<string, unknown>>; readonly "skill_context"?: Readonly<Record<string, unknown>> | null; readonly "complete"?: boolean; readonly "failed"?: boolean };
 
 export type WorkflowModelCallReceiptV1 = { readonly "call_id": string; readonly "phase": "outcome" | "request"; readonly "recorded": boolean };
 
