@@ -4,6 +4,7 @@ export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
 export const MODEL_DEFAULT_PURPOSES = ["agent", "text", "image", "video", "audio"] as const;
 export type ModelDefaultPurpose = (typeof MODEL_DEFAULT_PURPOSES)[number];
 export type ModelDefaultModeV1 = "automatic" | "explicit";
+export type ModelThinkingModeV1 = "disabled" | "enabled";
 
 export type ProviderConnectionState = "configured" | "unconfigured" | "invalid";
 export type ProviderCredentialSource = "project_dotenv" | "process_environment" | "unconfigured";
@@ -166,12 +167,14 @@ export interface ProviderModelSyncResponseV1 {
 export interface ModelDefaultsResponseV1 {
   defaults: Partial<Record<ModelDefaultPurpose, string>>;
   modes: Partial<Record<ModelDefaultPurpose, ModelDefaultModeV1>>;
+  thinking_modes?: Partial<Record<ModelDefaultPurpose, ModelThinkingModeV1>>;
   revisions: Partial<Record<ModelDefaultPurpose, number>>;
 }
 
 export interface ModelDefaultsPatchRequestV1 {
   defaults?: Partial<Record<ModelDefaultPurpose, string>>;
   modes?: Partial<Record<ModelDefaultPurpose, ModelDefaultModeV1>>;
+  thinking_modes?: Partial<Record<ModelDefaultPurpose, ModelThinkingModeV1>>;
 }
 
 export function emptyProviderCredentialDraft(

@@ -354,6 +354,42 @@ describe("ApiSpacePage provider registry", () => {
     }));
   });
 
+  it("saves the selected thinking mode for a text default", async () => {
+    const thinkingGlm = {
+      ...glm,
+      capability_metadata: { supported_thinking_modes: ["disabled", "enabled"] },
+    };
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ModelDefaultsPanel
+        defaults={{
+          defaults: { text: thinkingGlm.model_ref },
+          modes: { text: "explicit" },
+          thinking_modes: { text: "enabled" },
+          revisions: { text: 1 },
+        }}
+        modelsByPurpose={{
+          agent: [],
+          text: [thinkingGlm],
+          image: [],
+          video: [],
+          audio: [],
+        }}
+        loading={false}
+        pending={false}
+        notice={null}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Non-thinking" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save default models" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({
+      thinking_modes: { text: "disabled" },
+    }));
+  });
+
   it("excludes fake provider models from production default selectors", async () => {
     render(<ApiSpacePage />);
 
