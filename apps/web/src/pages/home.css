@@ -362,6 +362,14 @@
   color: var(--muted);
 }
 
+.home-reveal-section--recent .section-title {
+  margin-bottom: 30px;
+}
+
+.home-reveal-section--discover .section-title {
+  margin-bottom: 14px;
+}
+
 .home-reveal-section[data-reveal-state="pending"] [data-reveal-item] {
   opacity: 0;
   filter: blur(8px);
