@@ -38,6 +38,7 @@ import {
   type AgentToolName,
 } from "./registry.js";
 import type { LoadedSkill } from "./skills.js";
+import { buildWorkflowModelCallSkillContext } from "./workflow-model-calls.js";
 import {
   contractSchemaForRequest,
   prepareStructuredModelInput,
@@ -236,7 +237,14 @@ export class PiModelAdapter implements AgentModelAdapter {
           if (replay) {
             return replayedAssistantMessageStream(traceContext, traceRequest, stage);
           }
-          const capture = workflowModelCallCapture(this.python, credential, request, stage, "pi_assistant_events");
+          const capture = workflowModelCallCapture(
+            this.python,
+            credential,
+            request,
+            stage,
+            "pi_assistant_events",
+            skills,
+          );
           const source = observeWorkflowAssistantStream(modelStreamForCredential(
             selectedModel as Model<"openai-completions">,
             context,
@@ -247,6 +255,7 @@ export class PiModelAdapter implements AgentModelAdapter {
                 capture?.begin({
                   agent_request: request, system_prompt: systemPrompt, user_prompt: userPrompt,
                   output_schema: schema, loaded_skills: skills,
+                  skill_context: buildWorkflowModelCallSkillContext(request, skills),
                   provider_request: replacement ?? payload,
                   provider: credential.provider, model_ref: credential.model_ref,
                   base_url: credential.base_url, execution_policy: credential.execution_policy,

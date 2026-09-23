@@ -6,7 +6,12 @@ import {
   chatCompletionChunkFailure,
   normalizeChatCompletionChunk,
 } from "./chat-completion-chunk-normalizer.js";
-import { workflowModelCallCapture, modelCallFailure, type WorkflowModelCallClient } from "./workflow-model-calls.js";
+import {
+  buildWorkflowModelCallSkillContext,
+  workflowModelCallCapture,
+  modelCallFailure,
+  type WorkflowModelCallClient,
+} from "./workflow-model-calls.js";
 import type {
   AgentRunRequest,
   AgentModelTraceStreamingChunkV1,
@@ -407,11 +412,13 @@ export class PiStructuredTransportRouter {
     const capture = workflowModelCallCapture(
       input.traceClient, input.credential, input.request, stage,
       request.stream ? "sdk_stream_chunks" : "sdk_response",
+      input.loadedSkills ?? [],
     );
     capture?.begin({
       agent_request: input.request, system_prompt: input.systemPrompt,
       user_prompt: input.userPrompt, output_schema: input.schema,
       loaded_skills: input.loadedSkills ?? [], provider_request: request,
+      skill_context: buildWorkflowModelCallSkillContext(input.request, input.loadedSkills ?? []),
       provider: input.credential.provider, model_ref: input.credential.model_ref,
       execution_policy: input.credential.execution_policy, effective_timeout_ms: timeoutMs,
       transport_options: { timeout_ms: timeoutMs, max_retries: 0, max_output_bytes: input.request.policy?.max_output_bytes ?? 262_144 },

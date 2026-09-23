@@ -4,6 +4,14 @@ import type { WorkflowModelCallWriteV1 } from "./generated/agent-runtime.js";
 import { isAcceptanceReplaySource, type AgentRuntimeTransportSource } from "./python-internal-client.js";
 import type { AgentRunRequest } from "./generated/agent-runtime.js";
 import type { ModelAttemptStage } from "./run-budget.js";
+import type { LoadedSkill } from "./skills.js";
+
+export interface WorkflowModelCallSkillContext {
+  readonly [key: string]: unknown;
+  readonly internal_capability_skills: ReadonlyArray<Readonly<Record<string, unknown>>>;
+  readonly creative_method_skills: ReadonlyArray<Readonly<Record<string, unknown>>>;
+  readonly audiovisual_style_skills: ReadonlyArray<Readonly<Record<string, unknown>>>;
+}
 
 export interface WorkflowModelCallClient {
   recordWorkflowModelCall?(record: WorkflowModelCallWriteV1): Promise<unknown>;
@@ -17,6 +25,7 @@ interface CaptureOptions {
   readonly secrets?: ReadonlyArray<string>;
   readonly maxBytes?: number;
   readonly warn?: (code: string) => void;
+  readonly skillContext?: WorkflowModelCallSkillContext;
 }
 
 /** Best-effort diagnostics: no caller awaits storage, and no error escapes. */
@@ -102,6 +111,9 @@ export class WorkflowModelCallCapture {
         schema_version: "1", run_id: this.options.runId, call_id: this.#id,
         stage: this.options.stage, phase, boundary: this.options.boundary,
         recorded_at: new Date().toISOString(), payload: snapshot, failed, complete,
+        ...(this.options.skillContext
+          ? { skill_context: this.options.skillContext as Readonly<Record<string, unknown>> }
+          : {}),
       };
       this.#pending = this.#pending.then(async () => {
         if (phase === "outcome" && !this.#stored) return;
@@ -119,6 +131,95 @@ export class WorkflowModelCallCapture {
       }));
     } catch { /* Diagnostics must never change the owning model operation. */ }
   }
+}
+
+/**
+ * Project user-facing creative Skills into a compact, readable diagnostic
+ * summary. The full request remains captured separately; this projection is
+ * intentionally metadata-only so logs do not duplicate large prompt bodies.
+ */
+export function buildWorkflowModelCallSkillContext(
+  request: AgentRunRequest,
+  loadedSkills: ReadonlyArray<LoadedSkill> = [],
+): WorkflowModelCallSkillContext {
+  const internalCapabilitySkills = loadedSkills.map((skill) => ({
+    skill_id: skill.skill_id,
+    version: skill.version ?? null,
+    digest: skill.sha256 ?? null,
+  }));
+  const creativeMethodSkills: Array<Readonly<Record<string, unknown>>> = [];
+  const audiovisualStyleSkills: Array<Readonly<Record<string, unknown>>> = [];
+  const seenCreative = new Set<string>();
+  const seenStyle = new Set<string>();
+
+  const addCreative = (entry: Readonly<Record<string, unknown>>): void => {
+    if (typeof entry.skill_id !== "string") return;
+    const key = `${entry.skill_id}:${typeof entry.version === "string" ? entry.version : ""}`;
+    if (seenCreative.has(key)) return;
+    seenCreative.add(key);
+    creativeMethodSkills.push({
+      skill_kind: "creative_method",
+      skill_id: entry.skill_id,
+      title: typeof entry.title === "string" ? entry.title : null,
+      version: typeof entry.version === "string" ? entry.version : null,
+      selected: entry.selected !== false,
+      ...(typeof entry.reason === "string" ? { reason: entry.reason } : {}),
+    });
+  };
+
+  const addStyle = (entry: Readonly<Record<string, unknown>>): void => {
+    if (typeof entry.skill_id !== "string") return;
+    const version =
+      typeof entry.skill_version === "string"
+        ? entry.skill_version
+        : typeof entry.version === "string"
+          ? entry.version
+          : null;
+    const runId = typeof entry.skill_run_id === "string" ? entry.skill_run_id : null;
+    const key = `${entry.skill_id}:${version ?? ""}:${runId ?? ""}`;
+    if (seenStyle.has(key)) return;
+    seenStyle.add(key);
+    audiovisualStyleSkills.push({
+      skill_kind: "audiovisual_style",
+      skill_id: entry.skill_id,
+      version,
+      skill_run_id: runId,
+      ...(typeof entry.title === "string" ? { title: entry.title } : {}),
+      ...(typeof entry.role === "string" ? { role: entry.role } : {}),
+      ...(typeof entry.package_digest === "string" ? { package_digest: entry.package_digest } : {}),
+      ...(typeof entry.creative_direction_snapshot_id === "string"
+        ? { creative_direction_snapshot_id: entry.creative_direction_snapshot_id }
+        : {}),
+      ...(typeof entry.role_guidance_digest === "string"
+        ? { role_guidance_digest: entry.role_guidance_digest }
+        : {}),
+    });
+  };
+
+  const visit = (value: unknown, parentKey = ""): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, parentKey);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const object = value as Readonly<Record<string, unknown>>;
+    if (object.skill_kind === "creative_method") addCreative(object);
+    if (object.skill_kind === "audiovisual_style") addStyle(object);
+    if (
+      typeof object.skill_id === "string" &&
+      (parentKey === "style_guidance" || parentKey === "style_projection")
+    ) {
+      addStyle(object);
+    }
+    for (const [key, child] of Object.entries(object)) visit(child, key);
+  };
+  visit(request.context);
+
+  return {
+    internal_capability_skills: internalCapabilitySkills,
+    creative_method_skills: creativeMethodSkills,
+    audiovisual_style_skills: audiovisualStyleSkills,
+  };
 }
 
 /** A credential can straddle SDK chunks; sanitize the joined field channel. */
@@ -170,10 +271,12 @@ export function workflowModelCallCapture(
   request: AgentRunRequest,
   stage: ModelAttemptStage,
   boundary: WorkflowModelCallWriteV1["boundary"],
+  loadedSkills: ReadonlyArray<LoadedSkill> = [],
 ): WorkflowModelCallCapture | undefined {
   if (isAcceptanceReplaySource(credential) || !client?.recordWorkflowModelCall) return undefined;
   return new WorkflowModelCallCapture({
     runId: request.run_id, stage, boundary, secrets: [credential.api_key],
+    skillContext: buildWorkflowModelCallSkillContext(request, loadedSkills),
     write: (record) => client.recordWorkflowModelCall!(record),
   });
 }
