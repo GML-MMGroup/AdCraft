@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import json
 from math import ceil
 
-from sqlalchemy import text as sql_text
+from sqlalchemy import select, text as sql_text
 
 from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.agent_canvas_requirement_repository import (
@@ -21,6 +21,9 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.models import AgentCanvasRequirementLedgerRevisionRow
+from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.schemas.agent_canvas_requirements import (
     AspectRatioControlPatchV1,
     AudioModeControlPatchV1,
@@ -130,6 +133,22 @@ class BrandProductionHandoffService:
         absent.
         """
 
+        with self._database.engine.connect() as connection:
+            document = BrandDecisionDocumentService(self._database).frozen_in_transaction(
+                connection, brand_id
+            )
+        if document is not None:
+            try:
+                self._prepare_reviewed_document(workflow_id, brand_id, document)
+            except V2PersistenceError as error:
+                if (
+                    error.code != "requirement_revision_conflict"
+                    or not self._reviewed_handoff_applied(
+                        workflow_id, f"brand-handoff:{brand_id}:{document.content_digest}"
+                    )
+                ):
+                    raise
+            return
         requirements = AgentCanvasRequirementService(
             self._database,
             AgentCanvasRequirementRepository(self._database),
@@ -245,6 +264,110 @@ class BrandProductionHandoffService:
                 ),
             ),
         )
+
+    def production_context(self, workflow_id: str) -> BrandTreatmentDocumentV1 | None:
+        project_id = self._repository.project_id_for_workflow(workflow_id)
+        brand_id = self._repository.get_brand_id_by_project(project_id) if project_id else None
+        if brand_id is None:
+            return None
+        with self._database.engine.connect() as connection:
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None or journey.stage != "production":
+                return None
+            return BrandDecisionDocumentService(self._database).frozen_in_transaction(
+                connection, brand_id
+            )
+
+    def _prepare_reviewed_document(
+        self, workflow_id: str, brand_id: str, document: BrandTreatmentDocumentV1
+    ) -> None:
+        identity = f"brand-handoff:{brand_id}:{document.content_digest}"
+        if self._reviewed_handoff_applied(workflow_id, identity):
+            return
+        requirements = AgentCanvasRequirementService(
+            self._database,
+            AgentCanvasRequirementRepository(self._database),
+            EventRepository(self._database),
+        )
+        current = requirements.get_current_revision(workflow_id)
+        slots = {
+            value.slot_id: value.value
+            for value in (*document.brand_profile.values, *document.campaign_brief.values)
+        }
+        # Recheck after reading the revision: an independent writer may have
+        # completed the same handoff between the first check and this read.
+        if self._reviewed_handoff_applied(workflow_id, identity):
+            return
+        duration_text = slots["campaign_duration"]
+        aspect_text = slots["campaign_aspect_ratio"]
+        duration = _duration_seconds(duration_text)
+        segments = _media_segment_count(duration)
+        controls = {control.control: control.value for control in current.ledger.hard_controls}
+        audio_mode = controls.get("audio_mode", "bgm_only")
+        product_count = controls.get("product_count", 1)
+        source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
+        requirements.apply_user_turn_patch(
+            workflow_id,
+            expected_revision_no=current.revision_no,
+            source_turn_id=identity,
+            user_input=source,
+            patch=RequirementPatchV1(
+                controls_to_set=(
+                    DurationSecondsControlPatchV1(value=duration, source_quote=duration_text),
+                    AspectRatioControlPatchV1(
+                        value=_aspect_ratio(aspect_text), source_quote=aspect_text
+                    ),
+                    AudioModeControlPatchV1(value=audio_mode, source_quote=f"audio {audio_mode}"),
+                    ProductCountControlPatchV1(
+                        value=product_count, source_quote=f"product count {product_count}"
+                    ),
+                    StoryboardSequenceCountControlPatchV1(
+                        value=segments, source_quote=duration_text
+                    ),
+                    VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text),
+                ),
+                directives_to_add=(
+                    RequirementDirectivePatchV1(
+                        source_quote=f"Reviewed Brand document {document.content_digest}",
+                        normalized_meaning=f"Execute reviewed Brand Treatment {document.content_digest}. The typed brand_decisions context contains the authoritative full decisions; do not invent a replacement story or contradict its constraints.",
+                        scope_kind="global",
+                        strength="hard",
+                    ),
+                ),
+            ),
+            explicit_elements=(
+                RequirementElementPresencePatchV1(
+                    element_kind="product",
+                    presence="include",
+                    source_quote=f"product count {product_count}",
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="storyboard", presence="include", source_quote="storyboard"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="video", presence="include", source_quote="video"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="audio",
+                    presence="exclude" if audio_mode == "none" else "include",
+                    source_quote=f"audio {audio_mode}",
+                ),
+            ),
+        )
+
+    def _reviewed_handoff_applied(self, workflow_id: str, identity: str) -> bool:
+        with self._database.engine.connect() as connection:
+            return (
+                connection.execute(
+                    select(AgentCanvasRequirementLedgerRevisionRow.revision_id)
+                    .where(
+                        AgentCanvasRequirementLedgerRevisionRow.workflow_id == workflow_id,
+                        AgentCanvasRequirementLedgerRevisionRow.source_turn_id == identity,
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+                is not None
+            )
 
     def locked_prohibited_elements(self, brand_id: str) -> tuple[str, ...]:
         return self._repository.locked_prohibited_elements(brand_id)

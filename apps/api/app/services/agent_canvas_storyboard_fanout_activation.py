@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Callable
+from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
 
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
@@ -82,6 +83,7 @@ class StoryboardFanoutActivationService:
         awaiting,
         automatic_runs,
         clock: Callable[[], datetime] | None = None,
+        brand_context_loader: Callable[[str], BrandTreatmentDocumentV1 | None] | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -94,6 +96,7 @@ class StoryboardFanoutActivationService:
         self._awaiting = awaiting
         self._automatic_runs = automatic_runs
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._brand_context_loader = brand_context_loader
 
     def resume_confirmation(
         self,
@@ -362,6 +365,11 @@ class StoryboardFanoutActivationService:
             else None
         )
         return StageAuthoringContextV1(
+            brand_decisions=(
+                self._brand_context_loader(fanout.workflow_id)
+                if self._brand_context_loader is not None
+                else None
+            ),
             workflow_id=fanout.workflow_id,
             session_id=session.session_id,
             session_revision=session.revision,

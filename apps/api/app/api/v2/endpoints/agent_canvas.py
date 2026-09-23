@@ -422,7 +422,10 @@ from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.agent_model_trace_sessions import isolated_agent_model_replay_enabled
 from app.services.durable_pi_run import DurablePiRunService
-from app.services.brand_production_handoff import check_locked_elements
+from app.services.brand_production_handoff import (
+    BrandProductionHandoffService,
+    check_locked_elements,
+)
 from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
 from app.services.brand_guided_interaction_submit import BrandGuidedInteractionSubmitter
 from app.services.brand_capability_invocation import BrandCapabilityInvocationService
@@ -1371,6 +1374,7 @@ def create_agent_canvas_runtime(
         event_repository,
     )
     fanout_activation = StoryboardFanoutActivationService(
+        brand_context_loader=BrandProductionHandoffService(database).production_context,
         workflows=workflow_repository,
         conversations=conversation_repository,
         requirements=requirement_service,

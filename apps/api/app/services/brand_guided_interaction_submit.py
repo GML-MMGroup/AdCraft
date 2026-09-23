@@ -77,6 +77,11 @@ class BrandGuidedInteractionSubmitter:
                 option_id=option_id or "recommended",
             )
         elif "treatment" in content.capability_id:
+            if request.action != "select" or custom_text:
+                raise V2PersistenceError(
+                    "guided_interaction_action_not_allowed",
+                    "Select a Treatment candidate first. Use the Treatment step editor to submit complete revised details before final confirmation.",
+                )
             selected_label = custom_text or self._option_label(content, option_id)
             self._brand_service.apply_treatment_selection(
                 brand_id,

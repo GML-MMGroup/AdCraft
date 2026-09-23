@@ -285,6 +285,7 @@ class RolePromptContextProjector:
             else None
         )
         return RolePromptPreparationContextV2(
+            brand_decisions=stage_context.brand_decisions,
             workflow_id=node.workflow_id,
             node_id=node.node_id,
             node_revision=node.revision,

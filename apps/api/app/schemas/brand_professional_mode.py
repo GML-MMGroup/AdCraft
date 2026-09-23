@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.brand_treatment_detail import TreatmentDetailV1, TreatmentSectionV1
 
 BrandMode = Literal["creation", "brand"]
 BrandStage = Literal[
@@ -58,6 +60,7 @@ class BrandShortOptionV1(_BrandModel):
     option_id: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=1, max_length=48)
     why: str | None = Field(default=None, max_length=240)
+    detail: TreatmentDetailV1 | None = None
 
 
 class BrandOptionCardV1(_BrandModel):
@@ -110,12 +113,24 @@ class CreativeStrategyOutputV1(_BrandModel):
     candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=3, max_length=3)
 
 
+class TreatmentCandidateV1(BrandShortOptionV1):
+    detail: TreatmentDetailV1
+
+
 class CreativeTreatmentStepOutputV1(_BrandModel):
     """Three options for one treatment sub-step."""
 
     step_key: BrandTreatmentSubstep
     question: str = Field(min_length=1, max_length=400)
-    options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[TreatmentCandidateV1, ...] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def complete_candidates(self) -> "CreativeTreatmentStepOutputV1":
+        if len({option.option_id for option in self.options}) != len(self.options):
+            raise ValueError("Treatment option IDs must be unique.")
+        for option in self.options:
+            option.detail.validate_step(self.step_key)
+        return self
 
 
 class CreativeTreatmentOutputV1(_BrandModel):
@@ -128,7 +143,7 @@ class AdSpecItemV1(_BrandModel):
     """One AdSpec line with its decision state."""
 
     item_key: str = Field(min_length=1, max_length=80)
-    item_text: str = Field(min_length=1, max_length=600)
+    item_text: str = Field(min_length=1, max_length=2400)
     state: AdSpecItemState = "open"
 
 
@@ -196,6 +211,7 @@ class TreatmentStepResultV1(_BrandModel):
     selected_label: str = Field(min_length=1, max_length=160)
     detail: str = Field(default="", max_length=2000)
     confirmed_at: datetime
+    structured_detail: TreatmentDetailV1 | None = None
 
 
 class BrandJourneyStateV1(_BrandModel):
@@ -206,6 +222,40 @@ class BrandJourneyStateV1(_BrandModel):
     treatment_substep: BrandTreatmentSubstep | None = None
     stage_revision: int = Field(default=1, ge=1)
     stage_status: Literal["ready", "working", "waiting_user", "completed"] = "ready"
+
+
+class BrandBriefSummaryV1(_BrandModel):
+    values: tuple[BrandSlotValueV1, ...] = ()
+    inherited_values: tuple[BrandSlotValueV1, ...] = ()
+    unresolved_fields: tuple[str, ...] = ()
+
+
+class BrandAssetReferenceV1(_BrandModel):
+    """Review-only metadata; the live target Binding remains input authority."""
+
+    binding_id: str
+    workflow_id: str
+    target_node_id: str
+    asset_id: str
+    version_id: str
+    display_name: str
+    input_role: str
+
+
+class BrandTreatmentDocumentV1(_BrandModel):
+    schema_version: Literal["2"] = "2"
+    brand_profile: BrandBriefSummaryV1
+    campaign_brief: BrandBriefSummaryV1
+    selected_hypothesis: CreativeHypothesisCandidateV1 | None = None
+    adspec: AdSpecStateV1 | None = None
+    skill_stack: SkillStackV1 | None = None
+    treatment_steps: tuple[TreatmentStepResultV1, ...] = ()
+    product_presentation: tuple[TreatmentSectionV1, ...] = ()
+    authorized_asset_references: tuple[BrandAssetReferenceV1, ...] = ()
+    complete: bool = False
+    missing_sections: tuple[str, ...] = ()
+    content_digest: str = ""
+    execution_limitations: tuple[str, ...] = ("sound_effects_and_mixing_not_automated",)
 
 
 class BrandDecisionPanelV1(_BrandModel):
@@ -224,6 +274,9 @@ class BrandDecisionPanelV1(_BrandModel):
     skill_stack: SkillStackV1 | None = None
     treatment_steps: tuple[TreatmentStepResultV1, ...] = Field(default=(), max_length=8)
     treatment_locked: bool = False
+    brand_profile: BrandBriefSummaryV1 | None = None
+    campaign_brief: BrandBriefSummaryV1 | None = None
+    treatment_document: BrandTreatmentDocumentV1 | None = None
 
 
 class BrandDecisionLogEntryV1(_BrandModel):
@@ -280,7 +333,14 @@ class BrandTreatmentActionRequestV1(_BrandModel):
     detail: str = Field(default="", max_length=2000)
 
 
+class BrandTreatmentEditRequestV1(_BrandModel):
+    expected_stage_revision: int = Field(ge=1)
+    selected_label: str = Field(min_length=1, max_length=160)
+    detail: TreatmentDetailV1
+
+
 class BrandLockActionRequestV1(_BrandModel):
     """Treatment lock request; accepted only after all eight sub-steps."""
 
     confirm: bool = True
+    content_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")

@@ -45,6 +45,7 @@ from app.schemas.brand_professional_mode import (
     SkillStackV1,
     TreatmentStepResultV1,
 )
+from app.schemas.brand_treatment_detail import TreatmentDetailV1
 
 
 def _now() -> str:
@@ -624,9 +625,30 @@ class BrandDecisionRepository:
                 selected_label=row.selected_label,
                 detail=row.detail_text,
                 confirmed_at=datetime.fromisoformat(row.confirmed_at),
+                structured_detail=self._step_detail(
+                    connection, brand_id, row.step_key, row.confirmed_at
+                ),
             )
             for row in rows
         )
+
+    def _step_detail(
+        self, connection: Connection, brand_id: str, step_key: str, confirmed_at: str
+    ) -> TreatmentDetailV1 | None:
+        raw = connection.execute(
+            select(BrandDecisionLogRow.detail_json)
+            .where(
+                BrandDecisionLogRow.brand_id == brand_id,
+                BrandDecisionLogRow.target_type == "treatment_step",
+                BrandDecisionLogRow.target_id == step_key,
+                BrandDecisionLogRow.created_at == confirmed_at,
+                BrandDecisionLogRow.action.in_(("select", "edit")),
+            )
+            .order_by(BrandDecisionLogRow.log_id)
+            .limit(1)
+        ).scalar_one_or_none()
+        detail = json.loads(raw).get("structured_detail") if raw else None
+        return TreatmentDetailV1.model_validate(detail) if detail else None
 
     # ---- Decision log ------------------------------------------------------
 

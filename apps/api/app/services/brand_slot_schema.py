@@ -14,7 +14,7 @@ from app.schemas.brand_professional_mode import (
     BrandStage,
 )
 
-SLOT_SCHEMA_VERSION = "2"
+SLOT_SCHEMA_VERSION = "3"
 
 # A slot declares the information nature a user-confirmed value carries.  Values
 # the Agent inferred on its own are always tentative assumptions instead, so
@@ -72,6 +72,14 @@ _SLOTS: tuple[BrandSlotDefinition, ...] = (
     BrandSlotDefinition(
         "brand_product_visual", "brand-memory", False, "Is there a product visual reference?"
     ),
+    BrandSlotDefinition("brand_name", "brand-memory", False, "What is the brand name?"),
+    BrandSlotDefinition(
+        "brand_required_elements",
+        "brand-memory",
+        False,
+        "Which brand or product elements must appear?",
+        kind="constraint",
+    ),
     BrandSlotDefinition(
         "campaign_goal", "campaign", True, "What is the advertising goal this time?"
     ),
@@ -84,6 +92,24 @@ _SLOTS: tuple[BrandSlotDefinition, ...] = (
     ),
     BrandSlotDefinition(
         "campaign_cta", "campaign", False, "Is there a call to action?", kind="preference"
+    ),
+    BrandSlotDefinition("campaign_name", "campaign", False, "What is this campaign called?"),
+    BrandSlotDefinition(
+        "campaign_audience", "campaign", False, "Who should this particular campaign reach?"
+    ),
+    BrandSlotDefinition(
+        "campaign_core_message",
+        "campaign",
+        False,
+        "What should viewers remember from this campaign?",
+        kind="preference",
+    ),
+    BrandSlotDefinition(
+        "campaign_non_goals",
+        "campaign",
+        False,
+        "What should this campaign not emphasize?",
+        kind="constraint",
     ),
 )
 

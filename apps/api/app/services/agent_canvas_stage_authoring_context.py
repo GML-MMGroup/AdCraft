@@ -60,6 +60,7 @@ def stage_authoring_context_from_materialization(
         style_snapshot_id = None
     selected = context.selected_option
     return StageAuthoringContextV1(
+        brand_decisions=context.brand_decisions,
         workflow_id=context.workflow_id,
         session_id=session_id,
         session_revision=session_revision,

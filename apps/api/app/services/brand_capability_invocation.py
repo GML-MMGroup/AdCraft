@@ -108,6 +108,11 @@ _ADSPEC_LABELS: dict[str, dict[str, str]] = {
         "product_role": "产品角色",
         "hook_requirement": "Hook 要求",
         "brand_boundary": "品牌边界",
+        "product_identity": "产品身份",
+        "required_elements": "必须包含",
+        "campaign_non_goals": "本次不强调",
+        "campaign_platform": "投放平台",
+        "campaign_cta": "行动引导",
         "production_format": "制作规格",
         "hook": "具体 Hook",
         "character": "角色",
@@ -126,6 +131,11 @@ _ADSPEC_LABELS: dict[str, dict[str, str]] = {
         "product_role": "Product role",
         "hook_requirement": "Hook requirement",
         "brand_boundary": "Brand boundary",
+        "product_identity": "Product identity",
+        "required_elements": "Required elements",
+        "campaign_non_goals": "Campaign non-goals",
+        "campaign_platform": "Campaign platform",
+        "campaign_cta": "Call to action",
         "production_format": "Production format",
         "hook": "Concrete Hook",
         "character": "Character",
@@ -147,7 +157,7 @@ def _adspec_labels(response_locale: str) -> dict[str, str]:
 
 
 def _adspec_line(label: str, value: str) -> str:
-    return f"{label}: {value}"[:600]
+    return f"{label}: {value}"
 
 
 class BrandCapabilityInvocationService:
@@ -616,7 +626,15 @@ class BrandCapabilityInvocationService:
             if not any(option.option_id == option_id for option in card.options):
                 raise _card_invalid("Selected option is not on the open card.")
             self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            current_items = {
+                item.item_key: item
+                for item in self._repository.get_adspec_in_transaction(connection, brand_id).items
+            }
             for item_key, state in states.items():
+                # A category label is not an execution decision. Keep its
+                # existing open/variable state until concrete content exists.
+                if state == "locked":
+                    state = current_items[item_key].state
                 self._repository.update_adspec_item_state_in_transaction(
                     connection, brand_id, item_key, state
                 )
@@ -665,8 +683,13 @@ class BrandCapabilityInvocationService:
             )
 
         lock("campaign_goal", slots.get("campaign_goal"))
-        lock("audience", slots.get("brand_audience"))
-        lock("core_message", slots.get("brand_positioning"))
+        lock("audience", slots.get("campaign_audience") or slots.get("brand_audience"))
+        lock("core_message", slots.get("campaign_core_message") or slots.get("brand_product_focus"))
+        lock("product_identity", slots.get("brand_product_identity"))
+        lock("required_elements", slots.get("brand_required_elements"))
+        lock("campaign_non_goals", slots.get("campaign_non_goals"))
+        lock("campaign_platform", slots.get("campaign_platform"))
+        lock("campaign_cta", slots.get("campaign_cta"))
         if selected is not None:
             lock("core_insight", selected.insight)
             lock("core_creative", selected.hypothesis)
@@ -707,8 +730,8 @@ class BrandCapabilityInvocationService:
                 ),
                 BrandShortOptionV1(
                     option_id="locked",
-                    label="全部固定",
-                    why="执行维度全部按当前方案锁定，下游不得改动",
+                    label="保留已确认内容",
+                    why="已确认内容不变，尚未明确的执行细节仍保留选择空间",
                 ),
                 BrandShortOptionV1(
                     option_id="open",
@@ -724,8 +747,8 @@ class BrandCapabilityInvocationService:
             ),
             BrandShortOptionV1(
                 option_id="locked",
-                label="Lock everything",
-                why="Freeze every execution dimension as the current plan states",
+                label="Keep confirmed decisions",
+                why="Preserve confirmed content; unspecified execution details remain open",
             ),
             BrandShortOptionV1(
                 option_id="open",
@@ -1031,6 +1054,8 @@ class BrandCapabilityInvocationService:
             )
             output = self._runtime.run(spec).output
         step = output.step
+        if step.step_key != journey.treatment_substep:
+            raise _card_invalid("The proposal must match the current Treatment step.")
         now = datetime.now(timezone.utc)
         card = BrandOptionCardV1(
             card_id=f"bcard_{uuid4().hex[:12]}",
@@ -1051,9 +1076,9 @@ class BrandCapabilityInvocationService:
                 brand_id=brand_id,
                 stage="treatment",
                 action="recommend",
-                target_type="treatment_step",
-                target_id=step.step_key,
-                detail={"card_id": card.card_id},
+                target_type="option_card",
+                target_id=card.card_id,
+                detail={"card_id": card.card_id, "context_digest": product_context.digest},
                 now=now,
             )
         return step
@@ -1068,13 +1093,27 @@ class BrandCapabilityInvocationService:
         detail: str,
     ) -> None:
         now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        observed = self._repository.get_journey(brand_id)
+        if observed is None:
+            raise _not_found()
         with self._database.engine.begin() as connection:
+            state.claim(connection, brand_id, observed.stage_revision)
             card = self._repository.get_open_card_in_transaction(connection, brand_id)
             if card is None or card.card_id != card_id or card.stage != "treatment":
                 raise _stage_mismatch()
-            if not any(option.option_id == option_id for option in card.options):
+            if not state.card_is_current(connection, brand_id, card):
+                raise stale_context()
+            selected = next(
+                (option for option in card.options if option.option_id == option_id), None
+            )
+            if selected is None:
                 raise _card_invalid("Selected option is not on the open card.")
             step_key = cast_step(card.target_slot_id)
+            if selected.detail is not None:
+                selected.detail.validate_step(step_key)
+                selected_label = selected.label
+                detail = selected.detail.render()
             self._repository.save_treatment_step_in_transaction(
                 connection,
                 brand_id,
@@ -1093,7 +1132,14 @@ class BrandCapabilityInvocationService:
                 action="select",
                 target_type="treatment_step",
                 target_id=step_key,
-                detail={"card_id": card_id, "option_id": option_id},
+                detail={
+                    "card_id": card_id,
+                    "option_id": option_id,
+                    "content_version": 2 if selected.detail is not None else 1,
+                    "structured_detail": selected.detail.model_dump(mode="json")
+                    if selected.detail
+                    else None,
+                },
                 now=now,
             )
             journey = self._repository.get_journey_in_transaction(connection, brand_id)
@@ -1102,45 +1148,12 @@ class BrandCapabilityInvocationService:
                     connection, brand_id, advance_treatment_substep(journey)
                 )
 
-    def lock_treatment(self, brand_id: str) -> BrandJourneyStateV1:
-        """Lock the treatment once all eight sub-steps are confirmed.
+    def lock_treatment(
+        self, brand_id: str, *, content_digest: str | None = None
+    ) -> BrandJourneyStateV1:
+        from app.services.brand_treatment_confirmation import BrandTreatmentConfirmationService
 
-        A lock that arrives early fails with `brand_slot_required_missing` and
-        leaves the journey at its current sub-step.
-        """
-
-        now = datetime.now(timezone.utc)
-        with self._database.engine.begin() as connection:
-            journey = self._repository.get_journey_in_transaction(connection, brand_id)
-            if journey is None or journey.stage != "treatment":
-                raise _stage_mismatch()
-            steps = self._repository.get_treatment_steps_in_transaction(connection, brand_id)
-            confirmed = {step.step_key for step in steps}
-            missing = [key for key in TREATMENT_SUBSTEP_ORDER if key not in confirmed]
-            if missing:
-                raise V2PersistenceError(
-                    "brand_slot_required_missing",
-                    "Treatment lock requires all eight sub-steps; missing: " + ", ".join(missing),
-                    stage="brand_capability_invocation",
-                )
-            locked = advance_brand_stage(journey)
-            connection.execute(
-                BrandOptionCardRow.__table__.update()
-                .where(BrandOptionCardRow.brand_id == brand_id, BrandOptionCardRow.status == "open")
-                .values(status="superseded")
-            )
-            self._repository.save_journey_in_transaction(connection, brand_id, locked)
-            self._append_log(
-                connection,
-                brand_id=brand_id,
-                stage="treatment",
-                action="lock",
-                target_type="treatment",
-                target_id=None,
-                detail={"stage": locked.stage},
-                now=now,
-            )
-        return locked
+        return BrandTreatmentConfirmationService(self._database).confirm(brand_id, content_digest)
 
     # ---- helpers -----------------------------------------------------------
 

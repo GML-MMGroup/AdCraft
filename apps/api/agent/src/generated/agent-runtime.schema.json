@@ -51,6 +51,60 @@
       "title": "ActionableFailureV1",
       "type": "object"
     },
+    "AdSpecItemV1": {
+      "additionalProperties": false,
+      "description": "One AdSpec line with its decision state.",
+      "properties": {
+        "item_key": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Item Key",
+          "type": "string"
+        },
+        "item_text": {
+          "maxLength": 2400,
+          "minLength": 1,
+          "title": "Item Text",
+          "type": "string"
+        },
+        "state": {
+          "default": "open",
+          "enum": [
+            "locked",
+            "open",
+            "variable"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_key",
+        "item_text"
+      ],
+      "title": "AdSpecItemV1",
+      "type": "object"
+    },
+    "AdSpecStateV1": {
+      "additionalProperties": false,
+      "description": "Locked / open / variable view of the confirmed AdSpec.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AdSpecItemV1"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "AdSpecStateV1",
+      "type": "object"
+    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -7445,6 +7499,82 @@
       "title": "BgmRoleBriefV2",
       "type": "object"
     },
+    "BrandAssetReferenceV1": {
+      "additionalProperties": false,
+      "description": "Review-only metadata; the live target Binding remains input authority.",
+      "properties": {
+        "asset_id": {
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "binding_id": {
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "input_role": {
+          "title": "Input Role",
+          "type": "string"
+        },
+        "target_node_id": {
+          "title": "Target Node Id",
+          "type": "string"
+        },
+        "version_id": {
+          "title": "Version Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "binding_id",
+        "display_name",
+        "input_role",
+        "target_node_id",
+        "version_id",
+        "workflow_id"
+      ],
+      "title": "BrandAssetReferenceV1",
+      "type": "object"
+    },
+    "BrandBriefSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "inherited_values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotValueV1"
+          },
+          "title": "Inherited Values",
+          "type": "array"
+        },
+        "unresolved_fields": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved Fields",
+          "type": "array"
+        },
+        "values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotValueV1"
+          },
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "title": "BrandBriefSummaryV1",
+      "type": "object"
+    },
     "BrandOptionCardV1": {
       "additionalProperties": false,
       "description": "Exactly three short options for one slot question or sub-step.",
@@ -7516,6 +7646,17 @@
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",
       "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TreatmentDetailV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "label": {
           "maxLength": 48,
           "minLength": 1,
@@ -7763,6 +7904,114 @@
         }
       },
       "title": "BrandStrategyOutputV1",
+      "type": "object"
+    },
+    "BrandTreatmentDocumentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adspec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdSpecStateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "authorized_asset_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandAssetReferenceV1"
+          },
+          "title": "Authorized Asset References",
+          "type": "array"
+        },
+        "brand_profile": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "campaign_brief": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "complete": {
+          "default": false,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "content_digest": {
+          "default": "",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "execution_limitations": {
+          "default": [
+            "sound_effects_and_mixing_not_automated"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Execution Limitations",
+          "type": "array"
+        },
+        "missing_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sections",
+          "type": "array"
+        },
+        "product_presentation": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TreatmentSectionV1"
+          },
+          "title": "Product Presentation",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "2",
+          "default": "2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selected_hypothesis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeHypothesisCandidateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "skill_stack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillStackV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "treatment_steps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TreatmentStepResultV1"
+          },
+          "title": "Treatment Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "brand_profile",
+        "campaign_brief"
+      ],
+      "title": "BrandTreatmentDocumentV1",
       "type": "object"
     },
     "CanvasBindingSourceImageAssetV2": {
@@ -9290,6 +9539,17 @@
     "CapabilityMaterializationContextV1": {
       "additionalProperties": false,
       "properties": {
+        "brand_decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandTreatmentDocumentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "capability_facts": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -13190,7 +13450,7 @@
       "properties": {
         "options": {
           "items": {
-            "$ref": "#/$defs/BrandShortOptionV1"
+            "$ref": "#/$defs/TreatmentCandidateV1"
           },
           "maxItems": 3,
           "minItems": 3,
@@ -28742,6 +29002,17 @@
           "title": "Bound Text Controls",
           "type": "array"
         },
+        "brand_decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandTreatmentDocumentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "character_identity_projection": {
           "anyOf": [
             {
@@ -30771,6 +31042,89 @@
         "value"
       ],
       "title": "SetVideoSegmentCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SkillStackEntryV1": {
+      "additionalProperties": false,
+      "description": "One skill inside the confirmed skill stack.",
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 600,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "selected": {
+          "default": true,
+          "title": "Selected",
+          "type": "boolean"
+        },
+        "skill_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_kind": {
+          "enum": [
+            "audiovisual_style",
+            "creative_method"
+          ],
+          "title": "Skill Kind",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "skill_id",
+        "skill_kind",
+        "title"
+      ],
+      "title": "SkillStackEntryV1",
+      "type": "object"
+    },
+    "SkillStackV1": {
+      "additionalProperties": false,
+      "description": "Confirmed creative method and audiovisual style skills.",
+      "properties": {
+        "entries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkillStackEntryV1"
+          },
+          "maxItems": 64,
+          "title": "Entries",
+          "type": "array"
+        }
+      },
+      "title": "SkillStackV1",
       "type": "object"
     },
     "SpecialistDraft": {
@@ -33062,6 +33416,172 @@
         "version"
       ],
       "title": "StyleSkillPublicFactV1",
+      "type": "object"
+    },
+    "TreatmentCandidateV1": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "$ref": "#/$defs/TreatmentDetailV1"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "detail",
+        "label",
+        "option_id"
+      ],
+      "title": "TreatmentCandidateV1",
+      "type": "object"
+    },
+    "TreatmentDetailV1": {
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/TreatmentSectionV1"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sections"
+      ],
+      "title": "TreatmentDetailV1",
+      "type": "object"
+    },
+    "TreatmentSectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "enum": [
+            "action_sequence",
+            "ambience",
+            "appearance",
+            "boundaries",
+            "color_and_light",
+            "effects",
+            "ending",
+            "identity",
+            "materials",
+            "middle",
+            "music_entry",
+            "opening",
+            "people_camera",
+            "performance",
+            "product_role",
+            "product_shots",
+            "progression",
+            "prohibited_shots",
+            "resolution",
+            "setup",
+            "spaces",
+            "wardrobe"
+          ],
+          "title": "Key",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "text",
+        "title"
+      ],
+      "title": "TreatmentSectionV1",
+      "type": "object"
+    },
+    "TreatmentStepResultV1": {
+      "additionalProperties": false,
+      "description": "One confirmed treatment sub-step.",
+      "properties": {
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "detail": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Detail",
+          "type": "string"
+        },
+        "selected_label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Selected Label",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        },
+        "structured_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TreatmentDetailV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "confirmed_at",
+        "selected_label",
+        "step_key"
+      ],
+      "title": "TreatmentStepResultV1",
       "type": "object"
     },
     "TurnIntentContextV2": {

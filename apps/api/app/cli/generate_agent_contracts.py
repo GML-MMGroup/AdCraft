@@ -47,12 +47,24 @@ from app.schemas import v2_agent_conversations
 from app.schemas import v2_quick_media
 from app.schemas import style_skill_consultation
 from app.schemas import brand_professional_mode
+from app.schemas import brand_treatment_detail
 from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
 from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 CONTRACT_MODELS = (
+    brand_treatment_detail.TreatmentSectionV1,
+    brand_treatment_detail.TreatmentDetailV1,
+    brand_professional_mode.TreatmentCandidateV1,
+    brand_professional_mode.TreatmentStepResultV1,
+    brand_professional_mode.BrandBriefSummaryV1,
+    brand_professional_mode.BrandAssetReferenceV1,
+    brand_professional_mode.BrandTreatmentDocumentV1,
+    brand_professional_mode.AdSpecItemV1,
+    brand_professional_mode.AdSpecStateV1,
+    brand_professional_mode.SkillStackEntryV1,
+    brand_professional_mode.SkillStackV1,
     workflow_model_calls.WorkflowModelCallWriteV1,
     workflow_model_calls.WorkflowModelCallReceiptV1,
     brand_professional_mode.BrandSkillRecommendationV1,

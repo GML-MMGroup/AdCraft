@@ -21,6 +21,8 @@ from app.schemas.brand_professional_mode import (
     BrandOptionCardV1,
     BrandSlotActionRequestV1,
     BrandTreatmentActionRequestV1,
+    BrandTreatmentEditRequestV1,
+    BrandTreatmentSubstep,
     BrandCreativeMethodCatalogV1,
     BrandSkillSelectionRequestV1,
 )
@@ -30,8 +32,9 @@ from app.services.brand_capability_invocation import (
 from app.services.brand_guided_interaction_bridge import (
     BrandGuidedInteractionBridge,
 )
-from app.services.brand_production_handoff import BrandProductionHandoffService
+from app.services.brand_treatment_edit import edit_treatment_step
 from app.services.brand_question_state import BrandQuestionState
+from app.services.brand_decision_document import BrandDecisionDocumentService
 
 router = APIRouter()
 
@@ -45,7 +48,12 @@ def _brand_database() -> Iterator[V2Database]:
 
 
 _STATUS_BY_CODE = {
+    "requirement_ledger_not_found": 409,
+    "requirement_revision_conflict": 409,
+    "requirement_persistence_failed": 503,
     "brand_context_stale": 409,
+    "brand_treatment_incomplete": 409,
+    "brand_treatment_review_required": 409,
     "brand_slot_evidence_invalid": 422,
     "brand_question_target_invalid": 422,
     "brand_guided_production_required": 409,
@@ -306,14 +314,30 @@ def post_lock_treatment(
         _raise_not_found()
     service = _brand_runtime(database)
     try:
-        BrandProductionHandoffService(database).prepare_guided_production(workflow_id, brand_id)
-        locked = service.lock_treatment(brand_id)
+        locked = service.lock_treatment(brand_id, content_digest=request.content_digest)
     except V2PersistenceError as error:
         raise _map_brand_error(error) from error
     BrandGuidedInteractionBridge(database).close_current_interaction(
         workflow_id, status="superseded"
     )
     return locked
+
+
+@router.put(
+    "/brand/decisions/{workflow_id}/treatment-steps/{step_key}", response_model=BrandDecisionPanelV1
+)
+def put_treatment_step(
+    workflow_id: str,
+    step_key: BrandTreatmentSubstep,
+    request: BrandTreatmentEditRequestV1,
+    database: V2Database = Depends(_brand_database),
+) -> BrandDecisionPanelV1:
+    try:
+        brand_id = _brand_id_for_workflow(database, workflow_id)
+        edit_treatment_step(database, brand_id, step_key, request)
+    except V2PersistenceError as error:
+        raise _map_brand_error(error) from error
+    return get_brand_decisions(workflow_id, database)
 
 
 @router.get("/brand/decisions", response_model=BrandDecisionPanelV1)
@@ -342,6 +366,7 @@ def get_brand_decisions(
         adspec = repository.get_adspec_in_transaction(connection, brand_id)
         skill_stack = repository.get_skill_stack_in_transaction(connection, brand_id)
         steps = repository.get_treatment_steps_in_transaction(connection, brand_id)
+        document = BrandDecisionDocumentService(database).read_in_transaction(connection, brand_id)
     treatment_locked = journey.stage == "production"
     if not _has_guided_production_turn(database, workflow_id):
         open_card = None
@@ -359,6 +384,9 @@ def get_brand_decisions(
         skill_stack=skill_stack,
         treatment_steps=steps,
         treatment_locked=treatment_locked,
+        brand_profile=document.brand_profile,
+        campaign_brief=document.campaign_brief,
+        treatment_document=document,
     )
 
 
