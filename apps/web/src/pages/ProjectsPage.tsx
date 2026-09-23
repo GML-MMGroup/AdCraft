@@ -20,6 +20,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [batchAction, setBatchAction] = useState<"favorite" | "trash" | null>(null);
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
@@ -97,12 +98,23 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
     return () => window.clearTimeout(timeout);
   }, [selectionNotice]);
 
+  useEffect(() => {
+    if (!actionNotice) return undefined;
+    const timeout = window.setTimeout(() => setActionNotice(null), 2800);
+    return () => window.clearTimeout(timeout);
+  }, [actionNotice]);
+
   const openSavedProject = useCallback((projectId: string) => {
     navigate("workflow", { projectId });
   }, [navigate]);
 
-  const trashSavedProject = useCallback((project: ProjectListItem) => {
-    void moveProjectToTrash(project.projectId);
+  const trashSavedProject = useCallback(async (project: ProjectListItem) => {
+    try {
+      await moveProjectToTrash(project.projectId);
+      setActionNotice(`${project.name} moved to trash.`);
+    } catch {
+      setActionNotice(`Could not move ${project.name} to trash.`);
+    }
   }, [moveProjectToTrash]);
 
   const toggleSavedProjectFavorite = useCallback((project: ProjectListItem) => {
@@ -201,6 +213,9 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
 
     setSelectedProjectIds(new Set());
     setSelectionMode(false);
+    if (action === "trash") {
+      setActionNotice(`${snapshot.length} ${snapshot.length === 1 ? "project" : "projects"} moved to trash.`);
+    }
   }, [moveProjectToTrash, savedProjects, selectedProjects, selectionBusy, toggleProjectFavorite]);
 
   return (
@@ -273,6 +288,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
         refreshing={projectCatalogRefreshing}
         onRetry={refreshProjects}
       />
+      {actionNotice ? <div className="project-action-toast" role="status" aria-live="polite">{actionNotice}</div> : null}
       <ProjectList
         leading={<CreateCard title="New Project" onClick={createProject} />}
         projects={projects}
