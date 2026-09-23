@@ -64,6 +64,45 @@ function interaction(): GuidedInteractionV1 {
   };
 }
 
+function conceptInteraction(): GuidedInteractionV1 {
+  return {
+    interaction_id: "concept-interaction-1",
+    workflow_id: "workflow-1",
+    session_id: "session-1",
+    checkpoint_id: "checkpoint-1",
+    kind: "concept_choice",
+    status: "open",
+    response_locale: "en-US",
+    expected_session_revision: 4,
+    revision: 2,
+    title: "Choose a brand direction",
+    context: "Select the direction that best fits the brand.",
+    content: {
+      content_kind: "concept_choice",
+      proposal_id: null,
+      stage: "intake",
+      stage_revision: 1,
+      action_id: "brand-direction",
+      occurrence_id: null,
+      capability_id: "brand_direction",
+      options: [{
+        option_id: "direction-quiet",
+        title: "Quiet confidence",
+        summary: "A calm, precise direction.",
+        recommended: true,
+        difference_tags: [],
+        reference_preview: [],
+      }],
+      allow_custom: true,
+      allow_exclusion: false,
+    },
+    allowed_actions: ["select", "custom"],
+    submit_path: "/submit",
+    created_at: "2026-08-29T00:00:00Z",
+    updated_at: "2026-08-29T00:00:00Z",
+  };
+}
+
 describe("buildGuidedAnswerBubbles", () => {
   it("projects structured questionnaire answers in question order", () => {
     const request: GuidedInteractionSubmitRequestV1 = {
@@ -105,6 +144,44 @@ describe("buildGuidedAnswerBubbles", () => {
     };
 
     expect(buildGuidedAnswerBubbles(interaction(), request, 12)).toEqual([]);
+  });
+
+  it("projects a selected concept choice into the same user bubble stream", () => {
+    const request: GuidedInteractionSubmitRequestV1 = {
+      submission_kind: "concept_choice",
+      expected_interaction_revision: 2,
+      expected_session_revision: 4,
+      action: "select",
+      option_id: "direction-quiet",
+      custom_text: null,
+    };
+
+    expect(buildGuidedAnswerBubbles(conceptInteraction(), request, 12)).toEqual([{
+      bubble_id: "guided-answer:concept-interaction-1:concept-choice",
+      interaction_id: "concept-interaction-1",
+      question_id: "brand-direction",
+      label: "Choose a brand direction",
+      value: "Quiet confidence",
+      sequence: 12.01,
+    }]);
+  });
+
+  it("keeps custom concept input as the value without exposing blank submissions", () => {
+    const request: GuidedInteractionSubmitRequestV1 = {
+      submission_kind: "concept_choice",
+      expected_interaction_revision: 2,
+      expected_session_revision: 4,
+      action: "custom",
+      option_id: null,
+      custom_text: "  A warmer, tactile tone  ",
+    };
+
+    expect(buildGuidedAnswerBubbles(conceptInteraction(), request, 12)[0]?.value)
+      .toBe("A warmer, tactile tone");
+    expect(buildGuidedAnswerBubbles(conceptInteraction(), {
+      ...request,
+      custom_text: "   ",
+    }, 12)).toEqual([]);
   });
 });
 

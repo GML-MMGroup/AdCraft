@@ -36,6 +36,8 @@ export type StageTimelineUnit = StageThreadUnit | StageTimelineItemUnit;
 
 export interface StageThreadProjectionOptions {
   showUnassociatedPlanning?: boolean;
+  /** Keep every unassociated planning update visible after the Agent finishes. */
+  showAllUnassociatedPlanning?: boolean;
 }
 
 interface StageThreadBuilder {
@@ -169,6 +171,7 @@ export function buildStageThreadTimeline(
 
   const standalone: StageTimelineItemUnit[] = [];
   let latestUnassociatedPlanning: ChatMessageV2 | null = null;
+  const allUnassociatedPlanning: ChatMessageV2[] = [];
   for (const item of items) {
     if (item.item_type === "expert_activity") {
       threadBuilder(builders, item.capability_id, item.capability_display_name).activities.push(item);
@@ -197,9 +200,14 @@ export function buildStageThreadTimeline(
           : undefined;
       if (capability) threadBuilder(builders, capability.id, capability.name).planning.push(item);
       else if (
-        options.showUnassociatedPlanning
-        && (!latestUnassociatedPlanning || item.sequence > latestUnassociatedPlanning.sequence)
-      ) latestUnassociatedPlanning = item;
+        options.showUnassociatedPlanning || options.showAllUnassociatedPlanning
+      ) {
+        if (options.showAllUnassociatedPlanning) {
+          allUnassociatedPlanning.push(item);
+        } else if (!latestUnassociatedPlanning || item.sequence > latestUnassociatedPlanning.sequence) {
+          latestUnassociatedPlanning = item;
+        }
+      }
       continue;
     }
     if (item.item_type === "agent_document" && !latestDocumentItems.has(item)) continue;
@@ -210,12 +218,15 @@ export function buildStageThreadTimeline(
       item,
     });
   }
-  if (latestUnassociatedPlanning) {
+  const unassociatedPlanning = options.showAllUnassociatedPlanning
+    ? allUnassociatedPlanning
+    : latestUnassociatedPlanning ? [latestUnassociatedPlanning] : [];
+  for (const planning of unassociatedPlanning) {
     standalone.push({
       unit_type: "item",
-      key: itemKey(latestUnassociatedPlanning),
-      sequence: latestUnassociatedPlanning.sequence,
-      item: latestUnassociatedPlanning,
+      key: itemKey(planning),
+      sequence: planning.sequence,
+      item: planning,
     });
   }
 

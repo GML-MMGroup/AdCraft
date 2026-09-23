@@ -382,9 +382,10 @@ export function AgentCanvasChatPanel({
       chat.state.items.filter((item) => !isPersistedGuidedAnswerMessage(item)),
       {
         showUnassociatedPlanning: chat.state.agentWorking,
+        showAllUnassociatedPlanning: brandMode,
       },
     ),
-    [chat.state.agentWorking, chat.state.items],
+    [brandMode, chat.state.agentWorking, chat.state.items],
   );
   const failedTurnsByMessageId = useMemo(
     () => projectFailedMessageTurns(chat.state.items, chat.state.turnsById),
@@ -907,21 +908,18 @@ export function AgentCanvasChatPanel({
                       />
                     ) : null}
                   >
-                    {unit.activities.map((activity) => renderTimelineItem(
-                      activity,
-                      null,
-                      { compactCapability: true },
-                    ))}
-                    {unit.proposals.map((proposal) => renderTimelineItem(
-                      proposal,
-                      null,
-                      { compactCapability: true },
-                    ))}
-                    {failedReceipts.map((receipt) => renderTimelineItem(
-                      receipt,
-                      null,
-                      { compactCapability: true },
-                    ))}
+                    {[
+                      ...unit.planning,
+                      ...unit.activities,
+                      ...unit.proposals,
+                      ...failedReceipts,
+                    ]
+                      .sort((left, right) => left.sequence - right.sequence)
+                      .map((item) => renderTimelineItem(
+                        item,
+                        null,
+                        { compactCapability: true },
+                      ))}
                   </StageThread>
                 );
               }}
