@@ -298,8 +298,8 @@ export const DEFAULT_REGION_SETTINGS: Record<TypographyRegionId, TypographyRegio
   navigation: { fontId: "manrope", fontWeight: 600, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },
   sectionHeading: { fontId: "manrope", fontWeight: 700, fontStyle: "normal", fontSizePx: 40, lineHeight: 1.05, letterSpacingEm: 0, textTransform: "none" },
   sectionBody: { fontId: "manrope", fontWeight: 400, fontStyle: "normal", fontSizePx: 18, lineHeight: 1.6, letterSpacingEm: 0, textTransform: "none" },
-  cardTitle: { fontId: "manrope", fontWeight: 700, fontStyle: "normal", fontSizePx: 18, lineHeight: 1.3, letterSpacingEm: 0, textTransform: "none" },
-  cardMeta: { fontId: "manrope", fontWeight: 500, fontStyle: "normal", fontSizePx: 13, lineHeight: 1.4, letterSpacingEm: 0, textTransform: "uppercase" },
+  cardTitle: { fontId: "libre-baskerville", fontWeight: 400, fontStyle: "italic", fontSizePx: 16, lineHeight: 1.1, letterSpacingEm: 0.016, textTransform: "none" },
+  cardMeta: { fontId: "times-new-roman", fontWeight: 400, fontStyle: "normal", fontSizePx: 13, lineHeight: 1.1, letterSpacingEm: 0.022, textTransform: "uppercase" },
 };
 
 function copySettings(settings: TypographyRegionSettings): TypographyRegionSettings {

@@ -39,8 +39,8 @@ describe("typography system", () => {
       ['[data-home-typography-region="navigation"]', '"Manrope"', '14px', '400', 'normal', '1.2', '0'],
       ['[data-home-typography-region="sectionHeading"]', '"Literata"', '53px', '700', 'italic', '1.05', '0.028em'],
       ['[data-home-typography-region="sectionBody"]', '"Manrope"', '18px', '400', 'normal', '1.6', '0'],
-      ['[data-home-typography-region="cardTitle"]', '"Manrope"', '15px', '400', 'normal', '1.15', '-0.002em'],
-      ['[data-home-typography-region="cardMeta"]', '"Manrope"', '13px', '400', 'normal', '1.4', '0'],
+      ['[data-home-typography-region="cardTitle"]', '"Libre Baskerville"', '16px', '400', 'italic', '1.1', '0.016em'],
+      ['[data-home-typography-region="cardMeta"]', '"Times New Roman"', '13px', '400', 'normal', '1.1', '0.022em'],
     ] as const;
 
     for (const [region, family, size, weight, style, lineHeight, spacing] of expectedRules) {
