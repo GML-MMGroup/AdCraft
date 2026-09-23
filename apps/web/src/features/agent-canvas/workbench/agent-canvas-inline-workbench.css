@@ -778,7 +778,7 @@
 
 .agent-node-workbench__footer--image {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(112px, 0.7fr) minmax(0, 1fr) auto;
   gap: 8px;
 }
 
@@ -878,6 +878,23 @@
 .agent-node-workbench__footer--image .agent-node-workbench__model-picker,
 .agent-node-workbench__footer--text .agent-node-workbench__model-picker {
   width: 100%;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline .agent-node-workbench__parameter {
+  gap: 2px;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline .agent-node-workbench__parameter > span {
+  overflow: hidden;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-node-workbench__footer--text {
