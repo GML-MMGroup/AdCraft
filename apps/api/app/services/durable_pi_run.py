@@ -88,7 +88,9 @@ _SAFE_FAILURE_MESSAGES = {
         "Please top up your account or switch to another model provider."
     ),
     "agent_run_cancelled": "Agent run was cancelled.",
-    "agent_runtime_unavailable": "Agent runtime is unavailable.",
+    "agent_runtime_unavailable": (
+        "Agent runtime is unavailable. Please retry after the Agent runtime service is restored."
+    ),
     "agent_stream_backpressure_exceeded": ("Agent runtime stream exceeded its byte budget."),
     "agent_structured_output_invalid": "Agent structured output was invalid.",
     "agent_target_revision_conflict": "Agent target revision changed.",
