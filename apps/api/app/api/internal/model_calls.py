@@ -1,21 +1,18 @@
 """Operator-only full Agent call inspection, separate from public chat APIs."""
 
-from collections.abc import Iterator
-from dataclasses import fields
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from app.api.dependencies import get_workflow_model_call_store
 from app.api.internal.router import require_agent_internal_auth
-from app.core.config import Settings, get_settings
 from app.schemas.workflow_model_calls import (
     WorkflowModelCallDetailV1,
     WorkflowModelCallListV1,
     WorkflowModelCallReceiptV1,
     WorkflowModelCallWriteV1,
 )
-from app.services.workflow_model_calls import WorkflowModelCallError, WorkflowModelCallStore
+from app.services.workflow_model_calls import WorkflowModelCallStore
 
 
 def _private_response(response: Response) -> None:
@@ -26,31 +23,6 @@ router = APIRouter(
     prefix="/internal/v1",
     dependencies=[Depends(require_agent_internal_auth), Depends(_private_response)],
 )
-
-
-def _store(settings: Settings = Depends(get_settings)) -> Iterator[WorkflowModelCallStore]:
-    secrets = tuple(
-        value
-        for field in fields(settings)
-        if ("api_key" in field.name or "internal_token" in field.name)
-        and isinstance(value := getattr(settings, field.name), str)
-        and value
-    )
-    try:
-        yield WorkflowModelCallStore(settings.media_data_dir, secrets=secrets)
-    except WorkflowModelCallError as error:
-        raise HTTPException(
-            error.status_code,
-            detail={"code": error.code, "message": "Agent model call record is unavailable."},
-        ) from error
-    except (OSError, ValueError):
-        raise HTTPException(
-            503,
-            detail={
-                "code": "agent_model_call_unavailable",
-                "message": "Agent model call storage is unavailable.",
-            },
-        ) from None
 
 
 @router.post(
@@ -67,7 +39,7 @@ def _store(settings: Settings = Depends(get_settings)) -> Iterator[WorkflowModel
 )
 async def record_model_call(
     request: Request,
-    store: WorkflowModelCallStore = Depends(_store),
+    store: WorkflowModelCallStore = Depends(get_workflow_model_call_store),
 ) -> WorkflowModelCallReceiptV1:
     # Parse explicitly so validation errors never echo private prompt/response data.
     body = bytearray()
@@ -87,7 +59,7 @@ def list_model_calls(
     workflow_id: str,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
-    store: WorkflowModelCallStore = Depends(_store),
+    store: WorkflowModelCallStore = Depends(get_workflow_model_call_store),
 ) -> WorkflowModelCallListV1:
     return store.list(workflow_id, offset=offset, limit=limit)
 
@@ -98,6 +70,6 @@ def list_model_calls(
 def get_model_call(
     workflow_id: str,
     call_id: str,
-    store: WorkflowModelCallStore = Depends(_store),
+    store: WorkflowModelCallStore = Depends(get_workflow_model_call_store),
 ) -> WorkflowModelCallDetailV1:
     return store.detail(workflow_id, call_id)
