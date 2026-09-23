@@ -133,7 +133,7 @@
   width: 100%;
   color: #f1f3fa;
   background: rgb(7 8 12 / 38%);
-  border: 1px solid rgb(255 255 255 / 10%);
+  border: 1px solid #a3a3a3;
   border-radius: 7px;
   font: inherit;
   font-size: 12px;
@@ -141,8 +141,8 @@
 }
 
 .agent-node-workbench :is(input, textarea, select):focus {
-  border-color: color-mix(in srgb, var(--brand) 72%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent);
+  border-color: #a3a3a3;
+  box-shadow: none;
 }
 
 .agent-node-workbench input,
@@ -744,7 +744,7 @@
   font-size: 11px;
   color: #f5f5f5;
   background: transparent;
-  border-color: transparent;
+  border-color: #a3a3a3;
   color-scheme: dark;
 }
 
@@ -915,7 +915,7 @@
   min-width: 0;
   color: #f5f5f5;
   background: transparent;
-  border-color: transparent;
+  border-color: #a3a3a3;
   font-size: 12px;
 }
 
