@@ -51,11 +51,13 @@ export function ImageResolutionControls({
   parameters,
   disabled,
   onChange,
+  layout = "default",
 }: {
   capabilities: ImageResolutionCapabilitiesV1;
   parameters: Readonly<Record<string, unknown>>;
   disabled: boolean;
   onChange: (parameters: Record<string, unknown>) => void;
+  layout?: "default" | "inline";
 }) {
   const modes = capabilities.parameter_modes;
   const issues = imageResolutionIssues(capabilities, parameters);
@@ -89,14 +91,14 @@ export function ImageResolutionControls({
   };
 
   return (
-    <div className="agent-node-workbench__model-parameters" aria-label="Image resolution">
+    <div className={`agent-node-workbench__model-parameters${layout === "inline" ? " agent-node-workbench__model-parameters--inline" : ""}`} aria-label="Image resolution">
       {modes.includes("size")
         ? parameterSelect({
           label: "Size",
           name: IMAGE_SIZE_PARAMETER,
           value: imageResolutionParameter(parameters, IMAGE_SIZE_PARAMETER)
             ?? defaultImageResolutionParameter(capabilities, IMAGE_SIZE_PARAMETER)
-            ?? "",
+            ?? (capabilities.size_options.includes("2048x2048") ? "2048x2048" : capabilities.size_options[0] ?? ""),
           options: capabilities.size_options,
           disabled,
           onChange: selectSize,

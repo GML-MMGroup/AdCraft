@@ -48,7 +48,7 @@ describe("ImageResolutionControls", () => {
       />,
     );
     const select = screen.getByLabelText("Size") as HTMLSelectElement;
-    expect(select.value).toBe("");
+    expect(select.value).toBe("2048x2048");
     fireEvent.change(select, { target: { value: "2560x1440" } });
     expect(onChange).toHaveBeenLastCalledWith({ size: "2560x1440" });
   });
