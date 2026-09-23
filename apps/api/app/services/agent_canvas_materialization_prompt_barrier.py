@@ -100,7 +100,10 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
             workflow_id=dispatch.workflow_id,
             materialization_id=materialization_id,
         )
-        if operations is None or (dispatch.node_id, dispatch.operation_id) not in operations:
+        if operations is None:
+            return None
+        resolved = self._resolve_wait_operations(dispatch.workflow_id, operations)
+        if resolved is None or (dispatch.node_id, dispatch.operation_id) not in resolved:
             return None
         return self.reconcile_dependency_wait(
             workflow_id=dispatch.workflow_id,
@@ -119,7 +122,12 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
             if event.event_type != _WAIT_EVENT_TYPE:
                 continue
             operations = _wait_operations(event.payload)
-            if operations is not None and operation in operations:
+            resolved = (
+                self._resolve_wait_operations(dispatch.workflow_id, operations)
+                if operations is not None
+                else None
+            )
+            if resolved is not None and operation in resolved:
                 return True
         return False
 
@@ -147,10 +155,13 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
         )
         if operations is None:
             return None
+        resolved = self._resolve_wait_operations(workflow_id, operations)
+        if resolved is None:
+            return None
         try:
             pending = self._inspect(
                 workflow_id=workflow_id,
-                operations=operations,
+                operations=resolved,
             )
         except V2PersistenceError as error:
             if error.code != "prompt_preparation_failed":
@@ -163,6 +174,37 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
             materialization_id=materialization_id,
             now=self._clock(),
         )
+
+    def _resolve_wait_operations(
+        self,
+        workflow_id: str,
+        operations: tuple[tuple[str, str], ...],
+    ) -> tuple[tuple[str, str], ...] | None:
+        """Follow persisted supersession only to wake, never to accept stale results."""
+
+        resolved: list[tuple[str, str]] = []
+        for node_id, operation_id in operations:
+            dispatch = self._dispatches.get_by_node_operation(workflow_id, node_id, operation_id)
+            if dispatch is None:
+                return None
+            visited: set[str] = set()
+            while dispatch.status == "superseded":
+                if dispatch.dispatch_id in visited or len(visited) >= 32:
+                    return None
+                visited.add(dispatch.dispatch_id)
+                successor_id = dispatch.superseded_by_dispatch_id
+                if not successor_id:
+                    return None
+                successor = self._dispatches.get(successor_id)
+                if successor.workflow_id != workflow_id or successor.node_id != node_id:
+                    return None
+                dispatch = successor
+            if visited:
+                current = self._dispatches.get_current_for_node(workflow_id, node_id)
+                if current is None or current.dispatch_id != dispatch.dispatch_id:
+                    return None
+            resolved.append((node_id, dispatch.operation_id))
+        return tuple(resolved)
 
     def _inspect(
         self,
