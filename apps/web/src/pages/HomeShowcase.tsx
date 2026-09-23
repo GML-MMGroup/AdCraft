@@ -10,6 +10,8 @@ import {
 } from "react";
 import { demoProjects, images, imageSrc } from "../data";
 import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
+import { FONT_CATALOG } from "../features/home-typography/fontCatalog";
+import { loadWebFont } from "../features/home-typography/webFontLoader";
 
 const homeProductPoster = "/assets/card1.webp";
 const heroTitleLines = [
@@ -313,6 +315,11 @@ export function HomeShowcase({
   const discoverState = discoverReveal?.revealState ?? "visible";
   const productFilmRef = useRef<HTMLDivElement>(null);
   const [productFilmLoaded, setProductFilmLoaded] = useState(false);
+
+  useEffect(() => {
+    const cardTitleFont = FONT_CATALOG.find((font) => font.id === "libre-baskerville");
+    if (cardTitleFont) void loadWebFont(cardTitleFont).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!isInteractive || !hasIntroVideo || !productVideoUrl) {
