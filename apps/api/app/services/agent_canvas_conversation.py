@@ -882,6 +882,7 @@ class PiVideoAgentGateway:
             agent_name="video_agent",
             operation=operation,
             model_ref=resolution.model_ref,
+            thinking_mode=resolution.thinking_mode,
             context=context,
             contract_name=contract.__name__,
             contract_schema=contract.model_json_schema(),

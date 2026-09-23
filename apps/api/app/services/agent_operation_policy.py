@@ -252,6 +252,7 @@ class AgentRunRequestFactory:
         contract_name: str,
         contract_schema: dict[str, Any],
         model_ref: str | None = None,
+        thinking_mode: str | None = None,
         parent_run_id: str | None = None,
         credential_ref: str = "llm-default",
         deadline_cap: datetime | None = None,
@@ -267,6 +268,7 @@ class AgentRunRequestFactory:
             operation=operation,
             contract_id=contract_name,
         )
+        operation_policy = apply_agent_thinking_mode(operation_policy, thinking_mode)
         run_policy = AgentRunPolicy(
             operation_policy_id=operation_policy.policy_id,
             operation_class=operation_policy.policy_class,
@@ -294,6 +296,7 @@ class AgentRunRequestFactory:
             "max_handoffs": run_policy.max_handoffs,
             "agent_operation_policy": operation_policy.model_dump(mode="json"),
             "agent_run_policy": run_policy.model_dump(mode="json"),
+            **({"model_default_thinking_mode": thinking_mode} if thinking_mode is not None else {}),
         }
         return AgentRunRequest(
             run_id=run_id,
@@ -345,6 +348,11 @@ def validate_agent_run_operation_policy(
         contract_name=contract_name,
         contract_schema=request.contract_schema,
         model_ref=request.model_ref,
+        thinking_mode=(
+            request.audit_metadata.get("model_default_thinking_mode")
+            if isinstance(request.audit_metadata.get("model_default_thinking_mode"), str)
+            else None
+        ),
         deadline_cap=request.deadline_at,
         validation_profile=request.validation_profile,
         validation_context=request.validation_context,
@@ -373,6 +381,27 @@ def validate_agent_run_operation_policy(
         != expected_run_policy.audit_metadata["agent_run_policy"]
     ):
         raise AgentOperationPolicyError("agent_model_policy_mismatch")
+
+
+def apply_agent_thinking_mode(
+    operation_policy: AgentOperationPolicyV2,
+    thinking_mode: str | None,
+) -> AgentOperationPolicyV2:
+    """Apply an installation default while preserving the operation identity."""
+
+    if thinking_mode is None or thinking_mode == "enabled":
+        return operation_policy
+    if thinking_mode != "disabled":
+        raise AgentOperationPolicyError("agent_thinking_mode_invalid")
+    if operation_policy.policy_class == "routing":
+        return operation_policy
+    return operation_policy.model_copy(
+        update={
+            "reasoning_mode": "low",
+            "enable_thinking": False,
+            "thinking_budget_tokens": None,
+        }
+    )
 
 
 def _policy_class(
