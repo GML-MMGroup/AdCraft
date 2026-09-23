@@ -58,6 +58,23 @@
   color: rgba(255, 255, 255, 0.76);
 }
 
+.project-action-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  max-width: min(360px, calc(100vw - 48px));
+  padding: 11px 15px;
+  border: 1px solid color-mix(in srgb, var(--brand) 42%, var(--border-default));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--brand-subtle));
+  box-shadow: 0 14px 34px rgba(0, 13, 24, 0.24);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 .project-selection-summary,
 .project-selection-actions {
   display: inline-flex;
