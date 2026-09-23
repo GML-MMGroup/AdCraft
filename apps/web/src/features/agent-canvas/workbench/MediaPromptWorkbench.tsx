@@ -174,6 +174,7 @@ export function MediaPromptWorkbench({
           </div>
         ) : assetActions}
         <div className="agent-node-workbench__composer-actions">
+          {node.node_type !== "video" ? modelPicker : null}
           {node.node_type === "image" && canConfigureProvider && resolutionCapabilities ? (
             <ImageResolutionControls
               layout="inline"
@@ -183,7 +184,6 @@ export function MediaPromptWorkbench({
               onChange={draft.setParameters}
             />
           ) : null}
-          {node.node_type !== "video" ? modelPicker : null}
           {node.node_type === "video" ? (
             <VideoAudioToggle
               checked={audioEnabled}
