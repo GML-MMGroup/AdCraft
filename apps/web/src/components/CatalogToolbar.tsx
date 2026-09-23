@@ -10,5 +10,13 @@ export function CatalogFilterButton({ className = "", active = false, ...props }
 }
 
 export function CatalogSearch({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`catalog-search search-box clear-glass-control is-active ${className}`} />;
+  return (
+    <label className="catalog-search-shell">
+      <svg className="catalog-search-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+        <circle cx="8.5" cy="8.5" r="5.25" />
+        <path d="m12.5 12.5 4 4" />
+      </svg>
+      <input {...props} className={`catalog-search search-box clear-glass-control is-active ${className}`} />
+    </label>
+  );
 }
