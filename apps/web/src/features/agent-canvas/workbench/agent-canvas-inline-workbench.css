@@ -778,7 +778,7 @@
 
 .agent-node-workbench__footer--image {
   display: grid;
-  grid-template-columns: auto minmax(112px, 0.7fr) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(112px, 0.7fr) auto;
   gap: 8px;
   align-items: end;
 }
