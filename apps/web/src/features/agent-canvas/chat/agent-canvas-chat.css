@@ -653,6 +653,20 @@
   animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
 }
 
+.agent-chat__guided-answer-pair {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+}
+
+.agent-chat__guided-question-bubble {
+  animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+.agent-chat__guided-question-bubble .agent-chat__message-body {
+  margin: 0;
+}
+
 .agent-chat__guided-answer-bubble .agent-chat__message-body {
   display: grid;
   gap: 3px;
@@ -663,6 +677,111 @@
   font-size: 13px;
   font-weight: 620;
   line-height: 1.4;
+}
+
+.agent-chat__brand-decision-card {
+  display: grid;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 8px;
+  background: var(--agent-chat-raised);
+}
+
+.agent-chat__brand-decision-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--agent-chat-border);
+}
+
+.agent-chat__brand-decision-card-header > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.agent-chat__brand-decision-card-header span,
+.agent-chat__brand-decision-card-header small,
+.agent-chat__brand-decision-adspec small {
+  color: var(--agent-chat-muted);
+  font-size: 9px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.agent-chat__brand-decision-card-header strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.agent-chat__brand-decision-card-body {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-chat__brand-decision-stage {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.agent-chat__brand-decision-stage h3 {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.agent-chat__brand-decision-stage ul,
+.agent-chat__brand-decision-adspec ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+  color: var(--agent-chat-primary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-chat__brand-decision-stage li,
+.agent-chat__brand-decision-adspec li {
+  overflow-wrap: anywhere;
+}
+
+.agent-chat__brand-decision-highlight {
+  display: grid;
+  gap: 3px;
+  padding: 7px 9px;
+  border-left: 2px solid var(--agent-chat-strong-line);
+  background: rgb(255 255 255 / 3%);
+}
+
+.agent-chat__brand-decision-highlight strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.agent-chat__brand-decision-highlight p {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-chat__brand-decision-adspec {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-chat__brand-decision-adspec > div {
+  display: grid;
+  gap: 3px;
 }
 
 .agent-chat__message-skill {

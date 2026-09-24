@@ -24,7 +24,7 @@ apps/web/coverage/
 
 # Frontend local docs, tests, and agent workspace files
 apps/web/.codex/
-/apps/web/docs/
+apps/web/docs/
 apps/web/frontend
 apps/web/frontend/
 apps/web/task

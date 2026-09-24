@@ -94,6 +94,7 @@ import { BrandSkillPicker } from "../brand/BrandSkillPicker.tsx";
 import { failureUserAction } from "./actionableFailure.ts";
 import { VirtualizedTimeline } from "./VirtualizedTimeline.tsx";
 import { FailedTurnBubble } from "./FailedTurnBubble.tsx";
+import { BrandDecisionTimelineCard } from "./BrandDecisionTimelineCard.tsx";
 import { projectFailedMessageTurns } from "./failedTurnPresentation.ts";
 import {
   isPersistedGuidedAnswerMessage,
@@ -115,7 +116,8 @@ type TimelineRenderOptions = {
 type TimelineEntry =
   | { entry_type: "timeline"; key: string; sequence: number; unit: ReturnType<typeof buildStageThreadTimeline>[number] }
   | { entry_type: "guided_answer"; key: string; sequence: number; answer: GuidedAnswerBubbleV1 }
-  | { entry_type: "failed_turn"; key: string; sequence: number; turn: AgentCanvasChatTurnV2 };
+  | { entry_type: "failed_turn"; key: string; sequence: number; turn: AgentCanvasChatTurnV2 }
+  | { entry_type: "brand_decisions"; key: string; sequence: number; decisions: BrandDecisionPanelV1 };
 
 function timelineEntryKey(entry: TimelineEntry) {
   return entry.key;
@@ -382,9 +384,10 @@ export function AgentCanvasChatPanel({
       chat.state.items.filter((item) => !isPersistedGuidedAnswerMessage(item)),
       {
         showUnassociatedPlanning: chat.state.agentWorking,
+        showAllUnassociatedPlanning: brandMode,
       },
     ),
-    [chat.state.agentWorking, chat.state.items],
+    [brandMode, chat.state.agentWorking, chat.state.items],
   );
   const failedTurnsByMessageId = useMemo(
     () => projectFailedMessageTurns(chat.state.items, chat.state.turnsById),
@@ -418,7 +421,18 @@ export function AgentCanvasChatPanel({
       sequence: answer.sequence,
       answer,
     })),
+    ...(brandDecisions ? [{
+      entry_type: "brand_decisions" as const,
+      key: `brand-decisions:${brandDecisions.workflow_id}`,
+      sequence: chat.state.items.reduce(
+        (latest, item) => Math.max(latest, item.sequence),
+        0,
+      ) + 0.5,
+      decisions: brandDecisions,
+    }] : []),
   ].sort((left, right) => left.sequence - right.sequence), [
+    brandDecisions,
+    chat.state.items,
     chat.state.guidedAnswerBubbles,
     failedTurnsByMessageId,
     stageTimeline,
@@ -464,13 +478,17 @@ export function AgentCanvasChatPanel({
     const failedTurnVersion = [...failedTurnsByMessageId.entries()]
       .map(([messageId, turn]) => `${messageId}:${turn.turn_id}:${turn.updated_at}`)
       .join(",");
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${guidedAnswerVersion}:${failedTurnVersion}:${chat.state.agentWorking}`;
+    const brandDecisionVersion = brandDecisions
+      ? `${brandDecisions.workflow_id}:${brandDecisions.journey.stage_revision}:${brandDecisions.treatment_locked}:${brandDecisions.slot_values.map((slot) => `${slot.slot_id}:${slot.value}:${slot.confirmed_at}`).join("|")}:${brandDecisions.treatment_steps.length}`
+      : "";
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${guidedAnswerVersion}:${failedTurnVersion}:${brandDecisionVersion}:${chat.state.agentWorking}`;
   }, [
     chat.state.agentWorking,
     chat.state.currentSessionActions,
     chat.state.guidedAnswerBubbles,
     chat.state.guidedInteraction,
     chat.state.items,
+    brandDecisions,
     failedTurnsByMessageId,
   ]);
   const timelineScroll = useChatTimelineScroll({
@@ -871,6 +889,9 @@ export function AgentCanvasChatPanel({
               items={timelineEntries}
               getKey={timelineEntryKey}
               renderItem={(entry) => {
+                if (entry.entry_type === "brand_decisions") {
+                  return <BrandDecisionTimelineCard decisions={entry.decisions} />;
+                }
                 if (entry.entry_type === "guided_answer") {
                   return <GuidedAnswerBubble answer={entry.answer} />;
                 }
@@ -907,21 +928,18 @@ export function AgentCanvasChatPanel({
                       />
                     ) : null}
                   >
-                    {unit.activities.map((activity) => renderTimelineItem(
-                      activity,
-                      null,
-                      { compactCapability: true },
-                    ))}
-                    {unit.proposals.map((proposal) => renderTimelineItem(
-                      proposal,
-                      null,
-                      { compactCapability: true },
-                    ))}
-                    {failedReceipts.map((receipt) => renderTimelineItem(
-                      receipt,
-                      null,
-                      { compactCapability: true },
-                    ))}
+                    {[
+                      ...unit.planning,
+                      ...unit.activities,
+                      ...unit.proposals,
+                      ...failedReceipts,
+                    ]
+                      .sort((left, right) => left.sequence - right.sequence)
+                      .map((item) => renderTimelineItem(
+                        item,
+                        null,
+                        { compactCapability: true },
+                      ))}
                   </StageThread>
                 );
               }}
@@ -1057,6 +1075,7 @@ export function AgentCanvasChatPanel({
         ) : null}
         {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
           <BrandTreatmentConfirmation
+            onProductionRefresh={onWorkflowRefresh}
             key={workflow.workflow_id}
             workflowId={workflow.workflow_id}
             responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}

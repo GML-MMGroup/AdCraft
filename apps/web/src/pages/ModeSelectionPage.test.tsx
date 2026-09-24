@@ -4,14 +4,14 @@ import { ModeSelectionPage } from "./ModeSelectionPage";
 
 const { create, navigate } = vi.hoisted(() => ({ create: vi.fn(), navigate: vi.fn() }));
 vi.mock("../AppContextValue", () => ({ useApp: () => ({ startNewProject: create }) }));
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
+vi.mock("../features/mode-selection/ModeLaunchContext", () => ({ useModeLaunch: () => ({ begin: navigate, revealing: false, preparing: false, keyboard: false }) }));
 vi.mock("../features/mode-icon-lab/ParticleIconStudy", () => ({ ParticleIconStudy: () => null }));
 
 beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 it.each([["Personal Creation", "creation"], ["Brand Professional", "brand"]])(
-  "creates %s immediately, blocks duplicate clicks and waits for the transition",
+  "creates %s immediately, blocks duplicate clicks and hands off to the persistent layer",
   async (label, mode) => {
     create.mockResolvedValue("project-123");
     render(<ModeSelectionPage />);
@@ -21,7 +21,8 @@ it.each([["Personal Creation", "creation"], ["Brand Professional", "brand"]])(
     expect(create).toHaveBeenCalledExactlyOnceWith(mode);
     expect(navigate).not.toHaveBeenCalled();
     await act(() => vi.advanceTimersByTimeAsync(300));
-    expect(navigate).toHaveBeenCalledWith("/workflow/project-123", { replace: true });
+    expect(navigate).toHaveBeenCalledWith(mode, "project-123", true);
+    expect(document.querySelector(".is-selecting")).toBeNull();
   },
 );
 
@@ -35,7 +36,7 @@ it("restores selection after failure and allows retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Personal Creation/ }));
   await act(() => vi.advanceTimersByTimeAsync(300));
   expect(create).toHaveBeenLastCalledWith("creation");
-  expect(navigate).toHaveBeenCalledWith("/workflow/retry", { replace: true });
+  expect(navigate).toHaveBeenCalledWith("creation", "retry", true);
 });
 
 it("does not navigate away after the chooser unmounts", async () => {

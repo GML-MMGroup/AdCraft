@@ -1,3 +1,4 @@
+import { CatalogToolbar, CatalogFilterButton, CatalogSearch } from "../components/CatalogToolbar";
 import { useCallback, useMemo, useState } from "react";
 import { EmptyState, PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
@@ -119,23 +120,23 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
 
   return (
     <section className="content-wrap">
-      <PageHeader title="Trash" subtitle="Trashed projects can be restored here." />
-      <div className="projects-toolbar">
+      <PageHeader title="Trash" editorial />
+      <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">
-          <button className="filter-btn clear-glass-control is-active" type="button" onClick={() => navigate?.("projects")}>
+          <CatalogFilterButton className=" is-active" type="button" onClick={() => navigate?.("projects")}>
             Projects
-          </button>
+          </CatalogFilterButton>
         </div>
-        <div className="project-toolbar-actions">
-          <input className="search-box clear-glass-control is-active" placeholder="Search deleted items" value={search} onChange={(event) => changeSearch(event.target.value)} />
+        <div className="catalog-toolbar-actions">
+          <CatalogSearch aria-label="Search deleted items" placeholder="Search deleted items" value={search} onChange={(event) => changeSearch(event.target.value)} />
           {!selectionMode ? (
-            <button className="filter-btn clear-glass-control" type="button" onClick={enterSelectionMode}>
+            <CatalogFilterButton  type="button" onClick={enterSelectionMode}>
               Select
-            </button>
+            </CatalogFilterButton>
           ) : (
             <>
-              <button
-                className={`filter-btn clear-glass-control project-selection-toggle${partiallySelected ? " is-partial" : ""}`}
+              <CatalogFilterButton
+                className={` project-selection-toggle${partiallySelected ? " is-partial" : ""}`}
                 type="button"
                 aria-pressed={allVisibleSelected}
                 aria-label={partiallySelected ? "Select all deleted projects" : undefined}
@@ -143,14 +144,14 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
                 onClick={toggleVisibleSelection}
               >
                 {allVisibleSelected ? "Clear selection" : "Select all"}
-              </button>
-              <button className="filter-btn clear-glass-control" type="button" disabled={selectionBusy} onClick={exitSelectionMode}>
+              </CatalogFilterButton>
+              <CatalogFilterButton  type="button" disabled={selectionBusy} onClick={exitSelectionMode}>
                 Done
-              </button>
+              </CatalogFilterButton>
             </>
           )}
         </div>
-      </div>
+      </CatalogToolbar>
       {selectionMode ? (
         <div className="project-selection-toolbar" aria-busy={selectionBusy}>
           <div className="project-selection-summary">
@@ -158,9 +159,9 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
             {selectionError ? <span className="project-selection-error" role="alert">{selectionError}</span> : null}
           </div>
           <div className="project-selection-actions">
-            <button className="filter-btn clear-glass-control" type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchRestore()}>
+            <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchRestore()}>
               {selectionBusy ? "Restoring…" : "Restore selected"}
-            </button>
+            </CatalogFilterButton>
           </div>
         </div>
       ) : null}

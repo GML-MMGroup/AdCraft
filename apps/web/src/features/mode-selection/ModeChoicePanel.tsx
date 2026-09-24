@@ -7,7 +7,6 @@ export function ModeChoicePanel({
   eyebrow,
   title,
   description,
-  detail,
   onChoose,
   paused,
 }: {
@@ -15,8 +14,7 @@ export function ModeChoicePanel({
   eyebrow: string;
   title: string;
   description: string;
-  detail: string;
-  onChoose: (mode: ModeId) => void;
+  onChoose: (mode: ModeId, keyboard?: boolean) => void;
   paused: boolean;
 }) {
   return (
@@ -26,7 +24,7 @@ export function ModeChoicePanel({
       data-mode={id}
       data-particle-hover
       disabled={paused}
-      onClick={() => onChoose(id)}
+      onClick={event => onChoose(id, event.detail === 0)}
     >
       <span className="mode-choice-panel__wash" aria-hidden="true" />
       <span className="mode-choice-panel__topline">
@@ -39,10 +37,6 @@ export function ModeChoicePanel({
         </span>
         <span className="mode-choice-panel__title">{title}</span>
         <span className="mode-choice-panel__description">{description}</span>
-      </span>
-      <span className="mode-choice-panel__footer">
-        <span>{detail}</span>
-        <span className="mode-choice-panel__arrow" aria-hidden="true">↗</span>
       </span>
     </button>
   );

@@ -1,3 +1,4 @@
+import { readTreatmentDetail, readTreatmentDocument, readBrandBrief } from "./treatmentReadModel";
 import type {
   BrandOptionCardV1,
   BrandDecisionLogEntryV1,
@@ -146,7 +147,8 @@ export function normalizeBrandDecisionPanelV1(value: unknown): BrandDecisionPane
         return {
           option_id: nonEmptyStr(option.option_id, `brandDecisions.open_card.options[${index}].option_id`),
           label: nonEmptyStr(option.label, `brandDecisions.open_card.options[${index}].label`),
-          why: optionalStr(option.why, `brandDecisions.open_card.options[${index}].why`),
+          detail: readTreatmentDetail(option.detail),
+      why: optionalStr(option.why, `brandDecisions.open_card.options[${index}].why`),
         };
       });
       return {
@@ -211,6 +213,7 @@ export function normalizeBrandDecisionPanelV1(value: unknown): BrandDecisionPane
       step_key: treatmentStepKey(step.step_key, `brandDecisions.treatment_steps[${index}].step_key`),
       selected_label: str(step.selected_label, `brandDecisions.treatment_steps[${index}].selected_label`),
       detail: typeof step.detail === "string" ? step.detail : "",
+      structured_detail: readTreatmentDetail(step.structured_detail),
       confirmed_at: isoStr(step.confirmed_at, `brandDecisions.treatment_steps[${index}].confirmed_at`),
     } satisfies BrandDecisionPanelV1["treatment_steps"][number];
   });
@@ -238,6 +241,9 @@ export function normalizeBrandDecisionPanelV1(value: unknown): BrandDecisionPane
     skill_stack: skillStack,
     treatment_steps: treatmentSteps,
     treatment_locked: root.treatment_locked === true,
+    brand_profile: readBrandBrief(root.brand_profile),
+    campaign_brief: readBrandBrief(root.campaign_brief),
+    treatment_document: readTreatmentDocument(root.treatment_document),
   };
 }
 
@@ -310,6 +316,7 @@ export function normalizeBrandOptionCardV1(
     return {
       option_id: nonEmptyStr(option.option_id, `brandOptionCard.options[${index}].option_id`),
       label: nonEmptyStr(option.label, `brandOptionCard.options[${index}].label`),
+      detail: readTreatmentDetail(option.detail),
       why: optionalStr(option.why, `brandOptionCard.options[${index}].why`),
     };
   });

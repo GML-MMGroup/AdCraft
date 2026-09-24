@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
-import { Layout } from "../components/Layout";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { ModeLaunchHost } from "../features/mode-selection/ModeLaunchHost";
 import { WorkspaceProvider } from "./WorkspaceProvider";
 
 type WorkspaceRouteState = {
@@ -58,7 +58,7 @@ export function WorkspaceRoute() {
       restoreActiveWorkflow={normalizedPath.startsWith("/workflow")}
       projectCatalogScope={normalizedPath === "/trash" ? "trashed" : "active"}
     >
-      {normalizedPath === "/projects/new" ? <Outlet /> : <Layout><Outlet /></Layout>}
+      <ModeLaunchHost />
     </WorkspaceProvider>
   );
 }

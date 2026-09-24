@@ -9,6 +9,7 @@ import {
   imageResolutionParameter,
   type ImageResolutionPairParameter,
 } from "./imageResolutionCapabilities.ts";
+import { InlineParameterSelect } from "./InlineParameterSelect.tsx";
 
 function parameterSelect({
   label,
@@ -23,26 +24,19 @@ function parameterSelect({
   value: string;
   options: readonly string[];
   disabled: boolean;
-  onChange: (value: string) => void;
+  onChange: (value: string | undefined) => void;
 }) {
   return (
-    <label className="agent-node-workbench__parameter" key={name}>
+    <div className="agent-node-workbench__parameter" key={name}>
       <span title={label}>{label}</span>
-      <select
-        aria-label={label}
+      <InlineParameterSelect
+        label={label}
         value={value}
+        options={options}
         disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      >
-        <option value="">Not set</option>
-        {value && !options.includes(value) ? (
-          <option value={value}>{value} (unsupported)</option>
-        ) : null}
-        {options.map((option) => (
-          <option value={option} key={option}>{option}</option>
-        ))}
-      </select>
-    </label>
+        onChange={onChange}
+      />
+    </div>
   );
 }
 
@@ -51,11 +45,13 @@ export function ImageResolutionControls({
   parameters,
   disabled,
   onChange,
+  layout = "default",
 }: {
   capabilities: ImageResolutionCapabilitiesV1;
   parameters: Readonly<Record<string, unknown>>;
   disabled: boolean;
   onChange: (parameters: Record<string, unknown>) => void;
+  layout?: "default" | "inline";
 }) {
   const modes = capabilities.parameter_modes;
   const issues = imageResolutionIssues(capabilities, parameters);
@@ -89,17 +85,17 @@ export function ImageResolutionControls({
   };
 
   return (
-    <div className="agent-node-workbench__model-parameters" aria-label="Image resolution">
+    <div className={`agent-node-workbench__model-parameters${layout === "inline" ? " agent-node-workbench__model-parameters--inline" : ""}`} aria-label="Image resolution">
       {modes.includes("size")
         ? parameterSelect({
           label: "Size",
           name: IMAGE_SIZE_PARAMETER,
           value: imageResolutionParameter(parameters, IMAGE_SIZE_PARAMETER)
             ?? defaultImageResolutionParameter(capabilities, IMAGE_SIZE_PARAMETER)
-            ?? "",
+            ?? (capabilities.size_options.includes("2048x2048") ? "2048x2048" : capabilities.size_options[0] ?? ""),
           options: capabilities.size_options,
           disabled,
-          onChange: selectSize,
+          onChange: (value) => selectSize(value ?? ""),
         })
         : null}
       {modes.includes("resolution_with_aspect_ratio")
@@ -113,7 +109,7 @@ export function ImageResolutionControls({
                 ?? "",
               options: imageResolutionPairOptions(capabilities, name),
               disabled,
-              onChange: (value) => selectPair(name, value),
+              onChange: (value) => selectPair(name, value ?? ""),
             })}
             {issueByName.get(name) ? (
               <p className="agent-node-workbench__field-error">{issueByName.get(name)}</p>

@@ -16,6 +16,11 @@ describe("call history contract", () => {
     const output = extractOutput({ payload: { assistant_message: {content: [{type: "text", text: "done"}, {type: "toolCall", name: "submit", arguments: {a: 1}}]}, chunks: ["duplicate"] } });
     expect(output.text).toBe("done"); expect(output.tools).toHaveLength(1);
   });
+  it("parses the Agent JSON response and surfaces draft prompt fields", () => {
+    const output = extractOutput({ payload: { response: { choices: [{ message: { content: JSON.stringify({ summary_prompt: "A concise product brief", generation_prompt: "A cinematic product reveal", nested: { negative_prompt: "no text" } }) } }] } } });
+    expect(output.structured).toMatchObject({ summary_prompt: "A concise product brief" });
+    expect(output.draftPrompts).toEqual({ summary_prompt: "A concise product brief", generation_prompt: "A cinematic product reveal", negative_prompt: "no text" });
+  });
   it("uses GET, no-store, credentials, abort signal and never internal auth", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ok: true, json: async () => ({workflow_id: "w", items: [], next_offset: null})}); vi.stubGlobal("fetch", fetchMock);
     const signal = new AbortController().signal;

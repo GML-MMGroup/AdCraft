@@ -1,3 +1,6 @@
+import { PrimaryNavigation } from "../../components/Layout";
+import { ResizableBrandPanel } from "./brand/ResizableBrandPanel";
+import { useModeLaunch } from "../mode-selection/ModeLaunchContext";
 import {
   applyNodeChanges,
   Controls,
@@ -50,6 +53,7 @@ import type {
   AgentAssetSourceNodeSelection,
 } from "./assets/AgentAssetBrowser.tsx";
 import { toImageBindingSource } from "./assets/assetSelection.ts";
+import { useCanvasMediaUpload } from "./assets/useCanvasMediaUpload.ts";
 import {
   AgentCanvasNodeRenderer,
   type AgentCanvasFlowNode,
@@ -183,6 +187,11 @@ export function AgentCanvasPage() {
     suspend: suspendPointerSpotlight,
   } = pointerSpotlight;
   const workflow = session.state.workflow;
+  const launchReady = useModeLaunch()?.ready;
+  const launchWorkflowId = workflow?.workflow_id;
+  useEffect(() => {
+    if (launchWorkflowId && session.state.workspaceHydrated) launchReady?.();
+  }, [launchWorkflowId, session.state.workspaceHydrated, launchReady]);
   const hasRunnableDraft = workflow ? hasPromptReadyDraft(workflow.nodes) : false;
   const {
     applyWorkflow,
@@ -1134,12 +1143,15 @@ export function AgentCanvasPage() {
     }
   }, [createBinding, session.state.selectedNode, workflow]);
 
-  const createReadySourceNode = useCallback(async (selection: AgentAssetSourceNodeSelection) => {
+  const createReadySourceNode = useCallback(async (
+    selection: AgentAssetSourceNodeSelection,
+    requestedPosition?: CanvasPositionV2,
+  ) => {
     if (!workflow) return;
     const instance = flowRef.current;
-    const preferredPosition = instance
+    const preferredPosition = requestedPosition ?? (instance
       ? instance.screenToFlowPosition({ x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 })
-      : { x: 180, y: 160 };
+      : { x: 180, y: 160 });
     const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition, {
       assets: workflow.assets,
       candidateNodeType: selection.mediaType,
@@ -1163,6 +1175,11 @@ export function AgentCanvasPage() {
       source_asset_id: selection.assetId,
     });
   }, [createCanvasNode, workflow]);
+
+  const canvasMediaUpload = useCanvasMediaUpload({
+    workflowId: workflow?.workflow_id,
+    createSourceNode: createReadySourceNode,
+  });
 
   const createConnectedNodeFromMenu = useCallback(async (
     nodeType: AgentCanvasVisibleNodeTypeV2,
@@ -1359,15 +1376,16 @@ export function AgentCanvasPage() {
   return (
     <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}${brandDecisions ? " is-brand-mode" : ""}`}>
       {brandDecisions ? (
-        <BrandDecisionPanel
+        <ResizableBrandPanel><BrandDecisionPanel
           decisions={brandDecisions}
           refreshing={brandDecisionsRefreshing}
           onChooseSkills={() => setBrandSkillsWorkflowId(brandDecisions.workflow_id)}
           onRefresh={() => {
             void refreshBrandDecisions();
           }}
-        />
+        /></ResizableBrandPanel>
       ) : null}
+      {brandDecisions ? <PrimaryNavigation placement="brand" /> : null}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}
@@ -1621,20 +1639,27 @@ export function AgentCanvasPage() {
           </div>
         ) : null}
 
-        {(surfaceError || session.state.authoringError || live.state.runtimeError) ? (
+        {(canvasMediaUpload.error || surfaceError || session.state.authoringError || live.state.runtimeError) ? (
           <button
             type="button"
             className="agent-canvas-notice"
             onClick={() => {
+              canvasMediaUpload.clearError();
               setSurfaceError(null);
               clearAuthoringError();
             }}
           >
-            {surfaceError || session.state.authoringError || live.state.runtimeError}
+            {canvasMediaUpload.error || surfaceError || session.state.authoringError || live.state.runtimeError}
           </button>
         ) : null}
 
-        {live.state.autoRunNotice ? (
+        {canvasMediaUpload.uploading ? (
+          <div className="agent-canvas-notice agent-canvas-notice--info" role="status">
+            Uploading media and adding it to the canvas…
+          </div>
+        ) : null}
+
+        {live.state.autoRunNotice && !canvasMediaUpload.uploading ? (
           <button
             type="button"
             className="agent-canvas-notice agent-canvas-notice--info"
@@ -1684,6 +1709,16 @@ export function AgentCanvasPage() {
         ) : null}
 
         <input
+          ref={canvasMediaUpload.inputRef}
+          className="agent-canvas-reference-upload-input"
+          type="file"
+          accept="image/*,video/*"
+          tabIndex={-1}
+          aria-label="Upload image or video to canvas"
+          onChange={(event) => void canvasMediaUpload.onFileChange(event)}
+        />
+
+        <input
           ref={referenceUploadInputRef}
           className="agent-canvas-reference-upload-input"
           type="file"
@@ -1707,6 +1742,11 @@ export function AgentCanvasPage() {
               menuPosition={contextMenu.menuPosition}
               canvasPosition={contextMenu.canvasPosition}
               onCreateNode={(nodeType, position) => void createNode(nodeType, position)}
+              uploading={canvasMediaUpload.uploading}
+              onUploadMedia={(position) => {
+                canvasMediaUpload.openPicker(position);
+                setContextMenu(null);
+              }}
               onClose={() => setContextMenu(null)}
               onRelocate={openCanvasContextMenu}
             />

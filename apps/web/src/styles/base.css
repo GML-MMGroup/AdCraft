@@ -1,4 +1,12 @@
 @font-face {
+  font-family: "Literata";
+  src: url("/fonts/literata-latin-italic-700.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Manrope";
   font-style: normal;
   font-weight: 400 800;
@@ -744,4 +752,15 @@ a {
     max-width: 48px;
     border-radius: 13px;
   }
+}
+
+.home-page [data-home-typography-region="sectionHeading"],
+.page-title.page-title--editorial {
+  font-family: "Literata", "Songti SC", "STSong", serif;
+  font-size: 53px;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1.05;
+  letter-spacing: 0.028em;
+  text-transform: none;
 }

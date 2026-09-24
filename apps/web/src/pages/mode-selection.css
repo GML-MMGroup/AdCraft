@@ -3,9 +3,14 @@
   --stage-muted: rgba(244, 241, 234, 0.56);
   --stage-line: rgba(244, 241, 234, 0.16);
   --stage-black: #090909;
-  --launch-duration: 300ms;
+  --launch-duration: 400ms;
   --launch-ease: cubic-bezier(0.23, 1, 0.32, 1);
-  position: relative;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  opacity: 1;
+  /* Low-frequency full-screen handoff: keep the cover visible throughout the slide. */
+  transition: opacity var(--launch-duration) linear;
   display: grid;
   min-height: 100vh;
   min-height: 100dvh;
@@ -25,19 +30,8 @@
   content: "";
 }
 
-.mode-selection::after {
-  position: absolute;
-  z-index: 10;
-  inset: 0;
-  pointer-events: none;
-  background: #000;
+.mode-selection.is-selecting {
   opacity: 0;
-  transition: opacity var(--launch-duration) var(--launch-ease);
-  content: "";
-}
-
-.mode-selection.is-selecting::after {
-  opacity: 0.78;
 }
 
 .mode-selection-header {
@@ -156,8 +150,7 @@
   outline-offset: -10px;
 }
 
-.mode-choice-panel__topline,
-.mode-choice-panel__footer {
+.mode-choice-panel__topline {
   position: relative;
   z-index: 1;
   display: flex;
@@ -181,6 +174,7 @@
   z-index: 1;
   display: flex;
   max-width: 410px;
+  margin-block: auto;
   flex-direction: column;
   align-items: flex-start;
 }
@@ -262,27 +256,6 @@
   line-height: 1.7;
 }
 
-.mode-choice-panel__footer {
-  color: rgba(244, 241, 234, 0.42);
-  transition: color 180ms ease;
-}
-
-.mode-choice-panel:focus-visible .mode-choice-panel__footer {
-  color: rgba(244, 241, 234, 0.8);
-}
-
-.mode-choice-panel__arrow {
-  color: var(--stage-ink);
-  font-size: 19px;
-  letter-spacing: 0;
-  transform: translateY(-1px);
-  transition: transform 220ms ease;
-}
-
-.mode-choice-panel:focus-visible .mode-choice-panel__arrow {
-  transform: translate(4px, -5px);
-}
-
 .mode-choice-assembly {
   position: absolute;
   inset: 0;
@@ -359,14 +332,6 @@
   .mode-choice-panel--brand:hover .mode-choice-panel__icon-wrap {
     transform: translateY(-4px) rotate(1deg);
   }
-
-  .mode-choice-panel:hover .mode-choice-panel__footer {
-    color: rgba(244, 241, 234, 0.8);
-  }
-
-  .mode-choice-panel:hover .mode-choice-panel__arrow {
-    transform: translate(4px, -5px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -392,4 +357,13 @@
   color: #f4f1ea;
   font-size: 14px;
   text-align: center;
+}
+
+.mode-launch-loading { position: fixed; inset: 0; z-index: 1000; background: #090909; color: #eee; }
+.mode-launch-recovery { position: fixed; z-index: 1001; bottom: 28px; left: 28px; color: #eee; }
+.mode-selection.is-keyboard-launch { transition: none; }
+.mode-selection.is-keyboard-launch .mode-choice-panel { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mode-selection { transition: opacity 120ms linear; }
+  .mode-selection.is-selecting .mode-choice-panel { animation: none !important; opacity: 1; }
 }

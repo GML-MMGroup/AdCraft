@@ -6,14 +6,6 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: "Literata";
-  src: url("/fonts/literata-latin-italic-700.woff2") format("woff2");
-  font-style: italic;
-  font-weight: 700;
-  font-display: swap;
-}
-
 .home-page {
   --home-font-display: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
   --home-font-accent: "Water Brush", cursive;
@@ -360,6 +352,14 @@
 .section-title p {
   margin: 8px 0 0;
   color: var(--muted);
+}
+
+.home-reveal-section--recent .section-title {
+  margin-bottom: 30px;
+}
+
+.home-reveal-section--discover .section-title {
+  margin-bottom: 14px;
 }
 
 .home-reveal-section[data-reveal-state="pending"] [data-reveal-item] {
@@ -974,16 +974,6 @@ article.recent-card.featured {
   text-transform: none;
 }
 
-.home-page [data-home-typography-region="sectionHeading"] {
-  font-family: "Literata", "Songti SC", "STSong", serif;
-  font-size: 53px;
-  font-weight: 700;
-  font-style: italic;
-  line-height: 1.05;
-  letter-spacing: 0.028em;
-  text-transform: none;
-}
-
 .home-page [data-home-typography-region="sectionBody"] {
   font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
   font-size: 18px;
@@ -995,32 +985,32 @@ article.recent-card.featured {
 }
 
 .home-page [data-home-typography-region="cardTitle"] {
-  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
-  font-size: 15px;
+  font-family: "Libre Baskerville", "Noto Serif SC", "Songti SC", serif;
+  font-size: 16px;
   font-weight: 400;
-  font-style: normal;
-  line-height: 1.15;
-  letter-spacing: -0.002em;
+  font-style: italic;
+  line-height: 1.1;
+  letter-spacing: 0.016em;
   text-transform: none;
 }
 
 .home-page [data-home-typography-region="cardTitle"]::after {
-  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
-  font-size: 15px;
+  font-family: "Libre Baskerville", "Noto Serif SC", "Songti SC", serif;
+  font-size: 16px;
   font-weight: 400;
-  font-style: normal;
-  line-height: 1.15;
-  letter-spacing: -0.002em;
+  font-style: italic;
+  line-height: 1.1;
+  letter-spacing: 0.016em;
   text-transform: none;
 }
 
 .home-page [data-home-typography-region="cardMeta"] {
-  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-family: "Times New Roman", "Noto Serif SC", "Songti SC", serif;
   font-size: 13px;
   font-weight: 400;
   font-style: normal;
-  line-height: 1.4;
-  letter-spacing: 0;
+  line-height: 1.1;
+  letter-spacing: 0.022em;
   text-transform: uppercase;
 }
 

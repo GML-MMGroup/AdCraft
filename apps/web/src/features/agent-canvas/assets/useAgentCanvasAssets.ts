@@ -12,7 +12,7 @@ import type {
   AgentAssetMediaFilter,
   AgentAssetScope,
 } from "./assetSelection.ts";
-import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
+import { toProjectAssetBrowserItem } from "./assetSelection.ts";
 
 type LibraryRecord = Record<string, unknown>;
 
@@ -72,26 +72,6 @@ function stringList(value: unknown): string[] {
   });
 }
 
-function projectItem(asset: ProjectAssetSummaryV2): AgentAssetBrowserItem {
-  return {
-    id: `project:${asset.asset_id}`,
-    assetId: asset.asset_id,
-    source: "project",
-    mediaType: asset.media_type,
-    displayName: asset.display_name,
-    previewUrl: mediaAssetPreviewPath(asset) || null,
-    mediaUrl: mediaAssetContentPath(asset) || null,
-    status: asset.status,
-    tags: [asset.source_type, asset.mime_type],
-    identity: {
-      source: "project",
-      assetId: asset.asset_id,
-      entityId: null,
-      versionId: asset.version_id ?? null,
-    },
-    projectAsset: asset,
-  };
-}
 
 function libraryItem(
   scope: "my" | "recommended",
@@ -169,7 +149,7 @@ export function useAgentCanvasAssets({
       if (scope === "project") {
         if (!workflowId) throw new Error("Project assets require a workflow.");
         const response = await agentCanvasApi.listAgentCanvasProjectAssets(workflowId);
-        nextItems = response.assets.map(projectItem);
+        nextItems = response.assets.map(toProjectAssetBrowserItem);
       } else {
         const response = scope === "my"
           ? await agentCanvasApi.listAgentCanvasMyAssets(category)

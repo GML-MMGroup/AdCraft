@@ -157,15 +157,6 @@ export function MediaPromptWorkbench({
         />
       ) : null}
 
-      {node.node_type === "image" && canConfigureProvider && resolutionCapabilities ? (
-        <ImageResolutionControls
-          capabilities={resolutionCapabilities}
-          parameters={draft.parameters}
-          disabled={draft.pending}
-          onChange={draft.setParameters}
-        />
-      ) : null}
-
       <footer className={`agent-node-workbench__footer agent-node-workbench__footer--composer${node.node_type === "image" ? " agent-node-workbench__footer--image" : node.node_type === "video" ? " agent-node-workbench__footer--video" : ""}`}>
         {node.node_type === "video" ? (
           <div className="agent-node-workbench__video-toolbar">
@@ -184,6 +175,15 @@ export function MediaPromptWorkbench({
         ) : assetActions}
         <div className="agent-node-workbench__composer-actions">
           {node.node_type !== "video" ? modelPicker : null}
+          {node.node_type === "image" && canConfigureProvider && resolutionCapabilities ? (
+            <ImageResolutionControls
+              layout="inline"
+              capabilities={resolutionCapabilities}
+              parameters={draft.parameters}
+              disabled={draft.pending}
+              onChange={draft.setParameters}
+            />
+          ) : null}
           {node.node_type === "video" ? (
             <VideoAudioToggle
               checked={audioEnabled}

@@ -47,9 +47,10 @@ describe("ImageResolutionControls", () => {
         onChange={onChange}
       />,
     );
-    const select = screen.getByLabelText("Size") as HTMLSelectElement;
-    expect(select.value).toBe("");
-    fireEvent.change(select, { target: { value: "2560x1440" } });
+    const select = screen.getByLabelText("Size");
+    expect(select.textContent).toContain("2048x2048");
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole("option", { name: "2560x1440" }));
     expect(onChange).toHaveBeenLastCalledWith({ size: "2560x1440" });
   });
 
@@ -63,7 +64,8 @@ describe("ImageResolutionControls", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Resolution"), { target: { value: "2K" } });
+    fireEvent.click(screen.getByLabelText("Resolution"));
+    fireEvent.click(screen.getByRole("option", { name: "2K" }));
     expect(onChange).toHaveBeenLastCalledWith({ resolution: "2K", aspect_ratio: "1:1" });
 
     rerender(
@@ -74,7 +76,8 @@ describe("ImageResolutionControls", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Ratio"), { target: { value: "16:9" } });
+    fireEvent.click(screen.getByLabelText("Ratio"));
+    fireEvent.click(screen.getByRole("option", { name: "16:9" }));
     expect(onChange).toHaveBeenLastCalledWith({ resolution: "2K", aspect_ratio: "16:9" });
   });
 
@@ -88,8 +91,8 @@ describe("ImageResolutionControls", () => {
         onChange={onChange}
       />,
     );
-    expect((screen.getByLabelText("Resolution") as HTMLSelectElement).value).toBe("2K");
-    expect((screen.getByLabelText("Ratio") as HTMLSelectElement).value).toBe("16:9");
+    expect(screen.getByLabelText("Resolution").textContent).toContain("2K");
+    expect(screen.getByLabelText("Ratio").textContent).toContain("16:9");
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -109,7 +112,7 @@ describe("ImageResolutionControls", () => {
         onChange={vi.fn()}
       />,
     );
-    expect((screen.getByLabelText("Resolution") as HTMLSelectElement).value).toBe("8K");
+    expect(screen.getByLabelText("Resolution").textContent).toContain("8K (unsupported)");
     expect(screen.getByText("8K (unsupported)")).toBeTruthy();
     expect(screen.getByText("Choose an aspect ratio to send with the resolution.")).toBeTruthy();
   });

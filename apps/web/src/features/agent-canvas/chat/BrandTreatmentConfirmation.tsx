@@ -1,49 +1,13 @@
-import { useRef, useState } from "react";
-import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
-
-export function BrandTreatmentConfirmation({
-  workflowId,
-  responseLocale,
-  onConfirmed,
-}: {
-  workflowId: string;
-  responseLocale: string;
-  onConfirmed: () => Promise<void> | void;
+import { useState } from "react";
+import { BrandTreatmentReview } from "../brand/BrandTreatmentReview";
+export function BrandTreatmentConfirmation({ workflowId, responseLocale, onConfirmed, onProductionRefresh }: {
+  workflowId: string; responseLocale: string; onConfirmed: () => Promise<void> | void; onProductionRefresh?: () => Promise<void> | void;
 }) {
-  const inFlight = useRef(false);
-  const [pending, setPending] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const chinese = responseLocale.startsWith("zh");
-
-  async function confirm() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setPending(true);
-    setFailed(false);
-    try {
-      await agentCanvasApi.brandLockTreatment(workflowId);
-      await onConfirmed();
-    } catch {
-      setFailed(true);
-    } finally {
-      inFlight.current = false;
-      setPending(false);
-    }
-  }
-
-  return (
-    <section className="agent-chat__notice" aria-label={chinese ? "创意方案确认" : "Treatment confirmation"}>
-      <div>
-        <p>{chinese
-          ? "八项创意方案已完成，声音/BGM 选择已保存。请确认并锁定当前方案。"
-          : "All eight treatment decisions are complete, including sound/BGM. Confirm and lock the treatment."}</p>
-        {failed ? <p role="alert">{chinese ? "确认失败，请重试。" : "Confirmation failed. Please retry."}</p> : null}
-        <button type="button" disabled={pending} onClick={() => void confirm()}>
-          {pending
-            ? (chinese ? "正在确认…" : "Confirming…")
-            : (chinese ? "确认并锁定创意方案" : "Confirm and lock treatment")}
-        </button>
-      </div>
-    </section>
-  );
+  const [open, setOpen] = useState(false);
+  const zh = responseLocale.startsWith("zh");
+  return <section className="agent-chat__notice" aria-label={zh ? "创意方案确认" : "Treatment confirmation"}>
+    <p>{zh ? "请查看完整创意方案及执行限制，确认后锁定。" : "Review the full treatment and execution limitations, then confirm to lock."}</p>
+    <button type="button" onClick={() => setOpen(true)}>{zh ? "打开最终审阅" : "Review treatment"}</button>
+    {open && <BrandTreatmentReview key={workflowId} workflowId={workflowId} onClose={() => setOpen(false)} onConfirmed={onConfirmed} onProductionRefresh={onProductionRefresh}/>}
+  </section>;
 }

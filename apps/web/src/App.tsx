@@ -11,7 +11,6 @@ const WorkflowModelCallHistoryPage = lazy(() => import("./pages/WorkflowModelCal
 const TrashPage = lazy(() => import("./pages/TrashPage").then((module) => ({ default: module.TrashPage })));
 const ApiSpacePage = lazy(() => import("./pages/ApiSpacePage").then((module) => ({ default: module.ApiSpacePage })));
 const HomeTypographyLabPage = lazy(() => import("./pages/HomeTypographyLabPage").then((module) => ({ default: module.HomeTypographyLabPage })));
-const ModeSelectionPage = lazy(() => import("./pages/ModeSelectionPage").then((module) => ({ default: module.ModeSelectionPage })));
 const ModeIconLabPrototypePage = lazy(() => import("./pages/ModeIconLabPrototypePage").then((module) => ({ default: module.ModeIconLabPrototypePage })));
 const BrandDevPage = lazy(() => import("./pages/BrandDevPage").then((module) => ({ default: module.BrandDevPage })));
 const WorkspaceRoute = lazy(() => import("./app/WorkspaceRoute").then((module) => ({ default: module.WorkspaceRoute })));
@@ -57,7 +56,7 @@ function AppRoutes() {
 
         </Route>
         <Route element={<WorkspaceRoute />}>
-          <Route path="/projects/new" element={<ModeSelectionPage />} />
+          <Route path="/projects/new" element={null} />
           <Route path="/projects" element={<ProjectsPage navigate={navigateRoute} />} />
           <Route path="/workflow/:projectId" element={<WorkflowPage />} />
           <Route path="/workflow" element={<WorkflowPage />} />

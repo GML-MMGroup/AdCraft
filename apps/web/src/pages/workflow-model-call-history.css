@@ -20,6 +20,15 @@
 .llm-call-tabs button.is-active { border-bottom-color: #d8c59f; color: #eee9df; }
 .llm-call-content { padding-top: 22px; }
 .llm-call-content h3 { margin: 22px 0 8px; font-size: 12px; font-weight: 500; color: rgba(238,233,223,.65); }
+.llm-call-history__focus-note { display: grid; gap: 5px; margin-bottom: 22px; border-left: 2px solid #d8c59f; padding: 12px 14px; background: rgba(216,197,159,.07); color: rgba(238,233,223,.68); font-size: 13px; line-height: 1.55; }
+.llm-call-history__focus-note strong { color: #eee9df; font-size: 14px; font-weight: 550; }
+.llm-call-history__disclosure { margin-top: 14px; border-top: 1px solid rgba(238,233,223,.1); padding-top: 12px; }
+.llm-call-history__disclosure summary { cursor: pointer; color: rgba(238,233,223,.65); font-size: 12px; }
+.llm-call-history__disclosure[open] summary { margin-bottom: 10px; color: #eee9df; }
+.llm-call-history__prompt-grid { display: grid; gap: 16px; }
+.llm-call-history__prompt-grid section { min-width: 0; }
+.llm-call-history__prompt-grid h4 { margin: 0 0 6px; color: #d8c59f; font: 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.llm-call-history__empty-panel { border: 1px dashed rgba(238,233,223,.2); padding: 18px; color: rgba(238,233,223,.58); line-height: 1.6; }
 .llm-call-history__value { max-height: 340px; overflow: auto; margin: 0; border: 1px solid rgba(238,233,223,.11); padding: 14px; background: rgba(0,0,0,.22); color: #e8e4dc; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .llm-call-history__error { color: #e9a3a3; }
 .llm-call-history__empty { padding-top: 80px; color: rgba(238,233,223,.55); }

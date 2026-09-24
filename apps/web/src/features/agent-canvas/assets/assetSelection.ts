@@ -1,3 +1,4 @@
+import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 import type {
   AgentCanvasAssetMediaTypeV2,
   CanvasBindingSourceImageAssetWriteV2,
@@ -91,5 +92,26 @@ export function toSourceNodeSelection(
     durationSeconds: item.projectAsset?.duration_seconds ?? null,
     width: item.projectAsset?.width ?? null,
     height: item.projectAsset?.height ?? null,
+  };
+}
+
+export function toProjectAssetBrowserItem(asset: ProjectAssetSummaryV2): AgentAssetBrowserItem {
+  return {
+    id: `project:${asset.asset_id}`,
+    assetId: asset.asset_id,
+    source: "project",
+    mediaType: asset.media_type,
+    displayName: asset.display_name,
+    previewUrl: mediaAssetPreviewPath(asset) || null,
+    mediaUrl: mediaAssetContentPath(asset) || null,
+    status: asset.status,
+    tags: [asset.source_type, asset.mime_type],
+    identity: {
+      source: "project",
+      assetId: asset.asset_id,
+      entityId: null,
+      versionId: asset.version_id ?? null,
+    },
+    projectAsset: asset,
   };
 }

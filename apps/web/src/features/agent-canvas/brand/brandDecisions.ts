@@ -23,6 +23,7 @@ export interface BrandSlotValueV1 {
 }
 
 export interface BrandShortOptionV1 {
+  detail?: TreatmentDetail | null;
   option_id: string;
   label: string;
   why: string | null;
@@ -83,6 +84,7 @@ export interface BrandSkillSelectionRequest {
 }
 
 export interface BrandTreatmentStepResultV1 {
+  structured_detail?: TreatmentDetail | null;
   step_key:
     | "hook"
     | "story"
@@ -98,6 +100,9 @@ export interface BrandTreatmentStepResultV1 {
 }
 
 export interface BrandDecisionPanelV1 {
+  brand_profile?: BrandBriefSummary | null;
+  campaign_brief?: BrandBriefSummary | null;
+  treatment_document?: BrandTreatmentDocument | null;
   project_id: string;
   workflow_id: string;
   mode: BrandModeV2;
@@ -144,4 +149,32 @@ export interface BrandDecisionLogEntryV1 {
   target_id: string | null;
   detail: Record<string, unknown>;
   created_at: string | null;
+}
+
+export interface TreatmentSection { key: string; title: string; text: string; }
+export interface TreatmentDetail { sections: TreatmentSection[]; }
+export interface BrandBriefSummary {
+  values: BrandSlotValueV1[];
+  inherited_values: BrandSlotValueV1[];
+  unresolved_fields: string[];
+}
+export interface BrandTreatmentDocument {
+  schema_version: string;
+  brand_profile: BrandBriefSummary;
+  campaign_brief: BrandBriefSummary;
+  selected_hypothesis: BrandHypothesisCandidateV1 | null;
+  adspec: BrandDecisionPanelV1["adspec"];
+  skill_stack: BrandDecisionPanelV1["skill_stack"];
+  treatment_steps: BrandTreatmentStepResultV1[];
+  product_presentation: TreatmentSection[];
+  authorized_asset_references: Array<{ binding_id: string; workflow_id: string; target_node_id: string; asset_id: string; version_id: string; display_name: string; input_role: string }>;
+  complete: boolean;
+  missing_sections: string[];
+  content_digest: string;
+  execution_limitations: string[];
+}
+export interface BrandTreatmentEdit {
+  expected_stage_revision: number;
+  selected_label: string;
+  detail: TreatmentDetail;
 }

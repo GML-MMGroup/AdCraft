@@ -39,7 +39,7 @@ function RecentProjectCard({ project, index, onOpenProject }: {
           onError={() => setFailedUrl(source)}
         />
       ) : (
-        <span className="recent-card__missing">{failed ? "Cover unavailable" : "No cover yet"}</span>
+        failed ? <span className="recent-card__missing">Cover unavailable</span> : null
       )}
       <div className="recent-card__caption">
         <h3 data-home-typography-region="cardTitle">{project.name}</h3>

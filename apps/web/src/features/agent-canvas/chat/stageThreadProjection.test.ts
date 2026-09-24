@@ -288,4 +288,26 @@ describe("buildStageThreadTimeline", () => {
       item: { item_type: "message", message_id: "planning-unassociated-2" },
     });
   });
+
+  it("can retain every unassociated planning update for the brand conversation", () => {
+    const first = planning(2);
+    first.message_id = "planning-unassociated-1";
+    first.capability_id = null;
+    first.proposal_id = null;
+    const latest = planning(8);
+    latest.message_id = "planning-unassociated-2";
+    latest.capability_id = null;
+    latest.proposal_id = null;
+
+    const units = buildStageThreadTimeline([first, latest], {
+      showAllUnassociatedPlanning: true,
+    });
+
+    expect(units.map((unit) => unit.unit_type === "item" && unit.item.item_type === "message"
+      ? unit.item.message_id
+      : null)).toEqual([
+      "planning-unassociated-1",
+      "planning-unassociated-2",
+    ]);
+  });
 });

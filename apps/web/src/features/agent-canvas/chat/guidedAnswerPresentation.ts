@@ -21,6 +21,38 @@ export function buildGuidedAnswerBubbles(
   anchorSequence: number,
 ): GuidedAnswerBubbleV1[] {
   if (
+    interaction.content.content_kind === "concept_choice"
+    && request.submission_kind === "concept_choice"
+  ) {
+    const selectedOption = request.option_id
+      ? interaction.content.options.find((option) => option.option_id === request.option_id)
+      : null;
+    const customText = request.custom_text?.trim() || null;
+    let value: string | null = null;
+    if (request.action === "custom") {
+      value = customText;
+    } else if (selectedOption) {
+      value = selectedOption.title;
+    } else if (request.action === "defer") {
+      value = "Deferred";
+    } else if (request.action === "exclude") {
+      value = "Excluded";
+    } else if (request.action === "delegate") {
+      value = "Delegated";
+    }
+    if (!value) return [];
+
+    return [{
+      bubble_id: `guided-answer:${interaction.interaction_id}:concept-choice`,
+      interaction_id: interaction.interaction_id,
+      question_id: interaction.content.action_id,
+      label: interaction.title || interaction.context || "Decision",
+      value,
+      sequence: anchorSequence + 0.01,
+    }];
+  }
+
+  if (
     interaction.content.content_kind !== "questionnaire"
     || request.submission_kind !== "questionnaire"
   ) return [];

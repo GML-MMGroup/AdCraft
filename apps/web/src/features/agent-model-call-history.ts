@@ -56,6 +56,31 @@ export function normalizeAgentModelCallDetail(value: unknown): AgentModelCallDet
 }
 export function jsonText(value: unknown): string { try { return JSON.stringify(value ?? null, null, 2); } catch { return String(value); } }
 export function payload(value: unknown) { const envelope = record(value); return record(envelope.payload ?? envelope); }
+function parseJsonText(value: string | null): unknown {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function promptFields(value: unknown, result: Record<string, unknown> = {}, depth = 0): Record<string, unknown> {
+  if (depth > 8 || value == null) return result;
+  if (Array.isArray(value)) {
+    value.forEach((item) => promptFields(item, result, depth + 1));
+    return result;
+  }
+  if (typeof value !== "object") return result;
+  const item = value as Record<string, unknown>;
+  for (const key of ["summary_prompt", "generation_prompt", "provider_prompt", "negative_prompt", "visual_prompt"]) {
+    if (typeof item[key] === "string" && item[key].trim()) result[key] = item[key];
+  }
+  Object.values(item).forEach((child) => promptFields(child, result, depth + 1));
+  return result;
+}
+
 export function extractOutput(outcome: Record<string, unknown> | null | undefined) {
   const source = payload(outcome);
   const texts: string[] = [];
@@ -76,8 +101,11 @@ export function extractOutput(outcome: Record<string, unknown> | null | undefine
   // Prefer the complete message, avoiding duplication with its recorded stream prefix.
   visit(source.assistant_message ?? source.partial_assistant_message ?? source.response ?? source.chunks ?? source.content);
   if (source.tool_calls) tools.push(source.tool_calls);
-  return { text: texts.length ? texts.join("") : null,
-    structured: source.structured_json ?? source.json ?? source.parsed ?? null,
+  const textOutput = texts.length ? texts.join("") : null;
+  const structured = source.structured_json ?? source.json ?? source.parsed ?? parseJsonText(textOutput);
+  return { text: textOutput,
+    structured,
+    draftPrompts: promptFields(structured),
     tools: tools.length ? tools : null,
     partial: source.partial_assistant_message !== undefined,
     streams: source.chunks ?? source.events ?? null,

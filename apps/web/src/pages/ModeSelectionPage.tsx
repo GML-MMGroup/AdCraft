@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeLaunch } from "../features/mode-selection/ModeLaunchContext";
 import { useApp } from "../AppContextValue";
 import { ModeChoicePanel, type ModeId } from "../features/mode-selection/ModeChoicePanel";
 import "./mode-selection.css";
 
-// Matches --launch-duration; the request starts before this minimum visual delay.
-const LAUNCH_DURATION_MS = 300;
 
 export function ModeSelectionPage() {
   const { startNewProject } = useApp();
-  const navigate = useNavigate();
+  const launch = useModeLaunch();
   const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -20,19 +18,16 @@ export function ModeSelectionPage() {
     return () => { mounted.current = false; };
   }, []);
 
-  async function chooseMode(mode: ModeId) {
+  async function chooseMode(mode: ModeId, keyboard = false) {
     if (pending.current) return;
     pending.current = true;
     setError(null);
     setSelectedMode(mode);
     try {
-      const [projectId] = await Promise.all([
-        startNewProject(mode),
-        new Promise<void>((resolve) => window.setTimeout(resolve, LAUNCH_DURATION_MS)),
-      ]);
+      const projectId = await startNewProject(mode);
       if (!mounted.current) return;
       if (!projectId) throw new Error("Project creation failed");
-      void navigate(`/workflow/${encodeURIComponent(projectId)}`, { replace: true });
+      launch?.begin(mode, projectId, keyboard);
     } catch {
       if (!mounted.current) return;
       pending.current = false;
@@ -47,8 +42,10 @@ export function ModeSelectionPage() {
 
   return (
     <main
-      className={`mode-selection${selectedMode ? ` is-selecting is-selecting-${selectedMode}` : ""}`}
+      className={`mode-selection${launch?.revealing ? ` is-selecting is-selecting-${selectedMode}${launch.keyboard ? " is-keyboard-launch" : ""}` : ""}`}
       data-selected-mode={selectedMode ?? undefined}
+      aria-busy={selectedMode !== null}
+      onTransitionEnd={event => { if (event.target === event.currentTarget && event.propertyName === "opacity") launch?.finish(); }}
     >
       <header className="mode-selection-header">
         <span className="mode-selection-header__brand">ADCRAFT <span>/ NEW PROJECT</span></span>
@@ -63,7 +60,6 @@ export function ModeSelectionPage() {
             eyebrow="Individual practice"
             title="Personal Creation"
             description="Start with your own point of view and turn a first idea into a moving frame."
-            detail="For singular voices"
             onChoose={chooseMode}
             paused={selectedMode !== null}
           />
@@ -72,7 +68,6 @@ export function ModeSelectionPage() {
             eyebrow="Brand system"
             title="Brand Professional"
             description="Build inside a living identity with a guided system for every campaign decision."
-            detail="For teams and systems"
             onChoose={chooseMode}
             paused={selectedMode !== null}
           />

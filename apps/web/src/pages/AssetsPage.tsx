@@ -1,3 +1,4 @@
+import { CatalogToolbar, CatalogFilterButton, CatalogSearch } from "../components/CatalogToolbar";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "../components/Layout.tsx";
@@ -89,19 +90,19 @@ export function AssetsPage() {
 
   return (
     <section ref={assetLibraryRef} className="v2-asset-library-page">
-      <PageHeader title="Assets" subtitle="Reusable visual building blocks for every workflow." />
-      <div className="v2-asset-library-controls">
-        <div className="v2-asset-library-tabs" role="tablist" aria-label="Asset library scope">
-          <button className={scope === "my" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>My Assets</button>
-          <button className={scope === "recommended" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>Recommended Assets</button>
+      <PageHeader title="Assets" editorial />
+      <CatalogToolbar className="asset-catalog-toolbar">
+        <div className="v2-asset-library-tabs toolbar-row" role="tablist" aria-label="Asset library scope">
+          <CatalogFilterButton active={scope === "my"} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>My Assets</CatalogFilterButton>
+          <CatalogFilterButton active={scope === "recommended"} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>Recommended Assets</CatalogFilterButton>
         </div>
-        <div className="v2-asset-library-actions">
-          <input aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
+        <div className="catalog-toolbar-actions">
+          <CatalogSearch aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
         </div>
-      </div>
-      <div className="v2-asset-library-categories" role="tablist" aria-label="Asset category">
+      </CatalogToolbar>
+      <div className="v2-asset-library-categories toolbar-row" role="tablist" aria-label="Asset category">
         {ASSET_CATEGORIES.map((item) => (
-          <button key={item.id} className={category === item.id ? "is-active" : ""} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{item.label}</button>
+          <CatalogFilterButton key={item.id} active={category === item.id} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{item.label}</CatalogFilterButton>
         ))}
       </div>
       <div className="v2-asset-library-layout">

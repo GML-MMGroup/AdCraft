@@ -133,7 +133,7 @@
   width: 100%;
   color: #f1f3fa;
   background: rgb(7 8 12 / 38%);
-  border: 1px solid rgb(255 255 255 / 10%);
+  border: 1px solid #a3a3a3;
   border-radius: 7px;
   font: inherit;
   font-size: 12px;
@@ -141,8 +141,8 @@
 }
 
 .agent-node-workbench :is(input, textarea, select):focus {
-  border-color: color-mix(in srgb, var(--brand) 72%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent);
+  border-color: #a3a3a3;
+  box-shadow: none;
 }
 
 .agent-node-workbench input,
@@ -744,7 +744,7 @@
   font-size: 11px;
   color: #f5f5f5;
   background: transparent;
-  border-color: transparent;
+  border-color: #a3a3a3;
   color-scheme: dark;
 }
 
@@ -778,8 +778,9 @@
 
 .agent-node-workbench__footer--image {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(112px, 0.7fr) auto;
   gap: 8px;
+  align-items: end;
 }
 
 .agent-node-workbench--image,
@@ -880,6 +881,48 @@
   width: 100%;
 }
 
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline {
+  align-self: end;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline .agent-node-workbench__parameter {
+  align-self: end;
+  gap: 2px;
+  padding: 0;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline .agent-node-workbench__parameter > span {
+  overflow: hidden;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline :is(input, select),
+.agent-node-workbench__footer--image .agent-node-workbench__model-picker--monochrome summary {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__asset-actions {
+  align-self: end;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-picker {
+  position: relative;
+  z-index: 2;
+  align-self: end;
+}
+
+.agent-node-workbench__footer--image .agent-node-workbench__model-parameters--inline {
+  position: relative;
+  z-index: 1;
+}
+
 .agent-node-workbench__footer--text {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -898,7 +941,7 @@
   min-width: 0;
   color: #f5f5f5;
   background: transparent;
-  border-color: transparent;
+  border-color: #a3a3a3;
   font-size: 12px;
 }
 

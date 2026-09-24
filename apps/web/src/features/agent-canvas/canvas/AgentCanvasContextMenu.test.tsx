@@ -46,6 +46,22 @@ describe("AgentCanvasContextMenu", () => {
     expect(onCreateNode).toHaveBeenCalledWith("script", { x: 84, y: 132 });
   });
 
+  it("offers local image or video upload at the context position", () => {
+    const onUploadMedia = vi.fn();
+    render(
+      <AgentCanvasContextMenu
+        menuPosition={{ x: 240, y: 180 }}
+        canvasPosition={{ x: 84, y: 132 }}
+        onCreateNode={vi.fn()}
+        onUploadMedia={onUploadMedia}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Upload image or video" }));
+    expect(onUploadMedia).toHaveBeenCalledExactlyOnceWith({ x: 84, y: 132 });
+  });
+
   it("closes when Escape is pressed or the backdrop is clicked", () => {
     const onClose = vi.fn();
 

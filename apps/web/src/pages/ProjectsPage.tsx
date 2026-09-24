@@ -1,3 +1,4 @@
+import { CatalogToolbar, CatalogFilterButton, CatalogSearch } from "../components/CatalogToolbar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CreateCard } from "../components/Cards";
 import { PageHeader } from "../components/Layout";
@@ -18,6 +19,8 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionToastExiting, setActionToastExiting] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [batchAction, setBatchAction] = useState<"favorite" | "trash" | null>(null);
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
@@ -92,12 +95,28 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
     return () => window.clearTimeout(timeout);
   }, [selectionNotice]);
 
+  useEffect(() => {
+    if (!actionNotice) return undefined;
+    setActionToastExiting(false);
+    const exitTimeout = window.setTimeout(() => setActionToastExiting(true), 2500);
+    const removeTimeout = window.setTimeout(() => setActionNotice(null), 2800);
+    return () => {
+      window.clearTimeout(exitTimeout);
+      window.clearTimeout(removeTimeout);
+    };
+  }, [actionNotice]);
+
   const openSavedProject = useCallback((projectId: string) => {
     navigate("workflow", { projectId });
   }, [navigate]);
 
-  const trashSavedProject = useCallback((project: ProjectListItem) => {
-    void moveProjectToTrash(project.projectId);
+  const trashSavedProject = useCallback(async (project: ProjectListItem) => {
+    try {
+      await moveProjectToTrash(project.projectId);
+      setActionNotice(`${project.name} moved to trash.`);
+    } catch {
+      setActionNotice(`Could not move ${project.name} to trash.`);
+    }
   }, [moveProjectToTrash]);
 
   const toggleSavedProjectFavorite = useCallback((project: ProjectListItem) => {
@@ -196,30 +215,33 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
 
     setSelectedProjectIds(new Set());
     setSelectionMode(false);
+    if (action === "trash") {
+      setActionNotice(`${snapshot.length} ${snapshot.length === 1 ? "project" : "projects"} moved to trash.`);
+    }
   }, [moveProjectToTrash, savedProjects, selectedProjects, selectionBusy, toggleProjectFavorite]);
 
   return (
     <section className="content-wrap">
-      <PageHeader title="All Projects" subtitle="Saved campaign workflows and creative drafts." />
-      <div className="projects-toolbar">
+      <PageHeader title="All Projects" editorial />
+      <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">
-          <button className={`filter-btn clear-glass-control ${tab === "all" ? "is-active" : ""}`} onClick={() => changeTab("all")}>
+          <CatalogFilterButton active={tab === "all"} onClick={() => changeTab("all")}>
             All
-          </button>
-          <button className={`filter-btn clear-glass-control ${tab === "favorite" ? "is-active" : ""}`} onClick={() => changeTab("favorite")}>
+          </CatalogFilterButton>
+          <CatalogFilterButton active={tab === "favorite"} onClick={() => changeTab("favorite")}>
             Favorites
-          </button>
+          </CatalogFilterButton>
         </div>
-        <div className="project-toolbar-actions">
-          <input className="search-box clear-glass-control is-active" placeholder="Search projects" value={search} onChange={(event) => changeSearch(event.target.value)} />
+        <div className="catalog-toolbar-actions">
+          <CatalogSearch aria-label="Search projects" placeholder="Search projects" value={search} onChange={(event) => changeSearch(event.target.value)} />
           {!selectionMode ? (
-            <button className="filter-btn clear-glass-control" type="button" onClick={enterSelectionMode}>
+            <CatalogFilterButton  type="button" onClick={enterSelectionMode}>
               Select
-            </button>
+            </CatalogFilterButton>
           ) : (
             <>
-              <button
-                className={`filter-btn clear-glass-control project-selection-toggle${partiallySelected ? " is-partial" : ""}`}
+              <CatalogFilterButton
+                className={` project-selection-toggle${partiallySelected ? " is-partial" : ""}`}
                 type="button"
                 aria-pressed={allVisibleSelected}
                 aria-label={partiallySelected ? "Select all projects" : undefined}
@@ -227,14 +249,14 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
                 onClick={toggleVisibleSelection}
               >
                 {allVisibleSelected ? "Clear selection" : "Select all"}
-              </button>
-              <button className="filter-btn clear-glass-control" type="button" disabled={selectionBusy} onClick={exitSelectionMode}>
+              </CatalogFilterButton>
+              <CatalogFilterButton  type="button" disabled={selectionBusy} onClick={exitSelectionMode}>
                 Done
-              </button>
+              </CatalogFilterButton>
             </>
           )}
         </div>
-      </div>
+      </CatalogToolbar>
       {selectionMode ? (
         <div className="project-selection-toolbar" aria-busy={selectionBusy}>
           <div className="project-selection-summary">
@@ -243,12 +265,12 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
             {selectionError ? <span className="project-selection-error" role="alert">{selectionError}</span> : null}
           </div>
           <div className="project-selection-actions">
-            <button className="filter-btn clear-glass-control" type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchAction("favorite")}>
+            <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchAction("favorite")}>
               {selectionBusy && batchAction === "favorite" ? "Saving…" : favoriteActionLabel}
-            </button>
-            <button className="filter-btn clear-glass-control" type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchAction("trash")}>
+            </CatalogFilterButton>
+            <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchAction("trash")}>
               {selectionBusy && batchAction === "trash" ? "Moving…" : "Move to trash"}
-            </button>
+            </CatalogFilterButton>
           </div>
         </div>
       ) : null}
@@ -257,6 +279,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
         refreshing={projectCatalogRefreshing}
         onRetry={refreshProjects}
       />
+      {actionNotice ? <div className={`project-action-toast${actionToastExiting ? " is-exiting" : ""}`} role="status" aria-live="polite">{actionNotice}</div> : null}
       <ProjectList
         leading={<CreateCard title="New Project" onClick={createProject} />}
         projects={projects}
