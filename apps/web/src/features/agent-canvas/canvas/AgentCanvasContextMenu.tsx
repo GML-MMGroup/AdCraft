@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { PlusIcon, TrashIcon } from "../../../icons.tsx";
+import { PlusIcon, TrashIcon, UploadIcon } from "../../../icons.tsx";
 import type { CanvasPositionV2 } from "../../../types-v2.ts";
 import type { AgentCanvasVisibleNodeTypeV2 } from "../model/nodeDefaults.ts";
 import { AgentCanvasNodePicker } from "./AgentCanvasNodePicker.tsx";
@@ -15,11 +15,15 @@ type AgentCanvasContextMenuProps = AgentCanvasContextMenuBaseProps & (
   | {
     canvasPosition: CanvasPositionV2;
     onCreateNode: (nodeType: AgentCanvasVisibleNodeTypeV2, position: CanvasPositionV2) => void;
+    onUploadMedia?: (position: CanvasPositionV2) => void;
+    uploading?: boolean;
     onDeleteNode?: never;
   }
   | {
     canvasPosition?: never;
     onCreateNode?: never;
+    onUploadMedia?: never;
+    uploading?: never;
     onDeleteNode: () => void;
   }
 );
@@ -41,11 +45,13 @@ export function AgentCanvasContextMenu({
   canvasPosition,
   onCreateNode,
   onDeleteNode,
+  onUploadMedia,
+  uploading = false,
   onClose,
   onRelocate,
 }: AgentCanvasContextMenuProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const menuHeight = pickerOpen ? NODE_PICKER_MENU_HEIGHT : ACTION_MENU_HEIGHT;
+  const menuHeight = pickerOpen ? NODE_PICKER_MENU_HEIGHT : ACTION_MENU_HEIGHT + (onUploadMedia ? 42 : 0);
   const boundedPosition = useMemo(
     () => boundedMenuPosition(menuPosition, menuHeight),
     [menuHeight, menuPosition],
@@ -97,6 +103,7 @@ export function AgentCanvasContextMenu({
             onSelect={(nodeType) => onCreateNode(nodeType, canvasPosition)}
           />
         ) : (
+          <>
           <button
             type="button"
             className="agent-canvas-context-menu__action"
@@ -107,6 +114,19 @@ export function AgentCanvasContextMenu({
             <PlusIcon />
             <span>Add node</span>
           </button>
+          {onUploadMedia && canvasPosition ? (
+            <button
+              type="button"
+              className="agent-canvas-context-menu__action"
+              role="menuitem"
+              disabled={uploading}
+              onClick={() => onUploadMedia(canvasPosition)}
+            >
+              <UploadIcon />
+              <span>{uploading ? "Uploading…" : "Upload image or video"}</span>
+            </button>
+          ) : null}
+          </>
         )}
       </div>
     </>
