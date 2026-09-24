@@ -653,6 +653,20 @@
   animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
 }
 
+.agent-chat__guided-answer-pair {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+}
+
+.agent-chat__guided-question-bubble {
+  animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+.agent-chat__guided-question-bubble .agent-chat__message-body {
+  margin: 0;
+}
+
 .agent-chat__guided-answer-bubble .agent-chat__message-body {
   display: grid;
   gap: 3px;
