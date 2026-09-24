@@ -15,32 +15,30 @@ async function open() {
   fireEvent.click(screen.getByRole("button",{name:"打开最终审阅"}));
   await screen.findByText("方案内容完整");
 }
-it("requires review and sends precisely the displayed server digest", async () => {
+it("confirms directly and sends precisely the displayed server digest", async () => {
   await open();
   const button=screen.getByRole("button",{name:"确认并锁定创意方案"}) as HTMLButtonElement;
-  expect(button.disabled).toBe(true);expect(agentCanvasApi.brandLockTreatment).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("checkbox")); fireEvent.click(button);fireEvent.click(button);
+  expect(button.disabled).toBe(false); fireEvent.click(button);fireEvent.click(button);
   expect(agentCanvasApi.brandLockTreatment).toHaveBeenCalledExactlyOnceWith("w","a".repeat(64));
   await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
 });
 it("retains the reviewed digest on production handoff failure", async () => {
   vi.mocked(agentCanvasApi.brandLockTreatment).mockRejectedValue({code:"requirement_persistence_failed"});
-  await open();fireEvent.click(screen.getByRole("checkbox"));fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));await screen.findByRole("alert");
+  await open();fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));
   await waitFor(()=>expect(agentCanvasApi.brandLockTreatment).toHaveBeenCalledTimes(2));
   expect(vi.mocked(agentCanvasApi.brandLockTreatment).mock.calls.map(c=>c[1])).toEqual(["a".repeat(64),"a".repeat(64)]);
 });
 it("blocks stale digest and requires renewed review after refresh", async () => {
-  vi.mocked(agentCanvasApi.brandLockTreatment).mockRejectedValue({code:"brand_context_stale"});await open();fireEvent.click(screen.getByRole("checkbox"));fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));await screen.findByRole("alert");
+  vi.mocked(agentCanvasApi.brandLockTreatment).mockRejectedValue({code:"brand_context_stale"});await open();fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));await screen.findByRole("alert");
   expect((screen.getByRole("button",{name:"确认并锁定创意方案"}) as HTMLButtonElement).disabled).toBe(true);
   vi.mocked(agentCanvasApi.brandDecisions).mockResolvedValue(panel("b".repeat(64)));
   fireEvent.click(screen.getByRole("button",{name:"重新加载审阅"}));await waitFor(()=>expect(screen.queryByRole("alert")).toBeNull());
-  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
-  fireEvent.click(screen.getByRole("checkbox"));fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));
+  fireEvent.click(screen.getByRole("button",{name:"确认并锁定创意方案"}));
   await waitFor(()=>expect(agentCanvasApi.brandLockTreatment).toHaveBeenLastCalledWith("w","b".repeat(64)));
 });
 it("keeps incomplete documents unconfirmable", async () => {
   vi.mocked(agentCanvasApi.brandDecisions).mockResolvedValue(panel("a".repeat(64),false));
-  render(<BrandTreatmentConfirmation workflowId="w" responseLocale="zh" onConfirmed={vi.fn()}/>);fireEvent.click(screen.getByRole("button",{name:"打开最终审阅"}));await screen.findByText("方案尚不完整");fireEvent.click(screen.getByRole("checkbox"));
+  render(<BrandTreatmentConfirmation workflowId="w" responseLocale="zh" onConfirmed={vi.fn()}/>);fireEvent.click(screen.getByRole("button",{name:"打开最终审阅"}));await screen.findByText("方案尚不完整");
   expect((screen.getByRole("button",{name:"确认并锁定创意方案"}) as HTMLButtonElement).disabled).toBe(true);
 });

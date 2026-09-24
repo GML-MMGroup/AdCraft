@@ -16,13 +16,12 @@ export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProdu
   const [panel, setPanel] = useState<BrandDecisionPanelV1 | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [reviewed, setReviewed] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [locked, setLocked] = useState(false);
   const [editing, setEditing] = useState<BrandTreatmentStepResultV1 | null>(null);
   async function refresh() {
     if (inFlight.current) return;
-    inFlight.current = true; setPending(true); setReviewed(false);
+    inFlight.current = true; setPending(true);
     try {
       const next = await agentCanvasApi.brandDecisions(workflowId);
       if (mounted.current) { setPanel(next); setNeedsRefresh(false); setError(""); setEditing(null); }
@@ -38,7 +37,7 @@ export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProdu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const document = panel?.treatment_document;
-  const canConfirm = reviewed && document?.complete === true && document.missing_sections.length === 0
+  const canConfirm = document?.complete === true && document.missing_sections.length === 0
     && /^[a-f0-9]{64}$/.test(document.content_digest) && !panel?.treatment_locked && !needsRefresh && !editing && !locked;
   async function confirm() {
     if (!canConfirm || !document || inFlight.current) return;
@@ -53,7 +52,7 @@ export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProdu
       if (!mounted.current) return;
       const code = cause && typeof cause === "object" && "code" in cause ? String(cause.code) : "";
       if (["brand_context_stale","brand_treatment_review_required","brand_stage_action_mismatch","brand_treatment_incomplete"].includes(code)) {
-        setNeedsRefresh(true); setReviewed(false);
+        setNeedsRefresh(true);
         setError("内容已改变、未完整或阶段已变化。请重新加载并审阅后再确认。");
       } else {
         if (code === "requirement_revision_conflict") {
@@ -78,12 +77,11 @@ export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProdu
       <section><h3>八项创意步骤</h3>{(document?.treatment_steps ?? panel.treatment_steps).map(step => <article key={step.step_key}>
         <h4>{step.selected_label}</h4>
         {editing?.step_key === step.step_key ? <TreatmentStepEditor step={editing} panel={panel}
-          onCancel={() => setEditing(null)} onSaved={next => { setPanel(next); setReviewed(false); setNeedsRefresh(false); setEditing(null); }}/>
+          onCancel={() => setEditing(null)} onSaved={next => { setPanel(next); setNeedsRefresh(false); setEditing(null); }}/>
           : <><TreatmentSections detail={step.structured_detail}/>{!step.structured_detail && <p>{step.detail || "历史步骤没有完整段落，请显式编辑补齐。"}</p>}
-            {!panel.treatment_locked && !locked && <button type="button" disabled={pending || !!editing || needsRefresh} onClick={() => { setReviewed(false); setEditing(step); }}>编辑此步骤</button>}</>}
+            {!panel.treatment_locked && !locked && <button type="button" disabled={pending || !!editing || needsRefresh} onClick={() => setEditing(step)}>编辑此步骤</button>}</>}
       </article>)}</section>
       {panel.treatment_locked && <p>此方案已锁定，内容只读。</p>}
-      <label><input type="checkbox" checked={reviewed} disabled={pending || !!editing || needsRefresh || locked} onChange={e => setReviewed(e.target.checked)}/>我已审阅当前完整方案及执行限制</label>
       <button type="button" disabled={!canConfirm || pending} onClick={() => void confirm()}>{pending ? "正在确认…" : "确认并锁定创意方案"}</button>
     </>}
   </dialog>, window.document.body);
