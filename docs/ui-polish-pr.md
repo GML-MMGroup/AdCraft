@@ -1,39 +1,49 @@
-# UI Polish Proposal: Improve Workflow Discoverability
+# UI/UX Proposal: Make the AdCraft Workflow Easier to Discover
 
 ## Summary
 
-This proposal focuses on a low-risk UI polish pass for the AdCraft web app. It keeps the current React, React Flow, asset catalog, and generation workflow architecture intact while making the product easier to understand on first use.
+This proposal recommends a focused, low-risk frontend improvement pass for AdCraft. The goal is to help a new user understand the path from project creation to final video without changing the existing generation architecture.
+
+The proposal is based on the current web app structure: Home, Projects, Assets, API Space, and the Agent Canvas.
 
 ## Problems observed
 
-- The homepage, Projects, Assets, and Agent Canvas use related but noticeably different visual languages. The cinematic homepage, glass-heavy library views, and dark canvas do not always feel like one product.
-- The first-run path is not explicit. A new user must infer how Home, Projects, Assets, API Space, and a workflow canvas fit together.
-- The Agent Canvas exposes several high-value actions at the same visual level: run all, run a node, layout, assets, chat, and runtime controls. This increases decision cost before the user understands the workflow.
-- API and runtime status indicators communicate state, but not always the next action required from the user.
-- Empty, loading, and error states are functional but could do more to explain what to do next.
-- The canvas keeps a two-column layout with a fixed chat panel and limited responsive adaptation, which can make the workflow difficult to use at narrower widths.
+- The homepage, Projects, Assets, and Agent Canvas have different surface, border, radius, and motion conventions. The product feels like several related screens rather than one continuous workflow.
+- The first-run path is implicit. Users must discover how project creation, assets, API configuration, and the canvas relate to one another.
+- The Agent Canvas places execution, layout, asset browsing, chat visibility, and runtime actions close together. The available actions are powerful, but their priority is not immediately clear.
+- API and runtime indicators expose useful state, but a status such as “not configured” should also explain the next action and where to take it.
+- Empty, loading, and error states generally describe what happened, but do not consistently provide a recovery action or an example of the expected input.
+- The canvas uses a fixed chat column and a dense two-panel layout. At narrower widths, secondary controls compete with the primary workflow.
 
 ## Proposed changes
 
-1. Align shared visual tokens across `theme.css`, `projects.css`, `assets.css`, and the Agent Canvas styles: surface colors, borders, radii, spacing, and action emphasis.
-2. Add concise onboarding guidance to the first empty project/workflow state, including the recommended sequence from brief to generated video.
-3. Group Agent Canvas actions by intent: create/edit, execute, layout, assets, and assistant visibility. Keep destructive or expensive actions visually distinct.
-4. Update API, runtime, loading, and error messages to include a short next step or recovery action.
-5. Improve narrow-screen behavior by collapsing secondary panels and preserving access to the primary canvas actions without changing the underlying workflow model.
-6. Preserve existing navigation, data contracts, generation logic, React Flow behavior, and asset APIs.
+1. Establish a small set of shared UI tokens for surfaces, borders, radii, spacing, text hierarchy, and action emphasis. Apply them to the existing page styles rather than adding a new UI library.
+2. Add a compact first-run guide to empty project and workflow states. It should show the recommended sequence: configure a provider, define the brief, review generated assets, and run the workflow.
+3. Reorganize Agent Canvas actions into clear intent groups: edit, execute, layout, assets, and assistant visibility. Preserve all existing actions and keyboard access.
+4. Make API, runtime, loading, and error states actionable by pairing the state message with a next step such as “Open API Space”, “Retry”, or “Run this node”.
+5. On narrow viewports, collapse secondary panels and keep the primary canvas action, status, and navigation reachable without horizontal scrolling.
+6. Keep navigation, data contracts, model providers, generation logic, React Flow behavior, and asset APIs unchanged.
 
 ## Acceptance criteria
 
-- The main pages share a recognizable color, type, spacing, and control language.
-- A new user can identify the next step from an empty project or workflow state without consulting external documentation.
-- The primary Agent Canvas action is visually clear in idle, running, success, and error states.
-- API and runtime status messages explain both the current state and the next available action.
-- The workflow remains usable on desktop, tablet, and narrow viewport widths.
-- Keyboard focus, visible focus states, tooltips, and accessible labels remain available for icon-only actions.
+- Home, Projects, Assets, and Agent Canvas share the same core visual tokens while retaining their individual purpose.
+- An empty project/workflow view communicates the next step and provides a direct action.
+- Agent Canvas makes the primary execution action clear in idle, running, success, and error states.
+- API and runtime states include an understandable recovery or configuration path.
+- The workflow remains usable at desktop, tablet, and narrow viewport widths without horizontal scrolling.
+- Icon-only controls retain accessible names, visible focus, and useful tooltips where appropriate.
+
+## Suggested implementation order
+
+1. Define and apply shared tokens.
+2. Improve empty and status states.
+3. Rebalance Agent Canvas toolbar hierarchy.
+4. Add narrow-screen panel behavior.
+5. Run interaction, accessibility, and browser smoke checks.
 
 ## Scope and non-goals
 
-This is intended as an incremental frontend improvement. It does not introduce a new component library, replace React Flow, redesign the backend, change model providers, or alter generation behavior.
+This is an incremental frontend improvement. It does not introduce a new component library, replace React Flow, redesign the backend, change model providers, alter generation behavior, or change the visual identity of the product.
 
 ## Verification
 
@@ -42,3 +52,6 @@ This is intended as an incremental frontend improvement. It does not introduce a
 - `npm run test:browser:agent-role:smoke` when browser test dependencies are available
 - Manual checks for fresh start, API-not-configured, API-ready, empty project, populated project, asset browsing, canvas execution, keyboard navigation, and narrow viewport layouts
 
+## Reviewer notes
+
+This document is intentionally scoped as a proposal. It is designed to establish a shared UI direction before making broader visual changes, while keeping the implementation easy to review and easy to revert.
