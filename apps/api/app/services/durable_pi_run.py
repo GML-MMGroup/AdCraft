@@ -17,6 +17,11 @@ from app.persistence.agent_run_repository import (
     AgentRunRepositoryError,
 )
 from app.persistence.database import create_v2_database
+from app.persistence.provider_model_repository import ProviderModelRepository
+from app.services.configured_agent_conformance import (
+    require_configured_operation,
+    requires_operation_evidence,
+)
 from app.schemas.agent_runtime import (
     AgentPresentationDeltaV1,
     AgentRunRequest,
@@ -60,6 +65,8 @@ _PRE_SUBMISSION_FAILURE_CODES = {
     "agent_prompt_input_registry_invalid",
     "provider_credentials_invalid",
     "provider_credentials_missing",
+    "model_conformance_required",
+    "model_conformance_revoked",
 }
 _PROVIDER_FAILURE_CODES = {
     "agent_provider_timeout",
@@ -78,6 +85,8 @@ _SAFE_FAILURE_MESSAGES = {
     "agent_model_incompatible": "Agent model is incompatible with this operation.",
     "agent_model_policy_mismatch": "Agent model policy rejected this operation.",
     "agent_model_unavailable": "Agent model is unavailable.",
+    "model_conformance_required": "The selected Agent model requires current operation conformance evidence.",
+    "model_conformance_revoked": "The selected Agent model operation conformance has been revoked.",
     "agent_operation_not_allowed": "Agent operation is not allowed.",
     "agent_protocol_mismatch": "Agent runtime protocol validation failed.",
     "agent_publication_failed": "Agent result publication failed.",
@@ -267,6 +276,9 @@ class DurablePiRunService:
                 raise
 
         try:
+            self._require_operation_evidence(
+                ProviderModelRepository(database), repository, request, model_ref=model_ref
+            )
             record, created = repository.create_or_load(
                 request,
                 lease_owner_id=lease_owner_id,
@@ -438,6 +450,46 @@ class DurablePiRunService:
             raise safe_error from error
         finally:
             database.dispose()
+
+    @staticmethod
+    def _require_operation_evidence(
+        models: ProviderModelRepository,
+        runs: AgentRunRepository,
+        request: AgentRunRequest,
+        *,
+        model_ref: str | None,
+    ) -> None:
+        frozen_ref = request.model_ref or model_ref
+        if frozen_ref is None:
+            return
+        try:
+            model = models.get_model(frozen_ref)
+        except ValueError:
+            # Existing missing-model handling remains with model resolution/the credential broker.
+            return
+        if not requires_operation_evidence(model):
+            return
+        try:
+            previous = runs.load(request.run_id)
+        except AgentRunRepositoryError as error:
+            if error.code != "agent_run_not_found":
+                raise
+        else:
+            if (
+                previous.status in {"completed", "failed", "cancelled"}
+                or previous.completed_result_identity is not None
+            ):
+                return
+        try:
+            require_configured_operation(
+                model,
+                request.operation,
+                models.current_conformance(model_ref=frozen_ref, operation=request.operation),
+            )
+        except ValueError as error:
+            raise PiAgentRuntimeError(
+                str(error), _safe_error_message_for_code(str(error)), retryable=False
+            ) from error
 
     @staticmethod
     def _replay_staged_result(

@@ -1488,6 +1488,25 @@ class ProviderModelCatalogService:
         )
         if not credential_managed:
             return model
+        from app.services.configured_agent_conformance import (
+            configured_operation_status,
+            requires_operation_evidence,
+        )
+        from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
+
+        if requires_operation_evidence(model):
+            operations = VideoAgentOperationRegistry().names()
+            if not any(
+                evidence.operation in operations
+                and configured_operation_status(model, evidence.operation, evidence)
+                in {"compatible", "certified"}
+                for evidence in self._repository.current_conformances(model.model_ref)
+            ):
+                return replace(
+                    model,
+                    availability="unavailable",
+                    unavailable_reason="model_conformance_required",
+                )
         available = (
             model.model_ref in _CREDENTIAL_INDEPENDENT_SELECTION_REFS
             or self._capability_is_available(model.provider_id, model.capability)

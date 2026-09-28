@@ -19,6 +19,12 @@ from app.schemas.provider_models import (
 )
 from app.services.provider_model_catalog import image_resolution_capabilities
 from app.services.provider_model_versions import ProviderModelVersionService
+from app.services.provider_model_evidence import ProviderModelEvidenceService
+from app.schemas.provider_model_evidence import (
+    ConfiguredAgentEvidenceRequestV1,
+    ConfiguredAgentEvidenceTargetsV1,
+    ConfiguredAgentEvidenceReceiptV1,
+)
 from app.schemas.provider_settings import (
     ProviderCredentialErrorDetail,
     ProviderCredentialErrorResponse,
@@ -41,6 +47,47 @@ def get_version_service(
         yield ProviderModelVersionService(ProviderModelRepository(database))
     finally:
         database.dispose()
+
+
+def get_evidence_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Iterator[ProviderModelEvidenceService]:
+    database = create_v2_database(settings.media_data_dir)
+    try:
+        yield ProviderModelEvidenceService(ProviderModelRepository(database))
+    finally:
+        database.dispose()
+
+
+@router.get(
+    "/providers/{provider_id}/models/versions/conformance",
+    response_model=ConfiguredAgentEvidenceTargetsV1,
+)
+def list_operation_evidence_targets(
+    provider_id: str,
+    model_ref: str,
+    service: Annotated[ProviderModelEvidenceService, Depends(get_evidence_service)],
+) -> ConfiguredAgentEvidenceTargetsV1:
+    try:
+        return service.targets(provider_id, model_ref)
+    except ValueError as error:
+        raise _error(error) from error
+
+
+@router.post(
+    "/providers/{provider_id}/models/versions/conformance",
+    response_model=ConfiguredAgentEvidenceReceiptV1,
+    status_code=201,
+)
+def submit_operation_evidence(
+    provider_id: str,
+    payload: ConfiguredAgentEvidenceRequestV1,
+    service: Annotated[ProviderModelEvidenceService, Depends(get_evidence_service)],
+) -> ConfiguredAgentEvidenceReceiptV1:
+    try:
+        return service.submit(provider_id, payload, now=datetime.now(timezone.utc).isoformat())
+    except ValueError as error:
+        raise _error(error) from error
 
 
 @router.get("/providers/{provider_id}/models/templates", response_model=ProviderModelListResponseV2)
@@ -95,6 +142,8 @@ def _error(error: ValueError) -> HTTPException:
         "model_version_exists",
         "model_version_conflict",
         "model_version_not_configured",
+        "model_version_review_required",
+        "model_conformance_identity_invalid",
     }
     code = str(error) if str(error) in allowed else "model_version_invalid"
     return HTTPException(

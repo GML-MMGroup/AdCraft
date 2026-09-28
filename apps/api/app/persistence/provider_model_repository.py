@@ -558,6 +558,7 @@ class ProviderModelRepository:
                             ProviderModelRow.provider_id,
                             ProviderModelRow.provider_model_id,
                             ProviderModelRow.capability_metadata_json,
+                            ProviderModelRow.source,
                         ).where(ProviderModelRow.model_ref == model_ref)
                     )
                     .mappings()
@@ -714,6 +715,41 @@ class ProviderModelRepository:
         except SQLAlchemyError as error:
             raise RuntimeError("provider_model_persistence_failed") from error
         return _conformance_from_row(row) if row is not None else None
+
+    def current_conformances(self, model_ref: str) -> tuple[ProviderModelConformanceRunRecord, ...]:
+        """Read the latest attempt per operation, including incomplete/revoked attempts."""
+
+        ranked = (
+            select(
+                ProviderModelConformanceRunRow.conformance_run_id,
+                func.row_number()
+                .over(
+                    partition_by=ProviderModelConformanceRunRow.operation,
+                    order_by=(
+                        ProviderModelConformanceRunRow.started_at.desc(),
+                        ProviderModelConformanceRunRow.conformance_run_id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .where(ProviderModelConformanceRunRow.model_ref == model_ref)
+            .subquery()
+        )
+        with self._database.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    _conformance_select()
+                    .join(
+                        ranked,
+                        ranked.c.conformance_run_id
+                        == ProviderModelConformanceRunRow.conformance_run_id,
+                    )
+                    .where(ranked.c.rank == 1)
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(_conformance_from_row(row) for row in rows)
 
 
 def _ensure_connection(connection: Any, provider_id: str, updated_at: str) -> None:
@@ -984,7 +1020,9 @@ def _profile_matches(
 ) -> bool:
     try:
         metadata = json.loads(str(row["capability_metadata_json"]))
-        profile = metadata["adapter_profile"]
+        profile = metadata.get("adapter_profile")
+        if profile is None and row["source"] == "configured":
+            profile = {**metadata, "model_ref": model_ref}
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
     return isinstance(profile, Mapping) and all(

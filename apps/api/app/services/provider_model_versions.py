@@ -14,6 +14,7 @@ from app.services.provider_model_catalog import (
     compatible_version_manifests,
     is_reserved_model_identity,
 )
+from app.services.configured_agent_conformance import NATIVE_AGENT_ADAPTER
 
 
 class ProviderModelVersionService:
@@ -48,6 +49,12 @@ class ProviderModelVersionService:
             metadata["adapter_profile"] = deepcopy(dict(manifest.adapter_profile))
         revision = f"configured-{sha256(model_ref.encode()).hexdigest()[:32]}-v1"
         metadata["capability_revision"] = revision
+        if manifest.capability == "text":
+            metadata.update(
+                adapter_id=NATIVE_AGENT_ADAPTER,
+                adapter_revision=NATIVE_AGENT_ADAPTER,
+                transport_kind="pi_native_openai_compatible",
+            )
         metadata["version_registration"] = {
             "template_model_ref": manifest.model_ref,
             "template_catalog_revision": parent.catalog_revision,
