@@ -809,6 +809,15 @@ class V2ProviderExecutor:
         provider_payload: dict[str, Any],
     ) -> V2ProviderResult:
         if self._settings.media_mode.strip().lower() == "real":
+            provider_model_id = provider_payload.get("provider_model_id")
+            if not isinstance(provider_model_id, str) or not provider_model_id.strip():
+                return V2ProviderResult(
+                    status="failed",
+                    media_type=media_type,
+                    provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
+                    error_code="provider_model_id_missing",
+                    error_message="The frozen provider model ID is missing. Check the model configuration in API SPACE.",
+                )
             native_result = self._execute_native_minimal(
                 workflow_id=workflow_id,
                 slot_type=slot_type,
@@ -863,6 +872,8 @@ class V2ProviderExecutor:
                     ):
                         if isinstance(value := provider_payload.get(field), str) and value.strip():
                             image_request[field] = value.strip()
+                    if provider_payload.get("omit_sequential_image_generation") is True:
+                        image_request["omit_sequential_image_generation"] = True
                     output = provider.generate_v2_canonical_image(image_request, workflow_id)
                 elif media_type == "video":
                     provider = self._media_provider()
@@ -883,13 +894,15 @@ class V2ProviderExecutor:
                         )
                         response = provider.submit_seedance_segment_task(  # type: ignore[attr-defined]
                             segment,
-                            VolcengineSeedanceAdapter(self._settings),
+                            VolcengineSeedanceAdapter(
+                                replace(self._settings, video_generation_model=provider_model_id)
+                            ),
                             ratio,
                             resolution,
                         )
                         output = {
                             "provider": "volcengine-seedance-agent-canvas",
-                            "model": self._settings.video_generation_model,
+                            "model": provider_model_id,
                             "segments": [
                                 {
                                     **segment,
@@ -1271,7 +1284,7 @@ class V2ProviderExecutor:
                     ),
                     provider_model=str(
                         result_descriptor.get("provider_model")
-                        or self._settings.video_generation_model
+                        or _native_provider_model_id(provider_payload)
                     ),
                     provider_payload=provider_payload,
                     reference_asset_ids=list(provider_payload.get("reference_asset_ids") or []),
@@ -2042,6 +2055,11 @@ class V2ProviderExecutor:
             "prompt_contract_name": payload.get("prompt_contract_name"),
             "prompt_contract_version": payload.get("prompt_contract_version"),
             "prompt_audit": audit,
+            **{
+                field: payload[field]
+                for field in ("provider_model_id", "omit_sequential_image_generation")
+                if field in payload
+            },
         }
 
     def _execute_real_audio(

@@ -46,6 +46,7 @@ class CatalogSyncResult:
     provider_id: str
     status: str
     catalog_revision: int | None
+    discovery_mode: str = "static_manifest"
 
 
 GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
@@ -647,6 +648,7 @@ _TRUSTED_MANIFESTS = (
         display_name="Doubao Seedream 5.0 Pro",
         capability="image",
         capability_metadata={
+            "omit_sequential_image_generation": True,
             "accepted_input_types": ["text", "image"],
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
@@ -987,10 +989,32 @@ class StaticProviderCatalogAdapter:
         )
 
 
+def compatible_version_manifests(provider_id: str) -> tuple[TrustedModelManifest, ...]:
+    """Only model-independent native families may serve as version templates."""
+    return tuple(
+        manifest
+        for manifest in _TRUSTED_MANIFESTS
+        if manifest.provider_id == provider_id
+        and manifest.model_ref not in _RETIRED_MODEL_REFS
+        and (
+            (provider_id in {"siliconflow", "volcengine_ark"} and manifest.capability == "text")
+            or (provider_id == "volcengine_ark" and manifest.capability in {"image", "video"})
+        )
+    )
+
+
+def is_reserved_model_identity(model_ref: str) -> bool:
+    """Configured versions cannot resurrect retired IDs or replace code-owned ones."""
+    return model_ref in _RETIRED_MODEL_REFS or any(
+        manifest.model_ref == model_ref for manifest in _TRUSTED_MANIFESTS
+    )
+
+
 class OpenRouterCatalogAdapter:
     """Confirm the two trusted OpenRouter slugs from bounded metadata reads."""
 
     provider_id = "openrouter"
+    discovery_mode = "remote"
     _APPROVED_BASE_URL = "https://openrouter.ai/api/v1"
     _TEXT_MODEL_ID = "openai/gpt-5.6-sol"
     _IMAGE_MODEL_ID = "openai/gpt-image-2"
@@ -1084,6 +1108,7 @@ class ProviderModelCatalogService:
         *,
         adapters: tuple[ProviderCatalogAdapter, ...] | None = None,
         openrouter_adapter: ProviderCatalogAdapter | None = None,
+        siliconflow_adapter: ProviderCatalogAdapter | None = None,
         capability_available: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._repository = repository
@@ -1099,6 +1124,10 @@ class ProviderModelCatalogService:
             )
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
+        if siliconflow_adapter is not None:
+            if siliconflow_adapter.provider_id != "siliconflow":
+                raise ValueError("provider_not_supported")
+            self._adapters["siliconflow"] = siliconflow_adapter
         if openrouter_adapter is not None:
             if openrouter_adapter.provider_id != "openrouter":
                 raise ValueError("provider_not_supported")
@@ -1124,6 +1153,12 @@ class ProviderModelCatalogService:
             raise ValueError("model_catalog_sync_failed") from exc
 
         models = self._project_models(provider_id, visible_model_ids)
+        configured_refs = {
+            model.model_ref
+            for model in self._repository.list_models(provider_id=provider_id)
+            if model.source == "configured"
+        }
+        models = [model for model in models if model["model_ref"] not in configured_refs]
         persisted = self._repository.upsert_models(
             provider_id=provider_id,
             models=models,
@@ -1144,6 +1179,9 @@ class ProviderModelCatalogService:
             provider_id=provider_id,
             status="succeeded",
             catalog_revision=revision,
+            discovery_mode=getattr(
+                self._adapters[provider_id], "discovery_mode", "static_manifest"
+            ),
         )
 
     def reconcile_trusted_models(

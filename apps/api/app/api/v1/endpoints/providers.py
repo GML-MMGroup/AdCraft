@@ -196,6 +196,7 @@ def sync_provider_models(
         provider_id=result.provider_id,
         sync_run_id=result.sync_run_id,
         catalog_revision=result.catalog_revision,
+        discovery_mode=result.discovery_mode,
     )
 
 
@@ -241,6 +242,16 @@ def list_models(
 def _adapter_response_fields(metadata: dict[str, object]) -> dict[str, object]:
     profile = metadata.get("adapter_profile")
     if not isinstance(profile, dict):
+        registration = metadata.get("version_registration")
+        if isinstance(registration, dict):
+            state = registration.get("state")
+            return {
+                "conformance_status": {"approved": "compatible", "rejected": "revoked"}.get(
+                    state, "unverified"
+                ),
+                "release_tier": "compatible",
+                "transport_kind": "pi_native_openai_compatible",
+            }
         return {}
     fields: dict[str, object] = {}
     for key in (

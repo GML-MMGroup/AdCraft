@@ -220,7 +220,18 @@ def get_provider_model_catalog_service(
         if settings.openrouter_api_key
         else None
     )
-    service = ProviderModelCatalogService(repository, openrouter_adapter=openrouter_adapter)
+    from app.services.provider_model_discovery import SiliconFlowCatalogAdapter
+
+    siliconflow_adapter = (
+        SiliconFlowCatalogAdapter(
+            api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url
+        )
+        if settings.siliconflow_api_key
+        else None
+    )
+    service = ProviderModelCatalogService(
+        repository, openrouter_adapter=openrouter_adapter, siliconflow_adapter=siliconflow_adapter
+    )
     try:
         yield service
     finally:

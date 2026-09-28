@@ -34,6 +34,7 @@ def serialize_volcengine_image_generation_request(
     required_reference_asset_ids: list[str],
     response_format: str = "url",
     watermark: bool = False,
+    omit_sequential_image_generation: bool = False,
 ) -> tuple[dict[str, Any], V2ProviderReferenceWireAudit]:
     required_asset_ids = _ordered_unique(required_reference_asset_ids)
     audit = V2ProviderReferenceWireAudit(
@@ -47,9 +48,12 @@ def serialize_volcengine_image_generation_request(
         "size": size,
         "watermark": watermark,
     }
-    if model != _SEEDREAM_PRO_MODEL_ID:
+    omit_sequential = omit_sequential_image_generation or model == _SEEDREAM_PRO_MODEL_ID
+    if not omit_sequential:
         body["sequential_image_generation"] = "disabled"
-    _validate_base_body(body, canonical_prompt=canonical_prompt, audit=audit)
+    _validate_base_body(
+        body, canonical_prompt=canonical_prompt, audit=audit, omit_sequential=omit_sequential
+    )
 
     serialized_values: list[str] = []
     serialized_asset_ids: list[str] = []
@@ -98,6 +102,7 @@ def serialize_volcengine_image_generation_request(
         canonical_prompt=canonical_prompt,
         required_reference_asset_ids=required_asset_ids,
         audit=audit,
+        omit_sequential=omit_sequential,
     )
     return body, audit
 
@@ -107,6 +112,7 @@ def _validate_base_body(
     *,
     canonical_prompt: str,
     audit: V2ProviderReferenceWireAudit,
+    omit_sequential: bool = False,
 ) -> None:
     if not all(isinstance(body.get(key), str) and body[key].strip() for key in ("model", "size")):
         raise _contract_error("Volcengine image request requires model and size.", audit)
@@ -114,7 +120,7 @@ def _validate_base_body(
         raise _contract_error(
             "Volcengine image request prompt must match the canonical prompt.", audit
         )
-    if body.get("model") == _SEEDREAM_PRO_MODEL_ID:
+    if omit_sequential or body.get("model") == _SEEDREAM_PRO_MODEL_ID:
         if "sequential_image_generation" in body:
             raise _contract_error(
                 "Seedream Pro does not accept group generation parameters.", audit
@@ -129,8 +135,11 @@ def _validate_final_body(
     canonical_prompt: str,
     required_reference_asset_ids: list[str],
     audit: V2ProviderReferenceWireAudit,
+    omit_sequential: bool = False,
 ) -> None:
-    _validate_base_body(body, canonical_prompt=canonical_prompt, audit=audit)
+    _validate_base_body(
+        body, canonical_prompt=canonical_prompt, audit=audit, omit_sequential=omit_sequential
+    )
     if "references" in body or "context" in body:
         raise _contract_error("Volcengine image request leaked an internal field.", audit)
     image = body.get("image")

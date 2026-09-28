@@ -216,6 +216,38 @@ class ProviderModelSummaryV1(BaseModel):
     catalog_revision: int
 
 
+class ProviderModelVersionRequestV1(BaseModel):
+    """Register an exact provider ID using a server-owned compatibility template."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_model_ref: str = Field(min_length=3, max_length=320)
+    provider_model_id: str = Field(
+        min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/:-]*$"
+    )
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        if not value.strip() or any(ord(char) < 32 for char in value):
+            raise ValueError("Model display name must be nonblank and contain no controls.")
+        return value.strip()
+
+
+class ProviderModelVersionReviewRequestV1(BaseModel):
+    """Explicit operator compatibility attestation, not automatic certification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_ref: str = Field(min_length=3, max_length=320)
+    expected_catalog_revision: int = Field(ge=1)
+    approved: bool
+    evidence_reference: str = Field(
+        min_length=1, max_length=160, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    )
+
+
 class ImageResolutionCapabilitiesV1(BaseModel):
     """Frontend-ready image dimensions accepted by one exact model profile."""
 
@@ -498,3 +530,4 @@ class ProviderModelSyncResponseV1(BaseModel):
     sync_run_id: str
     catalog_revision: int | None = None
     status: Literal["succeeded"] = "succeeded"
+    discovery_mode: Literal["remote", "static_manifest"] = "static_manifest"

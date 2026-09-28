@@ -622,6 +622,11 @@ class MediaNodeExecutor:
             }
         )
         provider_payload.update(_frozen_adapter_identity_payload(context.model_resolution))
+        if media_type == "image":
+            provider_payload["omit_sequential_image_generation"] = (
+                context.model_resolution.capability_metadata.get("omit_sequential_image_generation")
+                is True
+            )
         if prepared.delivered_references:
             provider_payload["reference_assets"] = [
                 reference.provider_asset() for reference in prepared.delivered_references

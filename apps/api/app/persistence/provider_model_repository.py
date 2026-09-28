@@ -8,8 +8,9 @@ import json
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.models import (
@@ -217,7 +218,10 @@ class ProviderModelRepository:
                     else:
                         connection.execute(
                             update(ProviderModelRow)
-                            .where(ProviderModelRow.model_ref == model["model_ref"])
+                            .where(
+                                ProviderModelRow.model_ref == model["model_ref"],
+                                ProviderModelRow.source != "configured",
+                            )
                             .values(**values)
                         )
                 rows = (
@@ -235,6 +239,80 @@ class ProviderModelRepository:
             raise RuntimeError("provider_model_persistence_failed") from error
         by_ref = {_model_from_row(row).model_ref: _model_from_row(row) for row in rows}
         return tuple(by_ref[model["model_ref"]] for model in normalized)
+
+    def insert_configured_model(
+        self, *, provider_id: str, model: Mapping[str, Any], updated_at: str
+    ) -> ProviderModelRecord:
+        """Insert or promote an unsupported discovery; never replace reviewed policy."""
+        values = _normalized_model(provider_id, model)
+        if values["source"] != "configured":
+            raise ValueError("model_version_not_configured")
+        try:
+            with self._database.engine.begin() as connection:
+                _ensure_connection(connection, provider_id, updated_at)
+                statement = sqlite_insert(ProviderModelRow).values(
+                    **values, catalog_revision=1, created_at=updated_at, updated_at=updated_at
+                )
+                result = connection.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[ProviderModelRow.model_ref],
+                        set_={
+                            **values,
+                            "catalog_revision": ProviderModelRow.catalog_revision + 1,
+                            "updated_at": updated_at,
+                        },
+                        where=(ProviderModelRow.source == "discovered")
+                        & (ProviderModelRow.availability == "unsupported"),
+                    )
+                )
+                if result.rowcount != 1:
+                    raise ValueError("model_version_exists")
+                row = (
+                    connection.execute(
+                        _model_select().where(ProviderModelRow.model_ref == values["model_ref"])
+                    )
+                    .mappings()
+                    .one()
+                )
+        except IntegrityError as error:
+            raise ValueError("model_version_exists") from error
+        return _model_from_row(row)
+
+    def review_configured_model(
+        self,
+        *,
+        model_ref: str,
+        expected_revision: int,
+        metadata: Mapping[str, Any],
+        approved: bool,
+        updated_at: str,
+    ) -> ProviderModelRecord:
+        """Compare and swap review metadata without touching execution history."""
+        _assert_no_secret_values(metadata)
+        with self._database.engine.begin() as connection:
+            result = connection.execute(
+                update(ProviderModelRow)
+                .where(
+                    ProviderModelRow.model_ref == model_ref,
+                    ProviderModelRow.source == "configured",
+                    ProviderModelRow.catalog_revision == expected_revision,
+                )
+                .values(
+                    capability_metadata_json=_json_dump(dict(metadata)),
+                    availability="available" if approved else "unavailable",
+                    unavailable_reason=None if approved else "model_version_review_rejected",
+                    catalog_revision=expected_revision + 1,
+                    updated_at=updated_at,
+                )
+            )
+            if result.rowcount != 1:
+                raise ValueError("model_version_conflict")
+            row = (
+                connection.execute(_model_select().where(ProviderModelRow.model_ref == model_ref))
+                .mappings()
+                .one()
+            )
+        return _model_from_row(row)
 
     def get_model(self, model_ref: str) -> ProviderModelRecord:
         try:

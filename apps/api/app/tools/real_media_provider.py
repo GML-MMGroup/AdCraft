@@ -511,13 +511,18 @@ class RealMediaProvider:
         slot_type = str(request.get("slot_type") or "image")
         slot_id = str(request.get("slot_id") or slot_type).replace(":", "_")
         semantic_type = str(request.get("semantic_type") or slot_type)
-        model = str(request.get("provider_model_id") or self._settings.image_generation_model)
+        model = request.get("provider_model_id")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("provider_model_id_missing")
         reference_assets = [
             asset for asset in request.get("reference_assets", []) if isinstance(asset, dict)
         ]
         body, wire_audit = serialize_volcengine_image_generation_request(
             model=model,
             canonical_prompt=prompt,
+            omit_sequential_image_generation=(
+                request.get("omit_sequential_image_generation") is True
+            ),
             size=_normalize_image_generation_size(
                 request.get("size") or self._settings.image_generation_size
             ),

@@ -52,9 +52,9 @@ class ProviderAdapterRegistry:
         record: ProviderModelRecord,
         adapter: ProviderAdapter,
     ) -> None:
-        """Register only a selectable built-in catalog claim."""
+        """Register a selectable built-in or explicitly reviewed catalog claim."""
 
-        if record.source != "built_in" or record.availability != "available":
+        if not _trusted_executable_record(record):
             raise ValueError("model_adapter_unavailable")
         raw_profile = record.capability_metadata.get("adapter_profile")
         try:
@@ -98,7 +98,7 @@ def build_trusted_provider_adapter_registry(
 
     registry = ProviderAdapterRegistry()
     for record in models:
-        if record.source != "built_in" or record.availability != "available":
+        if not _trusted_executable_record(record):
             continue
         raw_profile = record.capability_metadata.get("adapter_profile")
         if raw_profile is None:
@@ -139,3 +139,16 @@ def _adapter_for_profile(
     if profile.transport_kind in {"ark_image_native", "ark_video_native"}:
         return ArkMediaAdapter(profile)
     raise ValueError("provider_adapter_profile_invalid")
+
+
+def _trusted_executable_record(record: ProviderModelRecord) -> bool:
+    if record.availability != "available":
+        return False
+    if record.source == "built_in":
+        return True
+    registration = record.capability_metadata.get("version_registration")
+    return (
+        record.source == "configured"
+        and isinstance(registration, dict)
+        and registration.get("state") == "approved"
+    )
