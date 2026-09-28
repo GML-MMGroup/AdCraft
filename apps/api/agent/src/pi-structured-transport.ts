@@ -1011,14 +1011,21 @@ function repairContent(
 
 function parseObject(value: string | undefined | null) {
   if (!value) return undefined;
+  const candidate = fencedJsonContent(value) ?? value.trim();
+  if (!candidate) return undefined;
   try {
-    const parsed: unknown = JSON.parse(value);
+    const parsed: unknown = JSON.parse(candidate);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Readonly<Record<string, unknown>>)
       : undefined;
   } catch {
     return undefined;
   }
+}
+
+function fencedJsonContent(value: string): string | undefined {
+  const match = value.trim().match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i);
+  return match?.[1]?.trim() || undefined;
 }
 
 function acceptedValue(
