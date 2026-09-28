@@ -1272,6 +1272,12 @@ class ProviderModelCatalogService:
             for manifest in _TRUSTED_MANIFESTS
             if manifest.provider_id == provider_id
         }
+        existing_built_ins = {
+            model.provider_model_id: model
+            for model in self._repository.list_models(provider_id=provider_id)
+            if model.source == "built_in"
+        }
+        static_discovery = isinstance(self._adapters.get(provider_id), StaticProviderCatalogAdapter)
         models: list[dict[str, Any]] = []
         for provider_model_id in sorted(visible_model_ids):
             manifest = trusted.get(provider_model_id)
@@ -1298,6 +1304,20 @@ class ProviderModelCatalogService:
                     }
                 )
                 continue
+            previous = existing_built_ins.get(provider_model_id)
+            if (
+                static_discovery
+                and previous is not None
+                and previous.unavailable_reason == "provider_model_not_visible"
+            ):
+                models.append(
+                    _trusted_projection(
+                        manifest,
+                        available=False,
+                        unavailable_reason="provider_model_not_visible",
+                    )
+                )
+                continue
             models.append(
                 _trusted_projection(
                     manifest,
@@ -1308,11 +1328,7 @@ class ProviderModelCatalogService:
                     or manifest.model_ref in _CREDENTIAL_INDEPENDENT_SELECTION_REFS,
                 )
             )
-        previously_known = {
-            model.provider_model_id
-            for model in self._repository.list_models(provider_id=provider_id)
-            if model.source == "built_in"
-        }
+        previously_known = set(existing_built_ins)
         for provider_model_id in sorted(previously_known.difference(visible_model_ids)):
             manifest = trusted.get(provider_model_id)
             if manifest is None:
