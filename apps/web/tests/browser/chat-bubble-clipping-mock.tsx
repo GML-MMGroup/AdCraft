@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import type { ChatMessageV2 } from "../../src/types-v2.ts";
 import { NaturalMessage } from "../../src/features/agent-canvas/chat/NaturalMessage.tsx";
+import { GuidedAnswerBubble } from "../../src/features/agent-canvas/chat/GuidedAnswerBubble.tsx";
 import { VirtualizedTimeline } from "../../src/features/agent-canvas/chat/VirtualizedTimeline.tsx";
 import { projectNaturalMessagePresentation } from "../../src/features/agent-canvas/chat/naturalMessagePresentation.ts";
 import "../../src/features/agent-canvas/chat/agent-canvas-chat.css";
@@ -23,15 +24,29 @@ const items = [
 ];
 const presentation = projectNaturalMessagePresentation(items);
 const firstOnly = new URLSearchParams(location.search).has("first-only");
+const guidedOnly = new URLSearchParams(location.search).has("guided-only");
+const guidedItems = [
+  message("guided-short", "user", "30 seconds"),
+  message("guided-long", "user", "A restrained skateboard advertisement with clear product details and consistent character styling across every shot."),
+];
 
 createRoot(document.getElementById("root")!).render(
   <aside className="agent-chat" style={{ position: "relative", width: "100%", maxWidth: 640, height: 560 }}>
     <div className="agent-chat__timeline">
       <div className="agent-chat__timeline-content">
         <VirtualizedTimeline
-          items={firstOnly ? [items[1]!] : items}
+          items={guidedOnly ? guidedItems : firstOnly ? [items[1]!] : items}
           getKey={item => item.message_id}
-          renderItem={item => <NaturalMessage message={item} presentation={presentation.get(item.message_id)!} />}
+          renderItem={item => guidedOnly ? (
+            <GuidedAnswerBubble answer={{
+              bubble_id: item.message_id,
+              interaction_id: "guided-interaction",
+              question_id: item.message_id,
+              label: "What should this advertisement communicate?",
+              value: item.text,
+              sequence: item.sequence,
+            }} />
+          ) : <NaturalMessage message={item} presentation={presentation.get(item.message_id)!} />}
         />
       </div>
     </div>

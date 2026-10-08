@@ -19,6 +19,27 @@ async function expectUnclipped(row: Locator) {
 }
 
 for (const width of [390, 720]) {
+  test(`guided answer tails remain inside the paint boundary at width ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 740 });
+    await page.goto(`${url}?guided-only`);
+    for (const key of ["guided-short", "guided-long"]) {
+      const row = page.locator(item(key));
+      const bubble = row.locator(".agent-chat__guided-answer-bubble .agent-chat__message-body");
+      await bubble.scrollIntoViewIfNeeded();
+      await expect(row).toHaveCSS("content-visibility", "auto");
+      await expect.poll(() => bubble.evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const tail = getComputedStyle(element, "::before");
+        const tailBottom = rect.bottom - parseFloat(style.borderBottomWidth) - parseFloat(tail.bottom);
+        const boundary = element.closest(".agent-chat__timeline-virtualized-item")!.getBoundingClientRect();
+        return tail.content !== "none" && parseFloat(tail.borderTopWidth) > 0
+          && tailBottom <= boundary.bottom + 0.1;
+      })).toBe(true);
+      await expect(row.locator(".agent-chat__guided-answer-pair")).toHaveCSS("row-gap", "16px");
+    }
+  });
+
   test(`continuous bubble keeps its top and compact spacing at width ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 740 });
     await page.goto(url);

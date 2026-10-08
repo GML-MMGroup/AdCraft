@@ -657,6 +657,8 @@
   display: grid;
   gap: 16px;
   width: 100%;
+  /* Keep the answer tail inside the virtualized item's paint boundary. */
+  padding-bottom: 8px;
 }
 
 .agent-chat__guided-question-bubble {
