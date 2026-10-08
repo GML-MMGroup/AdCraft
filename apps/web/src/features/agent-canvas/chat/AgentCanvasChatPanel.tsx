@@ -1042,6 +1042,19 @@ export function AgentCanvasChatPanel({
         />
       ) : null}
 
+      {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
+        <BrandTreatmentConfirmation
+          onProductionRefresh={onWorkflowRefresh}
+          key={workflow.workflow_id}
+          workflowId={workflow.workflow_id}
+          responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}
+          onConfirmed={async () => {
+            await onBrandDecisionsRefresh?.();
+            await chat.actions.refresh();
+          }}
+        />
+      ) : null}
+
       <div className="agent-chat__composer">
         {brandSkillPickerOpen && brandDecisions?.workflow_id === workflow.workflow_id ? (
           <BrandSkillPicker key={workflow.workflow_id} decisions={brandDecisions}
@@ -1052,18 +1065,6 @@ export function AgentCanvasChatPanel({
               await chat.actions.refresh();
               await onWorkflowRefresh?.();
             }} />
-        ) : null}
-        {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
-          <BrandTreatmentConfirmation
-            onProductionRefresh={onWorkflowRefresh}
-            key={workflow.workflow_id}
-            workflowId={workflow.workflow_id}
-            responseLocale={chat.state.guidanceSession?.response_locale ?? "und"}
-            onConfirmed={async () => {
-              await onBrandDecisionsRefresh?.();
-              await chat.actions.refresh();
-            }}
-          />
         ) : null}
         {pendingContextFiles.length ? (
           <div className="agent-chat__product-upload-choice" role="status">

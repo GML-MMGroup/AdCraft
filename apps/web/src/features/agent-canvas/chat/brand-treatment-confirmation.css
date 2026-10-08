@@ -1,0 +1,39 @@
+.brand-treatment-confirmation {
+  display: grid;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0 12px 10px;
+  padding: 12px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 10px;
+  background: var(--agent-chat-raised);
+}
+
+.brand-treatment-confirmation > p {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.brand-treatment-confirmation > button {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 6px;
+  background: var(--agent-chat-panel);
+  color: var(--agent-chat-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.brand-treatment-confirmation > button:hover {
+  border-color: var(--agent-chat-strong-line);
+  background: var(--agent-chat-selected);
+}
