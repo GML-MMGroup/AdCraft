@@ -250,3 +250,21 @@ describe("parseGuidedAnswerBubbles", () => {
     expect(parseGuidedAnswerBubbles(item)).toEqual([]);
   });
 });
+
+it("places repaired Brand answers before later conversation without changing server sequences", async () => {
+  const { projectGuidedAnswerBubbles } = await import("./guidedAnswerPresentation.ts");
+  const message = (sequence: number, time: string, brand = false): ChatMessageV2 => ({
+    item_type: "message", message_kind: "conversation", message_id: `m${sequence}`,
+    conversation_id: "c", speaker: "user", text: "text", linked_node_ids: [],
+    script_node_id: null, proposal_id: null, capability_id: null, sequence,
+    created_at: `2026-10-08T${time}Z`,
+    metadata: brand ? { presentation_kind: "guided_answer", schema_version: 1,
+      brand_decision_log_id: `log${sequence}`, submission_id: `s${sequence}`,
+      interaction_id: `i${sequence}`, answers: [{ question_id: "q", label: "Question", value: "Answer" }] } : {},
+  });
+  const items = [message(6, "02:00:00"), message(8, "04:00:00"), message(9, "03:00:00", true), message(10, "02:30:00", true)];
+  const bubbles = projectGuidedAnswerBubbles(items);
+  expect(bubbles.map((bubble) => bubble.interaction_id)).toEqual(["i10", "i9"]);
+  expect(bubbles.every((bubble) => bubble.sequence > 6 && bubble.sequence < 8)).toBe(true);
+  expect(items.map((item) => item.sequence)).toEqual([6, 8, 9, 10]);
+});

@@ -148,9 +148,25 @@ export function projectGuidedAnswerBubbles(
   items: ChatTimelineItemV2[],
 ): GuidedAnswerBubbleV1[] {
   const bubblesById = new Map<string, GuidedAnswerBubbleV1>();
+  // Repaired Brand history is appended without renumbering server cursors.
+  // Place its display bubbles at their original time among the existing messages.
+  const brandHistory = items.filter((item): item is ChatMessageV2 => item.item_type === "message"
+    && typeof item.metadata?.brand_decision_log_id === "string"
+    && parseGuidedAnswerBubbles(item).length > 0)
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.sequence - b.sequence);
+  const brandItems = new Set<ChatTimelineItemV2>(brandHistory);
+  const anchors = items.filter((item) => !brandItems.has(item));
+  const displaySequences = new Map<ChatTimelineItemV2, number>();
+  brandHistory.forEach((item, index) => {
+    const next = anchors.find((anchor) => "created_at" in anchor
+      && Date.parse(anchor.created_at) > Date.parse(item.created_at));
+    if (!next) return;
+    const previousSequence = Math.max(0, ...anchors.filter((anchor) => anchor.sequence < next.sequence).map((anchor) => anchor.sequence));
+    displaySequences.set(item, previousSequence + (next.sequence - previousSequence) * (index + 1) / (brandHistory.length + 1));
+  });
   items.forEach((item) => {
     parseGuidedAnswerBubbles(item).forEach((bubble) => {
-      bubblesById.set(bubble.bubble_id, bubble);
+      bubblesById.set(bubble.bubble_id, { ...bubble, sequence: displaySequences.get(item) ?? bubble.sequence });
     });
   });
   return [...bubblesById.values()].sort((left, right) => left.sequence - right.sequence);
