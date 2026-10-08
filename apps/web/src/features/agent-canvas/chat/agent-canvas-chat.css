@@ -655,7 +655,7 @@
 
 .agent-chat__guided-answer-pair {
   display: grid;
-  gap: 3px;
+  gap: 16px;
   width: 100%;
 }
 
