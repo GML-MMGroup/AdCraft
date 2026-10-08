@@ -1884,13 +1884,10 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.agent-chat__recovery[\s\S]*\.agent-chat__context-tray/);
   });
 
-  it("gives natural messages readable markdown and explicit long-content controls", () => {
+  it("gives natural messages readable markdown without truncation", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
-    const collapsedRule = css.match(/\.agent-chat__message-body\.is-collapsed\s*\{([\s\S]*?)\n\}/m)?.[1];
-
-    expect(collapsedRule).toContain("max-height: calc(1.58em * 8)");
-    expect(collapsedRule).toContain("overflow: hidden");
+    expect(css).not.toContain(".agent-chat__message-body.is-collapsed");
     expect(css).toMatch(/\.agent-chat__markdown pre\s*\{[^}]*overflow-x: auto/s);
     expect(css).toMatch(/\.agent-chat__markdown a\s*\{[^}]*overflow-wrap: anywhere/s);
     expect(css).toMatch(/\.agent-chat__message-meta time\s*\{[^}]*opacity: 0/s);

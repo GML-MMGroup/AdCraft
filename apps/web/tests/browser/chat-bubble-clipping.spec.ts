@@ -61,7 +61,7 @@ test("a continuation displayed first stays within the first item boundary", asyn
   await expect(first).toHaveCSS("margin-top", "0px");
 });
 
-test("scrolling history and expanding a long reply preserve bubble painting", async ({ page }) => {
+test("scrolling history preserves complete long replies and bubble painting", async ({ page }) => {
   await page.goto(url);
   const continued = page.locator(item("continued"));
   await expectUnclipped(continued);
@@ -69,10 +69,15 @@ test("scrolling history and expanding a long reply preserve bubble painting", as
   await expect(page.locator(item("history-29"))).toHaveAttribute("data-timeline-hydrated", "true");
   await expectUnclipped(continued);
   const long = page.locator(item("long"));
-  await long.getByRole("button", { name: "Show more" }).click();
-  await expect(long.locator(".agent-chat__message-body")).toHaveClass(/is-expanded/);
+  const body = long.locator(".agent-chat__message-body");
+  await body.scrollIntoViewIfNeeded();
+  await expect(long.getByRole("button", { name: /Show more|Show less/ })).toHaveCount(0);
+  await expect(body).toHaveCSS("max-height", "none");
+  expect(await body.evaluate(element => {
+    const content = element.querySelector("p")!;
+    return content.textContent?.includes("Line 14:")
+      && content.getBoundingClientRect().bottom <= element.getBoundingClientRect().bottom;
+  })).toBe(true);
   await expectUnclipped(long);
-  await long.getByRole("button", { name: "Show less" }).click();
-  await expect(long.locator(".agent-chat__message-body")).toHaveClass(/is-collapsed/);
   await expectUnclipped(continued);
 });

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ChatMessageV2 } from "../../../types-v2.ts";
@@ -122,23 +122,19 @@ describe("NaturalMessage", () => {
     expect(screen.getByRole("link", { name: "Unsafe link blocked" }).getAttribute("href")).toBe("#");
   });
 
-  it("expands long content without rewriting it", () => {
+  it.each(["user", "adcraft_video_agent"] as const)("shows complete long %s messages without collapse controls", (speaker) => {
     const text = Array.from({ length: 12 }, (_, index) => `Line ${index + 1}: unchanged content.`).join("\n");
     render(
       <NaturalMessage
-        message={message("adcraft_video_agent", text)}
+        message={message(speaker, text)}
         presentation={presentation(true)}
       />,
     );
 
     const body = document.querySelector(".agent-chat__message-body")!;
-    expect(body.classList.contains("is-collapsed")).toBe(true);
     expect(body.textContent).toBe(text);
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(body.classList.contains("is-expanded")).toBe(true);
-    expect(body.textContent).toBe(text);
-    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-    expect(body.classList.contains("is-collapsed")).toBe(true);
+    expect(body.classList.contains("is-collapsed")).toBe(false);
+    expect(screen.queryByRole("button", { name: /Show more|Show less/ })).toBeNull();
   });
 
   it("keeps timestamps accessible and leaves semantic-looking text untouched", () => {

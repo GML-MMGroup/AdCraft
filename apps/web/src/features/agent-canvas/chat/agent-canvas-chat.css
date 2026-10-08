@@ -384,15 +384,6 @@
   min-width: 0;
 }
 
-.agent-chat__message-body.is-collapsed {
-  max-height: calc(1.58em * 8);
-  overflow: hidden;
-}
-
-.agent-chat__message-body.is-expanded {
-  max-height: none;
-}
-
 .agent-chat__message-meta {
   display: flex;
   min-height: 16px;
@@ -400,15 +391,6 @@
   gap: 8px;
   color: var(--agent-chat-muted);
   font-size: 9px;
-}
-
-.agent-chat__message-meta button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--agent-chat-secondary);
-  font: inherit;
-  cursor: pointer;
 }
 
 .agent-chat__message-meta time {
