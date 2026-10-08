@@ -13,6 +13,6 @@ it("reports actual capture_truncated and missing outcomes without implying runni
   const detail = normalizeAgentModelCallDetail({call_id:"c",status:"incomplete",request:{complete:false,payload:{capture_truncated:true}},outcome:null});
   const result = callIntegrity(detail);
   expect(result.metadata).toEqual([]);
-  expect(result.notices).toContain("request 内容已截断，缺失部分无法还原。");
+  expect(result.notices).toContain("输入记录内容已截断，缺失部分无法还原。");
   expect(result.notices).toContain("尚未记录到输出，也可能是记录丢失；无法判断是否运行中。");
 });

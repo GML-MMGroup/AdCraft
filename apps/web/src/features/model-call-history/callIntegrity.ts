@@ -30,9 +30,10 @@ export function callIntegrity(detail: AgentModelCallDetail) {
   if (!detail.request) notices.push("请求记录缺失。");
   if (!detail.outcome) notices.push("尚未记录到输出，也可能是记录丢失；无法判断是否运行中。");
   for (const [phase, envelope] of [["request", detail.request], ["outcome", detail.outcome]] as const) {
-    if (envelope?.complete === false) notices.push(`${phase} 标记为不完整。`);
+    const label = phase === "request" ? "输入记录" : "输出记录";
+    if (envelope?.complete === false) notices.push(`${label}标记为不完整。`);
     const body = payload(envelope);
-    if (body.capture_truncated === true || body.truncated === true) notices.push(`${phase} 内容已截断，缺失部分无法还原。`);
+    if (body.capture_truncated === true || body.truncated === true) notices.push(`${label}内容已截断，缺失部分无法还原。`);
   }
   return { metadata, notices };
 }
