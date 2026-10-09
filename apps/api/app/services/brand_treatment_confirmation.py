@@ -81,17 +81,17 @@ class BrandTreatmentConfirmationService:
         handoff = BrandProductionHandoffService(self._database)
         with self._database.engine.begin() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
+            journey = repository.get_journey_in_transaction(connection, brand_id)
+            if journey.stage == "production":
+                admitted = workflow_id is not None and handoff.recover_locked_intake_in_transaction(
+                    connection, workflow_id
+                )
+                if admitted:
+                    handoff.publish_in_transaction(connection, workflow_id, document)
+                return journey
             admitted = workflow_id is not None and handoff.prepare_reviewed_in_transaction(
                 connection, workflow_id, brand_id, document
             )
-            journey = repository.get_journey_in_transaction(connection, brand_id)
-            if journey.stage == "production":
-                if admitted:
-                    BrandGuidedInteractionBridge(
-                        self._database
-                    ).close_brand_interactions_in_transaction(connection, workflow_id)
-                    handoff.publish_in_transaction(connection, workflow_id, document)
-                return journey
             BrandQuestionState(self._database).claim(connection, brand_id, observed.stage_revision)
             locked = advance_brand_stage(journey)
             repository.save_journey_in_transaction(connection, brand_id, locked)

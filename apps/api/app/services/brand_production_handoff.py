@@ -24,6 +24,7 @@ from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
+    AgentCanvasGuidanceSessionRow,
     AgentCanvasRequirementLedgerRevisionRow,
     AgentCanvasWorkflowRow,
     BrandRow,
@@ -31,6 +32,7 @@ from app.persistence.models import (
     ProjectRow,
 )
 from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.schemas.agent_canvas_requirements import (
     AspectRatioControlPatchV1,
@@ -353,6 +355,16 @@ class BrandProductionHandoffService:
         """Admit a historical empty Brand intake inside an explicit Guidance command."""
         from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
 
+        journey_json = connection.execute(
+            select(AgentCanvasGuidanceSessionRow.journey_state_json).where(
+                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+            )
+        ).scalar_one_or_none()
+        if (
+            journey_json is None
+            or GuidedProductionJourneyV2.model_validate_json(journey_json).stage != "intake"
+        ):
+            return False
         brand_id = connection.execute(
             select(BrandRow.brand_id)
             .join(ProjectRow, ProjectRow.project_id == BrandRow.project_id)
