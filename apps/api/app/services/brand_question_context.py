@@ -14,6 +14,7 @@ from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database
 from app.persistence.models import (
     AgentCanvasChatEntryRow,
+    AgentCanvasChatTurnRow,
     AgentCanvasRequirementLedgerRevisionRow,
     AgentCanvasRequirementLedgerRow,
     BrandDecisionLogRow,
@@ -123,10 +124,34 @@ class BrandQuestionContextService:
         )
 
     def _user_sources(self, connection: Connection, workflow_id: str) -> list[dict[str, Any]]:
+        completion = AgentCanvasChatEntryRow.__table__.alias("brand_source_completion")
+        resolved_no_change = (
+            select(completion.c.entry_id)
+            .join(
+                AgentCanvasChatTurnRow,
+                AgentCanvasChatTurnRow.turn_id
+                == func.json_extract(completion.c.metadata_json, "$.turn_id"),
+            )
+            .where(
+                completion.c.workflow_id == AgentCanvasChatEntryRow.workflow_id,
+                completion.c.entry_type == "message",
+                completion.c.speaker == "adcraft_video_agent",
+                func.json_extract(completion.c.metadata_json, "$.brand_context_effect") == "none",
+                AgentCanvasChatTurnRow.workflow_id == AgentCanvasChatEntryRow.workflow_id,
+                AgentCanvasChatTurnRow.turn_kind == "message",
+                AgentCanvasChatTurnRow.status == "completed",
+                AgentCanvasChatTurnRow.turn_id
+                == func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id"),
+            )
+            .correlate(AgentCanvasChatEntryRow)
+            .exists()
+        )
         query = select(AgentCanvasChatEntryRow).where(
             AgentCanvasChatEntryRow.workflow_id == workflow_id,
             AgentCanvasChatEntryRow.entry_type == "message",
             AgentCanvasChatEntryRow.speaker == "user",
+            # Filter before bounding history so control messages do not evict facts.
+            ~resolved_no_change,
             # Brand answer bubbles project facts already carried by decision authority.
             # Do not reinterpret or invalidate question snapshots on history repair.
             func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.brand_decision_log_id").is_(

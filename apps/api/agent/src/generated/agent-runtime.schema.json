@@ -12841,6 +12841,17 @@
           "default": null,
           "title": "Assistant Message"
         },
+        "brief_effect": {
+          "default": "unknown",
+          "description": "Whether this message adds or revises creative facts, constraints, or references.",
+          "enum": [
+            "changed",
+            "none",
+            "unknown"
+          ],
+          "title": "Brief Effect",
+          "type": "string"
+        },
         "explicit_elements": {
           "$ref": "#/$defs/CompactExplicitElementsV3"
         },
@@ -34293,6 +34304,16 @@
           ],
           "default": null,
           "title": "Assistant Message"
+        },
+        "brief_effect": {
+          "default": "unknown",
+          "enum": [
+            "changed",
+            "none",
+            "unknown"
+          ],
+          "title": "Brief Effect",
+          "type": "string"
         },
         "explicit_elements": {
           "default": [],

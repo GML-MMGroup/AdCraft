@@ -1799,6 +1799,8 @@ class AgentConversationService:
             turn_id=turn_id,
         )
 
+        brand_journey = self._brand_journey_for_workflow(turn.workflow_id)
+
         def complete_message(
             message: str | None,
             *,
@@ -1810,6 +1812,18 @@ class AgentConversationService:
                 assistant_metadata["response_locale"] = intent.response_locale
             if metadata:
                 assistant_metadata.update(metadata)
+            if (
+                brand_journey is not None
+                and brand_journey.stage != "production"
+                and intent.brief_effect == "none"
+                and intent.mode in {"ordinary_conversation", "guided_production"}
+                and intent.requirement_patch is None
+                and not intent.explicit_elements
+                and intent.requested_capability is None
+                and not mentioned_node_ids
+                and not mentioned_asset_ids
+            ):
+                assistant_metadata["brand_context_effect"] = "none"
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
@@ -1891,7 +1905,6 @@ class AgentConversationService:
                 },
             )
         if intent.mode == "guided_production":
-            brand_journey = self._brand_journey_for_workflow(turn.workflow_id)
             if brand_journey is not None and brand_journey.stage != "production":
                 return complete_message(
                     self._brand_gate_message(intent.response_locale),

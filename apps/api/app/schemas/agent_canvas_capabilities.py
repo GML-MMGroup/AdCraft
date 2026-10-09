@@ -446,6 +446,10 @@ class OrdinaryConversationIntentV1(RootModel[_OrdinaryConversationIntentVariantV
 
 
 class CompactTurnIntentDecisionV3(_CapabilityModel):
+    brief_effect: Literal["none", "changed", "unknown"] = Field(
+        default="unknown",
+        description="Whether this message adds or revises creative facts, constraints, or references.",
+    )
     mode: Literal[
         "ordinary_conversation",
         "guided_production",
@@ -500,6 +504,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
 
 
 class TurnIntentDecisionV2(_CapabilityModel):
+    brief_effect: Literal["none", "changed", "unknown"] = "unknown"
     mode: Literal[
         "ordinary_conversation",
         "guided_production",
@@ -592,6 +597,7 @@ def expand_compact_turn_intent(
         if (element := getattr(compact.explicit_elements, element_kind)) is not None
     )
     return TurnIntentDecisionV2(
+        brief_effect=compact.brief_effect,
         mode=compact.mode,
         objective=compact.objective,
         requested_capability=compact.requested_capability,
