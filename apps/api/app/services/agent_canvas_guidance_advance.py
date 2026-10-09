@@ -30,6 +30,7 @@ from app.schemas.agent_canvas_conversation import ChatTurnAcceptedV2
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_guidance import (
     GuidanceAdvanceAuthorityPlanV1,
+    GuidanceAdvanceAuthoritySnapshotV1,
     GuidanceAdvanceRequestV1,
     GuidanceAdvanceTargetV1,
 )
@@ -168,52 +169,64 @@ class GuidanceAdvanceService:
 
         with self._conversations.database.engine.connect() as connection:
             snapshot = self._authority.read_in_transaction(connection, workflow_id)
-        require_guidance_advance_eligible(snapshot)
-        session = snapshot.session
-        requirements = snapshot.requirements
-        if session is None or requirements is None:
-            raise _not_available("Guidance authority is incomplete.")
-        self._consistency.validate(session, requirements)
-        if snapshot.precondition != request.precondition:
-            raise guidance_advance_stale_error(
-                request.precondition,
-                snapshot,
-                stage="guidance_advance_service",
-            )
-        target = GuidanceAdvanceTargetV1(
-            source_kind="fresh_next_action",
-            source_id=request.precondition.source_id,
-            journey_stage=request.precondition.journey_stage,
-            journey_stage_revision=request.precondition.journey_stage_revision,
-            requirement_revision_id=request.precondition.requirement_revision_id,
-            guidance_session_revision=request.precondition.session_revision,
+        return plan_guidance_advance(snapshot, request, idempotency_key=idempotency_key)
+
+
+def plan_guidance_advance(
+    snapshot: GuidanceAdvanceAuthoritySnapshotV1,
+    request: GuidanceAdvanceRequestV1,
+    *,
+    idempotency_key: str,
+) -> GuidanceAdvanceAuthorityPlanV1:
+    """Plan typed continuation from the caller's coherent authority snapshot."""
+
+    workflow_id = snapshot.workflow_id
+    require_guidance_advance_eligible(snapshot)
+    session = snapshot.session
+    requirements = snapshot.requirements
+    if session is None or requirements is None:
+        raise _not_available("Guidance authority is incomplete.")
+    GuidanceAuthorityConsistencyValidator().validate(session, requirements)
+    if snapshot.precondition != request.precondition:
+        raise guidance_advance_stale_error(
+            request.precondition,
+            snapshot,
+            stage="guidance_advance_service",
         )
-        request_payload = request.model_dump(mode="json")
-        request_digest = _digest(request_payload)
-        identity = hashlib.sha256(
-            f"{workflow_id}:{idempotency_key}:{request_digest}".encode("utf-8")
-        ).hexdigest()
-        return GuidanceAdvanceAuthorityPlanV1(
-            workflow_id=workflow_id,
-            request=request_payload,
-            idempotency_key=idempotency_key,
-            request_digest=request_digest,
-            session_id=session.session_id,
-            session_status=session.status,
-            journey_active_action_digest=snapshot.active_action_digest,
-            requirement_revision_id=requirements.revision_id,
-            requirement_digest=requirements.digest,
-            conversation_id=snapshot.conversation_id,
-            open_proposal_id=snapshot.open_proposal_id,
-            open_decision_bundle_id=snapshot.open_decision_bundle_id,
-            active_continuation_id=snapshot.active_continuation_id,
-            target=target,
-            command_turn_id=f"turn_{identity[:32]}",
-            executable_turn_id=f"turn_{identity[32:]}",
-            continuation_id=f"continuation_{identity[:24]}",
-            continuation_idempotency_key=f"guidance-next-action:{identity}",
-            created_at=datetime.now(timezone.utc),
-        )
+    target = GuidanceAdvanceTargetV1(
+        source_kind="fresh_next_action",
+        source_id=request.precondition.source_id,
+        journey_stage=request.precondition.journey_stage,
+        journey_stage_revision=request.precondition.journey_stage_revision,
+        requirement_revision_id=request.precondition.requirement_revision_id,
+        guidance_session_revision=request.precondition.session_revision,
+    )
+    request_payload = request.model_dump(mode="json")
+    request_digest = _digest(request_payload)
+    identity = hashlib.sha256(
+        f"{workflow_id}:{idempotency_key}:{request_digest}".encode("utf-8")
+    ).hexdigest()
+    return GuidanceAdvanceAuthorityPlanV1(
+        workflow_id=workflow_id,
+        request=request_payload,
+        idempotency_key=idempotency_key,
+        request_digest=request_digest,
+        session_id=session.session_id,
+        session_status=session.status,
+        journey_active_action_digest=snapshot.active_action_digest,
+        requirement_revision_id=requirements.revision_id,
+        requirement_digest=requirements.digest,
+        conversation_id=snapshot.conversation_id,
+        open_proposal_id=snapshot.open_proposal_id,
+        open_decision_bundle_id=snapshot.open_decision_bundle_id,
+        active_continuation_id=snapshot.active_continuation_id,
+        target=target,
+        command_turn_id=f"turn_{identity[:32]}",
+        executable_turn_id=f"turn_{identity[32:]}",
+        continuation_id=f"continuation_{identity[:24]}",
+        continuation_idempotency_key=f"guidance-next-action:{identity}",
+        created_at=datetime.now(timezone.utc),
+    )
 
 
 def _not_available(message: str) -> V2PersistenceError:

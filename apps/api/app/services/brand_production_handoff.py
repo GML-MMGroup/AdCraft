@@ -13,6 +13,8 @@ import json
 from math import ceil
 
 from sqlalchemy import select, text as sql_text
+from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.agent_canvas_requirement_repository import (
@@ -139,15 +141,16 @@ class BrandProductionHandoffService:
             )
         if document is not None:
             try:
-                self._prepare_reviewed_document(workflow_id, brand_id, document)
-            except V2PersistenceError as error:
-                if (
-                    error.code != "requirement_revision_conflict"
-                    or not self._reviewed_handoff_applied(
-                        workflow_id, f"brand-handoff:{brand_id}:{document.content_digest}"
+                with self._database.engine.begin() as connection:
+                    connection.exec_driver_sql("BEGIN IMMEDIATE")
+                    self.prepare_reviewed_in_transaction(
+                        connection, workflow_id, brand_id, document
                     )
-                ):
-                    raise
+            except SQLAlchemyError as error:
+                raise V2PersistenceError(
+                    "brand_handoff_persistence_failed",
+                    "Brand production handoff could not be saved.",
+                ) from error
             return
         requirements = AgentCanvasRequirementService(
             self._database,
@@ -278,26 +281,79 @@ class BrandProductionHandoffService:
                 connection, brand_id
             )
 
+    def prepare_reviewed_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        brand_id: str,
+        document: BrandTreatmentDocumentV1,
+    ) -> bool:
+        """Commit requirements and journey admission under the same writer fence."""
+        from app.persistence.brand_production_admission_repository import (
+            BrandProductionAdmissionRepository,
+        )
+
+        self._prepare_reviewed_document(connection, workflow_id, brand_id, document)
+        return BrandProductionAdmissionRepository(self._database).admit_in_transaction(
+            connection, workflow_id, brand_id, document
+        )
+
+    def publish_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        document: BrandTreatmentDocumentV1,
+    ) -> None:
+        """Publish the existing typed next-action command without runtime cognition."""
+        from app.persistence.agent_canvas_conversation_repository import (
+            AgentCanvasConversationRepository,
+        )
+        from app.persistence.agent_canvas_guidance_authority_repository import (
+            GuidanceAdvanceAuthoritySnapshotRepository,
+            require_guidance_advance_eligible,
+        )
+        from app.schemas.agent_canvas_guidance import GuidanceAdvanceRequestV1
+        from app.services.agent_canvas_guidance_advance import plan_guidance_advance
+
+        requirements = AgentCanvasRequirementRepository(self._database)
+        snapshot = GuidanceAdvanceAuthoritySnapshotRepository(requirements).read_in_transaction(
+            connection, workflow_id
+        )
+        require_guidance_advance_eligible(snapshot)
+        plan = plan_guidance_advance(
+            snapshot,
+            GuidanceAdvanceRequestV1(precondition=snapshot.precondition),
+            idempotency_key=f"brand-production:{workflow_id}:{document.content_digest}",
+        )
+        AgentCanvasConversationRepository(
+            self._database, EventRepository(self._database)
+        ).create_guidance_advance_delivery(
+            plan,
+            connection=connection,
+        )
+
     def _prepare_reviewed_document(
-        self, workflow_id: str, brand_id: str, document: BrandTreatmentDocumentV1
+        self,
+        connection: Connection,
+        workflow_id: str,
+        brand_id: str,
+        document: BrandTreatmentDocumentV1,
     ) -> None:
         identity = f"brand-handoff:{brand_id}:{document.content_digest}"
-        if self._reviewed_handoff_applied(workflow_id, identity):
+        if self._reviewed_handoff_applied(connection, workflow_id, identity):
             return
         requirements = AgentCanvasRequirementService(
             self._database,
             AgentCanvasRequirementRepository(self._database),
             EventRepository(self._database),
         )
-        current = requirements.get_current_revision(workflow_id)
+        current = AgentCanvasRequirementRepository(self._database).get_current_in_transaction(
+            connection, workflow_id
+        )
         slots = {
             value.slot_id: value.value
             for value in (*document.brand_profile.values, *document.campaign_brief.values)
         }
-        # Recheck after reading the revision: an independent writer may have
-        # completed the same handoff between the first check and this read.
-        if self._reviewed_handoff_applied(workflow_id, identity):
-            return
         duration_text = slots["campaign_duration"]
         aspect_text = slots["campaign_aspect_ratio"]
         duration = _duration_seconds(duration_text)
@@ -306,7 +362,8 @@ class BrandProductionHandoffService:
         audio_mode = controls.get("audio_mode", "bgm_only")
         product_count = controls.get("product_count", 1)
         source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
-        requirements.apply_user_turn_patch(
+        requirements.apply_user_turn_patch_in_transaction(
+            connection,
             workflow_id,
             expected_revision_no=current.revision_no,
             source_turn_id=identity,
@@ -355,19 +412,20 @@ class BrandProductionHandoffService:
             ),
         )
 
-    def _reviewed_handoff_applied(self, workflow_id: str, identity: str) -> bool:
-        with self._database.engine.connect() as connection:
-            return (
-                connection.execute(
-                    select(AgentCanvasRequirementLedgerRevisionRow.revision_id)
-                    .where(
-                        AgentCanvasRequirementLedgerRevisionRow.workflow_id == workflow_id,
-                        AgentCanvasRequirementLedgerRevisionRow.source_turn_id == identity,
-                    )
-                    .limit(1)
-                ).scalar_one_or_none()
-                is not None
-            )
+    def _reviewed_handoff_applied(
+        self, connection: Connection, workflow_id: str, identity: str
+    ) -> bool:
+        return (
+            connection.execute(
+                select(AgentCanvasRequirementLedgerRevisionRow.revision_id)
+                .where(
+                    AgentCanvasRequirementLedgerRevisionRow.workflow_id == workflow_id,
+                    AgentCanvasRequirementLedgerRevisionRow.source_turn_id == identity,
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            is not None
+        )
 
     def locked_prohibited_elements(self, brand_id: str) -> tuple[str, ...]:
         return self._repository.locked_prohibited_elements(brand_id)

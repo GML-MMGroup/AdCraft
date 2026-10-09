@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -20,6 +22,15 @@ class BrandTreatmentConfirmationService:
         self._documents = BrandDecisionDocumentService(database)
 
     def confirm(self, brand_id: str, content_digest: str | None) -> BrandJourneyStateV1:
+        try:
+            return self._confirm(brand_id, content_digest)
+        except SQLAlchemyError as error:
+            raise V2PersistenceError(
+                "brand_handoff_persistence_failed",
+                "Brand production handoff could not be saved. Retry the same confirmed Treatment.",
+            ) from error
+
+    def _confirm(self, brand_id: str, content_digest: str | None) -> BrandJourneyStateV1:
         repository = self._repository
         with self._database.engine.begin() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -46,8 +57,6 @@ class BrandTreatmentConfirmationService:
                 )
             if content_digest != document.content_digest:
                 raise stale_context()
-            if observed.stage == "production":
-                return observed
             if frozen is None:
                 repository.append_decision_log_in_transaction(
                     connection,
@@ -66,16 +75,22 @@ class BrandTreatmentConfirmationService:
         # The immutable snapshot is the durable recovery identity. Failure here
         # leaves the journey in Treatment; retry uses the same reviewed content.
         from app.services.brand_production_handoff import BrandProductionHandoffService
+        from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
 
         workflow_id = repository.workflow_id_for_brand(brand_id)
-        if workflow_id is not None:
-            BrandProductionHandoffService(self._database).prepare_guided_production(
-                workflow_id, brand_id
-            )
+        handoff = BrandProductionHandoffService(self._database)
         with self._database.engine.begin() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
+            admitted = workflow_id is not None and handoff.prepare_reviewed_in_transaction(
+                connection, workflow_id, brand_id, document
+            )
             journey = repository.get_journey_in_transaction(connection, brand_id)
             if journey.stage == "production":
+                if admitted:
+                    BrandGuidedInteractionBridge(
+                        self._database
+                    ).close_brand_interactions_in_transaction(connection, workflow_id)
+                    handoff.publish_in_transaction(connection, workflow_id, document)
                 return journey
             BrandQuestionState(self._database).claim(connection, brand_id, observed.stage_revision)
             locked = advance_brand_stage(journey)
@@ -98,4 +113,9 @@ class BrandTreatmentConfirmationService:
                 ),
                 brand_id=brand_id,
             )
+            if admitted:
+                BrandGuidedInteractionBridge(
+                    self._database
+                ).close_brand_interactions_in_transaction(connection, workflow_id)
+                handoff.publish_in_transaction(connection, workflow_id, document)
         return locked

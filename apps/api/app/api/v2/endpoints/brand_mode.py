@@ -52,6 +52,8 @@ _STATUS_BY_CODE = {
     "requirement_ledger_not_found": 409,
     "requirement_revision_conflict": 409,
     "requirement_persistence_failed": 503,
+    "brand_handoff_persistence_failed": 503,
+    "brand_handoff_conflict": 409,
     "brand_context_stale": 409,
     "brand_treatment_incomplete": 409,
     "brand_treatment_review_required": 409,
@@ -339,9 +341,6 @@ def post_lock_treatment(
         locked = service.lock_treatment(brand_id, content_digest=request.content_digest)
     except V2PersistenceError as error:
         raise _map_brand_error(error) from error
-    BrandGuidedInteractionBridge(database).close_current_interaction(
-        workflow_id, status="superseded"
-    )
     return locked
 
 
