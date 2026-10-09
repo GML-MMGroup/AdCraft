@@ -44,7 +44,11 @@ from app.schemas.brand_professional_mode import (
 from app.persistence.models import BrandOptionCardRow
 from app.services.brand_skill_stack import BrandSkillStackService
 from app.services.brand_question_context import BrandQuestionContextService
-from app.services.brand_question_policy import validate_question_output, unresolved_required_slots
+from app.services.brand_question_policy import (
+    validate_question_output,
+    unresolved_required_slots,
+    optional_question_targets,
+)
 from app.services.brand_question_state import BrandQuestionState, stale_context
 from app.services.brand_journey_state import (
     TREATMENT_SUBSTEP_ORDER,
@@ -248,12 +252,15 @@ class BrandCapabilityInvocationService:
             raise _stage_mismatch()
         with self._database.engine.connect() as connection:
             delegated = state.delegated_slots(connection, brand_id)
+            asked_optional = state.asked_optional_slots(connection, brand_id, stage)
         if output is None:
             existing = state.current_card(brand_id)
             if existing is not None:
                 return existing
-            if not unresolved_required_slots(stage, values, delegated) and state.sources_normalized(
-                brand_id, product_context
+            if (
+                not unresolved_required_slots(stage, values, delegated)
+                and not optional_question_targets(stage, values, delegated, asked_optional)
+                and state.sources_normalized(brand_id, product_context)
             ):
                 output = BrandStrategyOutputV1()
         if output is None:
@@ -265,6 +272,8 @@ class BrandCapabilityInvocationService:
                 input_payload={
                     "product_context": product_context.payload,
                     "stage": stage,
+                    "asked_optional_slots": sorted(asked_optional),
+                    "optional_question_budget_remaining": max(0, 2 - len(asked_optional)),
                     "slot_schema_version": SLOT_SCHEMA_VERSION,
                     "delegated_slots": [
                         {"stage": key[0], "slot_id": key[1]} for key in sorted(delegated)
@@ -288,7 +297,12 @@ class BrandCapabilityInvocationService:
             output = self._runtime.run(spec).output
         card = output.question_card
         slot_values = validate_question_output(
-            output, stage, product_context, values, delegated=delegated
+            output,
+            stage,
+            product_context,
+            values,
+            delegated=delegated,
+            asked_optional_slots=asked_optional,
         )
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
@@ -323,6 +337,10 @@ class BrandCapabilityInvocationService:
                 target_id=card.card_id if card else None,
                 detail={
                     "question": card.question if card else None,
+                    "target_slot_id": card.target_slot_id if card else None,
+                    "question_impact": output.question_impact.model_dump(mode="json")
+                    if output.question_impact
+                    else None,
                     "slot_evidence": [
                         item.model_dump(mode="json") for item in output.slot_evidence
                     ],
@@ -450,8 +468,16 @@ class BrandCapabilityInvocationService:
                     brand_id,
                     journey.model_copy(update={"stage_revision": journey.stage_revision + 1}),
                 )
-                if not custom and not unresolved_required_slots(
-                    card.stage, values, state.delegated_slots(connection, brand_id)
+                delegated_slots = state.delegated_slots(connection, brand_id)
+                if (
+                    not custom
+                    and not unresolved_required_slots(card.stage, values, delegated_slots)
+                    and not optional_question_targets(
+                        card.stage,
+                        values,
+                        delegated_slots,
+                        state.asked_optional_slots(connection, brand_id, card.stage),
+                    )
                 ):
                     self._repository.save_journey_in_transaction(
                         connection,

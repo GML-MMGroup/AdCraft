@@ -14,9 +14,11 @@ from app.schemas.brand_professional_mode import (
 )
 from app.services.brand_question_context import BrandQuestionContext
 from app.services.brand_slot_schema import (
+    BrandSlotDefinition,
     missing_required_slots,
     resolve_slot,
     slot_value_kind,
+    slots_for_stage,
     validate_slot_values,
 )
 
@@ -28,6 +30,7 @@ def validate_question_output(
     values: tuple[BrandSlotValueV1, ...],
     *,
     delegated: frozenset[tuple[str, str]] = frozenset(),
+    asked_optional_slots: frozenset[str] = frozenset(),
 ) -> tuple[BrandSlotValueV1, ...]:
     """Validate all updates and the final target before any persistence writes."""
     validate_slot_values(output.slot_values)
@@ -70,12 +73,39 @@ def validate_question_output(
     missing = unresolved_required_slots(stage, tuple(known.values()), delegated)
     card = output.question_card
     if not missing and not clarification_keys:
-        if card is not None:
+        if card is None:
+            if output.question_impact is not None:
+                raise _invalid_target()
+            return tuple(changed)
+        if card.stage != stage or card.target_slot_id is None:
+            raise _invalid_target()
+        slot = _question_slot(stage, card.target_slot_id)
+        key = (stage, slot.slot_id)
+        existing = known.get(key)
+        impact = output.question_impact
+        settled_ids = {
+            value.slot_id
+            for value in known.values()
+            if value.provenance == "user_confirmed" or (value.stage, value.slot_id) in delegated
+        }
+        if (
+            slot.required
+            or impact is None
+            or not impact.reason.strip()
+            or not set(impact.basis_slot_ids) <= settled_ids
+            or slot.slot_id in impact.basis_slot_ids
+            or key in delegated
+            or (existing and existing.provenance == "user_confirmed")
+            or slot.slot_id in asked_optional_slots
+            or len(asked_optional_slots) >= 2
+        ):
             raise _invalid_target()
         return tuple(changed)
+    if output.question_impact is not None:
+        raise _invalid_target()
     if card is None or card.stage != stage or card.target_slot_id is None:
         raise _invalid_target()
-    slot = resolve_slot(stage, card.target_slot_id)
+    slot = _question_slot(stage, card.target_slot_id)
     key = (stage, slot.slot_id)
     existing = known.get(key)
     if key not in clarification_keys and slot.slot_id not in missing:
@@ -87,6 +117,34 @@ def validate_question_output(
     if clarification_keys and key not in clarification_keys:
         raise _invalid_target()
     return tuple(changed)
+
+
+def _question_slot(stage: BrandStage, slot_id: str) -> BrandSlotDefinition:
+    try:
+        return resolve_slot(stage, slot_id)
+    except V2PersistenceError as error:
+        raise _invalid_target() from error
+
+
+def optional_question_targets(
+    stage: BrandStage,
+    values: tuple[BrandSlotValueV1, ...],
+    delegated: frozenset[tuple[str, str]],
+    asked: frozenset[str],
+) -> tuple[str, ...]:
+    if len(asked) >= 2:
+        return ()
+    settled = {
+        value.slot_id
+        for value in values
+        if value.stage == stage and value.provenance == "user_confirmed"
+    }
+    settled.update(slot for item_stage, slot in delegated if item_stage == stage)
+    return tuple(
+        slot.slot_id
+        for slot in slots_for_stage(stage)
+        if not slot.required and slot.slot_id not in settled | asked
+    )
 
 
 def unresolved_required_slots(

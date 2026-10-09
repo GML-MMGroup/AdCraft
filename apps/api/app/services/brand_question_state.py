@@ -11,8 +11,9 @@ from sqlalchemy.engine import Connection
 from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
-from app.persistence.models import BrandDecisionLogRow, BrandJourneyRow
-from app.schemas.brand_professional_mode import BrandOptionCardV1
+from app.persistence.models import BrandDecisionLogRow, BrandJourneyRow, BrandOptionCardRow
+from app.schemas.brand_professional_mode import BrandOptionCardV1, BrandStage
+from app.services.brand_slot_schema import slots_for_stage
 from app.services.brand_question_context import BrandQuestionContext, BrandQuestionContextService
 
 
@@ -99,6 +100,21 @@ class BrandQuestionState:
                 json.loads(row).get("normalized_input_digest") == snapshot.input_digest
                 for row in rows
             )
+
+    def asked_optional_slots(
+        self,
+        connection: Connection,
+        brand_id: str,
+        stage: BrandStage,
+    ) -> frozenset[str]:
+        optional = {slot.slot_id for slot in slots_for_stage(stage) if not slot.required}
+        asked = connection.execute(
+            select(BrandOptionCardRow.target_slot_id).where(
+                BrandOptionCardRow.brand_id == brand_id,
+                BrandOptionCardRow.stage == stage,
+            )
+        ).scalars()
+        return frozenset(slot_id for slot_id in asked if slot_id in optional)
 
     def delegated_slots(self, connection: Connection, brand_id: str) -> frozenset[tuple[str, str]]:
         values = {

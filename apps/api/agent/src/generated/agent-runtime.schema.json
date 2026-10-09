@@ -7947,6 +7947,45 @@
       "title": "BrandProductionStepV1",
       "type": "object"
     },
+    "BrandQuestionImpactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_decision": {
+          "enum": [
+            "brand_positioning",
+            "campaign_message",
+            "creative_hypothesis",
+            "delivery",
+            "product_presentation",
+            "visual_execution"
+          ],
+          "title": "Affected Decision",
+          "type": "string"
+        },
+        "basis_slot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Basis Slot Ids",
+          "type": "array"
+        },
+        "reason": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "affected_decision",
+        "basis_slot_ids",
+        "reason"
+      ],
+      "title": "BrandQuestionImpactV1",
+      "type": "object"
+    },
     "BrandShortOptionV1": {
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",
@@ -8182,6 +8221,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/BrandOptionCardV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "question_impact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandQuestionImpactV1"
             },
             {
               "type": "null"

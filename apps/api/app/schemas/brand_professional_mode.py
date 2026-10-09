@@ -83,6 +83,19 @@ class BrandSlotEvidenceV1(_BrandModel):
     source_quote: str = Field(min_length=1, max_length=2000)
 
 
+class BrandQuestionImpactV1(_BrandModel):
+    reason: str = Field(min_length=1, max_length=400)
+    affected_decision: Literal[
+        "creative_hypothesis",
+        "brand_positioning",
+        "visual_execution",
+        "product_presentation",
+        "campaign_message",
+        "delivery",
+    ]
+    basis_slot_ids: tuple[str, ...] = Field(min_length=1, max_length=4)
+
+
 class BrandStrategyOutputV1(_BrandModel):
     """Structured output of the brand-strategy capability."""
 
@@ -90,6 +103,7 @@ class BrandStrategyOutputV1(_BrandModel):
     slot_evidence: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=32)
     clarifications: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=1)
     question_card: BrandOptionCardV1 | None = None
+    question_impact: BrandQuestionImpactV1 | None = None
 
 
 class CreativeHypothesisCandidateV1(_BrandModel):

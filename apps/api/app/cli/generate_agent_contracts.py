@@ -79,6 +79,7 @@ CONTRACT_MODELS = (
     brand_professional_mode.CreativeTreatmentStepOutputV1,
     brand_professional_mode.BrandSkillRecommendationsV1,
     brand_professional_mode.BrandStrategyOutputV1,
+    brand_professional_mode.BrandQuestionImpactV1,
     brand_professional_mode.CreativeStrategyOutputV1,
     brand_professional_mode.CreativeTreatmentOutputV1,
     brand_professional_mode.BrandTreatmentSourceV1,

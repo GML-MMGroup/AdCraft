@@ -48,7 +48,9 @@ export type CreativeTreatmentStepOutputV1 = { readonly "step_key": "camera" | "c
 
 export type BrandSkillRecommendationsV1 = { readonly "creative_methods": ReadonlyArray<BrandSkillRecommendationV1>; readonly "audiovisual_styles": ReadonlyArray<BrandSkillRecommendationV1> };
 
-export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "slot_evidence"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "clarifications"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "question_card"?: BrandOptionCardV1 | null };
+export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "slot_evidence"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "clarifications"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "question_card"?: BrandOptionCardV1 | null; readonly "question_impact"?: BrandQuestionImpactV1 | null };
+
+export type BrandQuestionImpactV1 = { readonly "reason": string; readonly "affected_decision": "brand_positioning" | "campaign_message" | "creative_hypothesis" | "delivery" | "product_presentation" | "visual_execution"; readonly "basis_slot_ids": ReadonlyArray<string> };
 
 export type CreativeStrategyOutputV1 = { readonly "candidates": ReadonlyArray<CreativeHypothesisCandidateV1> };
 
