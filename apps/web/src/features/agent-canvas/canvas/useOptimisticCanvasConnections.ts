@@ -17,7 +17,7 @@ type Options = {
   edges: Edge[];
   createBinding: (request: CanvasBindingCreateRequestV2, options?: { isCurrent?: () => boolean }) => Promise<CanvasBindingV2 | null>;
   onError: (error: unknown) => void;
-  onConfirmed?: (binding: CanvasBindingV2) => void;
+  onStarted?: (request: CanvasBindingCreateRequestV2, connectionId: string) => void;
 };
 
 function identity(binding: Pick<CanvasBindingV2, "source" | "target_node_id" | "input_role">) {
@@ -87,6 +87,11 @@ export function useOptimisticCanvasConnections(options: Options) {
     if (!endpointsExist(initial.workflow, entry)) return;
     scope.entries.set(key, entry);
     publish();
+    // Respond to the accepted gesture immediately, independently of the write queue/network.
+    // This is interaction feedback, not an acknowledgement that the binding was saved.
+    if (request.enabled !== false) {
+      try { initial.onStarted?.(request, entry.edge.id); } catch { /* Best-effort presentation only. */ }
+    }
     const isCurrent = () => scope.active && current.current.scope === scope
       && scope.entries.get(key) === entry && endpointsExist(current.current.workflow, entry);
     try {
@@ -95,11 +100,6 @@ export function useOptimisticCanvasConnections(options: Options) {
       if (binding) {
         // Keep the preview until the canonical display list contains the response binding.
         entry.bindingId = binding.binding_id;
-        const authority = current.current.workflow?.bindings.find(item => item.binding_id === binding.binding_id);
-        if (binding.enabled && authority?.enabled !== false) {
-          // A visual failure must never change the binding result or its error path.
-          try { current.current.onConfirmed?.(binding); } catch { /* Best-effort presentation only. */ }
-        }
       } else {
         scope.entries.delete(key);
       }

@@ -10,7 +10,7 @@ it("replaces a burst on the same node and removes effects after their lifetime",
   vi.advanceTimersByTime(500);
   store.publish("w", "n", "second", "blue");
   vi.advanceTimersByTime(500);
-  expect(store.get("w", "n")?.bindingId).toBe("second");
+  expect(store.get("w", "n")?.connectionId).toBe("second");
   expect(store.get("other-workflow", "n")).toBeNull();
   vi.advanceTimersByTime(451);
   expect(store.get("w", "n")).toBeNull();

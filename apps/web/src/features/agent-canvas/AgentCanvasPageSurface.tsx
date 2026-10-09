@@ -321,10 +321,10 @@ export function AgentCanvasPage() {
     edges,
     createBinding,
     onError: (error) => setSurfaceError(canvasAuthoringErrorMessage(error)),
-    onConfirmed: (binding) => {
-      if (binding.source.kind !== "node_output") return;
-      connectionEffects?.publish(binding.workflow_id, binding.target_node_id, binding.binding_id,
-        canvasConnectionColor(binding.source.source_node_id));
+    onStarted: (request, connectionId) => {
+      if (!workflow || request.source.kind !== "node_output") return;
+      connectionEffects?.publish(workflow.workflow_id, request.target_node_id, connectionId,
+        canvasConnectionColor(request.source.source_node_id));
     },
   });
   const [connectionPolicy, setConnectionPolicy] = useState<CanvasConnectionPolicyV2 | null>(null);
