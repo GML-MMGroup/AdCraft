@@ -68,6 +68,13 @@ const fields: Record<string, string> = {
   cached_tokens: "缓存 Token", reasoning_tokens: "推理 Token",
   slots: "待梳理的信息项", slot_schema_version: "信息结构版本", target_slot_id: "当前信息项",
   card_id: "问题卡标识", stage_revision: "阶段版本",
+  mentioned_node_ids: "提到的画布节点", mentioned_image_asset_ids: "提到的图片素材",
+  requirement_revision_id: "需求版本标识", requirement_revision_no: "需求版本号",
+  requirement_digest: "需求内容摘要值", requirement_patch: "需求变更",
+  current_hard_controls: "当前硬性约束", editable_directives: "可编辑指令",
+  current_response_locale: "当前回复语言", workflow_context: "工作流上下文",
+  style_skill_catalog: "风格 Skills 目录", requested_capability: "请求的能力",
+  session_exists: "会话是否已存在", option_id: "选项标识", why: "推荐理由",
 };
 export function fieldLabel(key: string) { return fields[key] ?? key; }
 

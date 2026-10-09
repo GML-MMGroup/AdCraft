@@ -42,9 +42,9 @@
 .llm-call-tabs button { border: 0; border-radius: 0; border-bottom: 2px solid transparent; padding: 12px 10px; background: transparent; color: var(--call-muted); white-space: nowrap; font-size: 13px; }
 .llm-call-tabs button.is-active { border-bottom-color: var(--call-accent); color: var(--call-text); }
 .llm-call-content { padding-top: 24px; }
-.llm-call-content h3 { margin: 24px 0 12px; font-size: 15px; font-weight: 500; }
+.llm-call-content h3 { margin: 32px 0 18px; font-size: 16px; font-weight: 500; }
 .llm-call-content > h3:first-child { margin-top: 0; }
-.llm-call-content h4 { margin: 0 0 7px; color: var(--call-muted); font-size: 12px; font-weight: 500; }
+.llm-call-content h4 { margin: 0 0 6px; color: var(--call-muted); font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
 .llm-call-history__facts { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin: 0 0 24px; }
 .llm-call-history__facts dt, .llm-call-history__identifiers dt { color: var(--call-muted); font-size: 12px; }
 .llm-call-history__facts dd, .llm-call-history__identifiers dd { margin: 6px 0 12px; overflow-wrap: anywhere; }
@@ -55,14 +55,27 @@
 .llm-call-history__section-head h3 { margin: 0; color: var(--call-accent); }
 .llm-call-history__section-head button { padding: 3px 0; border: 0; background: transparent; color: var(--call-muted); font-size: 12px; }
 .llm-call-history__prose { margin: 0; font: inherit; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
-.llm-call-history__fields { display: grid; gap: 18px; }
+.llm-call-history__fields { display: grid; gap: 24px; min-width: 0; }
 .llm-call-history__field { min-width: 0; }
-.llm-call-history__field > .llm-call-history__disclosure { margin-top: 0; }
-.llm-call-history__readable-list { margin: 10px 0; padding-left: 24px; }
-.llm-call-history__readable-list > li { margin-bottom: 18px; padding-left: 5px; }
-.llm-call-history__disclosure { margin-top: 16px; border-top: 1px solid var(--call-line); padding-top: 14px; }
-.llm-call-history__disclosure summary { cursor: pointer; color: var(--call-muted); font-size: 13px; overflow-wrap: anywhere; }
-.llm-call-history__disclosure[open] > summary { margin-bottom: 16px; color: var(--call-text); }
+.llm-call-history__readable-list { margin: 0; padding-left: 28px; list-style-type: decimal-leading-zero; }
+.llm-call-history__readable-list > li { padding: 20px 0 20px 8px; border-bottom: 1px solid var(--call-line); }
+.llm-call-history__readable-list > li:first-child { padding-top: 0; }
+.llm-call-history__readable-list > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.llm-call-history__readable-list > li::marker { color: var(--call-accent); font: 12px var(--font-mono, monospace); }
+/* Section headers mark major groups; nested groups use one continuous ancestry rail. */
+.llm-call-history__disclosure { min-width: 0; margin: 20px 0; border: 1px solid var(--call-line); border-radius: 7px; }
+.llm-call-history__disclosure > summary { padding: 13px 16px; border-radius: 6px; background: var(--call-surface); cursor: pointer; color: var(--call-text); font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.llm-call-history__disclosure > summary::marker { color: var(--call-muted); font-size: 11px; }
+.llm-call-history__disclosure > summary:hover { background: #212329; }
+.llm-call-history__disclosure[open] > summary { color: var(--call-accent); border-bottom: 1px solid var(--call-line); border-radius: 6px 6px 0 0; }
+.llm-call-history__disclosure-body { min-width: 0; margin: 18px 18px 20px; padding-left: 18px; border-left: 1px solid #444039; }
+.llm-call-history__disclosure-body > :first-child { margin-top: 0; }
+.llm-call-history__disclosure-body > :last-child { margin-bottom: 0; }
+.llm-call-history__disclosure--nested { margin: 0; border: 0; border-radius: 0; }
+.llm-call-history__disclosure--nested > summary { padding: 7px 10px; border-radius: 4px; background: var(--call-surface); font-size: 13px; }
+.llm-call-history__disclosure--nested[open] > summary { color: var(--call-text); border-bottom: 0; border-radius: 4px; }
+.llm-call-history__disclosure--nested > .llm-call-history__disclosure-body { margin: 12px 0 0 13px; padding-left: 18px; border-left-color: var(--call-line); }
+.llm-call-history__field > .llm-call-history__muted { margin: 0; }
 .llm-call-history__value { max-height: 520px; overflow: auto; margin: 12px 0; border: 1px solid var(--call-line); border-radius: 6px; padding: 16px; background: var(--call-bg); color: var(--call-text); font: 12px/1.7 var(--font-mono, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .llm-call-history__muted, .llm-call-history__source { color: var(--call-muted); font-size: 13px; overflow-wrap: anywhere; }
 .llm-call-history__source { display: block; margin-top: 14px; font: 11px/1.7 var(--font-mono, monospace); }

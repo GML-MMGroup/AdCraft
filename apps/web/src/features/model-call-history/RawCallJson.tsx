@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { jsonText } from "../agent-model-call-history";
+import { CallDisclosure, RecordedValue } from "./ReadableCallValue";
 
 export function RawCallJson({ request, outcome }: { request: unknown; outcome: unknown }) {
   const raw = useMemo(() => jsonText({ request, outcome }), [request, outcome]);
@@ -22,11 +23,10 @@ export function RawCallJson({ request, outcome }: { request: unknown; outcome: u
   }
   return <>
     <label>搜索原始 JSON <input value={query} onChange={event => setQuery(event.target.value)} /></label>
-    {deferredQuery && <details open>
-      <summary>匹配 {matches.length} 行（完整 JSON 保留在下方）</summary>
-      <pre className="llm-call-history__value">{matches.map(match => `${match.number}: ${match.line}`).join("\n") || "没有匹配内容"}</pre>
-    </details>}
-    <details open><summary>完整 request / outcome</summary><pre className="llm-call-history__value">{raw}</pre></details>
+    {deferredQuery && <CallDisclosure defaultOpen title={`匹配 ${matches.length} 行（完整 JSON 保留在下方）`}>
+      <RecordedValue value={matches.map(match => `${match.number}: ${match.line}`).join("\n") || "没有匹配内容"}/>
+    </CallDisclosure>}
+    <CallDisclosure defaultOpen title="完整 request / outcome"><RecordedValue value={raw}/></CallDisclosure>
     <button type="button" onClick={() => void copy()}>复制 JSON</button>
     <span role="status">{message}</span>
   </>;
