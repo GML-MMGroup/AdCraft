@@ -115,7 +115,6 @@ class GuidanceAdvanceService:
         self._events = events
         self._post_ready_gate = post_ready_gate
         self._authority = GuidanceAdvanceAuthoritySnapshotRepository(requirements)
-        self._consistency = GuidanceAuthorityConsistencyValidator()
 
     def submit(
         self,

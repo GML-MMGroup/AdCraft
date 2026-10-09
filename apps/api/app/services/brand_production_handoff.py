@@ -23,7 +23,13 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.persistence.models import AgentCanvasRequirementLedgerRevisionRow
+from app.persistence.models import (
+    AgentCanvasRequirementLedgerRevisionRow,
+    AgentCanvasWorkflowRow,
+    BrandRow,
+    BrandJourneyRow,
+    ProjectRow,
+)
 from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.schemas.agent_canvas_requirements import (
@@ -338,6 +344,41 @@ class BrandProductionHandoffService:
             return BrandDecisionDocumentService(self._database).frozen_in_transaction(
                 connection, brand_id
             )
+
+    def recover_locked_intake_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+    ) -> bool:
+        """Admit a historical empty Brand intake inside an explicit Guidance command."""
+        from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
+
+        brand_id = connection.execute(
+            select(BrandRow.brand_id)
+            .join(ProjectRow, ProjectRow.project_id == BrandRow.project_id)
+            .join(
+                AgentCanvasWorkflowRow, AgentCanvasWorkflowRow.project_id == ProjectRow.project_id
+            )
+            .join(BrandJourneyRow, BrandJourneyRow.brand_id == BrandRow.brand_id)
+            .where(
+                AgentCanvasWorkflowRow.workflow_id == workflow_id,
+                ProjectRow.mode == "brand",
+                BrandJourneyRow.stage == "production",
+            )
+        ).scalar_one_or_none()
+        if brand_id is None:
+            return False
+        document = BrandDecisionDocumentService(self._database).frozen_in_transaction(
+            connection, brand_id
+        )
+        if document is None:
+            return False
+        admitted = self.prepare_reviewed_in_transaction(connection, workflow_id, brand_id, document)
+        if admitted:
+            BrandGuidedInteractionBridge(self._database).close_brand_interactions_in_transaction(
+                connection, workflow_id
+            )
+        return admitted
 
     def prepare_reviewed_in_transaction(
         self,

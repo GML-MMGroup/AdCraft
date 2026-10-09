@@ -17,6 +17,7 @@ from app.persistence.models import (
     AgentCanvasGuidanceSessionRow,
     AgentCanvasNodeRow,
     AgentCanvasWorkflowRow,
+    AgentWorkingDocumentRow,
     BrandRow,
     ProjectRow,
 )
@@ -82,6 +83,9 @@ class BrandProductionAdmissionRepository:
             raise _conflict()
         guards = (
             select(AgentCanvasNodeRow.node_id).where(AgentCanvasNodeRow.workflow_id == workflow_id),
+            select(AgentWorkingDocumentRow.document_id).where(
+                AgentWorkingDocumentRow.workflow_id == workflow_id
+            ),
             select(AgentCanvasChatTurnRow.turn_id).where(
                 AgentCanvasChatTurnRow.workflow_id == workflow_id,
                 AgentCanvasChatTurnRow.status.in_(("queued", "running")),

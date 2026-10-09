@@ -2064,6 +2064,16 @@ class AgentCanvasConversationRepository:
                         requirements=self._requirements,
                         continuations=outbox,
                     )
+                    if plan.request.precondition.journey_stage == "intake":
+                        from app.services.brand_production_handoff import (
+                            BrandProductionHandoffService,
+                        )
+
+                        # Keep the submitted command identity for exact replay. Its child
+                        # envelope is built below from the admitted current authority.
+                        BrandProductionHandoffService(
+                            self._database
+                        ).recover_locked_intake_in_transaction(connection, workflow_id)
                     conversation_id = plan.conversation_id or _ensure_conversation(
                         connection,
                         workflow_id,
