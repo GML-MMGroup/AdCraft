@@ -14,6 +14,7 @@ from app.persistence.models import BrandDecisionLogRow
 from app.schemas.brand_professional_mode import (
     BrandBriefSummaryV1,
     BrandTreatmentDocumentV1,
+    BrandTreatmentReviewV1,
 )
 from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
 from app.services.brand_slot_schema import slots_for_stage
@@ -122,14 +123,26 @@ class BrandDecisionDocumentService:
             complete=not missing,
             missing_sections=tuple(missing),
         )
-        digest = sha256(
-            json.dumps(
-                document.model_dump(mode="json", exclude={"content_digest"}),
-                ensure_ascii=False,
-                sort_keys=True,
-            ).encode()
-        ).hexdigest()
-        return document.model_copy(update={"content_digest": digest})
+        source_digest = treatment_document_digest(document)
+        raw_review = connection.execute(
+            select(BrandDecisionLogRow.detail_json)
+            .where(
+                BrandDecisionLogRow.brand_id == brand_id,
+                BrandDecisionLogRow.target_type == "treatment_review",
+                BrandDecisionLogRow.target_id == source_digest,
+            )
+            .order_by(BrandDecisionLogRow.created_at.desc(), BrandDecisionLogRow.log_id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if raw_review:
+            document = document.model_copy(
+                update={
+                    "review": BrandTreatmentReviewV1.model_validate(
+                        json.loads(raw_review)["review"]
+                    )
+                }
+            )
+        return document.model_copy(update={"content_digest": treatment_document_digest(document)})
 
     def frozen_in_transaction(
         self, connection: Connection, brand_id: str
@@ -145,3 +158,14 @@ class BrandDecisionDocumentService:
             .limit(1)
         ).scalar_one_or_none()
         return BrandTreatmentDocumentV1.model_validate(json.loads(raw)["document"]) if raw else None
+
+
+def treatment_document_digest(document: BrandTreatmentDocumentV1) -> str:
+    excluded = {"content_digest"} if document.review is not None else {"content_digest", "review"}
+    return sha256(
+        json.dumps(
+            document.model_dump(mode="json", exclude=excluded),
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()

@@ -7704,6 +7704,17 @@
           "title": "Projection Version",
           "type": "string"
         },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandTreatmentReviewV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "role": {
           "enum": [
             "bgm",
@@ -7762,6 +7773,125 @@
         "source_content_digest"
       ],
       "title": "BrandProductionContextV1",
+      "type": "object"
+    },
+    "BrandProductionElementV1": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "sources",
+        "summary"
+      ],
+      "title": "BrandProductionElementV1",
+      "type": "object"
+    },
+    "BrandProductionRequirementsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "character_count": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Count"
+        },
+        "character_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "title": "Character Sources",
+          "type": "array"
+        },
+        "characters": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandProductionElementV1"
+          },
+          "maxItems": 32,
+          "title": "Characters",
+          "type": "array"
+        },
+        "prop_presence": {
+          "default": "unspecified",
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Prop Presence",
+          "type": "string"
+        },
+        "prop_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "title": "Prop Sources",
+          "type": "array"
+        },
+        "scene_presence": {
+          "default": "unspecified",
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Scene Presence",
+          "type": "string"
+        },
+        "scene_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "title": "Scene Sources",
+          "type": "array"
+        },
+        "scenes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandProductionElementV1"
+          },
+          "maxItems": 32,
+          "title": "Scenes",
+          "type": "array"
+        }
+      },
+      "title": "BrandProductionRequirementsV1",
       "type": "object"
     },
     "BrandProductionStepV1": {
@@ -8145,6 +8275,17 @@
           "title": "Product Presentation",
           "type": "array"
         },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandTreatmentReviewV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "schema_version": {
           "const": "2",
           "default": "2",
@@ -8187,6 +8328,142 @@
         "campaign_brief"
       ],
       "title": "BrandTreatmentDocumentV1",
+      "type": "object"
+    },
+    "BrandTreatmentFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "brand_alignment",
+            "continuity",
+            "lighting_consistency",
+            "other",
+            "sound_execution",
+            "timing_consistency"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "severity",
+        "sources"
+      ],
+      "title": "BrandTreatmentFindingV1",
+      "type": "object"
+    },
+    "BrandTreatmentReviewOutputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentFindingV1"
+          },
+          "maxItems": 8,
+          "title": "Findings",
+          "type": "array"
+        },
+        "production_requirements": {
+          "$ref": "#/$defs/BrandProductionRequirementsV1"
+        }
+      },
+      "required": [
+        "production_requirements"
+      ],
+      "title": "BrandTreatmentReviewOutputV1",
+      "type": "object"
+    },
+    "BrandTreatmentReviewV1": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentFindingV1"
+          },
+          "maxItems": 8,
+          "title": "Findings",
+          "type": "array"
+        },
+        "production_requirements": {
+          "$ref": "#/$defs/BrandProductionRequirementsV1"
+        },
+        "source_content_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Content Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "production_requirements",
+        "source_content_digest"
+      ],
+      "title": "BrandTreatmentReviewV1",
+      "type": "object"
+    },
+    "BrandTreatmentSourceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "quote": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "section_key": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Section Key",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "quote",
+        "section_key",
+        "step_key"
+      ],
+      "title": "BrandTreatmentSourceV1",
       "type": "object"
     },
     "CanvasBindingSourceImageAssetV2": {
@@ -38125,6 +38402,7 @@
     "BrandStrategyOutputV1",
     "CreativeStrategyOutputV1",
     "CreativeTreatmentOutputV1",
+    "BrandTreatmentReviewOutputV1",
     "GuidedScriptCheckpointDraftV1",
     "BrandSkillRecommendationsV1",
     "WorldSettingMaterializationResultV1",
@@ -38616,6 +38894,18 @@
       "max_skill_context_bytes": 8192,
       "operation": "brand_skill_recommendation",
       "result_contract_name": "BrandSkillRecommendationsV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_creative_treatment",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_treatment_review",
+      "result_contract_name": "BrandTreatmentReviewOutputV1",
       "style_projection_role": null,
       "validation_profile": null
     },

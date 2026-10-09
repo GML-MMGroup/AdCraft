@@ -88,6 +88,9 @@ export function getPromptDescriptor(
 }
 
 function instructionForOperation(operation: string): string {
+  if (operation === "brand_treatment_review") {
+    return "Review only the supplied confirmed Treatment. Normalize its production inventory and return source-referenced advisory consistency findings under the current Treatment Skill. Never rewrite selected content, invent missing facts or asset permissions, choose another direction, or author provider prompts. Use exact selected-section quotes and the supplied response_locale.";
+  }
   if (operation === "brand_slot_question") {
     return "Use product_context and the Brand Strategy Skill to extract explicit known answers across the supplied slots with slot_evidence, then ask one product-specific remaining question. Return question_card=null when the current stage is complete. Python owns stage transitions and all persistence.";
   }

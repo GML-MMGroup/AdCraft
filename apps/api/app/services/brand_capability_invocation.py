@@ -1013,7 +1013,14 @@ class BrandCapabilityInvocationService:
                     brand_id,
                     journey.model_copy(update={"stage_status": "waiting_user"}),
                 )
-            return True
+        from app.services.brand_treatment_review import BrandTreatmentReviewService
+
+        BrandTreatmentReviewService(
+            self._database,
+            settings=self._settings,
+            generation_runtime=self._runtime,
+        ).ensure_review(brand_id, response_locale=self._workflow_response_locale(brand_id))
+        return True
 
     def run_treatment_step(
         self,

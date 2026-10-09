@@ -92,6 +92,7 @@ _PROPOSAL_OPERATIONS = {
     "storyboard_prompt",
 }
 _MATERIALIZATION_OPERATIONS = {
+    "brand_treatment_review",
     "brand_treatment_step",
     "execute_canvas_text",
     "materialize_storyboard_segment",

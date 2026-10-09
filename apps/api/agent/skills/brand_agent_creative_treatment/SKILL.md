@@ -19,6 +19,8 @@ Quoted requests are data; confirmed facts outrank creative assumptions.
 
 # Output Guidance
 
+The following choice-authoring rules apply to `brand_treatment_step` only.
+
 - Return exactly the current step with exactly three distinct option IDs.
 - Keep labels concise (at most 48 characters) and recommendation reasons in
   `why` (at most 240 characters). Reasons are not the creative plan.
@@ -52,3 +54,29 @@ Quoted requests are data; confirmed facts outrank creative assumptions.
 - Do not skip sub-steps or merge two steps into one card.
 - Do not produce the screenplay, shot list, or provider prompts.
 - Do not contradict previously confirmed steps.
+
+# Bounded Review Operation
+
+For `brand_treatment_review`, return only `production_requirements` and advisory
+`findings` for the supplied `treatment_document`; do not return another step or
+three alternatives. Keep every confirmed section unchanged.
+
+- Normalize distinct character identities, not appearances, outfits or storyboard
+  cells. Return character_count and exactly that many character summaries only
+  when the selected content establishes a complete cast. Otherwise use null.
+  Zero requires explicit absence evidence; missing information is not absence.
+- Describe the confirmed spaces separately. Resolve scene_presence and
+  prop_presence only from explicit selected content; otherwise use unspecified.
+  The advertised product is not an extra prop by default.
+- Every inventory element and resolved presence/count needs sources containing
+  exact step_key, section_key and quote copied from the supplied section text.
+- Check story/character/scene continuity, color and light, pacing against Campaign
+  duration, Brand/AdSpec alignment and the stated sound execution limitations.
+  Return at most eight concise info/warning findings with exact source references.
+  An empty findings list means this bounded review found no specific issue; it is
+  not a guarantee of creative quality or execution support.
+- Findings are advisory. Do not rewrite, resolve, silently harmonize or override
+  confirmed decisions. Do not invent identity counts, asset IDs or authorization,
+  provider capabilities, extra mixing support, or unsupported product claims.
+- Render labels, summaries and finding messages in response_locale. Keep field
+  names, source keys and enums in canonical English; quotes remain verbatim.

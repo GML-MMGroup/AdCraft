@@ -54,6 +54,7 @@ _STATUS_BY_CODE = {
     "requirement_persistence_failed": 503,
     "brand_handoff_persistence_failed": 503,
     "brand_handoff_conflict": 409,
+    "brand_review_invalid": 422,
     "brand_context_stale": 409,
     "brand_treatment_incomplete": 409,
     "brand_treatment_review_required": 409,

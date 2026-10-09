@@ -242,6 +242,68 @@ class BrandAssetReferenceV1(_BrandModel):
     input_role: str
 
 
+class BrandTreatmentSourceV1(_BrandModel):
+    step_key: BrandTreatmentSubstep
+    section_key: str = Field(min_length=1, max_length=80)
+    quote: str = Field(min_length=1, max_length=400)
+
+
+class BrandProductionElementV1(_BrandModel):
+    label: str = Field(min_length=1, max_length=80)
+    summary: str = Field(min_length=1, max_length=400)
+    sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
+
+
+class BrandProductionRequirementsV1(_BrandModel):
+    character_count: int | None = Field(default=None, ge=0, le=32)
+    characters: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
+    character_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+    prop_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
+    prop_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+    scene_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
+    scenes: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
+    scene_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+
+    @model_validator(mode="after")
+    def grounded_inventory(self) -> "BrandProductionRequirementsV1":
+        if self.character_count is not None and (
+            self.character_count != len(self.characters) or not self.character_sources
+        ):
+            raise ValueError("Resolved character count requires matching inventory and sources.")
+        if self.prop_presence != "unspecified" and not self.prop_sources:
+            raise ValueError("Resolved prop presence requires sources.")
+        if self.scene_presence != "unspecified" and not self.scene_sources:
+            raise ValueError("Resolved scene presence requires sources.")
+        if (self.scene_presence == "include" and not self.scenes) or (
+            self.scene_presence == "exclude" and self.scenes
+        ):
+            raise ValueError("Scene inventory must agree with its presence decision.")
+        return self
+
+
+class BrandTreatmentFindingV1(_BrandModel):
+    code: Literal[
+        "lighting_consistency",
+        "timing_consistency",
+        "continuity",
+        "brand_alignment",
+        "sound_execution",
+        "other",
+    ]
+    severity: Literal["info", "warning"]
+    message: str = Field(min_length=1, max_length=400)
+    sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
+
+
+class BrandTreatmentReviewOutputV1(_BrandModel):
+    production_requirements: BrandProductionRequirementsV1
+    findings: tuple[BrandTreatmentFindingV1, ...] = Field(default=(), max_length=8)
+
+
+class BrandTreatmentReviewV1(BrandTreatmentReviewOutputV1):
+    source_content_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class BrandTreatmentDocumentV1(_BrandModel):
     schema_version: Literal["2"] = "2"
     brand_profile: BrandBriefSummaryV1
@@ -256,6 +318,7 @@ class BrandTreatmentDocumentV1(_BrandModel):
     missing_sections: tuple[str, ...] = ()
     content_digest: str = ""
     execution_limitations: tuple[str, ...] = ("sound_effects_and_mixing_not_automated",)
+    review: BrandTreatmentReviewV1 | None = None
 
 
 class BrandDecisionPanelV1(_BrandModel):
