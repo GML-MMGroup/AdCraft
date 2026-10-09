@@ -54,6 +54,7 @@ _COMMON_FIELDS = frozenset(
         "complete",
         "missing_sections",
         "execution_limitations",
+        "review",
     }
 )
 

@@ -29,8 +29,11 @@ from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.schemas.agent_canvas_requirements import (
     AspectRatioControlPatchV1,
     AudioModeControlPatchV1,
+    CharacterCountControlPatchV1,
+    CharacterOccurrencePatchV1,
     DurationSecondsControlPatchV1,
     ProductCountControlPatchV1,
+    SceneCountControlPatchV1,
     RequirementElementPresencePatchV1,
     RequirementDirectivePatchV1,
     RequirementPatchV1,
@@ -50,6 +53,61 @@ from app.services.brand_question_context import BrandQuestionContextService
 class BrandHandoffResult:
     workflow_id: str | None
     clarified: bool = False
+
+
+def reviewed_inventory_patch(
+    document: BrandTreatmentDocumentV1,
+) -> tuple[RequirementPatchV1, tuple[RequirementElementPresencePatchV1, ...]]:
+    """Project only reviewed typed facts; unknown historical inventory stays unresolved."""
+    if document.review is None:
+        return RequirementPatchV1(), ()
+    inventory = document.review.production_requirements
+    controls = []
+    elements = []
+    occurrences = None
+    if inventory.character_count is not None:
+        source = inventory.character_sources[0].quote
+        controls.append(
+            CharacterCountControlPatchV1(value=inventory.character_count, source_quote=source)
+        )
+        elements.append(
+            RequirementElementPresencePatchV1(
+                element_kind="character",
+                presence="include" if inventory.character_count else "exclude",
+                source_quote=source,
+            )
+        )
+        occurrences = tuple(
+            CharacterOccurrencePatchV1(
+                occurrence_index=index,
+                role=item.label,
+                identity_summary=item.summary,
+                presence="include",
+                source_quote=item.sources[0].quote,
+            )
+            for index, item in enumerate(inventory.characters, 1)
+        )
+    if inventory.scene_presence != "unspecified":
+        source = inventory.scene_sources[0].quote
+        controls.append(SceneCountControlPatchV1(value=len(inventory.scenes), source_quote=source))
+        elements.append(
+            RequirementElementPresencePatchV1(
+                element_kind="scene",
+                presence=inventory.scene_presence,
+                source_quote=source,
+            )
+        )
+    if inventory.prop_presence != "unspecified":
+        elements.append(
+            RequirementElementPresencePatchV1(
+                element_kind="prop",
+                presence=inventory.prop_presence,
+                source_quote=inventory.prop_sources[0].quote,
+            )
+        )
+    return RequirementPatchV1(
+        controls_to_set=tuple(controls), character_occurrences_to_set=occurrences
+    ), tuple(elements)
 
 
 class BrandProductionHandoffService:
@@ -362,6 +420,13 @@ class BrandProductionHandoffService:
         audio_mode = controls.get("audio_mode", "bgm_only")
         product_count = controls.get("product_count", 1)
         source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
+        inventory_patch, inventory_elements = reviewed_inventory_patch(document)
+        source += "\n" + "\n".join(
+            section.text
+            for step in document.treatment_steps
+            if step.structured_detail
+            for section in step.structured_detail.sections
+        )
         requirements.apply_user_turn_patch_in_transaction(
             connection,
             workflow_id,
@@ -382,6 +447,7 @@ class BrandProductionHandoffService:
                         value=segments, source_quote=duration_text
                     ),
                     VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text),
+                    *inventory_patch.controls_to_set,
                 ),
                 directives_to_add=(
                     RequirementDirectivePatchV1(
@@ -391,6 +457,7 @@ class BrandProductionHandoffService:
                         strength="hard",
                     ),
                 ),
+                character_occurrences_to_set=inventory_patch.character_occurrences_to_set,
             ),
             explicit_elements=(
                 RequirementElementPresencePatchV1(
@@ -409,6 +476,7 @@ class BrandProductionHandoffService:
                     presence="exclude" if audio_mode == "none" else "include",
                     source_quote=f"audio {audio_mode}",
                 ),
+                *inventory_elements,
             ),
         )
 

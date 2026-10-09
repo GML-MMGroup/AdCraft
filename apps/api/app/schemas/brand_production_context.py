@@ -9,6 +9,7 @@ from app.schemas.brand_professional_mode import (
     BrandAssetReferenceV1,
     BrandBriefSummaryV1,
     BrandTreatmentSubstep,
+    BrandTreatmentReviewV1,
     CreativeHypothesisCandidateV1,
     SkillStackV1,
 )
@@ -45,3 +46,4 @@ class BrandProductionContextV1(BaseModel):
     complete: bool
     missing_sections: tuple[str, ...] = ()
     execution_limitations: tuple[str, ...] = ()
+    review: BrandTreatmentReviewV1 | None = None
