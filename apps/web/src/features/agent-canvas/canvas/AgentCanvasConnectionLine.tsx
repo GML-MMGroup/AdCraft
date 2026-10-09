@@ -1,5 +1,6 @@
 import {
   getBezierPath,
+  useStore,
   type ConnectionLineComponentProps,
 } from "@xyflow/react";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
 import { nodeBorderPointFromHandleCenter } from "./canvasConnectionGeometry.ts";
 import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
 import { CanvasConnectionSpark } from "./connection-effects/CanvasConnectionSpark.tsx";
+import { findNearbyConnectionHandle } from "./connection-effects/connectionProximity.ts";
 
 export function AgentCanvasConnectionLine({
   connectionLineStyle,
@@ -23,6 +25,12 @@ export function AgentCanvasConnectionLine({
   toX,
   toY,
 }: ConnectionLineComponentProps<AgentCanvasFlowNode>) {
+  const nodeLookup = useStore(state => state.nodeLookup);
+  const zoom = useStore(state => state.transform[2]);
+  const validate = useStore(state => state.isValidConnection);
+  const nearby = connectionStatus == null && fromHandle
+    ? findNearbyConnectionHandle(nodeLookup.values(), { x: toX, y: toY }, fromNode.id, fromHandle, zoom, validate)
+    : null;
   const source = nodeBorderPointFromHandleCenter(
     { x: fromX, y: fromY },
     fromPosition,
@@ -51,7 +59,7 @@ export function AgentCanvasConnectionLine({
     setTail({ x: start.x, y: start.y, dash: `${length - tailLength} ${length}`, path });
   }, [path, valid]);
   const activeTail = valid && tail?.path === path ? tail : null;
-  const color = canvasConnectionColor(fromHandle?.type === "target" ? toNode?.id ?? "" : fromNode.id ?? "");
+  const color = canvasConnectionColor(fromHandle?.type === "target" ? toNode?.id ?? nearby?.nodeId ?? "" : fromNode.id ?? "");
 
   return (
     <>
@@ -60,10 +68,12 @@ export function AgentCanvasConnectionLine({
       className="react-flow__connection-path agent-canvas-connection-line"
       d={path}
       data-connection-status={connectionStatus ?? "pending"}
+      data-proximity-target={nearby?.nodeId}
       fill="none"
       style={{ ...connectionLineStyle, strokeDasharray: activeTail?.dash }}
     />
-    {activeTail ? <CanvasConnectionSpark start={activeTail} end={{ x: toX, y: toY }} color={color}/> : null}
+    {activeTail ? <CanvasConnectionSpark start={activeTail} end={{ x: toX, y: toY }} color={color}/>
+      : nearby ? <CanvasConnectionSpark start={{ x: toX, y: toY }} end={nearby.center} color={color} strength={nearby.strength}/> : null}
     </>
   );
 }
