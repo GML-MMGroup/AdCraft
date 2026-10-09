@@ -2015,9 +2015,12 @@ class AgentCanvasConversationRepository:
     def create_guidance_advance_delivery(
         self,
         plan: GuidanceAdvanceAuthorityPlanV1,
+        *,
+        connection: Connection | None = None,
     ) -> ChatTurnAcceptedV2:
         """Commit one Guidance command only while its complete authority is current."""
 
+        owns_transaction = connection is None
         workflow_id = plan.workflow_id
         request = plan.request.model_dump(mode="json")
         persisted_request = {
@@ -2030,8 +2033,11 @@ class AgentCanvasConversationRepository:
         now = _now()
         outbox = AgentCanvasContinuationOutboxRepository(self._database, self._events)
         try:
-            with self._database.engine.connect() as connection:
-                connection.exec_driver_sql("BEGIN IMMEDIATE")
+            with (
+                self._database.engine.connect() if owns_transaction else nullcontext(connection)
+            ) as connection:
+                if owns_transaction:
+                    connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
                     existing = (
                         connection.execute(
@@ -2048,7 +2054,8 @@ class AgentCanvasConversationRepository:
                             existing=existing,
                             plan=plan,
                         )
-                        connection.commit()
+                        if owns_transaction:
+                            connection.commit()
                         return _guidance_accepted(connection, receipt)
 
                     _validate_guidance_advance_authority(
@@ -2136,10 +2143,12 @@ class AgentCanvasConversationRepository:
                         retry_attempt_no=1,
                         replayed=False,
                     )
-                    connection.commit()
+                    if owns_transaction:
+                        connection.commit()
                     return _guidance_accepted(connection, receipt)
                 except BaseException:
-                    connection.rollback()
+                    if owns_transaction:
+                        connection.rollback()
                     raise
         except V2PersistenceError:
             raise

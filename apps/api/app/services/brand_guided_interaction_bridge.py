@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.engine import Connection
 
 from app.persistence.models import (
     AgentCanvasGuidanceAwaitingRow,
@@ -260,6 +261,40 @@ class BrandGuidedInteractionBridge:
                     created_at=awaiting.created_at.isoformat(),
                 )
             )
+
+    def close_brand_interactions_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+    ) -> None:
+        """Release only Brand waits; never close a downstream production choice."""
+        rows = connection.execute(
+            select(AgentCanvasGuidedInteractionRow).where(
+                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                AgentCanvasGuidedInteractionRow.kind == "concept_choice",
+            )
+        ).mappings()
+        identities = tuple(
+            row["interaction_id"]
+            for row in rows
+            if str(json.loads(row["content_json"]).get("capability_id", "")).startswith("brand_")
+        )
+        if not identities:
+            return
+        connection.execute(
+            AgentCanvasGuidedInteractionRow.__table__.update()
+            .where(
+                AgentCanvasGuidedInteractionRow.interaction_id.in_(identities),
+                AgentCanvasGuidedInteractionRow.status == "open",
+            )
+            .values(status="superseded", updated_at=_now_iso())
+        )
+        connection.execute(
+            AgentCanvasGuidanceAwaitingRow.__table__.delete().where(
+                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                AgentCanvasGuidanceAwaitingRow.interaction_id.in_(identities),
+            )
+        )
 
     def close_current_interaction(
         self, workflow_id: str, *, status: Literal["submitted", "superseded"] = "submitted"
