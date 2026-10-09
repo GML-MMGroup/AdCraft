@@ -64,6 +64,7 @@ import {
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
 import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
+import { BrandCardRecoveryNotice } from "./BrandCardRecoveryNotice";
 import { BrandTreatmentConfirmation } from "./BrandTreatmentConfirmation.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
@@ -204,6 +205,7 @@ export function AgentCanvasChatPanel({
     brandStage,
     brandContextReady,
     onBrandDecisionsRefresh,
+    onBrandDecisionsUpdated,
   });
   const [draft, setDraft] = useState("");
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -273,7 +275,8 @@ export function AgentCanvasChatPanel({
   const conceptInteractionPending = Boolean(
     conceptInteraction
     && (conceptInteraction.status === "submitted"
-      || chat.state.actingInteractionId === conceptInteraction.interaction_id),
+      || chat.state.actingInteractionId === conceptInteraction.interaction_id
+      || chat.state.brandCardLocked),
   );
   const currentInteractionOptimisticallyDismissed = Boolean(
     standaloneGuidedInteraction
@@ -480,7 +483,7 @@ export function AgentCanvasChatPanel({
   });
   useEffect(() => {
     setSelectedConceptOptionId(null);
-  }, [conceptInteraction?.interaction_id]);
+  }, [conceptInteraction?.interaction_id, chat.state.brandCardLocked]);
 
   useEffect(() => {
     if (!optimisticallyDismissedInteractionId) return;
@@ -617,6 +620,7 @@ export function AgentCanvasChatPanel({
           standaloneGuidedInteraction.status === "submitted"
           || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
         }
+        disabled={chat.state.brandCardLocked}
         issue={chat.state.guidedInteractionIssue}
         pendingProductMainHandoff={composerContext.productMainHandoff}
         onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
@@ -986,6 +990,11 @@ export function AgentCanvasChatPanel({
         ) : null}
       </div>
 
+      {chat.state.brandCardRecovery ? <BrandCardRecoveryNotice
+        state={chat.state.brandCardRecovery} busy={chat.state.brandCardRecoveryBusy}
+        onRefresh={() => { setSelectedConceptOptionId(null); setDraft(""); void chat.actions.refreshBrandCard(); }}
+      /> : null}
+
       {chat.state.composerRecovery ? (
         <ConversationRecoverySurface
           recovery={chat.state.composerRecovery}
@@ -1042,7 +1051,7 @@ export function AgentCanvasChatPanel({
         />
       ) : null}
 
-      {brandMode && brandStage === "treatment" && brandTreatmentReady ? (
+      {brandMode && brandStage === "treatment" && (brandTreatmentReady || chat.state.brandCardRecovery?.phase === "review") ? (
         <BrandTreatmentConfirmation
           onProductionRefresh={onWorkflowRefresh}
           key={workflow.workflow_id}

@@ -27,6 +27,7 @@ const api = vi.hoisted(() => ({
   applyAgentCanvasGuidedAction: vi.fn(),
   submitAgentCanvasGuidedInteraction: vi.fn(),
   brandNextQuestion: vi.fn(),
+  brandDecisions: vi.fn(),
 }));
 
 vi.mock("../../../api/v2Client.ts", () => ({
@@ -39,6 +40,7 @@ vi.mock("../../../api/v2Client.ts", () => ({
 }));
 
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
+import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
 
 function workflow(workflowId = "workflow-1"): AgentCanvasWorkflowV2 {
   return {
@@ -534,6 +536,46 @@ describe("useAgentCanvasChat", () => {
       await Promise.resolve();
     });
     expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers a context-stale Brand card only on explicit refresh, then submits the new authority", async () => {
+    const old = guidedBrandConceptInteraction();
+    let session = { ...guidedSession(), interaction: old };
+    api.agentCanvasChatTimeline.mockImplementation(async () => emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockImplementation(async () => session);
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValueOnce({ status: 409, code: "brand_context_stale", message: "Brief changed" });
+    api.brandDecisions.mockResolvedValue({ workflow_id: "workflow-1", journey: { stage: "campaign" }, open_card: { card_id: "new-card" } });
+    const onBrandDecisionsUpdated = vi.fn();
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents: [], brandMode: true, brandStage: "campaign", onBrandDecisionsUpdated,
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    const request = buildConceptChoiceSubmitRequest({ interaction: old, selectedOptionId: "option-1", customText: "", proposalReferences: null })!;
+    await act(async () => { await result.current.actions.submitGuidedInteraction(old, request); });
+    expect(result.current.state.brandCardRecovery).toMatchObject({ phase: "stale", needsQuestion: true });
+    expect(result.current.state.guidedAnswerBubbles).toHaveLength(0);
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+    await act(async () => { await result.current.actions.submitGuidedInteraction(old, request); });
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledOnce();
+    const replacement = { ...old, interaction_id: "brand-new", revision: 5, expected_session_revision: 11 };
+    api.brandNextQuestion.mockImplementationOnce(async () => {
+      session = { ...session, revision: 11, interaction: replacement };
+      return { card_id: "new-card" };
+    });
+    await act(async () => { await result.current.actions.refreshBrandCard(); });
+    expect(api.brandNextQuestion).toHaveBeenCalledOnce();
+    expect(onBrandDecisionsUpdated).toHaveBeenCalledOnce();
+    expect(result.current.state.brandCardRecovery).toBeNull();
+    expect(result.current.state.guidanceSession?.interaction?.interaction_id).toBe("brand-new");
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledOnce();
+    const current = result.current.state.guidanceSession!.interaction!;
+    const currentRequest = buildConceptChoiceSubmitRequest({ interaction: current, selectedOptionId: "option-2", customText: "", proposalReferences: null })!;
+    api.submitAgentCanvasGuidedInteraction.mockResolvedValueOnce({ replayed: false });
+    await act(async () => { await result.current.actions.submitGuidedInteraction(current, currentRequest); });
+    expect(api.submitAgentCanvasGuidedInteraction.mock.calls[1]).toEqual([
+      "workflow-1", "brand-new", expect.objectContaining({ expected_interaction_revision: 5, expected_session_revision: 11, option_id: "option-2" }), expect.any(String),
+    ]);
+    expect(api.submitAgentCanvasGuidedInteraction.mock.calls[0][3]).not.toBe(api.submitAgentCanvasGuidedInteraction.mock.calls[1][3]);
   });
 
   it("refreshes brand decisions before and after the next question so Skill selection has a current card", async () => {
@@ -1939,6 +1981,16 @@ describe("useAgentCanvasChat", () => {
       value: "30 seconds",
       sequence: 18,
     }]);
+    const retained = result.current.state.guidedAnswerBubbles;
+    const old = { ...guidedBrandConceptInteraction(), interaction_id: "interaction-1" };
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValueOnce({ status: 409, code: "guided_interaction_stale", message: "Already closed" });
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(old, buildConceptChoiceSubmitRequest({
+        interaction: old, selectedOptionId: "option-1", customText: "", proposalReferences: null,
+      })!);
+    });
+    expect(result.current.state.guidedAnswerBubbles).toEqual(retained);
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
   });
 
   it("releases the guided choice lock when its materialization fails", async () => {

@@ -69,7 +69,8 @@ import {
   type GuidedAnswerBubbleV1,
 } from "./guidedAnswerPresentation.ts";
 import { structuredMessageTurnId } from "./failedTurnPresentation.ts";
-import type { BrandStageV2 } from "../brand/brandDecisions.ts";
+import { useBrandCardRecovery } from "./useBrandCardRecovery";
+import type { BrandDecisionPanelV1, BrandStageV2 } from "../brand/brandDecisions.ts";
 
 type SubmitDraft = {
   text: string;
@@ -239,6 +240,7 @@ export function useAgentCanvasChat({
   brandStage = null,
   brandContextReady = true,
   onBrandDecisionsRefresh,
+  onBrandDecisionsUpdated,
 }: {
   workflow: AgentCanvasWorkflowV2 | null;
   chatRevision: number;
@@ -252,6 +254,7 @@ export function useAgentCanvasChat({
   /** True once the Brand decision lookup has completed for this workflow. */
   brandContextReady?: boolean;
   onBrandDecisionsRefresh?: () => Promise<BrandStageV2 | null> | BrandStageV2 | null;
+  onBrandDecisionsUpdated?: (panel: BrandDecisionPanelV1) => void;
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
@@ -592,7 +595,7 @@ export function useAgentCanvasChat({
     });
   }, [hydrateTimelineItem]);
 
-  const runRefresh = useCallback(async () => {
+  const runRefresh = useCallback(async (throwOnError = false) => {
     if (!workflowId) return;
     const generation = refreshGenerationRef.current + 1;
     refreshGenerationRef.current = generation;
@@ -720,6 +723,7 @@ export function useAgentCanvasChat({
       } else {
         setTimelineRecovery(conversationRecoveryFromError("timeline", refreshError));
       }
+      if (throwOnError) throw refreshError;
     } finally {
       if (generation === refreshGenerationRef.current) setLoading(false);
       if (refreshAbortControllerRef.current === abortController) {
@@ -764,6 +768,24 @@ export function useAgentCanvasChat({
     }, 80);
   }, [refresh]);
 
+  const brandRecoveryBusy = sending || brandNextQuestionPending || Boolean(actingInteractionId)
+    || pendingAgentTurnIds.length > 0 || Object.values(turnsById).some(turn => (
+      turn.status !== "completed" && turn.status !== "failed" && turn.status !== "superseded"
+    ));
+  const refreshRecoveryTimeline = useCallback(() => runRefresh(true), [runRefresh]);
+  const applyRecoverySession = useCallback((session: GuidedSessionStateV2) => {
+    setGuidanceSession(current => mergeGuidedSessionState(current, session));
+    setGuidedInteractionIssue(null);
+  }, []);
+  const brandRecovery = useBrandCardRecovery({
+    workflowId, busy: brandRecoveryBusy, refreshTimeline: refreshRecoveryTimeline,
+    onDecisions: onBrandDecisionsUpdated, onSession: applyRecoverySession,
+  });
+  const { blocksAutomaticQuestion, blocksSubmission, markStale: markBrandCardStale, clear: clearBrandCardRecovery } = brandRecovery;
+  useEffect(() => {
+    if (brandStage === "production") clearBrandCardRecovery();
+  }, [brandStage, clearBrandCardRecovery]);
+
   const openBrandInteractionId = useMemo(() => {
     const interaction = guidanceSession?.interaction;
     if (!interaction || interaction.status !== "open") return null;
@@ -779,6 +801,7 @@ export function useAgentCanvasChat({
   ) => {
     if (
       !brandMode
+      || blocksAutomaticQuestion()
       || !workflowId
       || !currentStage
       || currentStage === "production"
@@ -808,7 +831,7 @@ export function useAgentCanvasChat({
       });
     brandNextQuestionInFlightRef.current = request;
     return request;
-  }, [brandMode, onBrandDecisionsRefresh, openBrandInteractionId, refresh, workflowId]);
+  }, [blocksAutomaticQuestion, brandMode, onBrandDecisionsRefresh, openBrandInteractionId, refresh, workflowId]);
 
   const presentationStreams = useAgentCanvasPresentationStreams(
     workflowId,
@@ -1657,7 +1680,7 @@ export function useAgentCanvasChat({
     interaction: GuidedInteractionV1,
     request: GuidedInteractionSubmitRequestV1,
   ) => {
-    if (!workflowId || actingInteractionId || interaction.status !== "open") return false;
+    if (!workflowId || actingInteractionId || interaction.status !== "open" || blocksSubmission(interaction.interaction_id)) return false;
     if (brandMode && brandStage === "treatment" && request.submission_kind === "concept_choice"
       && (request.action === "custom" || request.action === "delegate")) {
       setGuidedInteractionIssue({ code: "guided_interaction_action_not_allowed", summary: "请先选择候选方案，再通过最终审阅中的步骤编辑器修改内容。", detail: null, fieldId: null, retryable: false });
@@ -1674,6 +1697,7 @@ export function useAgentCanvasChat({
       request,
       latestTimelineSequenceRef.current,
     );
+    const previousAnswerBubbles = guidedAnswerBubbles.filter(bubble => bubble.interaction_id === interaction.interaction_id);
     if (answerBubbles.length) {
       setGuidedAnswerBubbles((current) => [
         ...current.filter((bubble) => bubble.interaction_id !== interaction.interaction_id),
@@ -1719,15 +1743,20 @@ export function useAgentCanvasChat({
       return true;
     } catch (interactionError) {
       if (workflowGeneration !== workflowGenerationRef.current) return false;
-      setGuidedAnswerBubbles((current) => current.filter((bubble) => (
-        bubble.interaction_id !== interaction.interaction_id
-      )));
+      setGuidedAnswerBubbles((current) => [
+        ...current.filter(bubble => bubble.interaction_id !== interaction.interaction_id),
+        ...previousAnswerBubbles,
+      ].sort((left, right) => left.sequence - right.sequence));
       setGuidedInteractionIssue(
         request.submission_kind === "product_source"
           ? productSourceDecisionDockIssueFromError(interactionError)
           : decisionDockIssueFromError(interactionError),
       );
-      if (isDecisionDockStaleError(interactionError)) {
+      const staleBrandCard = isBrandInteraction && isV2ApiError(interactionError)
+        && (interactionError.code === "brand_context_stale" || interactionError.code === "guided_interaction_stale");
+      if (staleBrandCard) {
+        markBrandCardStale(interaction.interaction_id, interactionError.code === "brand_context_stale");
+      } else if (isDecisionDockStaleError(interactionError)) {
         await refresh();
         await onWorkflowRefresh?.();
       }
@@ -1737,6 +1766,9 @@ export function useAgentCanvasChat({
     }
   }, [
     actingInteractionId,
+    blocksSubmission,
+    markBrandCardStale,
+    guidedAnswerBubbles,
     brandMode,
     brandStage,
     chatEvents,
@@ -1876,6 +1908,7 @@ export function useAgentCanvasChat({
   )), [items]);
   const visibleGuidedInteraction = useMemo(() => {
     const interaction = guidanceSession?.interaction ?? null;
+    if (brandRecovery.state?.phase === "review") return null;
     if (
       brandMode
       && interaction
@@ -1888,13 +1921,13 @@ export function useAgentCanvasChat({
       )
     ) return null;
     return interaction;
-  }, [brandMode, brandStage, guidanceSession?.interaction, hasGuidedProductionIntent]);
+  }, [brandMode, brandStage, brandRecovery.state?.phase, guidanceSession?.interaction, hasGuidedProductionIntent]);
   const agentWaitingForModel = useMemo(() => (
-    brandNextQuestionPending
+    brandNextQuestionPending || brandRecovery.pending
     || Object.values(turnsById).some((turn) => (
       turn.status === "running" && turn.operation_stage === "provider_waiting"
     ))
-  ), [brandNextQuestionPending, turnsById]);
+  ), [brandNextQuestionPending, brandRecovery.pending, turnsById]);
 
   return {
     state: {
@@ -1914,7 +1947,7 @@ export function useAgentCanvasChat({
       // Guided submission can precede the next Turn; keep feedback until authority releases its lock.
       agentWorking: sending
         || advancingGuidance
-        || brandNextQuestionPending
+        || brandNextQuestionPending || brandRecovery.pending
         || Boolean(actingInteractionId)
         || Boolean(postReadyBarrier)
         || pendingAgentTurnIds.length > 0,
@@ -1930,6 +1963,9 @@ export function useAgentCanvasChat({
       timelineRecovery,
       workflowRecovery,
       guidedInteractionIssue,
+      brandCardRecovery: brandRecovery.state,
+      brandCardRecoveryBusy: brandRecoveryBusy,
+      brandCardLocked: brandRecovery.locked,
       notice,
       proposalIssues,
       failedDraft,
@@ -1944,6 +1980,7 @@ export function useAgentCanvasChat({
       applyGuidedAction,
       actOnDecisionBundle,
       submitGuidedInteraction,
+      refreshBrandCard: brandRecovery.refresh,
       retryCapabilityActivity,
       retryProposalMaterialization,
       retryTurn: (turn: AgentCanvasChatTurnV2) => retryTurn(turn.turn_id, turnActionableFailure(turn)),

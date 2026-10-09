@@ -281,7 +281,7 @@ export function AgentCanvasPage() {
       setBrandDecisions(decisions);
       return decisions.journey.stage;
     } catch {
-      setBrandDecisions(null);
+      // A transient read failure must not erase confirmed Brand decisions.
       return null;
     } finally {
       setBrandDecisionsRefreshing(false);
