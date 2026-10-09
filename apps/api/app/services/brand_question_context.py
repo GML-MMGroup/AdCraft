@@ -127,6 +127,11 @@ class BrandQuestionContextService:
             AgentCanvasChatEntryRow.workflow_id == workflow_id,
             AgentCanvasChatEntryRow.entry_type == "message",
             AgentCanvasChatEntryRow.speaker == "user",
+            # Brand answer bubbles project facts already carried by decision authority.
+            # Do not reinterpret or invalidate question snapshots on history repair.
+            func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.brand_decision_log_id").is_(
+                None
+            ),
         )
         recent = list(
             connection.execute(

@@ -17,6 +17,7 @@ from sqlalchemy.engine import Connection
 
 from app.core.config import Settings, get_settings
 from app.persistence.brand_decision_repository import BrandDecisionRepository
+from app.persistence.brand_answer_history import append_brand_answer_in_transaction
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.schemas.brand_professional_mode import (
@@ -1169,19 +1170,21 @@ class BrandCapabilityInvocationService:
         detail: dict[str, object],
         now: datetime,
     ) -> None:
+        entry = BrandDecisionLogEntryV1(
+            log_id=f"blog_{uuid4().hex[:16]}",
+            stage=stage,
+            action=cast(_LogAction, action),
+            target_type=target_type,
+            target_id=target_id,
+            detail=detail,
+            created_at=now,
+        )
         self._repository.append_decision_log_in_transaction(
             connection,
-            BrandDecisionLogEntryV1(
-                log_id=f"blog_{uuid4().hex[:16]}",
-                stage=stage,
-                action=cast(_LogAction, action),
-                target_type=target_type,
-                target_id=target_id,
-                detail=detail,
-                created_at=now,
-            ),
+            entry,
             brand_id=brand_id,
         )
+        append_brand_answer_in_transaction(connection, brand_id=brand_id, entry=entry)
 
 
 def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
