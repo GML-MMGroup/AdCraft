@@ -1,3 +1,5 @@
+import { ConnectionEffectContext } from "./canvas/connection-effects/connectionEffectContext.ts";
+import { canvasConnectionColor } from "./canvas/connection-effects/connectionColor.ts";
 import {
   applyNodeChanges,
   Controls,
@@ -14,6 +16,7 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -311,11 +314,18 @@ export function AgentCanvasPage() {
       cancelled = true;
     };
   }, [brandWorkflowId]);
+  const connectionEffects = useContext(ConnectionEffectContext);
+  useEffect(() => () => connectionEffects?.clear(), [connectionEffects, workflow?.workflow_id]);
   const { displayEdges, submit: submitOptimisticConnection, cancelForNodes: cancelPendingNodeConnections, nextOrder: nextConnectionOrder } = useOptimisticCanvasConnections({
     workflow,
     edges,
     createBinding,
     onError: (error) => setSurfaceError(canvasAuthoringErrorMessage(error)),
+    onConfirmed: (binding) => {
+      if (binding.source.kind !== "node_output") return;
+      connectionEffects?.publish(binding.workflow_id, binding.target_node_id, binding.binding_id,
+        canvasConnectionColor(binding.source.source_node_id));
+    },
   });
   const [connectionPolicy, setConnectionPolicy] = useState<CanvasConnectionPolicyV2 | null>(null);
   const [connectedNodeMenu, setConnectedNodeMenu] = useState<{

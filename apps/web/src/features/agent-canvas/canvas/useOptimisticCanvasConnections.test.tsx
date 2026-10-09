@@ -24,13 +24,25 @@ function setup() {
   const pending = deferred();
   const createBinding = vi.fn((_request: CanvasBindingCreateRequestV2, _guard?: { isCurrent?: () => boolean }) => pending.promise);
   const onError = vi.fn();
-  const hook = renderHook(({ workflow, edges }) => useOptimisticCanvasConnections({ workflow, edges, createBinding, onError }), {
+  const onConfirmed = vi.fn();
+  const hook = renderHook(({ workflow, edges }) => useOptimisticCanvasConnections({ workflow, edges, createBinding, onError, onConfirmed }), {
     initialProps: { workflow: workflow(), edges: [] as Edge[] },
   });
-  return { ...hook, pending, createBinding, onError };
+  return { ...hook, pending, createBinding, onError, onConfirmed };
 }
 
 describe("optimistic canvas connections", () => {
+  it("keeps a confirmed binding even when its optional visual observer fails", async () => {
+    const h = setup();
+    h.onConfirmed.mockImplementation(() => { throw new Error("visual failure"); });
+    act(() => { void h.result.current.submit(request); });
+    h.rerender({ workflow: workflow("a", [binding]), edges: [] });
+    await act(async () => { h.pending.resolve(binding); });
+    expect(h.onConfirmed).toHaveBeenCalledOnce();
+    expect(h.onError).not.toHaveBeenCalled();
+    expect(h.result.current.displayEdges).toHaveLength(1);
+  });
+
   it("draws immediately without a substitute Binding, then replaces without a gap", async () => {
     const h = setup();
     act(() => { void h.result.current.submit(request); });
@@ -40,9 +52,11 @@ describe("optimistic canvas connections", () => {
     expect(temporary.data?.optimistic).toBe(true);
     expect(temporary.deletable).toBe(false);
     expect(h.createBinding).toHaveBeenCalledTimes(1);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
     // Authority arrives before the parent effect commits the canonical display list.
     h.rerender({ workflow: workflow("a", [binding]), edges: [] });
     await act(async () => { h.pending.resolve(binding); });
+    expect(h.onConfirmed).toHaveBeenCalledExactlyOnceWith(binding);
     expect(h.result.current.displayEdges).toHaveLength(1);
     h.rerender({ workflow: workflow("a", [binding]), edges: [edge] });
     expect(h.result.current.displayEdges).toEqual([edge]);
@@ -56,6 +70,7 @@ describe("optimistic canvas connections", () => {
     await act(async () => { h.pending.reject(new Error("conflict")); });
     expect(h.result.current.displayEdges).toEqual([edge]);
     expect(h.onError).toHaveBeenCalledOnce();
+    expect(h.onConfirmed).not.toHaveBeenCalled();
   });
 
   it("deduplicates pending requests, but preserves distinct semantic roles", () => {
@@ -89,8 +104,10 @@ describe("optimistic canvas connections", () => {
     h.rerender({ workflow: workflow("a", [{ ...binding, enabled: false }]), edges: [] });
     await act(async () => { h.pending.resolve(binding); });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
     h.rerender({ workflow: workflow("a", [{ ...binding, enabled: false }]), edges: [] });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
   });
 
   it("does not duplicate an SSE-confirmed edge while HTTP is still pending", async () => {
@@ -120,8 +137,10 @@ describe("optimistic canvas connections", () => {
     act(() => h.result.current.cancelForNodes(["target"]));
     expect(guard()).toBe(false);
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
     await act(async () => { h.pending.resolve(binding); });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
   });
 
   it("removes connections when endpoints vanish from authority", async () => {
@@ -129,6 +148,7 @@ describe("optimistic canvas connections", () => {
     act(() => { void h.result.current.submit(request); });
     h.rerender({ workflow: workflow("a", [], ["source"]), edges: [] });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
     await act(async () => { h.pending.reject(new Error("late failure")); });
     expect(h.onError).not.toHaveBeenCalled();
   });
@@ -142,6 +162,7 @@ describe("optimistic canvas connections", () => {
     expect(guard()).toBe(false);
     await act(async () => { h.pending.resolve(binding); });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onConfirmed).not.toHaveBeenCalled();
   });
 
   it("invalidates the mutation guard on unmount", async () => {

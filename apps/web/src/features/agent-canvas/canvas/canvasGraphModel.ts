@@ -1,3 +1,4 @@
+import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
 import { MarkerType, type Edge } from "@xyflow/react";
 
 import type {
@@ -438,7 +439,7 @@ export function toAgentCanvasFlowEdgesForNodeIds(
           type: MarkerType.ArrowClosed,
           width: 14,
           height: 14,
-          color: "#686868",
+          color: canvasConnectionColor(binding.source.source_node_id),
         },
         data: { binding },
       }];

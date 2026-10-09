@@ -1,3 +1,4 @@
+import { CanvasNodeConnectionPulse } from "./connection-effects/CanvasNodeConnectionPulse.tsx";
 import {
   Handle,
   NodeToolbar,
@@ -388,6 +389,7 @@ function AgentCanvasNodeRendererComponent({
           : undefined}
         mediaDimensions={validAgentCanvasMediaDimensions(assetDimensions) ? assetDimensions : null}
       />
+      <CanvasNodeConnectionPulse workflowId={data.node.workflow_id} nodeId={id} width={nodeSize.width} height={nodeSize.height}/>
       {workbench ? (
         <NodeToolbar
           nodeId={id}

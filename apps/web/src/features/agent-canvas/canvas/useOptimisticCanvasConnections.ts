@@ -1,3 +1,4 @@
+import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
 import { MarkerType, type Edge } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOperationKey } from "../../../api/operationKey.ts";
@@ -16,6 +17,7 @@ type Options = {
   edges: Edge[];
   createBinding: (request: CanvasBindingCreateRequestV2, options?: { isCurrent?: () => boolean }) => Promise<CanvasBindingV2 | null>;
   onError: (error: unknown) => void;
+  onConfirmed?: (binding: CanvasBindingV2) => void;
 };
 
 function identity(binding: Pick<CanvasBindingV2, "source" | "target_node_id" | "input_role">) {
@@ -78,7 +80,7 @@ export function useOptimisticCanvasConnections(options: Options) {
         id: createOperationKey("pending-connection"), source: input.source.source_node_id,
         target: input.target_node_id, sourceHandle: "output", targetHandle: "input",
         type: AGENT_CANVAS_EDGE_TYPE, selectable: false, deletable: false, focusable: false,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "#686868" },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: canvasConnectionColor(input.source.source_node_id) },
         data: { optimistic: true },
       },
     };
@@ -93,6 +95,11 @@ export function useOptimisticCanvasConnections(options: Options) {
       if (binding) {
         // Keep the preview until the canonical display list contains the response binding.
         entry.bindingId = binding.binding_id;
+        const authority = current.current.workflow?.bindings.find(item => item.binding_id === binding.binding_id);
+        if (binding.enabled && authority?.enabled !== false) {
+          // A visual failure must never change the binding result or its error path.
+          try { current.current.onConfirmed?.(binding); } catch { /* Best-effort presentation only. */ }
+        }
       } else {
         scope.entries.delete(key);
       }
