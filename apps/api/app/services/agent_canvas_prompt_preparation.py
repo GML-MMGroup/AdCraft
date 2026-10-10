@@ -47,6 +47,12 @@ from app.services.agent_structured_validation_audit import (
 )
 from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_presentation import PresentationStreamPublisher
+from app.services.agent_canvas_character_prompt_reuse import (
+    can_reuse_character_prompt,
+    can_reuse_legacy_character_prompt,
+    character_prompt_authority_digest,
+    character_prompt_reuse_proof,
+)
 
 
 RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
@@ -153,10 +159,34 @@ class NodePromptPreparationService:
         role_context: RolePromptPreparationContextV2 | None = None
         try:
             role_context = self._project_context(working, context)
+            character_authority_digest = (
+                character_prompt_authority_digest(
+                    working,
+                    role_context,
+                    stage_digest=snapshot_digest,
+                    recipe_digest=self._recipes.resolve(role_context.role_variant).recipe_digest,
+                )
+                if role_context.role_variant == "character_turnaround"
+                else None
+            )
+            preserve_creative_text = preserve_storyboard_text or (
+                character_authority_digest is not None
+                and (
+                    can_reuse_character_prompt(current, character_authority_digest)
+                    or can_reuse_legacy_character_prompt(
+                        current,
+                        role_context,
+                        stage_digest=snapshot_digest,
+                        recipe_digest=self._recipes.resolve(
+                            role_context.role_variant
+                        ).recipe_digest,
+                    )
+                )
+            )
             if (
                 self._role_brief_author is not None
                 and role_context.user_prompt is None
-                and not preserve_storyboard_text
+                and not preserve_creative_text
             ):
                 brief = self._role_brief_author(role_context, operation_id)
                 compiled_prompt = self._compiler.compile(
@@ -180,10 +210,10 @@ class NodePromptPreparationService:
                     ),
                     editable_prompt_override=(
                         current.generation_prompt
-                        if preserve_storyboard_text
+                        if preserve_creative_text
                         else role_context.user_prompt
                     ),
-                    preserved_node=current if preserve_storyboard_text else None,
+                    preserved_node=current if preserve_creative_text else None,
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
@@ -193,7 +223,7 @@ class NodePromptPreparationService:
                 locale=role_context.response_locale,
                 source=(
                     current.prompt_presentation.source
-                    if preserve_storyboard_text
+                    if preserve_creative_text
                     else "user_edited"
                     if role_context.user_prompt is not None
                     else (
@@ -242,6 +272,18 @@ class NodePromptPreparationService:
                             else {}
                         ),
                         "prompt_context_digest": snapshot_digest,
+                        **(
+                            {
+                                "prepared_character_prompt": character_prompt_reuse_proof(
+                                    authority_digest=character_authority_digest,
+                                    prompt=prompt,
+                                    content=structured_content,
+                                    brief_digest=compiled_prompt.brief_digest,
+                                ).model_dump(mode="json")
+                            }
+                            if character_authority_digest is not None
+                            else {}
+                        ),
                         **(
                             {"prepared_authoring_context_digest": snapshot_digest}
                             if working.creative_role in {"storyboard_sequence", "storyboard_video"}

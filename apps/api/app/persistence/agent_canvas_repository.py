@@ -79,6 +79,7 @@ from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
+from app.services.agent_canvas_character_prompt_reuse import retain_legacy_character_proof
 
 
 class AgentCanvasWorkflowRepository:
@@ -2997,10 +2998,14 @@ def _invalidate_target_prompt_preparation(
         and node.prompt_presentation.source in {"agent_authored", "deterministic_projection"}
         and node.prompt_presentation.text == node.generation_prompt
     )
-    clear_creative_content = prepared_projection and not preserve_storyboard_text
+    preserve_editor_text = preserve_storyboard_text or node.creative_role == "character"
+    legacy_character_proof = (
+        retain_legacy_character_proof(node, frozen_context_digest) if prepared_projection else {}
+    )
+    clear_creative_content = prepared_projection and not preserve_editor_text
     preserved_presentation = (
         node.prompt_presentation.model_copy(update={"revision": node.revision + 1})
-        if preserve_storyboard_text
+        if preserve_editor_text and node.prompt_presentation is not None
         else node.prompt_presentation
     )
     queued = NodePromptPreparationV1(
@@ -3039,6 +3044,7 @@ def _invalidate_target_prompt_preparation(
             ),
             "prompt_context_snapshot_id": None,
             "metadata": {
+                **legacy_character_proof,
                 **{
                     key: value
                     for key, value in node.metadata.items()
@@ -3046,7 +3052,7 @@ def _invalidate_target_prompt_preparation(
                 },
                 **(
                     {"editable_prompt_projection": preserved_presentation.model_dump(mode="json")}
-                    if preserve_storyboard_text
+                    if preserve_editor_text and preserved_presentation is not None
                     else {}
                 ),
             },

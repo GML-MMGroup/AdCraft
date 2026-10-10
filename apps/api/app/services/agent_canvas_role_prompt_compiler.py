@@ -274,7 +274,8 @@ class AgentCanvasRolePromptCompiler:
             presentation = preserved_node.prompt_presentation
             saved_prompt = preserved_node.generation_prompt
             if (
-                context.role_variant not in {"storyboard_grid", "video_segment"}
+                context.role_variant
+                not in {"storyboard_grid", "video_segment", "character_turnaround"}
                 or presentation is None
                 or presentation.brief_digest is None
                 or presentation.source not in {"agent_authored", "deterministic_projection"}
@@ -286,20 +287,31 @@ class AgentCanvasRolePromptCompiler:
             ):
                 raise _error(
                     "node_prompt_assertion_contract_invalid",
-                    "Saved Storyboard creative authority is invalid.",
+                    "Saved creative prompt authority is invalid.",
                 )
             content_model = (
                 StoryboardGridContentV2
                 if context.role_variant == "storyboard_grid"
+                else CharacterDesignAssetContentV2
+                if context.role_variant == "character_turnaround"
                 else VideoSegmentContentV2
             )
             try:
-                structured = content_model.model_validate(
+                saved_content = content_model.model_validate(
                     preserved_node.structured_content
                 ).model_dump(mode="json")
+                if context.role_variant == "character_turnaround":
+                    for key in (
+                        "parent_source_node_id",
+                        "parent_source_node_revision",
+                        "parent_asset_version_id",
+                        "identity_projection_digest",
+                    ):
+                        saved_content[key] = structured[key]
+                structured = saved_content
             except ValidationError as error:
                 raise _error(
-                    "node_prompt_brief_invalid", "Saved Storyboard structured content is invalid."
+                    "node_prompt_brief_invalid", "Saved creative structured content is invalid."
                 ) from error
             prompt = saved_prompt
             brief_digest = presentation.brief_digest
