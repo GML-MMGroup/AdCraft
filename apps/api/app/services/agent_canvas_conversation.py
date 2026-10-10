@@ -38,12 +38,14 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.errors import V2PersistenceError
+from app.services.brand_decision_document import BrandDecisionDocumentService
+from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
 )
-from app.schemas.brand_professional_mode import BrandJourneyStateV1
+from app.schemas.brand_professional_mode import BrandJourneyStateV1, BrandTreatmentDocumentV1
 from app.schemas.agent_canvas_conversation import (
     ChatTimelineListResponseV2,
     ChatTurnAcceptedV2,
@@ -1907,7 +1909,11 @@ class AgentConversationService:
         if intent.mode == "guided_production":
             if brand_journey is not None and brand_journey.stage != "production":
                 return complete_message(
-                    self._brand_gate_message(intent.response_locale),
+                    self._brand_gate_message(
+                        intent.response_locale,
+                        workflow_id=turn.workflow_id,
+                        journey=brand_journey,
+                    ),
                 )
         session = existing_session
         if session is None:
@@ -2327,8 +2333,23 @@ class AgentConversationService:
             return None
         return self._brand_decisions.get_journey(brand_id)
 
-    @staticmethod
-    def _brand_gate_message(response_locale: str) -> str:
+    def _brand_gate_message(
+        self,
+        response_locale: str,
+        *,
+        workflow_id: str,
+        journey: BrandJourneyStateV1,
+    ) -> str:
+        if journey.stage == "treatment":
+            project_id = self._brand_decisions.project_id_for_workflow(workflow_id)
+            brand_id = (
+                self._brand_decisions.get_brand_id_by_project(project_id) if project_id else None
+            )
+            if brand_id is not None:
+                document = BrandDecisionDocumentService(self._workflows.database).read(brand_id)
+                selected = {step.step_key for step in document.treatment_steps}
+                if set(TREATMENT_SUBSTEP_ORDER).issubset(selected):
+                    return _treatment_review_gate_message(document, response_locale)
         if response_locale.lower().startswith("zh"):
             return "好的，我们先完成品牌信息与品牌专业模式，再开始广告创作。请先回答当前品牌问题。"
         return "Let’s complete the brand information and Brand Professional Mode before starting ad production. Please answer the current brand question first."
@@ -3189,6 +3210,47 @@ class AgentConversationService:
             self._workflows.database,
             EventRepository(self._workflows.database),
         ).publish(envelope, result)
+
+
+def _treatment_review_gate_message(document: BrandTreatmentDocumentV1, response_locale: str) -> str:
+    if not document.complete:
+        if response_locale.lower().startswith("zh"):
+            return (
+                "八项创意方案已全部选择，但最终方案仍缺少必填内容。请点击输入框上方的"
+                "“打开最终审阅”，查看缺失项并补齐后再确认。已选方案会保留；"
+                "发送“继续”不会自动补写或锁定方案。"
+            )
+        return (
+            "All eight Treatment choices are saved, but the document is missing required content. "
+            'Open "Review treatment" above the message box to inspect and complete the missing '
+            "sections before confirming. Your choices are preserved; a continuation message does "
+            "not fill in or lock the Treatment."
+        )
+    if document.review is None:
+        if response_locale.lower().startswith("zh"):
+            return (
+                "八项创意方案已全部选择，但最终评估结果尚不可用。请点击输入框上方的"
+                "“打开最终审阅”，查看已保存的方案及评估状态。无需重复回答声音问题；"
+                "发送“继续”不会自动重试评估或锁定方案。"
+            )
+        return (
+            "All eight Treatment choices are saved, but the final assessment is not available. "
+            'Open "Review treatment" above the message box to inspect the saved document and '
+            "assessment status. You do not need to answer the sound question again. A continuation "
+            "message does not retry the assessment or lock the Treatment."
+        )
+    if response_locale.lower().startswith("zh"):
+        return (
+            "八项创意方案已全部选择，最终审阅已完成。请点击输入框上方的“打开最终审阅”，"
+            "查看完整方案和执行限制，再点击“确认并锁定创意方案”。锁定后才会进入节点创作；"
+            "发送“继续”不会代替你确认或重新生成方案。"
+        )
+    return (
+        'All eight Treatment choices and the final assessment are complete. Open "Review treatment" '
+        "above the message box, review the full document and execution limitations, then explicitly "
+        "confirm and lock the Treatment to begin node authoring. A continuation message does not "
+        "confirm or regenerate the Treatment."
+    )
 
 
 def _guidance_state_action_continuation(
