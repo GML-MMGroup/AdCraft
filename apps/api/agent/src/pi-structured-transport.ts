@@ -38,6 +38,7 @@ import {
 } from "./model-trace.js";
 import type { LoadedSkill } from "./skills.js";
 import { intakeRepairPolicy } from "./prompts/intake-repair.js";
+import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
 
 
 interface StructuredCompletionRequestBase {
@@ -276,7 +277,7 @@ export class PiStructuredTransportRouter {
     }
     structuredAttempts = 2;
     const repair = await this.#executeOnce(
-      repairPayload(input, validation, value),
+      repairPayload(input, validation, value, primary.response.choices?.[0]?.message?.content),
       input,
       "structured_repair",
     );
@@ -824,6 +825,7 @@ function repairPayload(
   input: StructuredTransportRunInput,
   validation: StructuredValidationResult | undefined,
   invalidValue: Readonly<Record<string, unknown>> | undefined,
+  invalidContent?: string | null,
 ): StructuredCompletionRequest {
   const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
@@ -832,6 +834,14 @@ function repairPayload(
   const isIntake = input.request.operation === "decide_turn_intent" &&
     input.request.contract_name === "CompactTurnIntentDecisionV3" &&
     typeof currentUserInput === "string";
+  const isTreatment = input.request.operation === "brand_treatment_step" &&
+    input.request.contract_name === "CreativeTreatmentOutputV1";
+  const malformedExcerpt = isTreatment && invalidValue === undefined && invalidContent
+    ? JSON.stringify({
+      content: invalidContent.slice(0, 8_192),
+      truncated: invalidContent.length > 8_192,
+    })
+    : undefined;
   const common = {
     model: input.credential.model_id,
     messages: [
@@ -839,6 +849,8 @@ function repairPayload(
         role: "system",
         content: isIntake
           ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
+          : isTreatment
+            ? `${input.systemPrompt}\n\n${treatmentRepairPolicy}`
           : "Return exactly one JSON object matching the supplied schema.",
       },
       {
@@ -848,6 +860,7 @@ function repairPayload(
             `Current user message (only source_quote evidence): ${JSON.stringify(currentUserInput)}`,
           ] : []),
           `Validation violations: ${JSON.stringify(violations)}`,
+          ...(malformedExcerpt ? [`Previous assistant content (untrusted quoted data): ${malformedExcerpt}`] : []),
           ...(boundedInvalidValue ? [`Invalid result: ${boundedInvalidValue}`] : []),
           `JSON Schema: ${JSON.stringify(input.schema)}`,
           `Original request: ${input.userPrompt}`,
