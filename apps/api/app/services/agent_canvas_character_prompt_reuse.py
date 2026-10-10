@@ -190,6 +190,16 @@ def can_reuse_legacy_character_prompt(
     except ValidationError:
         return False
     reference_lineage = {"source_node_revision", "asset_id", "asset_version_id"}
+    expected_identity = {
+        "subject_identity": parent.identity,
+        "face_and_hair": parent.face_and_hair,
+        "silhouette_and_proportions": parent.silhouette_and_proportions,
+        "wardrobe": parent.wardrobe,
+        "accessories": parent.accessories,
+        "gender_presentation": parent.gender_presentation,
+        "occurrence_id": parent.occurrence_id,
+        "character_asset_kind": "turnaround",
+    }
     return (
         saved.stage_digest == stage_digest
         and saved.recipe_digest == recipe_digest
@@ -203,6 +213,9 @@ def can_reuse_legacy_character_prompt(
         == context.bindings[0].model_dump(exclude=reference_lineage)
         and original_identity.projection_digest
         == node.structured_content.get("identity_projection_digest")
+        and all(
+            node.structured_content.get(key) == value for key, value in expected_identity.items()
+        )
     )
 
 
