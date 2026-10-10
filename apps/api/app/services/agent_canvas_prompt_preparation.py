@@ -934,6 +934,23 @@ class NodePromptPreparationService:
         *,
         context: StageAuthoringContextV1 | None = None,
     ) -> CanvasNodeV2:
+        presentation = current.prompt_presentation
+        if (
+            current.creative_role == "character"
+            and next_node.prompt_preparation.status in {"working", "failed"}
+            and presentation is not None
+            and next_node.prompt_presentation == presentation
+            and next_node.generation_prompt == current.generation_prompt == presentation.text
+            and presentation.prompt_digest
+            == f"sha256:{sha256(presentation.text.encode('utf-8')).hexdigest()}"
+        ):
+            next_node = next_node.model_copy(
+                update={
+                    "prompt_presentation": presentation.model_copy(
+                        update={"revision": next_node.revision}
+                    )
+                }
+            )
         workflow = self._workflows.get_workflow(current.workflow_id)
         return self._workflows.update_node_prompt_preparation(
             next_node,
