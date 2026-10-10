@@ -13,6 +13,7 @@ import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 export interface GuidedInteractionCardProps {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  disabled?: boolean;
   issue?: DecisionDockIssue | null;
   selectedConceptOptionId?: string | null;
   referenceOccurrenceLabel?: string | null;
@@ -26,6 +27,7 @@ export interface GuidedInteractionCardProps {
 export function GuidedInteractionCard({
   interaction,
   pending,
+  disabled = false,
   issue = null,
   selectedConceptOptionId = null,
   referenceOccurrenceLabel = null,
@@ -55,6 +57,7 @@ export function GuidedInteractionCard({
         key={interaction.interaction_id}
         interaction={interaction}
         pending={pending}
+        disabled={disabled}
         issue={issue}
         selectedOptionId={selectedConceptOptionId}
         onSelectOption={onSelectConceptOption ?? (() => undefined)}

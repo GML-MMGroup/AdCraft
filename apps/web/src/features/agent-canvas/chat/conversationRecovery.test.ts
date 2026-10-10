@@ -15,6 +15,10 @@ function apiError(status: number, code: string | undefined, message: string) {
   });
 }
 
+it("classifies Brand context changes as authority conflicts", () => {
+  expect(conversationRecoveryFromError("composer", apiError(409, "brand_context_stale", "Brief changed"), { retryable: true })).toMatchObject({ action: "review" });
+});
+
 describe("conversationRecoveryFromError", () => {
   it("keeps message-send failures concise while preserving exact technical detail", () => {
     const recovery = conversationRecoveryFromError(

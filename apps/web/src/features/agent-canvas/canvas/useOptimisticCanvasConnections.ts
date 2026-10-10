@@ -1,3 +1,4 @@
+import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
 import { MarkerType, type Edge } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOperationKey } from "../../../api/operationKey.ts";
@@ -16,6 +17,7 @@ type Options = {
   edges: Edge[];
   createBinding: (request: CanvasBindingCreateRequestV2, options?: { isCurrent?: () => boolean }) => Promise<CanvasBindingV2 | null>;
   onError: (error: unknown) => void;
+  onStarted?: (request: CanvasBindingCreateRequestV2, connectionId: string) => void;
 };
 
 function identity(binding: Pick<CanvasBindingV2, "source" | "target_node_id" | "input_role">) {
@@ -78,13 +80,18 @@ export function useOptimisticCanvasConnections(options: Options) {
         id: createOperationKey("pending-connection"), source: input.source.source_node_id,
         target: input.target_node_id, sourceHandle: "output", targetHandle: "input",
         type: AGENT_CANVAS_EDGE_TYPE, selectable: false, deletable: false, focusable: false,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "#686868" },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: canvasConnectionColor(input.source.source_node_id) },
         data: { optimistic: true },
       },
     };
     if (!endpointsExist(initial.workflow, entry)) return;
     scope.entries.set(key, entry);
     publish();
+    // Respond to the accepted gesture immediately, independently of the write queue/network.
+    // This is interaction feedback, not an acknowledgement that the binding was saved.
+    if (request.enabled !== false) {
+      try { initial.onStarted?.(request, entry.edge.id); } catch { /* Best-effort presentation only. */ }
+    }
     const isCurrent = () => scope.active && current.current.scope === scope
       && scope.entries.get(key) === entry && endpointsExist(current.current.workflow, entry);
     try {

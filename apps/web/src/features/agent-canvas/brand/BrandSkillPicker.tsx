@@ -26,11 +26,12 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   const [catalog, setCatalog] = useState<BrandCreativeMethod[] | null>(null);
   const [methods, setMethods] = useState(() => selectionFrom(decisions).methods);
   const [style, setStyle] = useState<{ skill_id: string; version: string | null; title: string } | null>(() => selectionFrom(decisions).style);
-  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"save" | "confirm" | "generate" | "refresh" | "catalog" | null>(null);
+  const pending = pendingAction !== null;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
-  const [continuePending, setContinuePending] = useState(false);
+  const [continuation, setContinuation] = useState<"generate" | "refresh" | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const dialogRef = useRef<HTMLElement>(null);
@@ -100,6 +101,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   }, [decisions, panel.journey.stage_revision, zh]);
 
   async function refreshPanel() {
+    setPendingAction("refresh");
     setNeedsRefresh(true);
     const next = await agentCanvasApi.brandDecisions(panel.workflow_id);
     if (!mounted.current) return;
@@ -110,8 +112,13 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   }
 
   async function continueJourney() {
-    await agentCanvasApi.brandNextQuestion(panel.workflow_id);
-    if (!mounted.current) return;
+    if (continuation !== "refresh") {
+      setPendingAction("generate");
+      await agentCanvasApi.brandNextQuestion(panel.workflow_id);
+      if (!mounted.current) return;
+      // Once generation succeeds, recovery must only repeat the reads.
+      setContinuation("refresh");
+    }
     await refreshPanel();
     if (mounted.current) onClose();
   }
@@ -124,7 +131,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   async function submit(confirm: boolean) {
     if (inFlight.current || !editable || !valid || !style?.version || !panel.open_card || needsRefresh) return;
     inFlight.current = true;
-    setPending(true);
+    setPendingAction(confirm ? "confirm" : "save");
     setError(null);
     setNotice(null);
     let committed = false;
@@ -140,10 +147,11 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
       if (!mounted.current) return;
       replacePanel(next);
       if (confirm) {
-        setContinuePending(true);
+        setContinuation("generate");
         await continueJourney();
       } else {
         setNotice(zh ? "已保存，尚未激活或进入下一阶段。" : "Saved. No style activated or stage advanced.");
+        setPendingAction("refresh");
         await onConversationRefresh();
       }
     } catch (failure) {
@@ -151,7 +159,9 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
       if (!committed && isV2ApiError(failure) && failure.status === 409) {
         try {
           const latest = await refreshPanel();
-          if (mounted.current && confirm && latest?.journey.stage === "treatment" && !latest.open_card) setContinuePending(true);
+          if (mounted.current && confirm && latest?.journey.stage === "treatment") {
+            setContinuation(latest.open_card ? "refresh" : "generate");
+          }
         } catch { /* Keep submissions blocked until refresh succeeds. */ }
         if (mounted.current) setError(zh ? "当前卡片已更新，请重新加载并检查最新选择。" : "The card changed. Reload and review the latest selection.");
       } else if (!committed && isV2ApiError(failure) && failure.status === 422) {
@@ -160,29 +170,29 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
       } else {
         if (committed && !confirm) setNeedsRefresh(true);
         setError(committed
-          ? (zh ? "选择已保存，但后续刷新失败。请重试下一步，不要重复确认。" : "Selection saved, but continuation failed. Retry the next step without confirming again.")
+          ? (zh ? "选择已保存，但后续处理未完成。请使用重试按钮，无需重复确认。" : "Selection saved, but continuation did not finish. Use the retry button without confirming again.")
           : (zh ? "保存失败，请检查连接后重试。" : "Could not save. Check the connection and retry."));
       }
     } finally {
       inFlight.current = false;
-      if (mounted.current) setPending(false);
+      if (mounted.current) setPendingAction(null);
     }
   }
 
   async function retry() {
     if (inFlight.current) return;
     inFlight.current = true;
-    setPending(true);
+    setPendingAction(continuation || needsRefresh ? "refresh" : "catalog");
     setError(null);
     try {
-      if (continuePending) await continueJourney();
+      if (continuation) await continueJourney();
       else if (needsRefresh) await refreshPanel();
       else await loadCatalog();
     } catch {
       if (mounted.current) setError(zh ? "暂时无法继续，请稍后重试。" : "Unable to continue. Please retry.");
     } finally {
       inFlight.current = false;
-      if (mounted.current) setPending(false);
+      if (mounted.current) setPendingAction(null);
     }
   }
 
@@ -192,15 +202,30 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
       : [...current.filter((item) => item.skill_id !== method.skill_id), { skill_id: method.skill_id, version: method.version }]);
   }
 
+  const progressMessage = pendingAction === "generate"
+    ? (zh ? "Skills 已确认，正在生成创意方案的下一道问题，可能需要一些时间，请勿重复提交。" : "Skills confirmed. Generating the next Treatment question. This may take a while; please do not submit again.")
+    : pendingAction === "refresh"
+      ? (zh ? "正在刷新品牌信息与对话…" : "Refreshing brand details and conversation…")
+      : pendingAction === "catalog"
+        ? (zh ? "正在加载创意方法…" : "Loading creative methods…")
+        : (zh ? "正在保存 Skills 选择…" : "Saving your Skills selection…");
+  const confirmLabel = pendingAction === "confirm"
+    ? (zh ? "正在确认…" : "Confirming…")
+    : pendingAction === "generate"
+      ? (zh ? "正在生成下一步…" : "Generating next step…")
+      : pendingAction === "refresh" && continuation
+        ? (zh ? "正在同步对话…" : "Syncing conversation…")
+        : (zh ? "确认并继续" : "Confirm and continue");
+
   return createPortal(
     <div className="brand-skill-picker-overlay">
       <section ref={dialogRef} className="brand-skill-picker" role="dialog" aria-modal="true" aria-label={zh ? "选择品牌 Skills" : "Choose brand Skills"}>
         <header><h2>{zh ? "选择品牌 Skills" : "Choose brand Skills"}</h2><button type="button" disabled={pending} onClick={onClose}>{zh ? "取消" : "Cancel"}</button></header>
         <p>{zh ? "创意方法可多选，视听风格只选一个。确认后进入创意方案。" : "Choose one or more creative methods and one audiovisual style. Confirm to enter Treatment."}</p>
         {error ? <p role="alert">{error}</p> : null}
-        {notice ? <p role="status">{notice}</p> : null}
-        {(!catalog || needsRefresh || continuePending) ? <button type="button" disabled={pending} onClick={() => void retry()}>{continuePending ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
-        {!editable && !continuePending ? <p>{zh ? "当前阶段不可修改 Skills。" : "Skills cannot be edited at the current stage."}</p> : null}
+        {pending ? <p role="status">{progressMessage}</p> : notice ? <p role="status">{notice}</p> : null}
+        {!pending && (!catalog || needsRefresh || continuation) ? <button type="button" onClick={() => void retry()}>{continuation === "generate" ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
+        {!editable && !continuation ? <p>{zh ? "当前阶段不可修改 Skills。" : "Skills cannot be edited at the current stage."}</p> : null}
         <fieldset disabled={pending || !editable || needsRefresh}>
           <legend>{zh ? "创意方法（多选）" : "Creative methods (multiple)"}</legend>
           {!catalog ? <p role="status">{zh ? "正在加载创意方法…" : "Loading creative methods…"}</p> : null}
@@ -226,8 +251,8 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
             draftSelection={{ selected: style?.version ? { skill_id: style.skill_id, version: style.version } : null, onSelect: setStyle }} />
         </fieldset>
         <footer>
-          <button type="button" disabled={pending || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pending ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
-          <button type="button" disabled={pending || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{zh ? "确认并继续" : "Confirm and continue"}</button>
+          <button type="button" disabled={pending || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pendingAction === "save" ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
+          <button type="button" disabled={pending || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{confirmLabel}</button>
         </footer>
       </section>
     </div>, document.body,

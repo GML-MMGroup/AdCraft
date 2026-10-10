@@ -16,6 +16,7 @@ export interface ConversationRecoveryView {
 }
 
 const STALE_AUTHORITY_CODES = new Set([
+  "brand_context_stale",
   "guided_interaction_stale",
   "guided_action_stale",
   "guided_action_superseded",

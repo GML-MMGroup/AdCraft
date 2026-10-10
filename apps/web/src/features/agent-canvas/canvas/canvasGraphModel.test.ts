@@ -1,3 +1,4 @@
+import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -416,7 +417,7 @@ describe("canvasGraphModel", () => {
     })]);
     expect(edges[0]?.style).toBeUndefined();
     expect(edges[0]?.markerEnd).toMatchObject({
-      color: "#686868",
+      color: canvasConnectionColor(edges[0]!.source),
     });
   });
 

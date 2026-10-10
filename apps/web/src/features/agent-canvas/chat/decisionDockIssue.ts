@@ -9,6 +9,7 @@ export interface DecisionDockIssue {
 }
 
 const STALE_CODES = new Set([
+  "brand_context_stale",
   "guided_interaction_stale",
   "guidance_revision_conflict",
   "journey_revision_conflict",
@@ -53,6 +54,9 @@ export function decisionDockIssueFromError(error: unknown): DecisionDockIssue {
       fieldId: "production_duration_seconds",
       retryable: true,
     };
+  }
+  if (code === "brand_context_stale") {
+    return { code, summary: "The creative context changed. Refresh this question before choosing again.", detail, fieldId: null, retryable: false };
   }
   if (isDecisionDockStaleError(error)) {
     return {

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { ChatMessageV2 } from "../../../types-v2.ts";
 import {
@@ -14,10 +14,6 @@ export interface NaturalMessageProps {
   skillTitle?: string | null;
 }
 
-function isLongMessage(text: string): boolean {
-  return text.length > 520 || text.split(/\r?\n/).length > 8;
-}
-
 function displayTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -28,8 +24,6 @@ function displayTime(value: string): string {
 }
 
 export function NaturalMessage({ message, presentation, related, skillTitle }: NaturalMessageProps) {
-  const [expanded, setExpanded] = useState(false);
-  const long = isLongMessage(message.text);
   const isAgent = message.speaker === "adcraft_video_agent";
 
   return (
@@ -48,7 +42,6 @@ export function NaturalMessage({ message, presentation, related, skillTitle }: N
         className={[
           "agent-chat__message-body",
           isAgent ? "agent-chat__message-body--agent-bubble" : "",
-          long ? expanded ? "is-expanded" : "is-collapsed" : "",
         ].filter(Boolean).join(" ")}
       >
         {!isAgent && skillTitle ? (
@@ -63,15 +56,6 @@ export function NaturalMessage({ message, presentation, related, skillTitle }: N
       </div>
       {related}
       <footer className="agent-chat__message-meta">
-        {long ? (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((current) => !current)}
-          >
-            {expanded ? "Show less" : "Show more"}
-          </button>
-        ) : null}
         <time dateTime={message.created_at} aria-label={`Sent ${message.created_at}`}>
           {displayTime(message.created_at)}
         </time>

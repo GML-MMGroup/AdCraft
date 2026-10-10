@@ -1,6 +1,8 @@
 import { PrimaryNavigation } from "../../components/Layout";
 import { ResizableBrandPanel } from "./brand/ResizableBrandPanel";
 import { useModeLaunch } from "../mode-selection/ModeLaunchContext";
+import { ConnectionEffectContext } from "./canvas/connection-effects/connectionEffectContext.ts";
+import { canvasConnectionColor } from "./canvas/connection-effects/connectionColor.ts";
 import {
   applyNodeChanges,
   Controls,
@@ -17,6 +19,7 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -82,6 +85,7 @@ import {
   type CanvasEdgeZoomController,
 } from "./canvas/canvasEdgeRendering.ts";
 import { FrozenCanvasEdgesOverlay } from "./canvas/FrozenCanvasEdgesOverlay.tsx";
+import { CanvasEdgeFlowAnimator } from "./canvas/connection-effects/CanvasEdgeFlowAnimator.tsx";
 import {
   CanvasPreviewPrefetcher,
   type CanvasPreviewPrefetchHandle,
@@ -286,7 +290,7 @@ export function AgentCanvasPage() {
       setBrandDecisions(decisions);
       return decisions.journey.stage;
     } catch {
-      setBrandDecisions(null);
+      // A transient read failure must not erase confirmed Brand decisions.
       return null;
     } finally {
       setBrandDecisionsRefreshing(false);
@@ -319,11 +323,18 @@ export function AgentCanvasPage() {
       cancelled = true;
     };
   }, [brandWorkflowId]);
+  const connectionEffects = useContext(ConnectionEffectContext);
+  useEffect(() => () => connectionEffects?.clear(), [connectionEffects, workflow?.workflow_id]);
   const { displayEdges, submit: submitOptimisticConnection, cancelForNodes: cancelPendingNodeConnections, nextOrder: nextConnectionOrder } = useOptimisticCanvasConnections({
     workflow,
     edges,
     createBinding,
     onError: (error) => setSurfaceError(canvasAuthoringErrorMessage(error)),
+    onStarted: (request, connectionId) => {
+      if (!workflow || request.source.kind !== "node_output") return;
+      connectionEffects?.publish(workflow.workflow_id, request.target_node_id, connectionId,
+        canvasConnectionColor(request.source.source_node_id));
+    },
   });
   const [connectionPolicy, setConnectionPolicy] = useState<CanvasConnectionPolicyV2 | null>(null);
   const [connectedNodeMenu, setConnectedNodeMenu] = useState<{
@@ -1531,6 +1542,7 @@ export function AgentCanvasPage() {
           proOptions={{ hideAttribution: true }}
         >
           <AgentCanvasPointerBackgrounds />
+          <CanvasEdgeFlowAnimator />
           {dragEdgeProjection ? (
             <FrozenCanvasEdgesOverlay snapshots={visibleFrozenSnapshots} />
           ) : null}
