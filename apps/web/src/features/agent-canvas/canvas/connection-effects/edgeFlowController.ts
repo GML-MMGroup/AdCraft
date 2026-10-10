@@ -3,14 +3,22 @@ const EXIT_MS = 160;
 const FLOW_SELECTOR = ".canvas-edge-flow";
 
 // Two packets, a half-path apart. Keep their heads in phase, including when
-// geometry/zoom changes. Optical length stays near 28 screen pixels.
+// geometry/zoom changes. Full optical tail stays near 64 screen pixels.
 export function edgeFlowMetrics(length: number, zoom: number) {
   const screenLength = Math.max(1, length * zoom);
-  const dash = Math.min(12, 2800 / screenLength);
+  const dash = Math.min(20, 6400 / screenLength);
   return {
+    dash,
     dasharray: `${dash} ${50 - dash}`,
     keyframes: [{ strokeDashoffset: `${dash}` }, { strokeDashoffset: `${dash - 100}` }],
   };
+}
+
+/** Every layer ends at `dash`, sharing the parent animation's head position.
+ * The invisible prefix lets shorter strokes concentrate light near the head. */
+export function edgeFlowLayerDasharray(dash: number, portion: number): string {
+  const visible = dash * Math.min(1, Math.max(0, portion));
+  return `0 ${dash - visible} ${visible} ${50 - dash}`;
 }
 
 type FlowEntry = { animation: Animation; dasharray: string; leavingAt: number | null };
@@ -67,6 +75,9 @@ export function createEdgeFlowController(root: HTMLElement, initialZoom: number)
       const entry = entries.get(element);
       if (entry?.dasharray === metrics.dasharray) continue;
       element.style.strokeDasharray = metrics.dasharray;
+      for (const layer of element.querySelectorAll<SVGPathElement>("[data-flow-length]")) {
+        layer.style.strokeDasharray = edgeFlowLayerDasharray(metrics.dash, Number(layer.dataset.flowLength));
+      }
       if (entry) {
         (entry.animation.effect as KeyframeEffect).setKeyframes(metrics.keyframes);
         entry.dasharray = metrics.dasharray;

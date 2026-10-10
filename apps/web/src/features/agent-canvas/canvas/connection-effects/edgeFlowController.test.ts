@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { edgeFlowMetrics } from "./edgeFlowController.ts";
+import { edgeFlowLayerDasharray, edgeFlowMetrics } from "./edgeFlowController.ts";
 
 describe("edge flow geometry", () => {
   it("keeps corresponding packet heads synchronized on unequal paths", () => {
@@ -14,11 +14,23 @@ describe("edge flow geometry", () => {
     }
   });
 
-  it("keeps a 28px optical length under zoom and caps short paths", () => {
+  it("keeps a 64px optical tail under zoom and caps short paths", () => {
     for (const zoom of [.5, 1, 2]) {
       const dash = Number(edgeFlowMetrics(1000, zoom).dasharray.split(" ")[0]);
-      expect(dash / 100 * 1000 * zoom).toBeCloseTo(28);
+      expect(dash / 100 * 1000 * zoom).toBeCloseTo(64);
     }
-    expect(edgeFlowMetrics(50, .5).dasharray).toBe("12 38");
+    expect(edgeFlowMetrics(50, .5).dasharray).toBe("20 30");
+  });
+
+  it("aligns every tail and highlight at the same head, with two packets per path", () => {
+    for (const dash of [4, 12, 20]) {
+      for (const portion of [1, .86, .44, .2, .055]) {
+        const [zero, prefix, visible, gap] = edgeFlowLayerDasharray(dash, portion).split(" ").map(Number);
+        expect(zero).toBe(0);
+        expect(prefix + visible).toBeCloseTo(dash);
+        expect(prefix + visible + gap).toBeCloseTo(50);
+        expect(visible).toBeCloseTo(dash * portion);
+      }
+    }
   });
 });
