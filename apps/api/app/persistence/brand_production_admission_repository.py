@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.engine import Connection
 
+from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -29,6 +30,7 @@ from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
     initial_production_journey,
 )
+from app.services.agent_canvas_requirements import character_occurrence_authority_for_authoring
 
 
 class BrandProductionAdmissionRepository:
@@ -101,8 +103,19 @@ class BrandProductionAdmissionRepository:
             CreativeElementDecisionV2.model_validate(item)
             for item in json.loads(row["element_decisions_json"])
         )
+        requirements = AgentCanvasRequirementRepository(self._database).get_current_in_transaction(
+            connection, workflow_id
+        )
+        characters = character_occurrence_authority_for_authoring(requirements)
         journey = current.model_copy(
-            update={"decisions": initial_production_journey(elements).decisions}
+            update={
+                "decisions": initial_production_journey(
+                    elements,
+                    character_occurrences=(
+                        characters.occurrences if characters.status != "unresolved" else None
+                    ),
+                ).decisions
+            }
         )
         now = datetime.now(timezone.utc)
         identity = f"brand-context:{document.content_digest}"
