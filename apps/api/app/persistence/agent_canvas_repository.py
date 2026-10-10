@@ -836,6 +836,9 @@ class AgentCanvasWorkflowRepository:
                             "The editable prompt projection does not match the Node revision.",
                             stage="agent_canvas_workflow_repository",
                         )
+                    if _node_values(current_node) == _node_values(node):
+                        connection.commit()
+                        return self.get_workflow(node.workflow_id)
                     requested_manual_prompt = node.prompt_preparation.status in {
                         "ready",
                         "waiting_user",

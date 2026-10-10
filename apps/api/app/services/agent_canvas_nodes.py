@@ -122,6 +122,21 @@ class AgentCanvasNodeService:
         current = self._repository.get_node(workflow_id, node_id)
         workflow = self._repository.get_workflow(workflow_id)
         changes = request.model_dump(exclude_unset=True)
+        if "generation_prompt" in changes:
+            changes["generation_prompt"] = normalize_manual_generation_prompt(
+                request.generation_prompt
+            )
+            if current.execution_mode == "source_only" and current.generation_prompt == "":
+                changes["generation_prompt"] = changes["generation_prompt"] or ""
+        current_values = current.model_dump(mode="python")
+        changes = {key: value for key, value in changes.items() if value != current_values[key]}
+        if not changes:
+            self._repository.update_node(
+                current,
+                expected_revision=expected_revision,
+                expected_node_revision=current.revision,
+            )
+            return self._repository.get_node(workflow_id, node_id)
         now = datetime.now(timezone.utc)
         if (
             _has_managed_prompt_preparation(current)
