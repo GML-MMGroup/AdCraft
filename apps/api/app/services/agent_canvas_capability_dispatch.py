@@ -21,6 +21,7 @@ from app.persistence.agent_canvas_conversation_repository import (
 )
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
+    operation_envelope_digest,
 )
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -552,7 +553,7 @@ def _retry_snapshot_json(
         root_turn_id=source_turn.turn_id,
         operation="capability_command",
         envelope_id=envelope.envelope_id,
-        envelope_digest=hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest(),
+        envelope_digest=operation_envelope_digest(envelope),
         requirement_revision_id=envelope.requirement_revision_id,
         requirement_digest=envelope.requirement_digest,
         node_revisions=node_revisions,

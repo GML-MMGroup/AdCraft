@@ -29,6 +29,7 @@ from app.persistence.agent_canvas_guidance_authority_repository import (
 )
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
+    operation_envelope_digest,
 )
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -3446,9 +3447,7 @@ class AgentCanvasConversationRepository:
         next_snapshot = retry_snapshot.model_copy(
             update={
                 "envelope_id": envelope_id,
-                "envelope_digest": hashlib.sha256(
-                    envelope.model_dump_json().encode("utf-8")
-                ).hexdigest(),
+                "envelope_digest": operation_envelope_digest(envelope),
             }
         )
         request = {"schema_version": "1", "envelope_id": envelope_id}
@@ -3712,6 +3711,14 @@ class AgentCanvasConversationRepository:
                     turn=turn,
                     code=code,
                     retryable=retryable,
+                    actionable_failure=actionable_failure,
+                    now=now,
+                )
+                publish_capability_failure_in_transaction(
+                    connection,
+                    events=self._events,
+                    turn=turn,
+                    code=code,
                     actionable_failure=actionable_failure,
                     now=now,
                 )
@@ -4072,7 +4079,7 @@ class AgentCanvasConversationRepository:
             root_turn_id=continuation.continuation_turn_id,
             operation="next_action",
             envelope_id=envelope_id,
-            envelope_digest=hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest(),
+            envelope_digest=operation_envelope_digest(envelope),
             requirement_revision_id=requirement.revision_id,
             requirement_digest=requirement.digest,
             node_revisions=node_revisions,
@@ -5531,6 +5538,77 @@ def _complete_turn_in_transaction(
         events=events,
         turn=turn,
         now=now,
+    )
+
+
+def publish_capability_failure_in_transaction(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    turn: RowMapping,
+    code: str,
+    actionable_failure: ActionableFailureV1,
+    now: str,
+) -> None:
+    """Keep failed capability presentation truthful, durable, and non-executing."""
+
+    if turn["turn_kind"] != "capability":
+        return
+    metadata = {
+        "status": "failed",
+        "error_code": code,
+        "retryable": actionable_failure.retryable,
+        "actionable_failure": actionable_failure.model_dump(mode="json"),
+    }
+    activities = connection.execute(
+        select(AgentCanvasChatEntryRow).where(
+            AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
+            AgentCanvasChatEntryRow.entry_type == "expert_activity",
+            func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id")
+            == turn["turn_id"],
+        )
+    ).mappings()
+    for activity in activities:
+        stored = json.loads(str(activity["metadata_json"]))
+        connection.execute(
+            update(AgentCanvasChatEntryRow)
+            .where(AgentCanvasChatEntryRow.entry_id == activity["entry_id"])
+            .values(
+                content="The creative step failed.",
+                metadata_json=_dump(
+                    {**stored, **metadata, "message_key": "expert_activity.failed"}
+                ),
+            )
+        )
+    entry_id = f"msg_capability_failure_{turn['turn_id']}"
+    if (
+        connection.execute(
+            select(AgentCanvasChatEntryRow.entry_id).where(
+                AgentCanvasChatEntryRow.entry_id == entry_id
+            )
+        ).first()
+        is not None
+    ):
+        return
+    explanation = (
+        "Agent provider request timed out. The current creative step stopped."
+        if code in {"agent_provider_timeout", "agent_deadline_exceeded"}
+        else "The current creative step failed."
+    )
+    recovery = (
+        "Please retry this failed response to continue."
+        if actionable_failure.retry_scope == "turn" and actionable_failure.retryable
+        else "Please review the failure details before continuing."
+    )
+    _publish_assistant_message_in_transaction(
+        connection,
+        events=events,
+        turn=turn,
+        assistant_message=f"{explanation} {recovery}",
+        now=now,
+        entry_id=entry_id,
+        metadata=metadata,
+        publication_key=f"conversation:{turn['turn_id']}:capability_failure_message",
     )
 
 
