@@ -82,6 +82,7 @@ import {
   type CanvasEdgeZoomController,
 } from "./canvas/canvasEdgeRendering.ts";
 import { FrozenCanvasEdgesOverlay } from "./canvas/FrozenCanvasEdgesOverlay.tsx";
+import { CanvasEdgeFlowAnimator } from "./canvas/connection-effects/CanvasEdgeFlowAnimator.tsx";
 import {
   CanvasPreviewPrefetcher,
   type CanvasPreviewPrefetchHandle,
@@ -1532,6 +1533,7 @@ export function AgentCanvasPage() {
           proOptions={{ hideAttribution: true }}
         >
           <AgentCanvasPointerBackgrounds />
+          <CanvasEdgeFlowAnimator />
           {dragEdgeProjection ? (
             <FrozenCanvasEdgesOverlay snapshots={visibleFrozenSnapshots} />
           ) : null}

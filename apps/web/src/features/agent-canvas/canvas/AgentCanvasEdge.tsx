@@ -8,6 +8,7 @@ import { memo, type CSSProperties } from "react";
 import { nodeBorderPointFromHandleBoundary } from "./canvasConnectionGeometry.ts";
 
 import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
+import { CanvasEdgeFlow } from "./connection-effects/CanvasEdgeFlow.tsx";
 
 function AgentCanvasEdgeComponent({
   source: sourceNodeId,
@@ -50,6 +51,7 @@ function AgentCanvasEdgeComponent({
         style={style}
         interactionWidth={interactionWidth}
       />
+      <CanvasEdgeFlow path={path} />
     </g>
   );
 }

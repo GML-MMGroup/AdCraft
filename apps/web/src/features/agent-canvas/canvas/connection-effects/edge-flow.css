@@ -1,0 +1,18 @@
+.canvas-edge-flow {
+  opacity: 0;
+  stroke-dasharray: 0 50;
+  transition: opacity 150ms cubic-bezier(.23, 1, .32, 1);
+  pointer-events: none;
+}
+.react-flow__edge.is-node-related .canvas-edge-flow { opacity: 1; }
+.canvas-edge-flow path {
+  fill: none;
+  stroke: var(--connection-color);
+  stroke-linecap: round;
+}
+.canvas-edge-flow__halo { stroke-width: calc(6px / var(--edge-flow-zoom, 1)); stroke-opacity: .13; }
+.canvas-edge-flow__core { stroke-width: calc(2px / var(--edge-flow-zoom, 1)); stroke-opacity: .95; }
+.canvas-edge-flow .canvas-edge-flow__highlight { stroke: #f5f4ef; stroke-width: calc(.65px / var(--edge-flow-zoom, 1)); stroke-opacity: .85; }
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge.is-node-related .canvas-edge-flow { opacity: 0; transition: none; }
+}
