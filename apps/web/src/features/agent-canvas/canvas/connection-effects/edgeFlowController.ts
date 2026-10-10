@@ -25,7 +25,8 @@ type FlowEntry = { animation: Animation; dasharray: string; leavingAt: number | 
 
 /** One clock per canvas, no per-frame React updates. The observer also adopts
  * frozen SVG copies during dragging, which do not have React component effects.
- * SVG dash animation still paints; it is limited to the selected node's edges.
+ * SVG dash animation still paints; it is limited to selected edges and the
+ * selected node's incident edges.
  */
 export function createEdgeFlowController(root: HTMLElement, initialZoom: number) {
   const entries = new Map<SVGGElement, FlowEntry>();
@@ -54,7 +55,9 @@ export function createEdgeFlowController(root: HTMLElement, initialZoom: number)
     if (reducedMotion.matches) { clearEntries(); return; }
     if (document.hidden) return;
     const time = now();
-    const active = new Set(root.querySelectorAll<SVGGElement>(`.is-node-related ${FLOW_SELECTOR}`));
+    const active = new Set(root.querySelectorAll<SVGGElement>(
+      `.react-flow__edge:is(.is-node-related, .selected) ${FLOW_SELECTOR}`,
+    ));
 
     for (const [element, entry] of entries) {
       if (active.has(element)) { entry.leavingAt = null; continue; }

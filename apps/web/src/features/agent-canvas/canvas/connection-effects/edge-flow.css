@@ -4,7 +4,7 @@
   transition: opacity 150ms cubic-bezier(.23, 1, .32, 1);
   pointer-events: none;
 }
-.react-flow__edge.is-node-related .canvas-edge-flow { opacity: 1; }
+.react-flow__edge:is(.is-node-related, .selected) .canvas-edge-flow { opacity: 1; }
 .canvas-edge-flow path {
   fill: none;
   stroke: var(--connection-color);
@@ -31,5 +31,5 @@
   stroke-opacity: .95;
 }
 @media (prefers-reduced-motion: reduce) {
-  .react-flow__edge.is-node-related .canvas-edge-flow { opacity: 0; transition: none; }
+  .react-flow__edge:is(.is-node-related, .selected) .canvas-edge-flow { opacity: 0; transition: none; }
 }
