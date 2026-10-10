@@ -3706,6 +3706,15 @@ class AgentCanvasConversationRepository:
                             )
                         )
                     )
+                publish_next_action_failure_in_transaction(
+                    connection,
+                    events=self._events,
+                    turn=turn,
+                    code=code,
+                    retryable=retryable,
+                    actionable_failure=actionable_failure,
+                    now=now,
+                )
                 activity = (
                     connection.execute(
                         select(AgentCanvasExpertActivityRow).where(
@@ -5525,6 +5534,53 @@ def _complete_turn_in_transaction(
     )
 
 
+def publish_next_action_failure_in_transaction(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    turn: RowMapping,
+    code: str,
+    retryable: bool,
+    actionable_failure: ActionableFailureV1,
+    now: str,
+) -> None:
+    """Publish a bounded explanation without exposing internal failure messages."""
+
+    if turn["turn_kind"] != "next_action":
+        return
+    entry_id = f"msg_next_action_failure_{turn['turn_id']}"
+    if (
+        connection.execute(
+            select(AgentCanvasChatEntryRow.entry_id).where(
+                AgentCanvasChatEntryRow.entry_id == entry_id
+            )
+        ).first()
+        is not None
+    ):
+        return
+    message = (
+        "Character planning stopped because its character target is missing. "
+        "This workflow needs recovery before you can continue."
+        if code == "character_proposal_scope_invalid"
+        else "The next creative step failed. Please review the failure details before continuing."
+    )
+    _publish_assistant_message_in_transaction(
+        connection,
+        events=events,
+        turn=turn,
+        assistant_message=message,
+        entry_id=entry_id,
+        metadata={
+            "status": "failed",
+            "error_code": code,
+            "retryable": retryable,
+            "actionable_failure": actionable_failure.model_dump(mode="json"),
+        },
+        now=now,
+        publication_key=f"conversation:{turn['turn_id']}:next_action_failure_message",
+    )
+
+
 def _publish_assistant_message_in_transaction(
     connection: Connection,
     *,
@@ -5534,6 +5590,7 @@ def _publish_assistant_message_in_transaction(
     now: str,
     entry_id: str | None = None,
     metadata: Mapping[str, object] | None = None,
+    publication_key: str | None = None,
 ) -> str:
     turn_id = str(turn["turn_id"])
     workflow_id = str(turn["workflow_id"])
@@ -5564,7 +5621,7 @@ def _publish_assistant_message_in_transaction(
             turn_id=(turn_id if deterministic_publication else None),
             event_type="chat_message_created",
             transition_key=(
-                f"conversation:{turn_id}:chat_message_created"
+                publication_key or f"conversation:{turn_id}:chat_message_created"
                 if deterministic_publication
                 else None
             ),
