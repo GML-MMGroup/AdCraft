@@ -42,6 +42,7 @@ from app.schemas.brand_professional_mode import (
     TreatmentStepResultV1,
 )
 from app.persistence.models import BrandOptionCardRow
+from app.schemas.brand_treatment_generation import treatment_output_model
 from app.services.brand_skill_stack import BrandSkillStackService
 from app.services.brand_question_context import BrandQuestionContextService
 from app.services.brand_question_policy import (
@@ -1083,7 +1084,7 @@ class BrandCapabilityInvocationService:
                         for value in self._repository.get_slot_values(brand_id)
                     ],
                 },
-                output_model=CreativeTreatmentOutputV1,
+                output_model=treatment_output_model(cast_step(journey.treatment_substep)),
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
             output = self._runtime.run(spec).output
