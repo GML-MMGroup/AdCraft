@@ -249,6 +249,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
+        "ark_thinking",
         "reasoning_effort",
         "none",
     ]
@@ -283,6 +284,11 @@ class AgentModelExecutionPolicyV1(_StrictModel):
 
     @model_validator(mode="after")
     def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if self.reasoning_control == "ark_thinking" and (
+            self.thinking_budget_tokens is not None
+            or self.enable_thinking != (self.reasoning_mode == "deep")
+        ):
+            raise ValueError("Ark thinking policy requires a mode toggle without a numeric budget.")
         if self.json_object_fallback_certified and (
             not self.model_ref.startswith("openrouter:")
             or self.structured_transport != "non_streaming_json_schema"
@@ -371,6 +377,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
+        "ark_thinking",
         "reasoning_effort",
         "none",
     ]
