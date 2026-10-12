@@ -17,6 +17,7 @@ from app.persistence.models import (
     AgentCanvasNodeRow,
 )
 from app.schemas.agent_canvas_prompt_preparation_dispatch import PromptPreparationDispatchV1
+from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -49,7 +50,11 @@ def append_prompt_preparation_progress(
         return
     node = (
         connection.execute(
-            select(AgentCanvasNodeRow.title, AgentCanvasNodeRow.prompt_preparation_json).where(
+            select(
+                AgentCanvasNodeRow.title,
+                AgentCanvasNodeRow.creative_role,
+                AgentCanvasNodeRow.prompt_preparation_json,
+            ).where(
                 AgentCanvasNodeRow.workflow_id == dispatch.workflow_id,
                 AgentCanvasNodeRow.node_id == dispatch.node_id,
             )
@@ -93,6 +98,7 @@ def append_prompt_preparation_progress(
         "type": "prompt_preparation",
         "node_id": dispatch.node_id,
         "node_title": node["title"],
+        "capability_id": _progress_capability(str(node["creative_role"])),
         "dispatch_id": dispatch.dispatch_id,
         "operation_id": dispatch.operation_id,
         "status": status,
@@ -131,3 +137,20 @@ def append_prompt_preparation_progress(
             },
         ),
     )
+
+
+def _progress_capability(creative_role: str) -> CapabilityIdV1:
+    """Associate progress with an existing stage without changing execution ownership."""
+
+    capabilities: dict[str, CapabilityIdV1] = {
+        "world_setting": "world_setting",
+        "product": "product_design",
+        "prop": "prop_design",
+        "character": "character_design",
+        "scene": "scene_design",
+        "script": "script_authoring",
+        "storyboard_sequence": "storyboard_design",
+        "storyboard_video": "video_direction",
+        "bgm": "bgm_direction",
+    }
+    return capabilities.get(creative_role, "quick_media")
