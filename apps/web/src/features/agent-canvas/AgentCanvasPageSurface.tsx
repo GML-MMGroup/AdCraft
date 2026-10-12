@@ -1596,16 +1596,6 @@ export function AgentCanvasPage() {
           >
             <AssetsIcon />
           </button>
-          {workflow ? (
-            <button
-              type="button"
-              aria-label="Open LLM call history"
-              title="LLM call history"
-              onClick={() => window.open(`/workflows/${encodeURIComponent(workflow.workflow_id)}/llm-calls`, "_blank", "noopener,noreferrer")}
-            >
-              LOG
-            </button>
-          ) : null}
           {running ? (
             <button
               type="button"

@@ -6,7 +6,7 @@ export const READ_INTERVAL_MS = 2500;
 const emptyPage: AgentModelCallPage = { workflow_id: "", items: [], next_offset: null };
 
 /** Local read state only. No workspace context, persistence, polling or production actions. */
-export function useCallHistory(workflowId: string) {
+export function useCallHistory(workflowId: string, initialDelayMs = 0) {
   const [page, setPage] = useState(emptyPage);
   const [offsets, setOffsets] = useState([0]);
   const [selected, setSelected] = useState<AgentModelCallDetail | null>(null);
@@ -53,7 +53,7 @@ export function useCallHistory(workflowId: string) {
 
   useEffect(() => {
     // Collapse React StrictMode's discarded mount without issuing an extra request.
-    const timer = setTimeout(() => { void load([0], true); }, 0);
+    const timer = setTimeout(() => { void load([0], true); }, initialDelayMs);
     return () => {
       clearTimeout(timer);
       clearTimeout(cooldownTimer.current);
@@ -62,7 +62,7 @@ export function useCallHistory(workflowId: string) {
       listRequest.current = null;
       detailRequest.current = null;
     };
-  }, [load]);
+  }, [load, initialDelayMs]);
 
   async function select(callId: string) {
     if (listRequest.current || detailRequest.current || selected?.call_id === callId) return;

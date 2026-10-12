@@ -8,6 +8,7 @@ const ProjectsPage = lazy(() => import("./pages/ProjectsPage").then((module) => 
 const AssetsPage = lazy(() => import("./pages/AssetsPage").then((module) => ({ default: module.AssetsPage })));
 const WorkflowPage = lazy(() => import("./pages/WorkflowPage").then((module) => ({ default: module.WorkflowPage })));
 const WorkflowModelCallHistoryPage = lazy(() => import("./pages/WorkflowModelCallHistoryPage").then((module) => ({ default: module.WorkflowModelCallHistoryPage })));
+const LegacyCallHistoryRedirect = lazy(() => import("./pages/WorkflowModelCallHistoryPage").then((module) => ({ default: module.LegacyCallHistoryRedirect })));
 const TrashPage = lazy(() => import("./pages/TrashPage").then((module) => ({ default: module.TrashPage })));
 const ApiSpacePage = lazy(() => import("./pages/ApiSpacePage").then((module) => ({ default: module.ApiSpacePage })));
 const HomeTypographyLabPage = lazy(() => import("./pages/HomeTypographyLabPage").then((module) => ({ default: module.HomeTypographyLabPage })));
@@ -47,7 +48,9 @@ function AppRoutes() {
         <Route path="/design-lab/home-typography" element={<HomeTypographyLabPage />} />
         <Route path="/design-lab/mode-launcher" element={<ModeLauncherPrototypePage />} />
         <Route path="/design-lab/mode-icons" element={<ModeIconLabPrototypePage />} />
-        <Route path="/workflows/:workflowId/llm-calls" element={<WorkflowModelCallHistoryPage />} />
+        <Route path="/logs" element={<WorkflowModelCallHistoryPage />} />
+        <Route path="/logs/:workflowId" element={<WorkflowModelCallHistoryPage />} />
+        <Route path="/workflows/:workflowId/llm-calls" element={<LegacyCallHistoryRedirect />} />
         <Route path="/dev/brand" element={<BrandDevPage />} />
         <Route element={<LightweightShell />}>
           <Route path="/" element={<HomePage navigate={navigateRoute} />} />
