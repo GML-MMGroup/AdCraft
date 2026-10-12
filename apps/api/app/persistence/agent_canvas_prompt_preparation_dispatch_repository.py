@@ -21,6 +21,9 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_prompt_preparation_progress import (
+    append_prompt_preparation_progress,
+)
 from app.persistence.models import (
     AgentCanvasBindingRow,
     AgentCanvasNodeRow,
@@ -1818,6 +1821,13 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     "source_snapshot_digest": _json_digest(dispatch.source_snapshot),
                 },
             ),
+        )
+        append_prompt_preparation_progress(
+            connection,
+            self._events,
+            dispatch,
+            transition_key=transition_key,
+            created_at=created_at,
         )
 
     def _project_terminal_failure_in_transaction(

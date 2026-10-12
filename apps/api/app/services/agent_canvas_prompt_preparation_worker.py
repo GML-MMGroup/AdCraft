@@ -19,6 +19,7 @@ from app.services.agent_canvas_prompt_preparation_lease import (
     wait_for_prompt_preparation_heartbeat,
 )
 from app.services.agent_canvas_prompt_preparation import context_digest
+from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
 
 logger = logging.getLogger(__name__)
@@ -76,29 +77,35 @@ class AgentCanvasPromptPreparationWorker:
         self._heartbeat_wait = heartbeat_wait
 
     def run_once(self) -> PromptPreparationWorkerCycle:
-        claimed, terminalized = self._dispatches.claim_due_with_terminalized(
-            worker_id=self._worker_id,
-            now=self._clock(),
-            batch_limit=self._batch_limit,
-            lease_duration=self._lease_duration,
-        )
         completed = retried = superseded = lease_lost = 0
-        failed = 0
-        for dispatch in terminalized:
-            exhausted = V2PersistenceError(
-                "prompt_preparation_retry_exhausted",
-                "Prompt preparation retry budget was exhausted.",
-                stage="prompt_preparation_worker",
+        failed = claimed_count = 0
+        for _ in range(self._batch_limit):
+            # Only the executing member has a heartbeat. Do not start leases
+            # for serial siblings while this member is awaiting the Agent.
+            claimed, terminalized = self._dispatches.claim_due_with_terminalized(
+                worker_id=self._worker_id,
+                now=self._clock(),
+                batch_limit=1,
+                lease_duration=self._lease_duration,
             )
-            try:
-                self._notify_terminal(dispatch, exhausted)
-            except Exception:  # noqa: BLE001 - barrier wake must not halt recovery.
-                logger.exception(
-                    "Prompt-preparation terminal barrier notification failed dispatch_id=%s",
-                    dispatch.dispatch_id,
+            for dispatch in terminalized:
+                exhausted = V2PersistenceError(
+                    "prompt_preparation_retry_exhausted",
+                    "Prompt preparation retry budget was exhausted.",
+                    stage="prompt_preparation_worker",
                 )
-            failed += 1
-        for dispatch in claimed:
+                try:
+                    self._notify_terminal(dispatch, exhausted)
+                except Exception:  # noqa: BLE001 - barrier wake must not halt recovery.
+                    logger.exception(
+                        "Prompt-preparation terminal barrier notification failed dispatch_id=%s",
+                        dispatch.dispatch_id,
+                    )
+                failed += 1
+            if not claimed:
+                break
+            dispatch = claimed[0]
+            claimed_count += 1
             try:
                 outcome = self._process_one(dispatch)
             except Exception as error:  # noqa: BLE001 - isolate one dispatch.
@@ -114,7 +121,7 @@ class AgentCanvasPromptPreparationWorker:
             superseded += outcome == "superseded"
             lease_lost += outcome == "lease_lost"
         return PromptPreparationWorkerCycle(
-            claimed=len(claimed),
+            claimed=claimed_count,
             completed=completed,
             retried=retried,
             failed=failed,
@@ -321,13 +328,23 @@ class AgentCanvasPromptPreparationWorker:
 
 
 def _failure(error: Exception) -> tuple[str, bool]:
+    if isinstance(error, PiAgentRuntimeError):
+        # Runtime retryability also authorizes an explicit user retry. It is
+        # not authority for this outbox to restart a consumed model budget.
+        safe_pre_submission_retry = (
+            error.retryable
+            and error.code == "agent_runtime_unavailable"
+            and error.details.get("model_submission_count") == 0
+            and error.details.get("failure_boundary") in {"runtime_process", "runtime_http"}
+        )
+        return error.code, safe_pre_submission_retry
     if isinstance(error, V2PersistenceError):
         return error.code, bool(error.details.get("retryable", False))
     return "prompt_preparation_failed", True
 
 
 def _error_code(error: Exception) -> str:
-    return error.code if isinstance(error, V2PersistenceError) else "prompt_preparation_failed"
+    return _failure(error)[0]
 
 
 __all__ = (
