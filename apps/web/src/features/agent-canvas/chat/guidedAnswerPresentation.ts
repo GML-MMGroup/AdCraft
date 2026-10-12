@@ -15,6 +15,33 @@ export interface GuidedAnswerBubbleV1 {
   sequence: number;
 }
 
+export type PendingGuidedQuestion = Pick<GuidedAnswerBubbleV1,
+  "bubble_id" | "interaction_id" | "question_id" | "label">;
+
+/** Current questions come from the authoritative interaction, not a submitted
+ * answer or local cache. Accepted/optimistic answer pairs own their question so
+ * refreshes and submission rollback cannot leave duplicate question bubbles. */
+export function projectPendingGuidedQuestions(
+  interaction: GuidedInteractionV1 | null,
+  answers: readonly GuidedAnswerBubbleV1[],
+): PendingGuidedQuestion[] {
+  if (!interaction || !["open", "submitted"].includes(interaction.status)) return [];
+  const content = interaction.content;
+  const questions = content.content_kind === "concept_choice"
+    ? [{ question_id: content.action_id, label: interaction.title || interaction.context || "Decision" }]
+    : content.content_kind === "questionnaire"
+      ? content.questions.map((question) => ({ question_id: question.question_id, label: question.prompt }))
+      : [];
+  const answered = new Set(answers
+    .filter((answer) => answer.interaction_id === interaction.interaction_id)
+    .map((answer) => answer.question_id));
+  return questions.filter((question) => !answered.has(question.question_id)).map((question) => ({
+    ...question,
+    interaction_id: interaction.interaction_id,
+    bubble_id: `guided-question:${interaction.interaction_id}:${question.question_id}`,
+  }));
+}
+
 export function buildGuidedAnswerBubbles(
   interaction: GuidedInteractionV1,
   request: GuidedInteractionSubmitRequestV1,

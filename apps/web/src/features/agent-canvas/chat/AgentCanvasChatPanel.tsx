@@ -90,6 +90,7 @@ import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
+import { GuidedQuestionBubble } from "./GuidedQuestionBubble.tsx";
 import type { BrandDecisionPanelV1, BrandStageV2 } from "../brand/brandDecisions.ts";
 import { BrandSkillPicker } from "../brand/BrandSkillPicker.tsx";
 import { failureUserAction } from "./actionableFailure.ts";
@@ -98,6 +99,7 @@ import { FailedTurnBubble } from "./FailedTurnBubble.tsx";
 import { projectFailedMessageTurns } from "./failedTurnPresentation.ts";
 import {
   isPersistedGuidedAnswerMessage,
+  projectPendingGuidedQuestions,
   type GuidedAnswerBubbleV1,
 } from "./guidedAnswerPresentation.ts";
 import "./agent-canvas-chat.css";
@@ -116,6 +118,7 @@ type TimelineRenderOptions = {
 type TimelineEntry =
   | { entry_type: "timeline"; key: string; sequence: number; unit: ReturnType<typeof buildStageThreadTimeline>[number] }
   | { entry_type: "guided_answer"; key: string; sequence: number; answer: GuidedAnswerBubbleV1 }
+  | { entry_type: "guided_question"; key: string; sequence: number; label: string }
   | { entry_type: "failed_turn"; key: string; sequence: number; turn: AgentCanvasChatTurnV2 };
 
 function timelineEntryKey(entry: TimelineEntry) {
@@ -422,10 +425,22 @@ export function AgentCanvasChatPanel({
       sequence: answer.sequence,
       answer,
     })),
+    ...projectPendingGuidedQuestions(standaloneGuidedInteraction, chat.state.guidedAnswerBubbles)
+      .map((question, index): TimelineEntry => ({
+        entry_type: "guided_question",
+        key: question.bubble_id,
+        sequence: Math.max(0,
+          ...chat.state.items.map((item) => item.sequence),
+          ...chat.state.guidedAnswerBubbles.map((answer) => answer.sequence),
+        ) + (index + 1) / 100,
+        label: question.label,
+      })),
   ].sort((left, right) => left.sequence - right.sequence), [
     chat.state.guidedAnswerBubbles,
+    chat.state.items,
     failedTurnsByMessageId,
     stageTimeline,
+    standaloneGuidedInteraction,
   ]);
   const roleThreads = useMemo(
     () => stageTimeline.filter((unit) => unit.unit_type === "stage_thread"), [stageTimeline],
@@ -863,7 +878,7 @@ export function AgentCanvasChatPanel({
               <div className="agent-chat__empty">Loading conversation...</div>
             ) : null}
             {!chat.state.loading
-              && !chat.state.items.length
+              && !timelineEntries.length
               && !chat.state.currentSessionActions.length ? (
               <div className="agent-chat__empty">Describe the ad you want to build.</div>
             ) : null}
@@ -876,6 +891,13 @@ export function AgentCanvasChatPanel({
               items={timelineEntries}
               getKey={timelineEntryKey}
               renderItem={(entry) => {
+                if (entry.entry_type === "guided_question") {
+                  return (
+                    <div className="agent-chat__pending-question">
+                      <GuidedQuestionBubble label={entry.label} />
+                    </div>
+                  );
+                }
                 if (entry.entry_type === "guided_answer") {
                   return <GuidedAnswerBubble answer={entry.answer} />;
                 }

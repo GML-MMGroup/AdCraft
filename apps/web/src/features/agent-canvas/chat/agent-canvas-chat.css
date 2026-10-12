@@ -647,6 +647,11 @@
   animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
 }
 
+.agent-chat__pending-question {
+  /* Keep the tail inside the virtualized row's paint containment. */
+  padding-bottom: 8px;
+}
+
 .agent-chat__guided-question-bubble .agent-chat__message-body {
   margin: 0;
 }

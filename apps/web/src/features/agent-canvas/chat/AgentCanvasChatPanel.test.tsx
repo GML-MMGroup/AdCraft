@@ -2174,6 +2174,48 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     expect(document.querySelector(".agent-chat__header")?.nextElementSibling?.className).toBe("agent-chat__timeline-shell");
   });
 
+  it("keeps the pending brand question in an Agent bubble after collapsing its choice card", () => {
+    const interaction = directionInteraction();
+    interaction.title = "这支球鞋广告想传达怎样的创意方向？";
+    interaction.context = "请先选择一个方案。";
+    if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
+    interaction.content = { ...interaction.content, capability_id: "brand_hypothesis", stage: "intake" };
+    const { chat } = renderPanelWithInteraction(interaction);
+    expect(screen.getByRole("article", { name: "Agent question" }).textContent).toContain(interaction.title);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
+    expect(screen.getByRole("article", { name: "Agent question" }).textContent).toContain(interaction.title);
+  });
+
+  it("keeps one question across submit, hydration and rollback, then appends the next question", () => {
+    const interaction = directionInteraction();
+    const { chat, rerender } = renderPanelWithInteraction(interaction);
+    const answer = {
+      bubble_id: "optimistic-answer", interaction_id: interaction.interaction_id,
+      question_id: "action-world", label: interaction.title, value: "Quiet world", sequence: 1,
+    };
+    const refresh = (current: GuidedInteractionV1 | null, answers: typeof answer[]) => {
+      panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: {
+        ...chat.state, guidedInteraction: current, guidedAnswerBubbles: answers,
+      } });
+      rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />);
+    };
+    expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
+    refresh(interaction, [answer]);
+    expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
+    expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(1);
+    refresh(null, [{ ...answer, bubble_id: "persisted-answer" }]);
+    expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
+    refresh(interaction, []);
+    expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
+    expect(screen.queryByRole("article", { name: "Your guided answer" })).toBeNull();
+    refresh({ ...interaction, interaction_id: "next", title: "Choose the next direction" }, [answer]);
+    expect(screen.getAllByRole("article", { name: "Agent question" }).map((el) => el.textContent)).toEqual([
+      `AdCraft Video Agent${interaction.title}`, "AdCraft Video AgentChoose the next direction",
+    ]);
+  });
+
   it("collapses the overlay into a chip and re-expands it on demand", () => {
     renderPanelWithInteraction();
 
