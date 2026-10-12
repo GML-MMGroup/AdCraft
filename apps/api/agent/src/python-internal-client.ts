@@ -353,6 +353,7 @@ const THINKING_FORMATS = new Set(["zai", "qwen", "openai", "none"]);
 const REASONING_CONTROLS = new Set([
   "provider_default",
   "enable_thinking",
+  "ark_thinking",
   "reasoning_effort",
   "none",
 ]);
@@ -431,7 +432,11 @@ function isExecutionPolicy(
         (policy.enable_thinking || policy.thinking_budget_tokens !== null)) ||
         (policy.reasoning_mode === "deep" &&
           (!policy.enable_thinking || policy.thinking_budget_tokens === null)))) ||
+    (policy.reasoning_control === "ark_thinking" &&
+      (policy.enable_thinking !== (policy.reasoning_mode === "deep") ||
+        policy.thinking_budget_tokens !== null)) ||
     (policy.reasoning_control !== "enable_thinking" &&
+      policy.reasoning_control !== "ark_thinking" &&
       (policy.enable_thinking || policy.thinking_budget_tokens !== null))
   ) {
     return false;

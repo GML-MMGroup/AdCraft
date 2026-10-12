@@ -42,6 +42,7 @@ import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
 
 
 interface StructuredCompletionRequestBase {
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly model: string;
   readonly messages: ReadonlyArray<Readonly<Record<string, unknown>>>;
   readonly max_tokens: number;
@@ -964,10 +965,14 @@ function isCertifiedJsonObjectCapabilityFallback(
 }
 
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
   readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 } {
+  if (policy.reasoning_control === "ark_thinking") {
+    return { thinking: { type: policy.enable_thinking ? "enabled" : "disabled" } };
+  }
   if (policy.reasoning_control === "reasoning_effort") {
     if (policy.reasoning_effort == null) {
       throw new Error("agent_model_capability_mismatch");
@@ -985,9 +990,13 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
 function repairReasoningPayload(
   policy: AgentCredentialSnapshot["execution_policy"],
 ): {
+  readonly thinking?: { readonly type: "disabled" };
   readonly enable_thinking?: boolean;
   readonly reasoning_effort?: "minimal";
 } {
+  if (policy.reasoning_control === "ark_thinking") {
+    return { thinking: { type: "disabled" } };
+  }
   if (policy.reasoning_control === "reasoning_effort") {
     return { reasoning_effort: "minimal" };
   }

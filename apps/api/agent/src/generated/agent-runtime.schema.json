@@ -1645,6 +1645,7 @@
         },
         "reasoning_control": {
           "enum": [
+            "ark_thinking",
             "enable_thinking",
             "none",
             "provider_default",
@@ -6050,6 +6051,7 @@
         },
         "reasoning_control": {
           "enum": [
+            "ark_thinking",
             "enable_thinking",
             "none",
             "provider_default",
