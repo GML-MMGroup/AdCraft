@@ -446,6 +446,14 @@ class OrdinaryConversationIntentV1(RootModel[_OrdinaryConversationIntentVariantV
 
 
 class CompactTurnIntentDecisionV3(_CapabilityModel):
+    production_readiness: Literal["not_ready", "ready"] = Field(
+        default="not_ready",
+        description=(
+            "Whether a fresh guided advertising request has enough structured product or "
+            "service context and an audience or advertising objective to begin production. "
+            "Use not_ready for a bare advertising mention or a clarification request."
+        ),
+    )
     brief_effect: Literal["none", "changed", "unknown"] = Field(
         default="unknown",
         description="Whether this message adds or revises creative facts, constraints, or references.",
@@ -504,6 +512,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
 
 
 class TurnIntentDecisionV2(_CapabilityModel):
+    production_readiness: Literal["not_ready", "ready"] = "ready"
     brief_effect: Literal["none", "changed", "unknown"] = "unknown"
     mode: Literal[
         "ordinary_conversation",
@@ -597,6 +606,7 @@ def expand_compact_turn_intent(
         if (element := getattr(compact.explicit_elements, element_kind)) is not None
     )
     return TurnIntentDecisionV2(
+        production_readiness=compact.production_readiness,
         brief_effect=compact.brief_effect,
         mode=compact.mode,
         objective=compact.objective,

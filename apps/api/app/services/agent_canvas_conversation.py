@@ -184,6 +184,7 @@ from app.services.agent_canvas_requirements import (
     character_occurrences_for_authoring,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.advertising_production_readiness import advertising_production_is_ready
 from app.services.authoritative_workflow_context import (
     AuthoritativeWorkflowContextProjector,
 )
@@ -1905,6 +1906,16 @@ class AgentConversationService:
                         else None
                     ),
                 },
+            )
+        if (
+            intent.mode == "guided_production"
+            and existing_session is None
+            and not advertising_production_is_ready(intent, session_exists=False)
+        ):
+            return complete_message(
+                intent.assistant_message
+                or "Please tell me which product or service this advertisement is for and who it should reach.",
+                metadata={"production_readiness": intent.production_readiness},
             )
         if intent.mode == "guided_production":
             if brand_journey is not None and brand_journey.stage != "production":
