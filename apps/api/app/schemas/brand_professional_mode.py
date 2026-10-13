@@ -74,6 +74,77 @@ class BrandOptionCardV1(_BrandModel):
     options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
+class BrandFormOptionV1(_BrandModel):
+    """One recommendation or the explicit custom answer option in a form row."""
+
+    option_id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=160)
+    why: str | None = Field(default=None, max_length=240)
+
+
+class BrandFormRowV1(_BrandModel):
+    """One single-select Brand Memory or Campaign form row."""
+
+    question_id: str = Field(min_length=1, max_length=120)
+    slot_id: str = Field(min_length=1, max_length=80)
+    prompt: str = Field(min_length=1, max_length=400)
+    options: tuple[BrandFormOptionV1, ...] = Field(min_length=4, max_length=4)
+    custom_option_id: str = Field(min_length=1, max_length=80)
+    required: bool = True
+
+    @model_validator(mode="after")
+    def validate_options(self) -> "BrandFormRowV1":
+        option_ids = tuple(option.option_id for option in self.options)
+        if len(set(option_ids)) != len(option_ids):
+            raise ValueError("Brand form option IDs must be unique.")
+        if option_ids.count(self.custom_option_id) != 1:
+            raise ValueError("Brand form must expose exactly one custom option.")
+        if sum(option.option_id != self.custom_option_id for option in self.options) != 3:
+            raise ValueError("Brand form must expose exactly three recommendations.")
+        return self
+
+
+class BrandFormV1(_BrandModel):
+    """Complete foundation-stage form projected to the frontend."""
+
+    content_kind: Literal["brand_form"] = "brand_form"
+    form_id: str = Field(min_length=1, max_length=160)
+    stage: Literal["brand-memory", "campaign"]
+    revision: int = Field(ge=1)
+    response_locale: str = Field(min_length=1, max_length=35)
+    context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    title: str = Field(min_length=1, max_length=160)
+    instructions: str = Field(min_length=1, max_length=1_024)
+    rows: tuple[BrandFormRowV1, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_rows(self) -> "BrandFormV1":
+        question_ids = tuple(row.question_id for row in self.rows)
+        slot_ids = tuple(row.slot_id for row in self.rows)
+        if len(set(question_ids)) != len(question_ids) or len(set(slot_ids)) != len(slot_ids):
+            raise ValueError("Brand form row identifiers must be unique.")
+        return self
+
+
+class BrandFormAnswerV1(_BrandModel):
+    """One explicit answer from a foundation form row."""
+
+    question_id: str = Field(min_length=1, max_length=120)
+    selected_option_id: str = Field(min_length=1, max_length=80)
+    custom_text: str | None = Field(default=None, min_length=1, max_length=2_048)
+
+
+class BrandFormSubmitV1(_BrandModel):
+    """Atomic confirmation payload for one foundation form."""
+
+    submission_kind: Literal["brand_form"] = "brand_form"
+    form_id: str = Field(min_length=1, max_length=160)
+    expected_interaction_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    answers: tuple[BrandFormAnswerV1, ...] = Field(min_length=1, max_length=32)
+    confirm: Literal[True] = True
+
+
 class BrandSlotEvidenceV1(_BrandModel):
     """Private evidence for a semantic slot update or conflict clarification."""
 
@@ -103,6 +174,7 @@ class BrandStrategyOutputV1(_BrandModel):
     slot_evidence: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=32)
     clarifications: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=1)
     question_card: BrandOptionCardV1 | None = None
+    form_cards: tuple[BrandOptionCardV1, ...] = Field(default=(), max_length=32)
     question_impact: BrandQuestionImpactV1 | None = None
 
 
@@ -345,6 +417,7 @@ class BrandDecisionPanelV1(_BrandModel):
     brand_name: str
     slot_values: tuple[BrandSlotValueV1, ...] = Field(default=(), max_length=128)
     open_card: BrandOptionCardV1 | None = None
+    open_form: BrandFormV1 | None = None
     hypotheses: tuple[CreativeHypothesisCandidateV1, ...] = Field(default=(), max_length=8)
     selected_hypothesis_id: str | None = None
     adspec: AdSpecStateV1 | None = None
