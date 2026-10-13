@@ -25,6 +25,10 @@ from app.schemas.brand_professional_mode import (
     BrandDecisionLogEntryV1,
     BrandJourneyStateV1,
     BrandOptionCardV1,
+    BrandFormAnswerV1,
+    BrandFormOptionV1,
+    BrandFormRowV1,
+    BrandFormV1,
     BrandShortOptionV1,
     BrandSlotValueV1,
     BrandStage,
@@ -356,6 +360,197 @@ class BrandCapabilityInvocationService:
                 now=now,
             )
         return card
+
+    def run_slot_form(
+        self,
+        brand_id: str,
+        stage: Literal["brand-memory", "campaign"],
+        *,
+        model_id: str | None = None,
+        output: BrandStrategyOutputV1 | None = None,
+    ) -> BrandFormV1:
+        """Generate and publish a complete, not-yet-committed foundation form."""
+
+        state = BrandQuestionState(self._database)
+        product_context = state.context.read(brand_id)
+        journey = self._repository.get_journey(brand_id)
+        if journey is None or journey.stage != stage:
+            raise _stage_mismatch()
+        if output is None:
+            spec = StructuredGenerationSpec[BrandStrategyOutputV1](
+                stage_name="brand_slot_form",
+                contract_name="BrandStrategyOutputV1",
+                model_id=model_id or self._settings.llm_creative_model,
+                system_prompt=(
+                    _BRAND_STRATEGY_PROMPT
+                    + " For form_mode=true, return form_cards with one card for every supplied "
+                    "slot in the requested stage; do not persist or assume any answer."
+                ),
+                input_payload={
+                    "product_context": product_context.payload,
+                    "stage": stage,
+                    "form_mode": True,
+                    "response_locale": self._workflow_response_locale(brand_id),
+                    "slot_schema_version": SLOT_SCHEMA_VERSION,
+                    "slots": [
+                        {
+                            "stage": slot.stage,
+                            "slot_id": slot.slot_id,
+                            "question": slot.question,
+                            "required": slot.required,
+                        }
+                        for slot in slots_for_stage(stage)
+                    ],
+                    "confirmed_values": [
+                        value.model_dump(mode="json")
+                        for value in self._repository.get_slot_values(brand_id)
+                    ],
+                },
+                output_model=BrandStrategyOutputV1,
+                trace_metadata={"workflow_id": product_context.workflow_id},
+            )
+            output = self._runtime.run(spec).output
+        cards = tuple(output.form_cards)
+        expected_slots = slots_for_stage(stage)
+        by_slot = {card.target_slot_id: card for card in cards}
+        if (
+            len(cards) != len(expected_slots)
+            or set(by_slot) != {slot.slot_id for slot in expected_slots}
+            or any(card.stage != stage or card.target_slot_id is None for card in cards)
+        ):
+            raise V2PersistenceError(
+                "brand_form_generation_invalid",
+                "Brand foundation form did not contain one valid row for every slot.",
+                stage="brand_capability_invocation",
+            )
+        try:
+            for card in cards:
+                _validate_card(card, stage)
+        except (ValueError, V2PersistenceError) as error:
+            raise V2PersistenceError(
+                "brand_form_generation_invalid",
+                "Brand foundation form options were malformed.",
+                stage="brand_capability_invocation",
+            ) from error
+        locale = self._workflow_response_locale(brand_id)
+        try:
+            rows = tuple(
+                BrandFormRowV1(
+                    question_id=slot.slot_id,
+                    slot_id=slot.slot_id,
+                    prompt=by_slot[slot.slot_id].question,
+                    options=tuple(
+                        BrandFormOptionV1(
+                            option_id=option.option_id,
+                            label=option.label,
+                            why=option.why,
+                        )
+                        for option in by_slot[slot.slot_id].options
+                    )
+                    + (BrandFormOptionV1(option_id="custom", label="Other (custom)"),),
+                    custom_option_id="custom",
+                    required=True,
+                )
+                for slot in expected_slots
+            )
+        except ValueError as error:
+            raise V2PersistenceError(
+                "brand_form_generation_invalid",
+                "Brand foundation form rows were malformed.",
+                stage="brand_capability_invocation",
+            ) from error
+        return BrandFormV1(
+            form_id=f"brand_form_{brand_id}_{stage}_{journey.stage_revision}",
+            stage=stage,
+            revision=journey.stage_revision,
+            response_locale=locale,
+            context_digest=product_context.digest,
+            title="Brand Memory" if stage == "brand-memory" else "Campaign",
+            instructions="Choose one option for every row. Select Other (custom) to enter your own answer.",
+            rows=rows,
+        )
+
+    def apply_form_submission(
+        self,
+        brand_id: str,
+        *,
+        form: BrandFormV1,
+        answers: tuple[BrandFormAnswerV1, ...],
+    ) -> None:
+        """Validate and atomically commit a complete foundation form."""
+
+        if form.stage not in {"brand-memory", "campaign"}:
+            raise _card_invalid("Only Brand Memory and Campaign can use a form.")
+        answer_by_question = {answer.question_id: answer for answer in answers}
+        if len(answer_by_question) != len(answers) or set(answer_by_question) != {
+            row.question_id for row in form.rows
+        }:
+            raise V2PersistenceError(
+                "brand_form_invalid",
+                "A complete answer is required for every Brand form row.",
+                stage="brand_capability_invocation",
+            )
+        values: list[BrandSlotValueV1] = []
+        for row in form.rows:
+            answer = answer_by_question[row.question_id]
+            option = next(
+                (item for item in row.options if item.option_id == answer.selected_option_id),
+                None,
+            )
+            if option is None:
+                raise V2PersistenceError(
+                    "brand_form_invalid",
+                    "A selected Brand form option is not current.",
+                    stage="brand_capability_invocation",
+                )
+            is_custom = option.option_id == row.custom_option_id
+            if is_custom != (answer.custom_text is not None):
+                raise V2PersistenceError(
+                    "brand_form_invalid",
+                    "Custom text is allowed only with the custom option.",
+                    stage="brand_capability_invocation",
+                )
+            value = answer.custom_text.strip() if is_custom and answer.custom_text else option.label
+            slot = resolve_slot(form.stage, row.slot_id)
+            values.append(
+                BrandSlotValueV1(
+                    slot_id=row.slot_id,
+                    stage=form.stage,
+                    value=value,
+                    kind=slot_value_kind(slot, "user_confirmed"),
+                    provenance="user_confirmed",
+                )
+            )
+        now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        with self._database.engine.begin() as connection:
+            state.claim(connection, brand_id, form.revision)
+            if (
+                state.context.read_in_transaction(connection, brand_id).digest
+                != form.context_digest
+            ):
+                raise stale_context()
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if (
+                journey is None
+                or journey.stage != form.stage
+                or journey.stage_revision != form.revision
+            ):
+                raise stale_context()
+            self._repository.upsert_slot_values_in_transaction(connection, brand_id, tuple(values))
+            self._repository.save_journey_in_transaction(
+                connection, brand_id, advance_brand_stage(journey)
+            )
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage=form.stage,
+                action="confirm",
+                target_type="brand_form",
+                target_id=form.form_id,
+                detail={"context_digest": form.context_digest, "row_count": len(values)},
+                now=now,
+            )
 
     def _namespace_colliding_card_id(
         self,
@@ -1291,7 +1486,7 @@ def _card_invalid(message: str) -> V2PersistenceError:
 
 _BRAND_STRATEGY_PROMPT = (
     "You are the Brand Strategy capability of the AdCraft Brand Professional Mode. "
-    "Collect one slot at a time using exactly three short options."
+    "For normal mode, collect one slot at a time using exactly three short options. "
     " The input_payload response_locale gives the user's conversation language;"
     " write question and option text in that language."
 )
