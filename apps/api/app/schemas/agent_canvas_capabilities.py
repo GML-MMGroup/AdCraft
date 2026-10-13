@@ -449,9 +449,9 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
     production_readiness: Literal["not_ready", "ready"] = Field(
         default="not_ready",
         description=(
-            "Whether a fresh guided advertising request has enough structured product or "
-            "service context and an audience or advertising objective to begin production. "
-            "Use not_ready for a bare advertising mention or a clarification request."
+            "Whether a fresh guided request is authorized now and names a coarse promoted "
+            "product, service, or brand; other brief facts are collected by forms. Use "
+            "not_ready for discussion, future intent, or a missing subject."
         ),
     )
     brief_effect: Literal["none", "changed", "unknown"] = Field(

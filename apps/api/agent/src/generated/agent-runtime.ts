@@ -40,11 +40,11 @@ export type BrandSlotEvidenceV1 = { readonly "stage": "brand-memory" | "campaign
 
 export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail"?: TreatmentDetailV1 | null };
 
-export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
+export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1>; readonly "prefill_value"?: string | null; readonly "prefill_source_quote"?: string | null };
 
 export type BrandFormOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null };
 
-export type BrandFormRowV1 = { readonly "question_id": string; readonly "slot_id": string; readonly "prompt": string; readonly "options": ReadonlyArray<BrandFormOptionV1>; readonly "custom_option_id": string; readonly "required"?: boolean };
+export type BrandFormRowV1 = { readonly "question_id": string; readonly "slot_id": string; readonly "prompt": string; readonly "options": ReadonlyArray<BrandFormOptionV1>; readonly "custom_option_id": string; readonly "required"?: boolean; readonly "prefill_value"?: string | null };
 
 export type BrandFormV1 = { readonly "content_kind"?: "brand_form"; readonly "form_id": string; readonly "stage": "brand-memory" | "campaign"; readonly "revision": number; readonly "response_locale": string; readonly "context_digest": string; readonly "title": string; readonly "instructions": string; readonly "rows": ReadonlyArray<BrandFormRowV1> };
 
