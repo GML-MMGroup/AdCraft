@@ -10,6 +10,7 @@ from app.schemas.agent_working_documents import (
     StoryboardNarrativeSegmentV2,
     StoryboardPlanRowV2,
 )
+from app.schemas.brand_production_context import BrandProductionContextV1
 
 
 class _StoryboardSequenceModel(BaseModel):
@@ -158,7 +159,11 @@ class StoryboardSegmentAuthoringContextV2(_StoryboardSequenceModel):
     plan_revision: int = Field(ge=1)
     plan_content_digest: str = Field(pattern=r"^sha256:[0-9a-zA-Z_-]+$")
     sequence: StoryboardNarrativeSegmentV2
+    narrative_context: str | None = Field(default=None, max_length=65_536)
+    selected_direction: str | None = Field(default=None, max_length=8_192)
+    brand_decisions: BrandProductionContextV1 | None = None
     prior_end_state: str | None = Field(default=None, max_length=2_048)
+    prior_final_panel: StoryboardPlanRowV2 | None = None
     anchors: tuple[AgentAnchorV2, ...] = Field(default=(), max_length=64)
     style_excerpt: str | None = Field(default=None, max_length=8_192)
 
