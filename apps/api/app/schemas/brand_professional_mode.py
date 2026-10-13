@@ -72,6 +72,15 @@ class BrandOptionCardV1(_BrandModel):
     target_slot_id: str | None = Field(default=None, max_length=80)
     question: str = Field(min_length=1, max_length=400)
     options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
+    # Form-only draft evidence. This is never a confirmed slot value.
+    prefill_value: str | None = Field(default=None, min_length=1, max_length=2_048)
+    prefill_source_quote: str | None = Field(default=None, min_length=1, max_length=2_048)
+
+    @model_validator(mode="after")
+    def validate_prefill_evidence(self) -> "BrandOptionCardV1":
+        if (self.prefill_value is None) != (self.prefill_source_quote is None):
+            raise ValueError("A form prefill requires an exact source quote.")
+        return self
 
 
 class BrandFormOptionV1(_BrandModel):
@@ -91,6 +100,7 @@ class BrandFormRowV1(_BrandModel):
     options: tuple[BrandFormOptionV1, ...] = Field(min_length=4, max_length=4)
     custom_option_id: str = Field(min_length=1, max_length=80)
     required: bool = True
+    prefill_value: str | None = Field(default=None, min_length=1, max_length=2_048)
 
     @model_validator(mode="after")
     def validate_options(self) -> "BrandFormRowV1":

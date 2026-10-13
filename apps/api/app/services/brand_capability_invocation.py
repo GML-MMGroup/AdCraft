@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from sqlalchemy import select, text as sql_text
@@ -384,7 +384,11 @@ class BrandCapabilityInvocationService:
                 system_prompt=(
                     _BRAND_STRATEGY_PROMPT
                     + " For form_mode=true, return form_cards with one card for every supplied "
-                    "slot in the requested stage; do not persist or assume any answer."
+                    "slot in the requested stage; do not persist or assume any answer. "
+                    "For a fact explicitly present in product_context.user_sources, you may "
+                    "return prefill_value and the exact matching prefill_source_quote on its "
+                    "form card. Prefills are editable drafts, never confirmed answers. "
+                    "Leave prefill fields absent for facts not explicitly supported by a source."
                 ),
                 input_payload={
                     "product_context": product_context.payload,
@@ -426,7 +430,13 @@ class BrandCapabilityInvocationService:
         try:
             for card in cards:
                 _validate_card(card, stage)
+                _validate_form_prefill(card, product_context.payload)
         except (ValueError, V2PersistenceError) as error:
+            if (
+                isinstance(error, V2PersistenceError)
+                and error.code == "brand_slot_evidence_invalid"
+            ):
+                raise
             raise V2PersistenceError(
                 "brand_form_generation_invalid",
                 "Brand foundation form options were malformed.",
@@ -450,6 +460,7 @@ class BrandCapabilityInvocationService:
                     + (BrandFormOptionV1(option_id="custom", label="Other (custom)"),),
                     custom_option_id="custom",
                     required=True,
+                    prefill_value=by_slot[slot.slot_id].prefill_value,
                 )
                 for slot in expected_slots
             )
@@ -466,7 +477,11 @@ class BrandCapabilityInvocationService:
             response_locale=locale,
             context_digest=product_context.digest,
             title="Brand Memory" if stage == "brand-memory" else "Campaign",
-            instructions="Choose one option for every row. Select Other (custom) to enter your own answer.",
+            instructions=(
+                "Review any draft prefills, then choose one option for every row. "
+                "Select Other (custom) to enter or edit your own answer. Nothing is confirmed "
+                "until you submit the complete form."
+            ),
             rows=rows,
         )
 
@@ -1442,6 +1457,30 @@ def _with_declared_information_nature(
 def _validate_card(card: BrandOptionCardV1, stage: BrandStage) -> None:
     if card.stage != stage:
         raise _card_invalid("Option card stage does not match the current stage.")
+
+
+def _validate_form_prefill(card: BrandOptionCardV1, product_context: dict[str, Any]) -> None:
+    """Keep form prefills tied to exact user-source evidence."""
+
+    if card.prefill_value is None:
+        return
+    quote = card.prefill_source_quote
+    sources = product_context.get("user_sources", [])
+    if not quote or not isinstance(sources, list):
+        raise V2PersistenceError(
+            "brand_slot_evidence_invalid",
+            "Brand form prefill is missing exact user-source evidence.",
+            stage="brand_capability_invocation",
+        )
+    if not any(
+        isinstance(source, dict) and isinstance(source.get("text"), str) and quote in source["text"]
+        for source in sources
+    ):
+        raise V2PersistenceError(
+            "brand_slot_evidence_invalid",
+            "Brand form prefill source quote is not present in user sources.",
+            stage="brand_capability_invocation",
+        )
 
 
 def cast_step(slot_id: str | None) -> BrandTreatmentSubstep:
