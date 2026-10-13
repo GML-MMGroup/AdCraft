@@ -29,7 +29,7 @@ from app.services.agent_canvas_production_journey import (
     apply_current_guided_journey_policy,
     initial_production_journey,
 )
-from app.schemas.brand_professional_mode import BrandOptionCardV1
+from app.schemas.brand_professional_mode import BrandFormV1, BrandOptionCardV1
 
 if TYPE_CHECKING:
     from app.persistence.database import V2Database
@@ -262,6 +262,114 @@ class BrandGuidedInteractionBridge:
                 )
             )
 
+    def publish_form_interaction(
+        self,
+        workflow_id: str,
+        form: BrandFormV1,
+    ) -> None:
+        """Publish one complete Brand Memory or Campaign form."""
+
+        session_id = self.ensure_session(workflow_id, form.response_locale)
+        workflow_key = sha256(workflow_id.encode()).hexdigest()[:16]
+        interaction_id = f"interaction_{workflow_key}_{form.stage}_{form.revision}_{sha256(form.form_id.encode()).hexdigest()[:12]}"
+        checkpoint_id = f"checkpoint_{workflow_key}_{form.stage}_{form.revision}_{sha256(form.form_id.encode()).hexdigest()[:12]}"
+        now_iso = _now_iso()
+        awaiting_id = f"awaiting_{sha256(interaction_id.encode()).hexdigest()[:32]}"
+        awaiting = GuidanceAwaitingV2(
+            awaiting_id=awaiting_id,
+            workflow_id=workflow_id,
+            session_id=session_id,
+            checkpoint_id=checkpoint_id,
+            kind="brand_form",
+            requires_user_action=True,
+            resume_policy="submit_interaction",
+            interaction_id=interaction_id,
+            stage="intake",
+            stage_revision=form.revision,
+            created_at=datetime.now(timezone.utc),
+        )
+        with self._database.engine.begin() as connection:
+            existing = (
+                connection.execute(
+                    select(AgentCanvasGuidedInteractionRow).where(
+                        AgentCanvasGuidedInteractionRow.interaction_id == interaction_id
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None and str(existing["status"]) == "submitted":
+                return
+            session_row = (
+                connection.execute(
+                    select(AgentCanvasGuidanceSessionRow).where(
+                        AgentCanvasGuidanceSessionRow.session_id == session_id
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            session_revision = int(session_row["revision"]) if session_row else 1
+            connection.execute(
+                AgentCanvasGuidanceAwaitingRow.__table__.delete().where(
+                    AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                )
+            )
+            connection.execute(
+                AgentCanvasGuidedInteractionRow.__table__.update()
+                .where(
+                    AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                    AgentCanvasGuidedInteractionRow.status == "open",
+                )
+                .values(status="superseded", updated_at=now_iso)
+            )
+            values = {
+                "workflow_id": workflow_id,
+                "session_id": session_id,
+                "checkpoint_id": checkpoint_id,
+                "kind": "brand_form",
+                "status": "open",
+                "response_locale": form.response_locale,
+                "expected_session_revision": session_revision,
+                "title": form.title,
+                "context": form.instructions,
+                "content_json": form.model_dump_json(),
+                "allowed_actions_json": json.dumps(["select", "custom"]),
+                "submit_path": f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit",
+                "updated_at": now_iso,
+            }
+            if existing is None:
+                connection.execute(
+                    AgentCanvasGuidedInteractionRow.__table__.insert().values(
+                        interaction_id=interaction_id,
+                        **values,
+                        revision=1,
+                        created_at=now_iso,
+                    )
+                )
+            else:
+                connection.execute(
+                    AgentCanvasGuidedInteractionRow.__table__.update()
+                    .where(AgentCanvasGuidedInteractionRow.interaction_id == interaction_id)
+                    .values(**values, revision=int(existing["revision"] or 1) + 1)
+                )
+            connection.execute(
+                AgentCanvasGuidanceAwaitingRow.__table__.insert().values(
+                    awaiting_id=awaiting.awaiting_id,
+                    workflow_id=awaiting.workflow_id,
+                    session_id=awaiting.session_id,
+                    checkpoint_id=awaiting.checkpoint_id,
+                    kind=awaiting.kind,
+                    requires_user_action=awaiting.requires_user_action,
+                    resume_policy=awaiting.resume_policy,
+                    interaction_id=awaiting.interaction_id,
+                    node_ids_json="[]",
+                    stage=awaiting.stage,
+                    stage_revision=awaiting.stage_revision,
+                    created_at=awaiting.created_at.isoformat(),
+                )
+            )
+
     def close_brand_interactions_in_transaction(
         self,
         connection: Connection,
@@ -271,13 +379,14 @@ class BrandGuidedInteractionBridge:
         rows = connection.execute(
             select(AgentCanvasGuidedInteractionRow).where(
                 AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
-                AgentCanvasGuidedInteractionRow.kind == "concept_choice",
+                AgentCanvasGuidedInteractionRow.kind.in_(("concept_choice", "brand_form")),
             )
         ).mappings()
         identities = tuple(
             row["interaction_id"]
             for row in rows
-            if str(json.loads(row["content_json"]).get("capability_id", "")).startswith("brand_")
+            if str(row["kind"]) == "brand_form"
+            or str(json.loads(row["content_json"]).get("capability_id", "")).startswith("brand_")
         )
         if not identities:
             return

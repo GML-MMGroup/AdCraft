@@ -44,6 +44,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
 )
+from app.schemas.brand_professional_mode import BrandFormSubmitV1, BrandFormV1
 from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_materialization_submission import (
     ProposalPublicationSubmissionService,
@@ -297,6 +298,27 @@ class GuidedInteractionService:
                 submission_id=submission_id,
                 idempotency_key=idempotency_key,
             )
+        if isinstance(request, BrandFormSubmitV1) and isinstance(interaction.content, BrandFormV1):
+            if self._brand_submit is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Brand guided interaction actions are unavailable.",
+                )
+            accepted = self._brand_submit(
+                workflow_id,
+                interaction,
+                request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
+            )
+            self._interactions.record_external_submission(
+                workflow_id=workflow_id,
+                interaction_id=interaction_id,
+                idempotency_key=idempotency_key,
+                request=request,
+                result=accepted,
+            )
+            return accepted
         if (
             isinstance(request, GuidedConceptSubmitV2)
             and isinstance(interaction.content, GuidedConceptChoiceV2)

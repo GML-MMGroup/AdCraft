@@ -12,9 +12,14 @@ from app.core.config import get_settings
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.brand_decision_repository import BrandDecisionRepository
-from app.persistence.models import AgentCanvasChatEntryRow, AgentCanvasChatTurnRow
+from app.persistence.models import (
+    AgentCanvasChatEntryRow,
+    AgentCanvasChatTurnRow,
+    AgentCanvasGuidedInteractionRow,
+)
 from app.schemas.brand_professional_mode import (
     BrandDecisionPanelV1,
+    BrandFormV1,
     BrandHypothesisActionRequestV1,
     BrandJourneyStateV1,
     BrandLockActionRequestV1,
@@ -64,6 +69,8 @@ _STATUS_BY_CODE = {
     "brand_slot_unknown": 422,
     "brand_slot_required_missing": 409,
     "brand_option_card_invalid": 409,
+    "brand_form_invalid": 422,
+    "brand_form_generation_invalid": 503,
     "brand_stage_action_mismatch": 409,
     "brand_skill_selection_required": 409,
     "brand_skill_selection_invalid": 422,
@@ -159,7 +166,7 @@ def post_skill_selection(
 
 @router.post(
     "/brand/decisions/{workflow_id}/next-question",
-    response_model=BrandOptionCardV1,
+    response_model=BrandOptionCardV1 | BrandFormV1,
     responses={
         204: {"description": "Treatment is complete and awaits explicit lock confirmation."}
     },
@@ -167,7 +174,7 @@ def post_skill_selection(
 def post_next_question(
     workflow_id: str,
     database: V2Database = Depends(_brand_database),
-) -> BrandOptionCardV1 | Response:
+) -> BrandOptionCardV1 | BrandFormV1 | Response:
     try:
         brand_id = _brand_id_for_workflow(database, workflow_id)
     except V2PersistenceError:
@@ -192,13 +199,28 @@ def post_next_question(
         for _ in range(2):
             if journey.stage not in {"brand-memory", "campaign"}:
                 break
-            intake_card = service.run_slot_question(brand_id, journey.stage)
-            if intake_card is not None:
-                bridge.publish_card_interaction(workflow_id, intake_card, locale)
-                return intake_card
-            journey = service._repository.get_journey(brand_id)
-            if journey is None:
-                _raise_not_found()
+            existing_form_json = None
+            with database.engine.connect() as connection:
+                existing_form_json = connection.execute(
+                    select(AgentCanvasGuidedInteractionRow.content_json)
+                    .where(
+                        AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                        AgentCanvasGuidedInteractionRow.status == "open",
+                        AgentCanvasGuidedInteractionRow.kind == "brand_form",
+                    )
+                    .order_by(AgentCanvasGuidedInteractionRow.created_at.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
+            if existing_form_json:
+                try:
+                    existing_form = BrandFormV1.model_validate_json(existing_form_json)
+                except ValueError:
+                    existing_form = None
+                if existing_form is not None and existing_form.stage == journey.stage:
+                    return existing_form
+            form = service.run_slot_form(brand_id, journey.stage)
+            bridge.publish_form_interaction(workflow_id, form)
+            return form
         if service.prepare_treatment_confirmation(brand_id):
             bridge.close_current_interaction(workflow_id, status="superseded")
             return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -389,9 +411,26 @@ def get_brand_decisions(
         skill_stack = repository.get_skill_stack_in_transaction(connection, brand_id)
         steps = repository.get_treatment_steps_in_transaction(connection, brand_id)
         document = BrandDecisionDocumentService(database).read_in_transaction(connection, brand_id)
+        open_form = None
+        interaction_row = connection.execute(
+            select(AgentCanvasGuidedInteractionRow.content_json)
+            .where(
+                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                AgentCanvasGuidedInteractionRow.status == "open",
+                AgentCanvasGuidedInteractionRow.kind == "brand_form",
+            )
+            .order_by(AgentCanvasGuidedInteractionRow.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if interaction_row:
+            try:
+                open_form = BrandFormV1.model_validate_json(interaction_row)
+            except ValueError:
+                open_form = None
     treatment_locked = journey.stage == "production"
     if not _has_guided_production_turn(database, workflow_id):
         open_card = None
+        open_form = None
     return BrandDecisionPanelV1(
         project_id=project_id or "",
         workflow_id=workflow_id,
@@ -400,6 +439,7 @@ def get_brand_decisions(
         brand_name=brand_name,
         slot_values=repository.get_slot_values(brand_id),
         open_card=open_card,
+        open_form=open_form,
         hypotheses=hypotheses,
         selected_hypothesis_id=selected,
         adspec=adspec,
@@ -508,7 +548,11 @@ def _has_guided_production_turn(database: V2Database, workflow_id: str) -> bool:
                 metadata = json.loads(str(metadata_json))
             except json.JSONDecodeError:
                 continue
-            if isinstance(metadata, dict) and metadata.get("intent_mode") == "guided_production":
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("intent_mode") == "guided_production"
+                and metadata.get("production_readiness") != "not_ready"
+            ):
                 return True
     return False
 

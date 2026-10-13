@@ -948,6 +948,50 @@ class AgentCanvasGuidedInteractionRepository:
             created_at=str(row["created_at"]),
         )
 
+    def record_external_submission(
+        self,
+        *,
+        workflow_id: str,
+        interaction_id: str,
+        idempotency_key: str,
+        request: GuidedInteractionSubmitRequestV1,
+        result: GuidedInteractionAcceptedV1,
+    ) -> None:
+        """Persist a result produced by a specialized interaction authority."""
+
+        request_json = request.model_dump_json()
+        request_digest = sha256(request_json.encode("utf-8")).hexdigest()
+        with self._database.engine.begin() as connection:
+            existing = (
+                connection.execute(
+                    select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                        AgentCanvasGuidedInteractionSubmissionRow.submission_id
+                        == result.submission_id
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None:
+                if str(existing["request_digest"]) != request_digest:
+                    raise _error(
+                        "guided_interaction_submission_conflict",
+                        "Submission identity was reused with different content.",
+                    )
+                return
+            connection.execute(
+                insert(AgentCanvasGuidedInteractionSubmissionRow).values(
+                    submission_id=result.submission_id,
+                    workflow_id=workflow_id,
+                    interaction_id=interaction_id,
+                    idempotency_key=idempotency_key,
+                    request_digest=request_digest,
+                    request_json=request_json,
+                    result_json=result.model_dump_json(),
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+
     def ensure_media_resume_delivery(
         self,
         submission_id: str,
@@ -2653,6 +2697,7 @@ class AgentCanvasGuidedInteractionRepository:
             "product_source": "product_source",
             "reference_source": "reference_source",
             "media_review": "media_review",
+            "brand_form": "brand_form",
         }[interaction.kind]
         if awaiting.kind != expected_awaiting_kind:
             raise _error(

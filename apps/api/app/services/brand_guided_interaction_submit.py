@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidedConceptSubmitV2,
     GuidedInteractionAcceptedV1,
+    GuidedInteractionSubmitRequestV1,
     GuidedInteractionV1,
 )
+from app.schemas.brand_professional_mode import BrandFormSubmitV1, BrandFormV1
 from app.services.brand_guided_interaction_bridge import (
     BrandGuidedInteractionBridge,
 )
@@ -39,7 +40,7 @@ class BrandGuidedInteractionSubmitter:
         self,
         workflow_id: str,
         interaction: GuidedInteractionV1,
-        request: GuidedConceptSubmitV2,
+        request: GuidedInteractionSubmitRequestV1,
         *,
         submission_id: str,
         idempotency_key: str,
@@ -47,6 +48,28 @@ class BrandGuidedInteractionSubmitter:
         """Apply the brand selection, close the card, and publish the next one."""
 
         content = interaction.content
+        if isinstance(request, BrandFormSubmitV1) and isinstance(content, BrandFormV1):
+            brand_id = self._resolve_brand_id(workflow_id)
+            if request.form_id != content.form_id:
+                raise V2PersistenceError(
+                    "brand_form_invalid",
+                    "The submitted Brand form is not current.",
+                )
+            self._brand_service.apply_form_submission(
+                brand_id,
+                form=content,
+                answers=request.answers,
+            )
+            self._bridge.close_current_interaction(workflow_id)
+            revision = self._session_revision(workflow_id) or 1
+            return GuidedInteractionAcceptedV1(
+                workflow_id=workflow_id,
+                interaction_id=interaction.interaction_id,
+                submission_id=submission_id,
+                receipt_id=f"receipt_{submission_id}",
+                resulting_session_revision=revision,
+                events_cursor=0,
+            )
         if content.content_kind != "concept_choice":
             raise V2PersistenceError(
                 "guided_interaction_action_not_allowed",

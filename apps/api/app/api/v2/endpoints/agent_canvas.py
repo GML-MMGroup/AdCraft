@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -428,6 +429,7 @@ from app.services.brand_production_handoff import (
 )
 from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
 from app.services.brand_guided_interaction_submit import BrandGuidedInteractionSubmitter
+from app.schemas.brand_professional_mode import BrandFormSubmitV1
 from app.services.brand_capability_invocation import BrandCapabilityInvocationService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
@@ -436,6 +438,7 @@ from app.services.v2_provider_executor import V2ProviderExecutor
 _BRAND_LOCKED_ELEMENT_ROLES = frozenset({"script", "storyboard_sequence", "storyboard_video"})
 
 router = APIRouter(tags=["v2-agent-canvas"])
+logger = logging.getLogger(__name__)
 
 
 def _validate_reference_only_run(
@@ -3167,6 +3170,16 @@ def submit_guided_interaction(
                 args=(delivery.delivery_id,),
             ),
         )
+    elif isinstance(request, BrandFormSubmitV1) and not accepted.replayed:
+        # The foundation-form authority commits Brand facts and the journey
+        # stage atomically.  Publish the next Brand interaction as bounded
+        # background work; it must not wait for another chat message and it is
+        # intentionally independent of the Agent continuation outbox.
+        background_tasks.add_task(
+            _publish_next_brand_interaction_after_form_submit,
+            runtime,
+            workflow_id,
+        )
     elif not accepted.replayed:
         background_tasks.add_task(
             runtime.accepted_background.run,
@@ -3870,6 +3883,32 @@ def _process_agent_turn_and_resume(
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
+
+
+def _publish_next_brand_interaction_after_form_submit(
+    runtime: AgentCanvasRuntime,
+    workflow_id: str,
+) -> None:
+    """Continue the Brand journey after an atomic foundation-form commit.
+
+    Foundation forms are submitted through the generic interaction endpoint.  A
+    form commit must not depend on a second user message or on the generic
+    continuation outbox (which is reserved for Agent turns).  The Brand
+    endpoint owns the deterministic next-stage projection and is idempotent:
+    if the client refreshes or requests it concurrently, the existing open
+    interaction is reused.
+    """
+
+    from app.api.v2.endpoints.brand_mode import post_next_question
+
+    try:
+        post_next_question(workflow_id, runtime.database)
+    except Exception:  # noqa: BLE001 - the committed form remains recoverable via next-question.
+        logger.exception(
+            "Brand foundation form committed but next interaction publication failed "
+            "workflow_id=%s",
+            workflow_id,
+        )
 
 
 def _persisted_assistant_result(
