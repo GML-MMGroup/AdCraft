@@ -724,7 +724,10 @@ class NodePromptPreparationService:
                 allow_uninitialized_main=True,
             )
         elif node.creative_role == "scene":
-            scene_projection = scene_environment_projection_from_node(node)
+            scene_projection = scene_environment_projection_from_node(
+                node,
+                allow_uninitialized_seed=True,
+            )
         controls = {
             key: value
             for key, value in context.requirement_facts.items()
@@ -762,6 +765,7 @@ class NodePromptPreparationService:
             world_view_projection=self._world_view_projection(node),
             character_identity_projection=character_projection,
             scene_environment_projection=scene_projection,
+            allow_uninitialized_scene=(node.creative_role == "scene" and scene_projection is None),
         )
 
     def _world_view_projection(self, node: CanvasNodeV2) -> str | None:

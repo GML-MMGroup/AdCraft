@@ -194,23 +194,29 @@ class AgentCanvasRolePromptCompiler:
         )
         style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
         conditioning_plan = ReferenceConditioningPlanResolver().resolve(context)
+        authored_style = _authored_visual_style(concrete_brief)
         if style_authority is not None:
             prompt = ReferenceAwareAssetPromptRenderer().render(
                 prompt,
-                context.style_projection,
+                authored_style,
                 style_authority,
                 explicit_controls=context.explicit_controls,
                 conditioning_plan=conditioning_plan,
             )
-        elif isinstance(concrete_brief, VideoSegmentRoleBriefV2):
-            prompt = f"{prompt} Visual style: {concrete_brief.target_style.strip()}"
-        elif context.style_projection:
-            _validate_role_prompt_text(
-                context.role_variant,
-                context.style_projection,
-                field_path="style_projection",
-            )
-            prompt = f"{prompt} Visual style: {context.style_projection.strip()}"
+        else:
+            # Advisory Skill text is available to the Agent authoring call, while
+            # provider content is taken from the typed role brief it produced.
+            if context.style_projection and not isinstance(concrete_brief, VideoSegmentRoleBriefV2):
+                _validate_role_prompt_text(
+                    context.role_variant,
+                    context.style_projection,
+                    field_path="style_projection",
+                )
+            if authored_style:
+                _validate_role_prompt_text(
+                    context.role_variant, authored_style, field_path="style_description"
+                )
+                prompt = f"{prompt} Visual style: {authored_style.strip()}"
         self._validate_required_references(recipe.reference_purposes, context)
         self._reference_policy.require_derivative_prompt_bindings(
             context.role_variant,
@@ -255,7 +261,7 @@ class AgentCanvasRolePromptCompiler:
         policy_negative = " ".join(policy.negative_clauses)
         if policy_negative and policy_negative not in negative:
             negative = f"{negative} {policy_negative}".strip()
-        structured = _structured_content(concrete_brief, context)
+        structured = _structured_content(concrete_brief, context, scene_projection=scene_projection)
         if conditioning_plan is not None and isinstance(structured.get("style"), dict):
             structured = {
                 **structured,
@@ -498,7 +504,7 @@ def _semantic_projections(
                 views=tuple(
                     SceneEnvironmentViewV1(
                         view_or_zone=view,
-                        spatial_details=brief.spatial_logic,
+                        spatial_details=f"{brief.spatial_logic} View: {view}.",
                         allowed_environment_elements=(),
                     )
                     for view in brief.views
@@ -652,9 +658,24 @@ def _render(
     raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
 
 
+def _authored_visual_style(brief: RoleCreativeBriefMemberV2) -> str | None:
+    if isinstance(brief, VideoSegmentRoleBriefV2):
+        return brief.target_style
+    if isinstance(brief, (BgmRoleBriefV2, ScriptRoleBriefV2, WorldViewRoleBriefV2)):
+        return None
+    if isinstance(brief, FreeMediaRoleBriefV2) and brief.role_variant in {
+        "free_audio",
+        "free_text",
+    }:
+        return None
+    return brief.style_description
+
+
 def _structured_content(
     brief: RoleCreativeBriefMemberV2,
     context: RolePromptPreparationContextV2,
+    *,
+    scene_projection: SceneEnvironmentProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
     if (
@@ -662,9 +683,10 @@ def _structured_content(
         and context.video_representation_mode == "illustration_to_live_action"
     ):
         default_style = "Fictional cinematic live-action with coherent lighting and materials"
+    authored_style = _authored_visual_style(brief)
     style = VisualStyleContractV2(
-        style_prompt=context.style_projection or default_style,
-        source="video_skill" if context.style_projection else "platform_default",
+        style_prompt=authored_style or default_style,
+        source="video_skill" if authored_style else "platform_default",
     )
     if isinstance(brief, WorldViewRoleBriefV2):
         content = (
@@ -778,7 +800,7 @@ def _structured_content(
             character_asset_kind="identity_master",
         ).model_dump(mode="json")
     if isinstance(brief, SceneBoardRoleBriefV2):
-        projection = context.scene_environment_projection
+        projection = scene_projection or context.scene_environment_projection
         environment_identity = (
             projection.environment_identity if projection else brief.environment_identity
         )

@@ -103,6 +103,7 @@ class _RoleBriefModel(_RolePromptModel):
     )
 
     editable_prompt: str | None = Field(default=None, max_length=32_768)
+    style_description: str | None = Field(default=None, min_length=1, max_length=4_096)
 
 
 class RoleBindingSnapshotV2(_RolePromptModel):
