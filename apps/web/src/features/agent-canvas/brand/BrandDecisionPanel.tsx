@@ -1,4 +1,5 @@
 import { BrandDecisionContent } from "./BrandDecisionContent.tsx";
+import { DecisionChevron } from "./DecisionChevron.tsx";
 import { useId, useState } from "react";
 import type {
   BrandDecisionPanelV1,
@@ -134,10 +135,10 @@ function BrandDecisionPanelContent({
                 <span className="brand-decision-panel__section-index" aria-hidden="true">
                   {String(stageIndex(stage) + 1).padStart(2, "0")}
                 </span>
-                <span>{STAGE_LABELS[stage]}</span>
+                <span className="brand-decision-panel__section-title">{STAGE_LABELS[stage]}</span>
                 {isCurrent ? <span className="brand-decision-panel__tag">Now</span> : null}
                 {!isCurrent && isCompleted ? <span className="brand-decision-panel__tag is-muted">Done</span> : null}
-                <span className="brand-decision-panel__chevron" aria-hidden="true">{expanded ? "–" : "+"}</span>
+                <DecisionChevron />
               </button>
               {!expanded && preview.length > 0 ? (
                 <div className="brand-decision-panel__section-preview" aria-label={`${STAGE_LABELS[stage]} summary`}>

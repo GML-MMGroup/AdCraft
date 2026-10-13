@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { BrandDecisionPanelV1, BrandHypothesisCandidateV1, BrandStageV2 } from "./brandDecisions.ts";
 import { TreatmentSections } from "./TreatmentSections.tsx";
+import { DecisionChevron } from "./DecisionChevron.tsx";
 
 const SLOT_LABELS: Record<string, string> = {
   brand_name: "Brand name", brand_audience: "Audience", brand_tone: "Brand tone",
@@ -19,7 +20,7 @@ function DecisionDetail({ title, label, children, open = false }: {
   title: string; label?: string; children: ReactNode; open?: boolean;
 }) {
   return <details className="brand-decision-detail" open={open}>
-    <summary>{label ? <small>{label}</small> : null}<span>{title}</span></summary>
+    <summary>{label ? <small>{label}</small> : null}<span>{title}</span><DecisionChevron /></summary>
     <div className="brand-decision-detail__body">{children}</div>
   </details>;
 }
