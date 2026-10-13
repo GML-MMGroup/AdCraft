@@ -7487,6 +7487,20 @@
           "default": "bgm",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -11825,6 +11839,20 @@
           "title": "Silhouette And Proportions",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "wardrobe": {
           "maxLength": 2048,
           "minLength": 1,
@@ -12148,6 +12176,20 @@
           "minLength": 1,
           "title": "Silhouette And Proportions",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "views": {
           "default": [
@@ -15807,6 +15849,20 @@
           ],
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -24247,6 +24303,20 @@
           "default": "product_main",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -24338,6 +24408,20 @@
           "default": "product_multiview",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "views": {
           "items": {
@@ -25485,6 +25569,20 @@
           "default": "prop",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -30158,6 +30256,20 @@
           "title": "Spatial Logic",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "views": {
           "items": {
             "type": "string"
@@ -30890,6 +31002,20 @@
           "default": "script",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "timing": {
           "maxLength": 2048,
@@ -32302,6 +32428,20 @@
           "title": "Sequence Summary",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "visual_language": {
           "maxLength": 4096,
           "minLength": 1,
@@ -32977,6 +33117,30 @@
           "title": "Anchors",
           "type": "array"
         },
+        "brand_decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandProductionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "narrative_context": {
+          "anyOf": [
+            {
+              "maxLength": 65536,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Narrative Context"
+        },
         "plan_content_digest": {
           "pattern": "^sha256:[0-9a-zA-Z_-]+$",
           "title": "Plan Content Digest",
@@ -33006,12 +33170,36 @@
           "default": null,
           "title": "Prior End State"
         },
+        "prior_final_panel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoryboardPlanRowV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "response_locale": {
           "default": "und",
           "maxLength": 64,
           "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
           "title": "Response Locale",
           "type": "string"
+        },
+        "selected_direction": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Direction"
         },
         "sequence": {
           "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
@@ -36774,6 +36962,20 @@
           "title": "Segment Summary",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "target_style": {
           "maxLength": 4096,
           "minLength": 1,
@@ -38360,6 +38562,20 @@
           "default": "world_view",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "visual_continuity": {
           "items": {
