@@ -3,6 +3,8 @@ import type {
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
 import { ConceptChoiceDecisionDock } from "./ConceptChoiceDecisionDock.tsx";
+import { BrandFormInteraction } from "./BrandFormInteraction.tsx";
+import type { BrandFormAnswers } from "./BrandFormInteraction.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 import { MediaReviewDecisionDock } from "./MediaReviewDecisionDock.tsx";
 import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
@@ -18,6 +20,8 @@ export interface GuidedInteractionCardProps {
   selectedConceptOptionId?: string | null;
   referenceOccurrenceLabel?: string | null;
   onSelectConceptOption?: (optionId: string) => void;
+  brandFormAnswers?: BrandFormAnswers;
+  onBrandFormAnswersChange?: (answers: BrandFormAnswers) => void;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   pendingProductMainHandoff?: ProductMainHandoff | null;
   onClearProductMainHandoff?: () => void;
@@ -32,6 +36,8 @@ export function GuidedInteractionCard({
   selectedConceptOptionId = null,
   referenceOccurrenceLabel = null,
   onSelectConceptOption,
+  brandFormAnswers,
+  onBrandFormAnswersChange,
   onSubmit,
   pendingProductMainHandoff = null,
   onClearProductMainHandoff,
@@ -46,6 +52,21 @@ export function GuidedInteractionCard({
         interaction={interaction}
         pending={pending}
         issue={issue}
+        onSubmit={onSubmit}
+      />
+    );
+  }
+
+  if (interaction.content.content_kind === "brand_form") {
+    return (
+      <BrandFormInteraction
+        key={interaction.interaction_id}
+        interaction={interaction}
+        pending={pending}
+        disabled={disabled}
+        issue={issue}
+        answers={brandFormAnswers}
+        onAnswersChange={onBrandFormAnswersChange}
         onSubmit={onSubmit}
       />
     );

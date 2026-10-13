@@ -56,6 +56,7 @@ import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
 import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
+import type { BrandFormAnswers } from "./BrandFormInteraction.tsx";
 import {
   guidedInteractionContentVersion,
   shouldRenderStandaloneInteraction,
@@ -223,6 +224,10 @@ export function AgentCanvasChatPanel({
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [optimisticallyDismissedInteractionId, setOptimisticallyDismissedInteractionId] = useState<string | null>(null);
   const [interactionDockCollapsed, setInteractionDockCollapsed] = useState(false);
+  const [brandFormDraft, setBrandFormDraft] = useState<{
+    stage: "brand-memory" | "campaign";
+    answers: BrandFormAnswers;
+  } | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatPanelRef = useRef<HTMLElement>(null);
   const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
@@ -246,6 +251,7 @@ export function AgentCanvasChatPanel({
   ]);
   useEffect(() => {
     setPendingContextFiles([]);
+    setBrandFormDraft(null);
   }, [workflow.workflow_id]);
   const standaloneGuidedInteraction = chat.state.guidedInteraction
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
@@ -536,7 +542,11 @@ export function AgentCanvasChatPanel({
       (latest, event) => Math.max(latest, event.seq),
       -1,
     );
-    setOptimisticallyDismissedInteractionId(interaction.interaction_id);
+    // Brand forms are a single atomic submission. Keep the table visible while
+    // the 202 response is being processed so the user sees the handoff state.
+    if (interaction.content.content_kind !== "brand_form") {
+      setOptimisticallyDismissedInteractionId(interaction.interaction_id);
+    }
     let accepted = false;
     try {
       accepted = await chat.actions.submitGuidedInteraction(interaction, request);
@@ -641,6 +651,14 @@ export function AgentCanvasChatPanel({
         onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
         onProjectsRefresh={onProjectsRefresh}
         selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
+        brandFormAnswers={standaloneGuidedInteraction.content.content_kind === "brand_form"
+          && brandFormDraft?.stage === standaloneGuidedInteraction.content.stage
+          ? brandFormDraft.answers : {}}
+        onBrandFormAnswersChange={(answers) => {
+          if (standaloneGuidedInteraction.content.content_kind === "brand_form") {
+            setBrandFormDraft({ stage: standaloneGuidedInteraction.content.stage, answers });
+          }
+        }}
         onSelectConceptOption={(optionId) => {
           if (conceptInteraction?.content.content_kind === "concept_choice"
             && conceptInteraction.content.capability_id === "brand_skill-stack" && optionId === "adjust") {
@@ -1016,6 +1034,19 @@ export function AgentCanvasChatPanel({
         state={chat.state.brandCardRecovery} busy={chat.state.brandCardRecoveryBusy}
         onRefresh={() => { setSelectedConceptOptionId(null); setDraft(""); void chat.actions.refreshBrandCard(); }}
       /> : null}
+
+      {chat.state.brandNextQuestionIssue ? (
+        <div className="agent-chat__brand-form-next-issue" role="alert">
+          <span>{chat.state.brandNextQuestionIssue}</span>
+          <button
+            type="button"
+            disabled={chat.state.agentWorking}
+            onClick={() => { void chat.actions.retryBrandNextQuestion(); }}
+          >
+            重试加载
+          </button>
+        </div>
+      ) : null}
 
       {chat.state.composerRecovery ? (
         <ConversationRecoverySurface

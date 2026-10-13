@@ -28,6 +28,7 @@ import {
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
   normalizeGuidedSessionStateV2,
+  normalizeGuidedBrandFormV1,
   normalizeGuidedReferenceCandidateListResponseV2,
   normalizeProjectAssetListResponseV2,
   normalizeProjectAssetUploadResponseV2,
@@ -40,6 +41,44 @@ import {
   normalizeVideoSkillCatalogResponseV2,
   normalizeVideoSkillPublicDetailV2,
 } from "./normalizers.ts";
+
+describe("Brand form normalization", () => {
+  const form = {
+    content_kind: "brand_form",
+    form_id: "brand-form-1",
+    stage: "brand-memory",
+    revision: 1,
+    response_locale: "zh-CN",
+    context_digest: "a".repeat(64),
+    title: "Brand Memory",
+    instructions: "Choose one option for every row.",
+    rows: [{
+      question_id: "tone",
+      slot_id: "tone",
+      prompt: "What tone?",
+      options: [
+        { option_id: "one", label: "One", why: "Reason one" },
+        { option_id: "two", label: "Two", why: null },
+        { option_id: "three", label: "Three", why: "Reason three" },
+        { option_id: "custom", label: "Other (custom)", why: null },
+      ],
+      custom_option_id: "custom",
+      required: true,
+    }],
+  };
+
+  it("accepts the backend's three recommendations plus explicit custom option", () => {
+    expect(normalizeGuidedBrandFormV1(form)).toMatchObject({
+      form_id: "brand-form-1",
+      rows: [{ options: [{ option_id: "one" }, { option_id: "two", why: null }, { option_id: "three" }, { option_id: "custom" }] }],
+    });
+  });
+
+  it("rejects incomplete rows and a custom option outside the option set", () => {
+    expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], options: form.rows[0]!.options.slice(0, 3) }] })).toThrow();
+    expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], custom_option_id: "missing" }] })).toThrow();
+  });
+});
 
 describe("Presentation Stream normalization", () => {
   const delta = {

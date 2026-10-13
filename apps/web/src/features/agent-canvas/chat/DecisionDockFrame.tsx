@@ -63,7 +63,7 @@ export function DecisionDockFrame({
           <span>{footerSummary}</span>
           <button
             type="button"
-            disabled={submitDisabled}
+            disabled={actionLocked}
             aria-disabled={actionLocked}
             onClick={() => {
               if (!actionLocked) onSubmit?.();

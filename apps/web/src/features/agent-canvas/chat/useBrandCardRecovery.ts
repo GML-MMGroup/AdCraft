@@ -75,8 +75,9 @@ export function useBrandCardRecovery(options: Options) {
       if (panel.journey.stage === "production") {
         publish(null);
       } else if (interaction?.status === "open" && !scope.blockedIds.has(interaction.interaction_id)
-        && interaction.content.content_kind === "concept_choice"
-        && interaction.content.capability_id.startsWith("brand_")) {
+        && (interaction.content.content_kind === "brand_form"
+          || (interaction.content.content_kind === "concept_choice"
+            && interaction.content.capability_id.startsWith("brand_")))) {
         publish(null);
       } else if (!panel.open_card && panel.journey.stage === "treatment"
         && (!interaction || interaction.status !== "open")) {

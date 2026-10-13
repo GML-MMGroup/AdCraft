@@ -290,6 +290,7 @@ export function useAgentCanvasChat({
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
   const [brandNextQuestionPending, setBrandNextQuestionPending] = useState(false);
+  const [brandNextQuestionIssue, setBrandNextQuestionIssue] = useState<string | null>(null);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshQueuedRef = useRef(false);
   const chatRevisionRefreshTimerRef = useRef<number | null>(null);
@@ -789,6 +790,7 @@ export function useAgentCanvasChat({
   const openBrandInteractionId = useMemo(() => {
     const interaction = guidanceSession?.interaction;
     if (!interaction || interaction.status !== "open") return null;
+    if (interaction.content.content_kind === "brand_form") return interaction.interaction_id;
     if (interaction.kind !== "concept_choice") return null;
     if (!("capability_id" in interaction.content)) return null;
     if (!interaction.content.capability_id.startsWith("brand_")) return null;
@@ -812,14 +814,16 @@ export function useAgentCanvasChat({
 
     const workflowGeneration = workflowGenerationRef.current;
     setBrandNextQuestionPending(true);
+    setBrandNextQuestionIssue(null);
     const request = agentCanvasApi.brandNextQuestion(workflowId)
       .then(async () => {
         if (workflowGeneration === workflowGenerationRef.current) await refresh();
         if (workflowGeneration === workflowGenerationRef.current) await onBrandDecisionsRefresh?.();
       })
       .catch(() => {
-        // Timeline polling and a later canvas entry can recover a transient
-        // generation failure without replacing the current conversation.
+        if (workflowGeneration === workflowGenerationRef.current) {
+          setBrandNextQuestionIssue("下一阶段暂时无法加载。请重试，已确认的内容会保留。");
+        }
       })
       .finally(() => {
         if (brandNextQuestionInFlightRef.current === request) {
@@ -947,6 +951,7 @@ export function useAgentCanvasChat({
     setSending(false);
     setFailedDraft(null);
     setBrandNextQuestionPending(false);
+    setBrandNextQuestionIssue(null);
     setActingProposalId(null);
     setSubmittedProposalIds({});
     setActingDecisionBundleId(null);
@@ -1705,8 +1710,9 @@ export function useAgentCanvasChat({
       ]);
     }
     setGuidedInteractionIssue(null);
-    const isBrandInteraction = interaction.content.content_kind === "concept_choice"
-      && interaction.content.capability_id.startsWith("brand_");
+    const isBrandInteraction = interaction.content.content_kind === "brand_form"
+      || (interaction.content.content_kind === "concept_choice"
+        && interaction.content.capability_id.startsWith("brand_"));
     try {
       const submissionIdentity = `${interaction.interaction_id}:${interaction.revision}:${JSON.stringify(request)}`;
       guidedInteractionSubmissionIdentityRef.current = submissionIdentity;
@@ -1752,9 +1758,22 @@ export function useAgentCanvasChat({
           ? productSourceDecisionDockIssueFromError(interactionError)
           : decisionDockIssueFromError(interactionError),
       );
+      const staleBrandForm = request.submission_kind === "brand_form"
+        && isV2ApiError(interactionError)
+        && interactionError.status === 409;
       const staleBrandCard = isBrandInteraction && isV2ApiError(interactionError)
         && (interactionError.code === "brand_context_stale" || interactionError.code === "guided_interaction_stale");
-      if (staleBrandCard) {
+      if (staleBrandForm) {
+        setGuidedInteractionIssue({
+          code: "brand_context_stale",
+          summary: "表单内容已更新。请核对保留的填写内容后，再确认整张表。",
+          detail: null,
+          fieldId: null,
+          retryable: false,
+        });
+        await refresh();
+        await onBrandDecisionsRefresh?.();
+      } else if (staleBrandCard) {
         markBrandCardStale(interaction.interaction_id, interactionError.code === "brand_context_stale");
       } else if (isDecisionDockStaleError(interactionError)) {
         await refresh();
@@ -1909,15 +1928,17 @@ export function useAgentCanvasChat({
   const visibleGuidedInteraction = useMemo(() => {
     const interaction = guidanceSession?.interaction ?? null;
     if (brandRecovery.state?.phase === "review") return null;
+    const isBrandForm = interaction?.content.content_kind === "brand_form";
+    const isBrandConcept = interaction?.content.content_kind === "concept_choice"
+      && interaction.content.capability_id.startsWith("brand_");
     if (
       brandMode
       && interaction
       && brandStage
       && brandStage !== "production"
       && (
-        interaction.content.content_kind !== "concept_choice"
-        || !interaction.content.capability_id.startsWith("brand_")
-        || !hasGuidedProductionIntent
+        (!isBrandForm && !isBrandConcept)
+        || (!isBrandForm && !hasGuidedProductionIntent)
       )
     ) return null;
     return interaction;
@@ -1965,6 +1986,7 @@ export function useAgentCanvasChat({
       guidedInteractionIssue,
       brandCardRecovery: brandRecovery.state,
       brandCardRecoveryBusy: brandRecoveryBusy,
+      brandNextQuestionIssue,
       brandCardLocked: brandRecovery.locked,
       notice,
       proposalIssues,
@@ -1981,6 +2003,7 @@ export function useAgentCanvasChat({
       actOnDecisionBundle,
       submitGuidedInteraction,
       refreshBrandCard: brandRecovery.refresh,
+      retryBrandNextQuestion: () => triggerBrandNextQuestion(brandStage),
       retryCapabilityActivity,
       retryProposalMaterialization,
       retryTurn: (turn: AgentCanvasChatTurnV2) => retryTurn(turn.turn_id, turnActionableFailure(turn)),
