@@ -7591,6 +7591,260 @@
       "title": "BrandBriefSummaryV1",
       "type": "object"
     },
+    "BrandFormAnswerV1": {
+      "additionalProperties": false,
+      "description": "One explicit answer from a foundation form row.",
+      "properties": {
+        "custom_text": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Text"
+        },
+        "question_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "selected_option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Selected Option Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id",
+        "selected_option_id"
+      ],
+      "title": "BrandFormAnswerV1",
+      "type": "object"
+    },
+    "BrandFormOptionV1": {
+      "additionalProperties": false,
+      "description": "One recommendation or the explicit custom answer option in a form row.",
+      "properties": {
+        "label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "label",
+        "option_id"
+      ],
+      "title": "BrandFormOptionV1",
+      "type": "object"
+    },
+    "BrandFormRowV1": {
+      "additionalProperties": false,
+      "description": "One single-select Brand Memory or Campaign form row.",
+      "properties": {
+        "custom_option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Custom Option Id",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/BrandFormOptionV1"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "title": "Options",
+          "type": "array"
+        },
+        "prompt": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "slot_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "custom_option_id",
+        "options",
+        "prompt",
+        "question_id",
+        "slot_id"
+      ],
+      "title": "BrandFormRowV1",
+      "type": "object"
+    },
+    "BrandFormSubmitV1": {
+      "additionalProperties": false,
+      "description": "Atomic confirmation payload for one foundation form.",
+      "properties": {
+        "answers": {
+          "items": {
+            "$ref": "#/$defs/BrandFormAnswerV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Answers",
+          "type": "array"
+        },
+        "confirm": {
+          "const": true,
+          "default": true,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "form_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Form Id",
+          "type": "string"
+        },
+        "submission_kind": {
+          "const": "brand_form",
+          "default": "brand_form",
+          "title": "Submission Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "answers",
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "form_id"
+      ],
+      "title": "BrandFormSubmitV1",
+      "type": "object"
+    },
+    "BrandFormV1": {
+      "additionalProperties": false,
+      "description": "Complete foundation-stage form projected to the frontend.",
+      "properties": {
+        "content_kind": {
+          "const": "brand_form",
+          "default": "brand_form",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "context_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Context Digest",
+          "type": "string"
+        },
+        "form_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Form Id",
+          "type": "string"
+        },
+        "instructions": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Instructions",
+          "type": "string"
+        },
+        "response_locale": {
+          "maxLength": 35,
+          "minLength": 1,
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/BrandFormRowV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Rows",
+          "type": "array"
+        },
+        "stage": {
+          "enum": [
+            "brand-memory",
+            "campaign"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_digest",
+        "form_id",
+        "instructions",
+        "response_locale",
+        "revision",
+        "rows",
+        "stage",
+        "title"
+      ],
+      "title": "BrandFormV1",
+      "type": "object"
+    },
     "BrandOptionCardV1": {
       "additionalProperties": false,
       "description": "Exactly three short options for one slot question or sub-step.",
@@ -8231,6 +8485,15 @@
           },
           "maxItems": 1,
           "title": "Clarifications",
+          "type": "array"
+        },
+        "form_cards": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandOptionCardV1"
+          },
+          "maxItems": 32,
+          "title": "Form Cards",
           "type": "array"
         },
         "question_card": {
@@ -12927,6 +13190,16 @@
           ],
           "default": null
         },
+        "production_readiness": {
+          "default": "not_ready",
+          "description": "Whether a fresh guided advertising request has enough structured product or service context and an audience or advertising objective to begin production. Use not_ready for a bare advertising mention or a clarification request.",
+          "enum": [
+            "not_ready",
+            "ready"
+          ],
+          "title": "Production Readiness",
+          "type": "string"
+        },
         "requested_capability": {
           "anyOf": [
             {
@@ -16155,6 +16428,7 @@
         },
         "kind": {
           "enum": [
+            "brand_form",
             "clarification",
             "concept_selection",
             "manual_node_run",
@@ -18196,6 +18470,7 @@
         "request": {
           "discriminator": {
             "mapping": {
+              "brand_form": "#/$defs/BrandFormSubmitV1",
               "concept_choice": "#/$defs/GuidedConceptSubmitV2",
               "media_review": "#/$defs/GuidedMediaReviewSubmitV1",
               "product_source": "#/$defs/GuidedProductSourceSubmitV1",
@@ -18219,6 +18494,9 @@
             },
             {
               "$ref": "#/$defs/GuidedMediaReviewSubmitV1"
+            },
+            {
+              "$ref": "#/$defs/BrandFormSubmitV1"
             }
           ],
           "title": "Request"
@@ -18295,6 +18573,7 @@
         "content": {
           "discriminator": {
             "mapping": {
+              "brand_form": "#/$defs/BrandFormV1",
               "concept_choice": "#/$defs/GuidedConceptChoiceV2",
               "media_review": "#/$defs/GuidedMediaReviewV1",
               "product_source": "#/$defs/GuidedProductSourceQuestionV1",
@@ -18318,6 +18597,9 @@
             },
             {
               "$ref": "#/$defs/GuidedMediaReviewV1"
+            },
+            {
+              "$ref": "#/$defs/BrandFormV1"
             }
           ],
           "title": "Content"
@@ -18346,6 +18628,7 @@
         },
         "kind": {
           "enum": [
+            "brand_form",
             "clarification_questionnaire",
             "concept_choice",
             "media_review",
@@ -34540,6 +34823,15 @@
             }
           ],
           "default": null
+        },
+        "production_readiness": {
+          "default": "ready",
+          "enum": [
+            "not_ready",
+            "ready"
+          ],
+          "title": "Production Readiness",
+          "type": "string"
         },
         "requested_capability": {
           "anyOf": [
