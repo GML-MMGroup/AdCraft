@@ -90,7 +90,7 @@ export function AssetsPage() {
 
   return (
     <section ref={assetLibraryRef} className="v2-asset-library-page">
-      <PageHeader title="Assets" subtitle="Reusable visual building blocks for every workflow." />
+      <PageHeader title="Assets" editorial />
       <CatalogToolbar className="asset-catalog-toolbar">
         <div className="v2-asset-library-tabs toolbar-row" role="tablist" aria-label="Asset library scope">
           <CatalogFilterButton active={scope === "my"} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>My Assets</CatalogFilterButton>

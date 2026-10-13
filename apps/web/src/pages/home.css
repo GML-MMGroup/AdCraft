@@ -6,14 +6,6 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: "Literata";
-  src: url("/fonts/literata-latin-italic-700.woff2") format("woff2");
-  font-style: italic;
-  font-weight: 700;
-  font-display: swap;
-}
-
 .home-page {
   --home-font-display: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
   --home-font-accent: "Water Brush", cursive;
@@ -979,16 +971,6 @@ article.recent-card.featured {
   font-style: normal;
   line-height: 1.2;
   letter-spacing: 0;
-  text-transform: none;
-}
-
-.home-page [data-home-typography-region="sectionHeading"] {
-  font-family: "Literata", "Songti SC", "STSong", serif;
-  font-size: 53px;
-  font-weight: 700;
-  font-style: italic;
-  line-height: 1.05;
-  letter-spacing: 0.028em;
   text-transform: none;
 }
 

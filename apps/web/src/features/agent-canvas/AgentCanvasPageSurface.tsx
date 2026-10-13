@@ -1,5 +1,8 @@
 import { ConnectionEffectContext } from "./canvas/connection-effects/connectionEffectContext.ts";
 import { canvasConnectionColor } from "./canvas/connection-effects/connectionColor.ts";
+import { PrimaryNavigation } from "../../components/Layout";
+import { ResizableBrandPanel } from "./brand/ResizableBrandPanel";
+import { useModeLaunch } from "../mode-selection/ModeLaunchContext";
 import {
   applyNodeChanges,
   Controls,
@@ -188,6 +191,11 @@ export function AgentCanvasPage() {
     suspend: suspendPointerSpotlight,
   } = pointerSpotlight;
   const workflow = session.state.workflow;
+  const launchReady = useModeLaunch()?.ready;
+  const launchWorkflowId = workflow?.workflow_id;
+  useEffect(() => {
+    if (launchWorkflowId && session.state.workspaceHydrated) launchReady?.();
+  }, [launchWorkflowId, session.state.workspaceHydrated, launchReady]);
   const hasRunnableDraft = workflow ? hasPromptReadyDraft(workflow.nodes) : false;
   const {
     applyWorkflow,
@@ -1379,15 +1387,16 @@ export function AgentCanvasPage() {
   return (
     <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}${brandDecisions ? " is-brand-mode" : ""}`}>
       {brandDecisions ? (
-        <BrandDecisionPanel
+        <ResizableBrandPanel><BrandDecisionPanel
           decisions={brandDecisions}
           refreshing={brandDecisionsRefreshing}
           onChooseSkills={() => setBrandSkillsWorkflowId(brandDecisions.workflow_id)}
           onRefresh={() => {
             void refreshBrandDecisions();
           }}
-        />
+        /></ResizableBrandPanel>
       ) : null}
+      {brandDecisions ? <PrimaryNavigation placement="brand" /> : null}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}

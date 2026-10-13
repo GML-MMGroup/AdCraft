@@ -120,7 +120,7 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
 
   return (
     <section className="content-wrap">
-      <PageHeader title="Trash" subtitle="Trashed projects can be restored here." />
+      <PageHeader title="Trash" editorial />
       <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">
           <CatalogFilterButton className=" is-active" type="button" onClick={() => navigate?.("projects")}>

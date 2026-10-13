@@ -12,7 +12,6 @@ const LegacyCallHistoryRedirect = lazy(() => import("./pages/WorkflowModelCallHi
 const TrashPage = lazy(() => import("./pages/TrashPage").then((module) => ({ default: module.TrashPage })));
 const ApiSpacePage = lazy(() => import("./pages/ApiSpacePage").then((module) => ({ default: module.ApiSpacePage })));
 const HomeTypographyLabPage = lazy(() => import("./pages/HomeTypographyLabPage").then((module) => ({ default: module.HomeTypographyLabPage })));
-const ModeLauncherPrototypePage = lazy(() => import("./pages/ModeLauncherPrototypePage").then((module) => ({ default: module.ModeLauncherPrototypePage })));
 const ModeIconLabPrototypePage = lazy(() => import("./pages/ModeIconLabPrototypePage").then((module) => ({ default: module.ModeIconLabPrototypePage })));
 const BrandDevPage = lazy(() => import("./pages/BrandDevPage").then((module) => ({ default: module.BrandDevPage })));
 const WorkspaceRoute = lazy(() => import("./app/WorkspaceRoute").then((module) => ({ default: module.WorkspaceRoute })));
@@ -46,7 +45,7 @@ function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/design-lab/home-typography" element={<HomeTypographyLabPage />} />
-        <Route path="/design-lab/mode-launcher" element={<ModeLauncherPrototypePage />} />
+        <Route path="/design-lab/mode-launcher" element={<Navigate to="/projects/new" replace />} />
         <Route path="/design-lab/mode-icons" element={<ModeIconLabPrototypePage />} />
         <Route path="/logs" element={<WorkflowModelCallHistoryPage />} />
         <Route path="/logs/:workflowId" element={<WorkflowModelCallHistoryPage />} />
@@ -57,8 +56,10 @@ function AppRoutes() {
           <Route path="/home" element={<Navigate to="/" replace />} />
           <Route path="/assets" element={<AssetsPage />} />
           <Route path="/api-space" element={<ApiSpacePage />} />
+
         </Route>
         <Route element={<WorkspaceRoute />}>
+          <Route path="/projects/new" element={null} />
           <Route path="/projects" element={<ProjectsPage navigate={navigateRoute} />} />
           <Route path="/workflow/:projectId" element={<WorkflowPage />} />
           <Route path="/workflow" element={<WorkflowPage />} />

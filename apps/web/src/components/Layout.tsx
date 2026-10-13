@@ -96,20 +96,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
 
   return (
     <>
-      <nav className={`floating-rail${usesClearGlassRail ? " floating-rail--clear-glass" : ""}`} aria-label="Primary navigation">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.route}
-            className={({ isActive }) => `rail-item${usesClearGlassRail ? " clear-glass-control" : ""} ${isActive ? "is-active" : ""}`}
-            to={routePath(item.route)}
-            aria-label={item.label}
-            end={item.route === "home"}
-          >
-            <span className="rail-icon">{item.icon}</span>
-            <span className="tooltip">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <PrimaryNavigation clearGlass={usesClearGlassRail} />
 
       <div
         className={`app-shell${isWorkflowRoute ? " app-shell--workflow" : " app-shell--cosmic"}`}
@@ -176,11 +163,11 @@ export function LayoutRoute() {
   );
 }
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
+export function PageHeader({ title, subtitle, editorial = false }: { title: string; subtitle?: string; editorial?: boolean }) {
   return (
     <header className="page-header">
-      <h1 className="page-title">{title}</h1>
-      <p className="page-subtitle">{subtitle}</p>
+      <h1 className={`page-title${editorial ? " page-title--editorial" : ""}`}>{title}</h1>
+      {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
     </header>
   );
 }
@@ -199,4 +186,27 @@ export function EmptyState({ text }: { text: string }) {
 function routePath(route: Exclude<RouteName, "api-space">) {
   if (route === "home") return "/";
   return `/${route}`;
+}
+
+
+export function PrimaryNavigation({ clearGlass = true, placement = "global" }: {
+  clearGlass?: boolean;
+  placement?: "global" | "brand";
+}) {
+  return (
+<nav className={`floating-rail${placement === "brand" ? " floating-rail--brand" : " floating-rail--global"}${clearGlass ? " floating-rail--clear-glass" : ""}`} aria-label="Primary navigation">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.route}
+            className={({ isActive }) => `rail-item${clearGlass ? " clear-glass-control" : ""} ${isActive ? "is-active" : ""}`}
+            to={routePath(item.route)}
+            aria-label={item.label}
+            end={item.route === "home"}
+          >
+            <span className="rail-icon">{item.icon}</span>
+            <span className="tooltip">{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+  );
 }
