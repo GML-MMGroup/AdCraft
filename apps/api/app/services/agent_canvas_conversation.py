@@ -184,10 +184,7 @@ from app.services.agent_canvas_requirements import (
     character_occurrences_for_authoring,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
-from app.services.advertising_production_readiness import (
-    advertising_production_gate_reason,
-    advertising_production_is_ready,
-)
+from app.services.advertising_production_readiness import advertising_production_is_ready
 from app.services.authoritative_workflow_context import (
     AuthoritativeWorkflowContextProjector,
 )
@@ -1387,6 +1384,7 @@ class AgentConversationService:
         model_selection: ModelSelectionService | None = None,
         requirements: AgentCanvasRequirementService | None = None,
         production_journey: GuidedProductionJourneyService | None = None,
+        brand_interaction_resumer: Callable[[str, str], object] | None = None,
     ) -> None:
         self._workflows = workflows
         self._brand_decisions = BrandDecisionRepository(workflows.database)
@@ -1405,6 +1403,7 @@ class AgentConversationService:
         )
         self._run_nodes = run_nodes
         self._asset_resolver = asset_resolver
+        self._brand_interaction_resumer = brand_interaction_resumer
         self._session_actions = GuidanceSessionActionService()
         self._continuation_outbox = continuation_outbox or (
             AgentCanvasContinuationOutboxRepository(
@@ -1915,29 +1914,32 @@ class AgentConversationService:
             and existing_session is None
             and not advertising_production_is_ready(intent, session_exists=False)
         ):
-            gate_reason = advertising_production_gate_reason(intent, session_exists=False)
-            gate_message = (
-                "Please tell me which product, service, or brand this advertisement is for before we start."
-                if gate_reason == "missing_promoted_subject"
-                else intent.assistant_message
-                or "Please confirm that you want to start advertising production now."
-            )
             return complete_message(
-                gate_message,
-                metadata={
-                    "production_readiness": intent.production_readiness,
-                    "production_gate_reason": gate_reason,
-                },
+                intent.assistant_message
+                or "Please tell me which product or service this advertisement is for and who it should reach.",
+                metadata={"production_readiness": intent.production_readiness},
             )
         if intent.mode == "guided_production":
             if brand_journey is not None and brand_journey.stage != "production":
-                return complete_message(
+                response = complete_message(
                     self._brand_gate_message(
                         intent.response_locale,
                         workflow_id=turn.workflow_id,
                         journey=brand_journey,
                     ),
                 )
+                if existing_session is None and self._brand_interaction_resumer is not None:
+                    try:
+                        self._brand_interaction_resumer(
+                            turn.workflow_id,
+                            intent.response_locale,
+                        )
+                    except Exception:  # noqa: BLE001 - the gate message remains durable and retryable.
+                        logger.exception(
+                            "Brand guided interaction initialization failed.",
+                            extra={"workflow_id": turn.workflow_id},
+                        )
+                return response
         session = existing_session
         if session is None:
             decisions = tuple(

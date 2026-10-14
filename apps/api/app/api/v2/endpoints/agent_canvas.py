@@ -1520,6 +1520,21 @@ def create_agent_canvas_runtime(
         ),
         run_service=run_service,
     )
+
+    def resume_brand_interaction(workflow_id: str, response_locale: str) -> None:
+        """Publish the first Brand interaction after the production gate."""
+
+        del response_locale
+        from app.api.v2.endpoints.brand_mode import post_next_question
+
+        try:
+            post_next_question(workflow_id, database)
+        except Exception:  # noqa: BLE001 - the gate remains durable and retryable.
+            logger.exception(
+                "Brand guided interaction projection failed.",
+                extra={"workflow_id": workflow_id},
+            )
+
     conversation_service = AgentConversationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1544,6 +1559,7 @@ def create_agent_canvas_runtime(
         model_selection=model_selection,
         requirements=requirement_service,
         production_journey=production_journey,
+        brand_interaction_resumer=resume_brand_interaction,
     )
 
     capability_execution = CapabilityExecutionService(
@@ -1644,6 +1660,7 @@ def create_agent_canvas_runtime(
     brand_service = BrandCapabilityInvocationService(database)
     brand_submitter = BrandGuidedInteractionSubmitter(database, brand_service, brand_bridge)
     guided_interactions.set_brand_submitter(brand_submitter.submit_interaction)
+
     materialization_prompt_barrier = AgentCanvasMaterializationPromptPreparationBarrier(
         dispatches=prompt_dispatches,
         continuations=continuation_outbox,
