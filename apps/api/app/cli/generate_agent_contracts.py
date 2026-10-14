@@ -79,6 +79,7 @@ CONTRACT_MODELS = (
     brand_professional_mode.BrandFormRowV1,
     brand_professional_mode.BrandFormV1,
     brand_professional_mode.BrandFormAnswerV1,
+    brand_professional_mode.BrandFormAnswerIntentV1,
     brand_professional_mode.BrandFormSubmitV1,
     brand_professional_mode.CreativeHypothesisCandidateV1,
     brand_professional_mode.CreativeTreatmentStepOutputV1,

@@ -17,6 +17,7 @@ from app.services.brand_guided_interaction_bridge import (
 )
 from app.services.brand_capability_invocation import (
     BrandCapabilityInvocationService,
+    BrandFormSubmissionResult,
 )
 
 if TYPE_CHECKING:
@@ -55,12 +56,20 @@ class BrandGuidedInteractionSubmitter:
                     "brand_form_invalid",
                     "The submitted Brand form is not current.",
                 )
-            self._brand_service.apply_form_submission(
+            result = self._brand_service.apply_form_submission(
                 brand_id,
                 form=content,
                 answers=request.answers,
             )
-            self._bridge.close_current_interaction(workflow_id)
+            if result.requested_slot_ids:
+                self._publish_more_options_form(
+                    workflow_id,
+                    brand_id,
+                    content,
+                    result,
+                )
+            else:
+                self._bridge.close_current_interaction(workflow_id)
             revision = self._session_revision(workflow_id) or 1
             return GuidedInteractionAcceptedV1(
                 workflow_id=workflow_id,
@@ -139,6 +148,81 @@ class BrandGuidedInteractionSubmitter:
             events_cursor=0,
         )
         return accepted
+
+    def _publish_more_options_form(
+        self,
+        workflow_id: str,
+        brand_id: str,
+        submitted_form: BrandFormV1,
+        result: BrandFormSubmissionResult,
+    ) -> BrandFormV1:
+        """Generate and publish the comparison form for requested slots."""
+
+        scope = (
+            "more_"
+            + sha256(
+                f"{submitted_form.form_id}:{','.join(result.requested_slot_ids)}".encode()
+            ).hexdigest()[:24]
+        )
+        claim = self._bridge.claim_form_generation(
+            workflow_id,
+            submitted_form.stage,
+            submitted_form.revision,
+            generation_scope=scope,
+        )
+        if claim.role == "ready":
+            try:
+                return BrandFormV1.model_validate_json(claim.form_json or "")
+            except ValueError as error:
+                raise V2PersistenceError(
+                    "brand_form_generation_invalid",
+                    "Published supplemental Brand form could not be read.",
+                ) from error
+        if claim.role == "wait":
+            waited = self._bridge.wait_for_form_generation(
+                workflow_id,
+                submitted_form.stage,
+                submitted_form.revision,
+                generation_scope=scope,
+            )
+            if waited is not None:
+                return waited
+            claim = self._bridge.claim_form_generation(
+                workflow_id,
+                submitted_form.stage,
+                submitted_form.revision,
+                generation_scope=scope,
+            )
+            if claim.role == "ready":
+                try:
+                    return BrandFormV1.model_validate_json(claim.form_json or "")
+                except ValueError as error:
+                    raise V2PersistenceError(
+                        "brand_form_generation_invalid",
+                        "Published supplemental Brand form could not be read.",
+                    ) from error
+            if claim.role != "owner":
+                raise V2PersistenceError(
+                    "brand_form_generation_in_progress",
+                    "Supplemental Brand form generation is still in progress.",
+                )
+        try:
+            next_form = self._brand_service.run_slot_form(
+                brand_id,
+                submitted_form.stage,
+                requested_slot_ids=result.requested_slot_ids,
+                previous_options_by_slot=result.previous_options_by_slot,
+                round_id=submitted_form.form_id,
+            )
+            self._bridge.publish_form_interaction(workflow_id, next_form)
+            authoritative = (
+                self._bridge.get_open_form(workflow_id, submitted_form.stage) or next_form
+            )
+            self._bridge.publish_form_generation(claim, authoritative)
+            return authoritative
+        except Exception:
+            self._bridge.release_form_generation(claim)
+            raise
 
     def _resolve_brand_id(self, workflow_id: str) -> str:
         from app.persistence.brand_decision_repository import BrandDecisionRepository

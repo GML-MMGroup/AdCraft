@@ -7,9 +7,11 @@ anything is persisted, and appends the decision log in the same transaction.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
-from typing import Any, Literal, cast
+from hashlib import sha256
+from typing import Literal, cast
 from uuid import uuid4
 
 from sqlalchemy import select, text as sql_text
@@ -45,7 +47,7 @@ from app.schemas.brand_professional_mode import (
     SkillStackV1,
     TreatmentStepResultV1,
 )
-from app.persistence.models import BrandOptionCardRow
+from app.persistence.models import BrandDecisionLogRow, BrandOptionCardRow
 from app.schemas.brand_treatment_generation import treatment_output_model
 from app.services.brand_skill_stack import BrandSkillStackService
 from app.services.brand_question_context import BrandQuestionContextService
@@ -79,6 +81,15 @@ from app.services.v2_structured_generation_runtime import (
 )
 
 _LogAction = Literal["select", "reject", "fusion", "recommend", "edit", "confirm", "lock"]
+
+
+@dataclass(frozen=True)
+class BrandFormSubmissionResult:
+    """Durable result of applying one Brand foundation form."""
+
+    requested_slot_ids: tuple[str, ...] = ()
+    previous_options_by_slot: dict[str, tuple[BrandFormOptionV1, ...]] | None = None
+
 
 # AdSpec execution dimensions.  These are the downstream choices the contract
 # either fixes, leaves open, or asks the Agent to offer several versions of.
@@ -368,14 +379,33 @@ class BrandCapabilityInvocationService:
         *,
         model_id: str | None = None,
         output: BrandStrategyOutputV1 | None = None,
+        requested_slot_ids: tuple[str, ...] | None = None,
+        previous_options_by_slot: dict[str, tuple[BrandFormOptionV1, ...]] | None = None,
+        round_id: str | None = None,
     ) -> BrandFormV1:
-        """Generate and publish a complete, not-yet-committed foundation form."""
+        """Generate a foundation form for unresolved slots.
+
+        A supplemental round supplies only the slots for which the user asked
+        for more choices.  Existing recommendations are carried into the new
+        form so the user can compare them with the new recommendations.
+        """
 
         state = BrandQuestionState(self._database)
         product_context = state.context.read(brand_id)
         journey = self._repository.get_journey(brand_id)
         if journey is None or journey.stage != stage:
             raise _stage_mismatch()
+        expected_slots = slots_for_stage(stage)
+        if requested_slot_ids is not None:
+            requested = tuple(dict.fromkeys(requested_slot_ids))
+            expected_by_id = {slot.slot_id: slot for slot in expected_slots}
+            if not requested or any(slot_id not in expected_by_id for slot_id in requested):
+                raise V2PersistenceError(
+                    "brand_form_invalid",
+                    "Requested Brand form slots are not valid for this stage.",
+                    stage="brand_capability_invocation",
+                )
+            expected_slots = tuple(expected_by_id[slot_id] for slot_id in requested)
         if output is None:
             spec = StructuredGenerationSpec[BrandStrategyOutputV1](
                 stage_name="brand_slot_form",
@@ -384,16 +414,19 @@ class BrandCapabilityInvocationService:
                 system_prompt=(
                     _BRAND_STRATEGY_PROMPT
                     + " For form_mode=true, return form_cards with one card for every supplied "
-                    "slot in the requested stage; do not persist or assume any answer. "
-                    "For a fact explicitly present in product_context.user_sources, you may "
-                    "return prefill_value and the exact matching prefill_source_quote on its "
-                    "form card. Prefills are editable drafts, never confirmed answers. "
-                    "Leave prefill fields absent for facts not explicitly supported by a source."
+                    "slot in the requested stage; do not persist or assume any answer."
+                    + (
+                        " For supplemental_form_mode=true, create three new options per supplied slot; "
+                        "the supplied previous options are reference data and must not be repeated verbatim."
+                        if requested_slot_ids is not None
+                        else ""
+                    )
                 ),
                 input_payload={
                     "product_context": product_context.payload,
                     "stage": stage,
                     "form_mode": True,
+                    "supplemental_form_mode": requested_slot_ids is not None,
                     "response_locale": self._workflow_response_locale(brand_id),
                     "slot_schema_version": SLOT_SCHEMA_VERSION,
                     "slots": [
@@ -403,8 +436,12 @@ class BrandCapabilityInvocationService:
                             "question": slot.question,
                             "required": slot.required,
                         }
-                        for slot in slots_for_stage(stage)
+                        for slot in expected_slots
                     ],
+                    "previous_options_by_slot": {
+                        slot_id: [option.model_dump(mode="json") for option in options]
+                        for slot_id, options in (previous_options_by_slot or {}).items()
+                    },
                     "confirmed_values": [
                         value.model_dump(mode="json")
                         for value in self._repository.get_slot_values(brand_id)
@@ -415,7 +452,6 @@ class BrandCapabilityInvocationService:
             )
             output = self._runtime.run(spec).output
         cards = tuple(output.form_cards)
-        expected_slots = slots_for_stage(stage)
         by_slot = {card.target_slot_id: card for card in cards}
         if (
             len(cards) != len(expected_slots)
@@ -430,13 +466,7 @@ class BrandCapabilityInvocationService:
         try:
             for card in cards:
                 _validate_card(card, stage)
-                _validate_form_prefill(card, product_context.payload)
         except (ValueError, V2PersistenceError) as error:
-            if (
-                isinstance(error, V2PersistenceError)
-                and error.code == "brand_slot_evidence_invalid"
-            ):
-                raise
             raise V2PersistenceError(
                 "brand_form_generation_invalid",
                 "Brand foundation form options were malformed.",
@@ -449,18 +479,21 @@ class BrandCapabilityInvocationService:
                     question_id=slot.slot_id,
                     slot_id=slot.slot_id,
                     prompt=by_slot[slot.slot_id].question,
-                    options=tuple(
-                        BrandFormOptionV1(
-                            option_id=option.option_id,
-                            label=option.label,
-                            why=option.why,
-                        )
-                        for option in by_slot[slot.slot_id].options
+                    options=self._merge_form_options(
+                        slot.slot_id,
+                        tuple(
+                            BrandFormOptionV1(
+                                option_id=option.option_id,
+                                label=option.label,
+                                why=option.why,
+                            )
+                            for option in by_slot[slot.slot_id].options
+                        ),
+                        (previous_options_by_slot or {}).get(slot.slot_id, ()),
                     )
                     + (BrandFormOptionV1(option_id="custom", label="Other (custom)"),),
                     custom_option_id="custom",
                     required=True,
-                    prefill_value=by_slot[slot.slot_id].prefill_value,
                 )
                 for slot in expected_slots
             )
@@ -470,20 +503,49 @@ class BrandCapabilityInvocationService:
                 "Brand foundation form rows were malformed.",
                 stage="brand_capability_invocation",
             ) from error
+        suffix = "initial"
+        if requested_slot_ids is not None:
+            identity = round_id or ",".join(slot.slot_id for slot in expected_slots)
+            suffix = f"more_{sha256(identity.encode()).hexdigest()[:16]}"
         return BrandFormV1(
-            form_id=f"brand_form_{brand_id}_{stage}_{journey.stage_revision}",
+            form_id=f"brand_form_{brand_id}_{stage}_{journey.stage_revision}_{suffix}",
             stage=stage,
             revision=journey.stage_revision,
             response_locale=locale,
             context_digest=product_context.digest,
             title="Brand Memory" if stage == "brand-memory" else "Campaign",
             instructions=(
-                "Review any draft prefills, then choose one option for every row. "
-                "Select Other (custom) to enter or edit your own answer. Nothing is confirmed "
-                "until you submit the complete form."
+                "Choose one option for every row. Select Other (custom) to enter your own answer."
+                if requested_slot_ids is None
+                else "Compare the existing and new options, then choose one option for every row. Select Other (custom) to request more options or enter your own answer."
             ),
             rows=rows,
         )
+
+    @staticmethod
+    def _merge_form_options(
+        slot_id: str,
+        new_options: tuple[BrandFormOptionV1, ...],
+        previous_options: tuple[BrandFormOptionV1, ...],
+    ) -> tuple[BrandFormOptionV1, ...]:
+        """Keep prior options and append distinct new recommendations."""
+
+        merged: list[BrandFormOptionV1] = []
+        labels: set[str] = set()
+        option_ids: set[str] = set()
+        for option in (*previous_options, *new_options):
+            label_key = option.label.strip().casefold()
+            if label_key in labels:
+                continue
+            option_id = option.option_id
+            if option_id in option_ids:
+                option_id = f"more_{sha256(f'{slot_id}:{option.label}'.encode()).hexdigest()[:12]}"
+            if option_id in option_ids:
+                continue
+            merged.append(option.model_copy(update={"option_id": option_id}))
+            labels.add(label_key)
+            option_ids.add(option_id)
+        return tuple(merged)
 
     def apply_form_submission(
         self,
@@ -491,8 +553,8 @@ class BrandCapabilityInvocationService:
         *,
         form: BrandFormV1,
         answers: tuple[BrandFormAnswerV1, ...],
-    ) -> None:
-        """Validate and atomically commit a complete foundation form."""
+    ) -> BrandFormSubmissionResult:
+        """Validate and atomically commit one foundation form submission."""
 
         if form.stage not in {"brand-memory", "campaign"}:
             raise _card_invalid("Only Brand Memory and Campaign can use a form.")
@@ -505,7 +567,10 @@ class BrandCapabilityInvocationService:
                 "A complete answer is required for every Brand form row.",
                 stage="brand_capability_invocation",
             )
+        intents = self._form_answer_intents(brand_id, form, answers)
         values: list[BrandSlotValueV1] = []
+        requested_slot_ids: list[str] = []
+        previous_options_by_slot: dict[str, tuple[BrandFormOptionV1, ...]] = {}
         for row in form.rows:
             answer = answer_by_question[row.question_id]
             option = next(
@@ -525,7 +590,19 @@ class BrandCapabilityInvocationService:
                     "Custom text is allowed only with the custom option.",
                     stage="brand_capability_invocation",
                 )
+            if is_custom and intents.get(row.question_id) == "request_more_options":
+                requested_slot_ids.append(row.slot_id)
+                previous_options_by_slot[row.slot_id] = tuple(
+                    item for item in row.options if item.option_id != row.custom_option_id
+                )
+                continue
             value = answer.custom_text.strip() if is_custom and answer.custom_text else option.label
+            if not value:
+                raise V2PersistenceError(
+                    "brand_form_invalid",
+                    "A custom Brand form answer cannot be empty.",
+                    stage="brand_capability_invocation",
+                )
             slot = resolve_slot(form.stage, row.slot_id)
             values.append(
                 BrandSlotValueV1(
@@ -540,9 +617,12 @@ class BrandCapabilityInvocationService:
         state = BrandQuestionState(self._database)
         with self._database.engine.begin() as connection:
             state.claim(connection, brand_id, form.revision)
-            if (
+            context_matches = (
                 state.context.read_in_transaction(connection, brand_id).digest
-                != form.context_digest
+                == form.context_digest
+            )
+            if not context_matches and not self._has_recoverable_more_options_submission(
+                connection, brand_id, form.form_id
             ):
                 raise stale_context()
             journey = self._repository.get_journey_in_transaction(connection, brand_id)
@@ -552,20 +632,107 @@ class BrandCapabilityInvocationService:
                 or journey.stage_revision != form.revision
             ):
                 raise stale_context()
-            self._repository.upsert_slot_values_in_transaction(connection, brand_id, tuple(values))
-            self._repository.save_journey_in_transaction(
-                connection, brand_id, advance_brand_stage(journey)
-            )
+            if values:
+                self._repository.upsert_slot_values_in_transaction(
+                    connection, brand_id, tuple(values)
+                )
+            if not requested_slot_ids:
+                self._repository.save_journey_in_transaction(
+                    connection, brand_id, advance_brand_stage(journey)
+                )
             self._append_log(
                 connection,
                 brand_id=brand_id,
                 stage=form.stage,
-                action="confirm",
+                action="confirm" if not requested_slot_ids else "edit",
                 target_type="brand_form",
                 target_id=form.form_id,
-                detail={"context_digest": form.context_digest, "row_count": len(values)},
+                detail={
+                    "context_digest": form.context_digest,
+                    "row_count": len(values),
+                    "requested_more_options": requested_slot_ids,
+                },
                 now=now,
             )
+        return BrandFormSubmissionResult(
+            requested_slot_ids=tuple(requested_slot_ids),
+            previous_options_by_slot=previous_options_by_slot or None,
+        )
+
+    @staticmethod
+    def _has_recoverable_more_options_submission(
+        connection: Connection,
+        brand_id: str,
+        form_id: str,
+    ) -> bool:
+        """Allow retrying a supplement request after its first generation failed."""
+
+        detail_json = connection.execute(
+            select(BrandDecisionLogRow.detail_json)
+            .where(
+                BrandDecisionLogRow.brand_id == brand_id,
+                BrandDecisionLogRow.action == "edit",
+                BrandDecisionLogRow.target_type == "brand_form",
+                BrandDecisionLogRow.target_id == form_id,
+            )
+            .order_by(BrandDecisionLogRow.log_id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if detail_json is None:
+            return False
+        try:
+            return bool(json.loads(str(detail_json)).get("requested_more_options"))
+        except (TypeError, json.JSONDecodeError):
+            return False
+
+    def _form_answer_intents(
+        self,
+        brand_id: str,
+        form: BrandFormV1,
+        answers: tuple[BrandFormAnswerV1, ...],
+    ) -> dict[str, Literal["answer", "request_more_options"]]:
+        """Normalize custom text intent through the bounded Agent contract."""
+
+        custom_answers = tuple(answer for answer in answers if answer.custom_text is not None)
+        intents: dict[str, Literal["answer", "request_more_options"]] = {
+            answer.question_id: "answer" for answer in answers if answer.custom_text is None
+        }
+        if not custom_answers:
+            return intents
+        context = BrandQuestionState(self._database).context.read(brand_id)
+        try:
+            spec = StructuredGenerationSpec[BrandStrategyOutputV1](
+                stage_name="brand_form_answer_intent",
+                contract_name="BrandStrategyOutputV1",
+                model_id=self._settings.llm_creative_model,
+                system_prompt=(
+                    _BRAND_STRATEGY_PROMPT
+                    + " Analyze each supplied custom Brand form answer. Return one form_answer_intents "
+                    + "entry per supplied custom answer. Use request_more_options only when the user is "
+                    + "asking for additional alternatives for that question; otherwise use answer. "
+                    + "Do not generate options or change any slot value."
+                ),
+                input_payload={
+                    "product_context": context.payload,
+                    "stage": form.stage,
+                    "answer_analysis_mode": True,
+                    "response_locale": form.response_locale,
+                    "form_rows": [row.model_dump(mode="json") for row in form.rows],
+                    "answers": [answer.model_dump(mode="json") for answer in custom_answers],
+                },
+                output_model=BrandStrategyOutputV1,
+                trace_metadata={"workflow_id": context.workflow_id},
+                operation="brand_slot_form",
+            )
+            output = self._runtime.run(spec).output
+            for item in output.form_answer_intents:
+                if item.question_id in {answer.question_id for answer in custom_answers}:
+                    intents[item.question_id] = item.intent
+        except (StructuredGenerationRuntimeError, V2PersistenceError):
+            # A classification outage must preserve the established custom
+            # answer path; it must not make form confirmation unavailable.
+            pass
+        return intents
 
     def _namespace_colliding_card_id(
         self,
@@ -1457,30 +1624,6 @@ def _with_declared_information_nature(
 def _validate_card(card: BrandOptionCardV1, stage: BrandStage) -> None:
     if card.stage != stage:
         raise _card_invalid("Option card stage does not match the current stage.")
-
-
-def _validate_form_prefill(card: BrandOptionCardV1, product_context: dict[str, Any]) -> None:
-    """Keep form prefills tied to exact user-source evidence."""
-
-    if card.prefill_value is None:
-        return
-    quote = card.prefill_source_quote
-    sources = product_context.get("user_sources", [])
-    if not quote or not isinstance(sources, list):
-        raise V2PersistenceError(
-            "brand_slot_evidence_invalid",
-            "Brand form prefill is missing exact user-source evidence.",
-            stage="brand_capability_invocation",
-        )
-    if not any(
-        isinstance(source, dict) and isinstance(source.get("text"), str) and quote in source["text"]
-        for source in sources
-    ):
-        raise V2PersistenceError(
-            "brand_slot_evidence_invalid",
-            "Brand form prefill source quote is not present in user sources.",
-            stage="brand_capability_invocation",
-        )
 
 
 def cast_step(slot_id: str | None) -> BrandTreatmentSubstep:

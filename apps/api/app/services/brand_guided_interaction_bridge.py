@@ -67,8 +67,14 @@ class BrandGuidedInteractionBridge:
         self._database = database
 
     @staticmethod
-    def _form_generation_key(workflow_id: str, stage: str, stage_revision: int) -> str:
-        return f"{workflow_id}:{stage}:{stage_revision}"
+    def _form_generation_key(
+        workflow_id: str,
+        stage: str,
+        stage_revision: int,
+        generation_scope: str | None = None,
+    ) -> str:
+        suffix = f":{generation_scope}" if generation_scope else ""
+        return f"{workflow_id}:{stage}:{stage_revision}{suffix}"
 
     def claim_form_generation(
         self,
@@ -76,11 +82,14 @@ class BrandGuidedInteractionBridge:
         stage: Literal["brand-memory", "campaign"],
         stage_revision: int,
         *,
+        generation_scope: str | None = None,
         lease_seconds: int = 300,
     ) -> BrandFormGenerationClaim:
         """Claim or join the durable single-flight generation for one form."""
 
-        generation_key = self._form_generation_key(workflow_id, stage, stage_revision)
+        generation_key = self._form_generation_key(
+            workflow_id, stage, stage_revision, generation_scope
+        )
         now = int(time.time())
         now_iso = _now_iso()
         lease_token = uuid4().hex
@@ -234,11 +243,14 @@ class BrandGuidedInteractionBridge:
         stage: Literal["brand-memory", "campaign"],
         stage_revision: int,
         *,
+        generation_scope: str | None = None,
         timeout_seconds: float = 300.0,
     ) -> BrandFormV1 | None:
         """Wait for another request's publication without invoking the model."""
 
-        generation_key = self._form_generation_key(workflow_id, stage, stage_revision)
+        generation_key = self._form_generation_key(
+            workflow_id, stage, stage_revision, generation_scope
+        )
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             form = self.get_open_form(workflow_id, stage)

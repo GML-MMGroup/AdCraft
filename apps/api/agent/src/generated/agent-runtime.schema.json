@@ -7591,6 +7591,32 @@
       "title": "BrandBriefSummaryV1",
       "type": "object"
     },
+    "BrandFormAnswerIntentV1": {
+      "additionalProperties": false,
+      "description": "Structured interpretation of one custom form answer.",
+      "properties": {
+        "intent": {
+          "enum": [
+            "answer",
+            "request_more_options"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent",
+        "question_id"
+      ],
+      "title": "BrandFormAnswerIntentV1",
+      "type": "object"
+    },
     "BrandFormAnswerV1": {
       "additionalProperties": false,
       "description": "One explicit answer from a foundation form row.",
@@ -7680,7 +7706,7 @@
           "items": {
             "$ref": "#/$defs/BrandFormOptionV1"
           },
-          "maxItems": 4,
+          "maxItems": 64,
           "minItems": 4,
           "title": "Options",
           "type": "array"
@@ -8485,6 +8511,15 @@
           },
           "maxItems": 1,
           "title": "Clarifications",
+          "type": "array"
+        },
+        "form_answer_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandFormAnswerIntentV1"
+          },
+          "maxItems": 32,
+          "title": "Form Answer Intents",
           "type": "array"
         },
         "form_cards": {

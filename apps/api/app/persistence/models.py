@@ -1651,12 +1651,6 @@ class BrandFormGenerationLeaseRow(Base):
             "status IN ('generating', 'published')",
             name="ck_brand_form_generation_leases_status",
         ),
-        UniqueConstraint(
-            "workflow_id",
-            "stage",
-            "stage_revision",
-            name="uq_brand_form_generation_leases_scope",
-        ),
     )
 
     generation_key: Mapped[str] = mapped_column(Text, primary_key=True)

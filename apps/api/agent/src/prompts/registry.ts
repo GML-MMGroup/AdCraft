@@ -98,6 +98,8 @@ function instructionForOperation(operation: string): string {
   }
   if (operation === "brand_slot_form") {
     return [
+      "When answer_analysis_mode=true, analyze the supplied custom answers and return form_answer_intents only; use request_more_options only when the user explicitly asks for additional alternatives for that question, otherwise use answer.",
+      "When answer_analysis_mode is absent or false, create the requested foundation form cards as described below.",
       "Use the supplied stage and slots with the Brand Strategy Skill to create a form card for every supplied slot.",
       "Return exactly one form_cards entry per supplied slot, including optional slots; do not omit, merge, reorder, or invent slots.",
       "Each card must target its supplied slot and contain exactly three concrete, mutually useful answer options grounded in product_context, plus a clear custom-answer path for user-provided text.",

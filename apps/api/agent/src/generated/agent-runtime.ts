@@ -40,15 +40,17 @@ export type BrandSlotEvidenceV1 = { readonly "stage": "brand-memory" | "campaign
 
 export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail"?: TreatmentDetailV1 | null };
 
-export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1>; readonly "prefill_value"?: string | null; readonly "prefill_source_quote"?: string | null };
+export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
 
 export type BrandFormOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null };
 
-export type BrandFormRowV1 = { readonly "question_id": string; readonly "slot_id": string; readonly "prompt": string; readonly "options": ReadonlyArray<BrandFormOptionV1>; readonly "custom_option_id": string; readonly "required"?: boolean; readonly "prefill_value"?: string | null };
+export type BrandFormRowV1 = { readonly "question_id": string; readonly "slot_id": string; readonly "prompt": string; readonly "options": ReadonlyArray<BrandFormOptionV1>; readonly "custom_option_id": string; readonly "required"?: boolean };
 
 export type BrandFormV1 = { readonly "content_kind"?: "brand_form"; readonly "form_id": string; readonly "stage": "brand-memory" | "campaign"; readonly "revision": number; readonly "response_locale": string; readonly "context_digest": string; readonly "title": string; readonly "instructions": string; readonly "rows": ReadonlyArray<BrandFormRowV1> };
 
 export type BrandFormAnswerV1 = { readonly "question_id": string; readonly "selected_option_id": string; readonly "custom_text"?: string | null };
+
+export type BrandFormAnswerIntentV1 = { readonly "question_id": string; readonly "intent": "answer" | "request_more_options" };
 
 export type BrandFormSubmitV1 = { readonly "submission_kind"?: "brand_form"; readonly "form_id": string; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "answers": ReadonlyArray<BrandFormAnswerV1>; readonly "confirm"?: true };
 
@@ -58,7 +60,7 @@ export type CreativeTreatmentStepOutputV1 = { readonly "step_key": "camera" | "c
 
 export type BrandSkillRecommendationsV1 = { readonly "creative_methods": ReadonlyArray<BrandSkillRecommendationV1>; readonly "audiovisual_styles": ReadonlyArray<BrandSkillRecommendationV1> };
 
-export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "slot_evidence"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "clarifications"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "question_card"?: BrandOptionCardV1 | null; readonly "form_cards"?: ReadonlyArray<BrandOptionCardV1>; readonly "question_impact"?: BrandQuestionImpactV1 | null };
+export type BrandStrategyOutputV1 = { readonly "slot_values"?: ReadonlyArray<BrandSlotValueV1>; readonly "slot_evidence"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "clarifications"?: ReadonlyArray<BrandSlotEvidenceV1>; readonly "question_card"?: BrandOptionCardV1 | null; readonly "form_cards"?: ReadonlyArray<BrandOptionCardV1>; readonly "form_answer_intents"?: ReadonlyArray<BrandFormAnswerIntentV1>; readonly "question_impact"?: BrandQuestionImpactV1 | null };
 
 export type BrandQuestionImpactV1 = { readonly "reason": string; readonly "affected_decision": "brand_positioning" | "campaign_message" | "creative_hypothesis" | "delivery" | "product_presentation" | "visual_execution"; readonly "basis_slot_ids": ReadonlyArray<string> };
 

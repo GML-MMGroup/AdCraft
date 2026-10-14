@@ -72,15 +72,6 @@ class BrandOptionCardV1(_BrandModel):
     target_slot_id: str | None = Field(default=None, max_length=80)
     question: str = Field(min_length=1, max_length=400)
     options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
-    # Form-only draft evidence. This is never a confirmed slot value.
-    prefill_value: str | None = Field(default=None, min_length=1, max_length=2_048)
-    prefill_source_quote: str | None = Field(default=None, min_length=1, max_length=2_048)
-
-    @model_validator(mode="after")
-    def validate_prefill_evidence(self) -> "BrandOptionCardV1":
-        if (self.prefill_value is None) != (self.prefill_source_quote is None):
-            raise ValueError("A form prefill requires an exact source quote.")
-        return self
 
 
 class BrandFormOptionV1(_BrandModel):
@@ -97,10 +88,9 @@ class BrandFormRowV1(_BrandModel):
     question_id: str = Field(min_length=1, max_length=120)
     slot_id: str = Field(min_length=1, max_length=80)
     prompt: str = Field(min_length=1, max_length=400)
-    options: tuple[BrandFormOptionV1, ...] = Field(min_length=4, max_length=4)
+    options: tuple[BrandFormOptionV1, ...] = Field(min_length=4, max_length=64)
     custom_option_id: str = Field(min_length=1, max_length=80)
     required: bool = True
-    prefill_value: str | None = Field(default=None, min_length=1, max_length=2_048)
 
     @model_validator(mode="after")
     def validate_options(self) -> "BrandFormRowV1":
@@ -109,8 +99,8 @@ class BrandFormRowV1(_BrandModel):
             raise ValueError("Brand form option IDs must be unique.")
         if option_ids.count(self.custom_option_id) != 1:
             raise ValueError("Brand form must expose exactly one custom option.")
-        if sum(option.option_id != self.custom_option_id for option in self.options) != 3:
-            raise ValueError("Brand form must expose exactly three recommendations.")
+        if sum(option.option_id != self.custom_option_id for option in self.options) < 3:
+            raise ValueError("Brand form must expose at least three recommendations.")
         return self
 
 
@@ -142,6 +132,13 @@ class BrandFormAnswerV1(_BrandModel):
     question_id: str = Field(min_length=1, max_length=120)
     selected_option_id: str = Field(min_length=1, max_length=80)
     custom_text: str | None = Field(default=None, min_length=1, max_length=2_048)
+
+
+class BrandFormAnswerIntentV1(_BrandModel):
+    """Structured interpretation of one custom form answer."""
+
+    question_id: str = Field(min_length=1, max_length=120)
+    intent: Literal["answer", "request_more_options"]
 
 
 class BrandFormSubmitV1(_BrandModel):
@@ -185,6 +182,7 @@ class BrandStrategyOutputV1(_BrandModel):
     clarifications: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=1)
     question_card: BrandOptionCardV1 | None = None
     form_cards: tuple[BrandOptionCardV1, ...] = Field(default=(), max_length=32)
+    form_answer_intents: tuple[BrandFormAnswerIntentV1, ...] = Field(default=(), max_length=32)
     question_impact: BrandQuestionImpactV1 | None = None
 
 
