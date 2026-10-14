@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import json
+import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 
 from app.persistence.models import (
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidedInteractionRow,
+    BrandFormGenerationLeaseRow,
 )
 from app.schemas.agent_canvas_creative_session import (
     CreativeGoalV2,
@@ -46,11 +50,221 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@dataclass(frozen=True)
+class BrandFormGenerationClaim:
+    """Result of claiming one durable Brand form generation scope."""
+
+    generation_key: str
+    role: Literal["owner", "wait", "ready"]
+    lease_token: str | None = None
+    form_json: str | None = None
+
+
 class BrandGuidedInteractionBridge:
     """Write durable guided interactions so brand cards render in the chat."""
 
     def __init__(self, database: "V2Database") -> None:
         self._database = database
+
+    @staticmethod
+    def _form_generation_key(workflow_id: str, stage: str, stage_revision: int) -> str:
+        return f"{workflow_id}:{stage}:{stage_revision}"
+
+    def claim_form_generation(
+        self,
+        workflow_id: str,
+        stage: Literal["brand-memory", "campaign"],
+        stage_revision: int,
+        *,
+        lease_seconds: int = 300,
+    ) -> BrandFormGenerationClaim:
+        """Claim or join the durable single-flight generation for one form."""
+
+        generation_key = self._form_generation_key(workflow_id, stage, stage_revision)
+        now = int(time.time())
+        now_iso = _now_iso()
+        lease_token = uuid4().hex
+        with self._database.engine.begin() as connection:
+            existing = (
+                connection.execute(
+                    select(BrandFormGenerationLeaseRow).where(
+                        BrandFormGenerationLeaseRow.generation_key == generation_key
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is None:
+                connection.execute(
+                    sqlite_insert(BrandFormGenerationLeaseRow)
+                    .values(
+                        generation_key=generation_key,
+                        workflow_id=workflow_id,
+                        stage=stage,
+                        stage_revision=stage_revision,
+                        status="generating",
+                        form_json=None,
+                        lease_token=lease_token,
+                        lease_until=now + lease_seconds,
+                        created_at=now_iso,
+                        updated_at=now_iso,
+                    )
+                    .on_conflict_do_nothing(index_elements=["generation_key"])
+                )
+                inserted = connection.execute(
+                    select(BrandFormGenerationLeaseRow.lease_token).where(
+                        BrandFormGenerationLeaseRow.generation_key == generation_key
+                    )
+                ).scalar_one()
+                if str(inserted) == lease_token:
+                    return BrandFormGenerationClaim(
+                        generation_key=generation_key,
+                        role="owner",
+                        lease_token=lease_token,
+                    )
+                existing = (
+                    connection.execute(
+                        select(BrandFormGenerationLeaseRow).where(
+                            BrandFormGenerationLeaseRow.generation_key == generation_key
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+            if str(existing["status"]) == "published":
+                return BrandFormGenerationClaim(
+                    generation_key=generation_key,
+                    role="ready",
+                    form_json=str(existing["form_json"] or ""),
+                )
+            if int(existing["lease_until"]) <= now:
+                replaced = connection.execute(
+                    update(BrandFormGenerationLeaseRow)
+                    .where(
+                        BrandFormGenerationLeaseRow.generation_key == generation_key,
+                        BrandFormGenerationLeaseRow.status == "generating",
+                        BrandFormGenerationLeaseRow.lease_until <= now,
+                    )
+                    .values(
+                        lease_token=lease_token,
+                        lease_until=now + lease_seconds,
+                        updated_at=now_iso,
+                    )
+                )
+                if replaced.rowcount == 1:
+                    return BrandFormGenerationClaim(
+                        generation_key=generation_key,
+                        role="owner",
+                        lease_token=lease_token,
+                    )
+            return BrandFormGenerationClaim(
+                generation_key=generation_key,
+                role="wait",
+            )
+
+    def publish_form_generation(
+        self,
+        claim: BrandFormGenerationClaim,
+        form: BrandFormV1,
+    ) -> None:
+        """Commit a generated form to the lease only for its current owner."""
+
+        if claim.role != "owner" or claim.lease_token is None:
+            raise ValueError("Only the generation owner can publish a form.")
+        now_iso = _now_iso()
+        with self._database.engine.begin() as connection:
+            connection.execute(
+                update(BrandFormGenerationLeaseRow)
+                .where(
+                    BrandFormGenerationLeaseRow.generation_key == claim.generation_key,
+                    BrandFormGenerationLeaseRow.status == "generating",
+                    BrandFormGenerationLeaseRow.lease_token == claim.lease_token,
+                )
+                .values(
+                    status="published",
+                    form_json=form.model_dump_json(),
+                    lease_until=0,
+                    updated_at=now_iso,
+                )
+            )
+
+    def release_form_generation(self, claim: BrandFormGenerationClaim) -> None:
+        """Release a failed generation so a waiting request can retry safely."""
+
+        if claim.role != "owner" or claim.lease_token is None:
+            return
+        with self._database.engine.begin() as connection:
+            connection.execute(
+                delete(BrandFormGenerationLeaseRow).where(
+                    BrandFormGenerationLeaseRow.generation_key == claim.generation_key,
+                    BrandFormGenerationLeaseRow.status == "generating",
+                    BrandFormGenerationLeaseRow.lease_token == claim.lease_token,
+                )
+            )
+
+    def get_open_form(
+        self,
+        workflow_id: str,
+        stage: Literal["brand-memory", "campaign"],
+    ) -> BrandFormV1 | None:
+        """Return the authoritative open form for a foundation stage."""
+
+        with self._database.engine.connect() as connection:
+            form_json = connection.execute(
+                select(AgentCanvasGuidedInteractionRow.content_json)
+                .where(
+                    AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                    AgentCanvasGuidedInteractionRow.status == "open",
+                    AgentCanvasGuidedInteractionRow.kind == "brand_form",
+                )
+                .order_by(AgentCanvasGuidedInteractionRow.updated_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+        if form_json is None:
+            return None
+        try:
+            form = BrandFormV1.model_validate_json(str(form_json))
+        except ValueError:
+            return None
+        return form if form.stage == stage else None
+
+    def wait_for_form_generation(
+        self,
+        workflow_id: str,
+        stage: Literal["brand-memory", "campaign"],
+        stage_revision: int,
+        *,
+        timeout_seconds: float = 300.0,
+    ) -> BrandFormV1 | None:
+        """Wait for another request's publication without invoking the model."""
+
+        generation_key = self._form_generation_key(workflow_id, stage, stage_revision)
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            form = self.get_open_form(workflow_id, stage)
+            if form is not None and form.revision == stage_revision:
+                return form
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(
+                            BrandFormGenerationLeaseRow.status,
+                            BrandFormGenerationLeaseRow.form_json,
+                            BrandFormGenerationLeaseRow.lease_until,
+                        ).where(BrandFormGenerationLeaseRow.generation_key == generation_key)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            if row is None or int(row["lease_until"]) <= int(time.time()):
+                return None
+            if str(row["status"]) == "published" and row["form_json"]:
+                try:
+                    return BrandFormV1.model_validate_json(str(row["form_json"]))
+                except ValueError:
+                    return None
+            time.sleep(0.05)
+        return None
 
     def ensure_session(self, workflow_id: str, response_locale: str) -> str:
         """Create or return the brand guidance session for one workflow."""
@@ -299,6 +513,11 @@ class BrandGuidedInteractionBridge:
                 .one_or_none()
             )
             if existing is not None and str(existing["status"]) == "submitted":
+                return
+            # A form is an immutable proposal for its deterministic stage
+            # revision.  Concurrent callers may have generated different
+            # model outputs, but the first durable open projection wins.
+            if existing is not None and str(existing["status"]) == "open":
                 return
             session_row = (
                 connection.execute(

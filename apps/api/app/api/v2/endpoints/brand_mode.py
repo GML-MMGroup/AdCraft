@@ -71,6 +71,7 @@ _STATUS_BY_CODE = {
     "brand_option_card_invalid": 409,
     "brand_form_invalid": 422,
     "brand_form_generation_invalid": 503,
+    "brand_form_generation_in_progress": 503,
     "brand_stage_action_mismatch": 409,
     "brand_skill_selection_required": 409,
     "brand_skill_selection_invalid": 422,
@@ -199,28 +200,60 @@ def post_next_question(
         for _ in range(2):
             if journey.stage not in {"brand-memory", "campaign"}:
                 break
-            existing_form_json = None
-            with database.engine.connect() as connection:
-                existing_form_json = connection.execute(
-                    select(AgentCanvasGuidedInteractionRow.content_json)
-                    .where(
-                        AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
-                        AgentCanvasGuidedInteractionRow.status == "open",
-                        AgentCanvasGuidedInteractionRow.kind == "brand_form",
-                    )
-                    .order_by(AgentCanvasGuidedInteractionRow.created_at.desc())
-                    .limit(1)
-                ).scalar_one_or_none()
-            if existing_form_json:
+            existing_form = bridge.get_open_form(workflow_id, journey.stage)
+            if existing_form is not None:
+                return existing_form
+
+            claim = bridge.claim_form_generation(
+                workflow_id,
+                journey.stage,
+                journey.stage_revision,
+            )
+            if claim.role == "ready":
                 try:
-                    existing_form = BrandFormV1.model_validate_json(existing_form_json)
-                except ValueError:
-                    existing_form = None
-                if existing_form is not None and existing_form.stage == journey.stage:
-                    return existing_form
-            form = service.run_slot_form(brand_id, journey.stage)
-            bridge.publish_form_interaction(workflow_id, form)
-            return form
+                    return BrandFormV1.model_validate_json(claim.form_json or "")
+                except ValueError as error:
+                    raise V2PersistenceError(
+                        "brand_form_generation_invalid",
+                        "Published Brand foundation form could not be read.",
+                    ) from error
+            if claim.role == "wait":
+                waited = bridge.wait_for_form_generation(
+                    workflow_id,
+                    journey.stage,
+                    journey.stage_revision,
+                )
+                if waited is not None:
+                    return waited
+                # The previous owner failed or its lease expired.  Reclaim
+                # before considering another model call.
+                claim = bridge.claim_form_generation(
+                    workflow_id,
+                    journey.stage,
+                    journey.stage_revision,
+                )
+                if claim.role == "ready":
+                    try:
+                        return BrandFormV1.model_validate_json(claim.form_json or "")
+                    except ValueError as error:
+                        raise V2PersistenceError(
+                            "brand_form_generation_invalid",
+                            "Published Brand foundation form could not be read.",
+                        ) from error
+                if claim.role != "owner":
+                    raise V2PersistenceError(
+                        "brand_form_generation_in_progress",
+                        "Brand foundation form generation is still in progress.",
+                    )
+            try:
+                form = service.run_slot_form(brand_id, journey.stage)
+                bridge.publish_form_interaction(workflow_id, form)
+                authoritative = bridge.get_open_form(workflow_id, journey.stage) or form
+                bridge.publish_form_generation(claim, authoritative)
+                return authoritative
+            except Exception:
+                bridge.release_form_generation(claim)
+                raise
         if service.prepare_treatment_confirmation(brand_id):
             bridge.close_current_interaction(workflow_id, status="superseded")
             return Response(status_code=status.HTTP_204_NO_CONTENT)

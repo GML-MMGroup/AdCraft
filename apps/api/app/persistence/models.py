@@ -1642,6 +1642,35 @@ class AgentCanvasGuidedInteractionRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class BrandFormGenerationLeaseRow(Base):
+    """Durable single-flight lease for one Brand foundation form generation."""
+
+    __tablename__ = "brand_form_generation_leases"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('generating', 'published')",
+            name="ck_brand_form_generation_leases_status",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "stage",
+            "stage_revision",
+            name="uq_brand_form_generation_leases_scope",
+        ),
+    )
+
+    generation_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    stage_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    form_json: Mapped[str | None] = mapped_column(Text)
+    lease_token: Mapped[str] = mapped_column(Text, nullable=False)
+    lease_until: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AgentCanvasGuidedInteractionSubmissionRow(Base):
     """Immutable accepted or rejected submission identity for one interaction."""
 
