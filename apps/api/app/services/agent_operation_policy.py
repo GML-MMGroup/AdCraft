@@ -40,6 +40,7 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
     "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
+_BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
 _ROUTING_OPERATIONS = {
     "brand_hypothesis",
     "brand_slot_form",
@@ -182,8 +183,10 @@ class AgentOperationPolicyRegistryV2:
             contract_id=contract_id,
         )
         budget = (
-            _BRAND_SLOT_BUDGET
-            if operation in {"brand_slot_form", "brand_slot_question"}
+            _BRAND_FORM_BUDGET
+            if operation == "brand_slot_form"
+            else _BRAND_SLOT_BUDGET
+            if operation == "brand_slot_question"
             else self._budgets[policy_class]
         )
         return AgentOperationPolicyV2(

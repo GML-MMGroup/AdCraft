@@ -100,7 +100,7 @@ function instructionForOperation(operation: string): string {
     return [
       "Use the supplied stage and slots with the Brand Strategy Skill to create a form card for every supplied slot.",
       "Return exactly one form_cards entry per supplied slot, including optional slots; do not omit, merge, reorder, or invent slots.",
-      "Each card must target its supplied slot and contain exactly four concrete, mutually useful answer options grounded in product_context, plus a clear custom-answer path for user-provided text.",
+      "Each card must target its supplied slot and contain exactly three concrete, mutually useful answer options grounded in product_context, plus a clear custom-answer path for user-provided text.",
       "Options must be specific to the product and campaign rather than generic placeholders. Do not select, confirm, or persist any answer.",
       "Python owns form validation, stage transitions, user confirmation, and persistence. Return only the BrandStrategyOutputV1 contract in response_locale.",
     ].join(" ");
