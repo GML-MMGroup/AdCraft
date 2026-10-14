@@ -5278,7 +5278,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     const rows = expectArray(record.rows, `${path}.rows`).map((item, index) => {
       const rowPath = `${path}.rows[${index}]`;
       const row = expectRecord(item, rowPath);
-      forbidUnknownFields(row, ["question_id", "slot_id", "prompt", "options", "custom_option_id", "required"], rowPath);
+      forbidUnknownFields(row, ["question_id", "slot_id", "prompt", "options", "custom_option_id", "required", "prefill_value"], rowPath);
       const options = expectArray(row.options, `${rowPath}.options`).map((option, optionIndex) => {
         const optionPath = `${rowPath}.options[${optionIndex}]`;
         const optionRecord = expectRecord(option, optionPath);
@@ -5307,6 +5307,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
         options,
         custom_option_id: customOptionId,
         required: row.required === undefined ? true : expectBoolean(row.required, `${rowPath}.required`),
+        prefill_value: nullableStringWithDefault(row.prefill_value, `${rowPath}.prefill_value`),
       };
     });
     if (rows.length < 1) fail(`${path}.rows`, "brand form requires at least one row");

@@ -63,6 +63,87 @@ const interaction: GuidedInteractionV1 = {
 afterEach(cleanup);
 
 describe("BrandFormInteraction", () => {
+  const prefilledInteraction = (): GuidedInteractionV1 => {
+    if (interaction.content.content_kind !== "brand_form") throw new Error("Expected form fixture");
+    return {
+      ...interaction,
+      content: {
+        ...interaction.content,
+        instructions: "The product is a draft. Explicitly choose an answer in every row.",
+        rows: interaction.content.rows.map((row, index) => ({
+          ...row, prefill_value: index === 0 ? "Skateboard" : null,
+        })),
+      },
+    };
+  };
+
+  it("keeps editable prefills unselected until explicitly adopted and submits the edited custom text", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    const view = render(<BrandFormInteraction interaction={prefilledInteraction()} pending={false} issue={null} onSubmit={submit} />);
+    const draft = screen.getByRole("textbox", { name: "自定义内容：What tone should lead?" }) as HTMLInputElement;
+    expect(draft.value).toBe("Skateboard");
+    expect(draft.disabled).toBe(false);
+    expect(screen.getAllByRole("radio").every(input => !(input as HTMLInputElement).checked)).toBe(true);
+    expect((screen.getByRole("textbox", { name: "自定义内容：Who is this for?" }) as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("The product is a draft. Explicitly choose an answer in every row.")).toBeTruthy();
+    expect(screen.queryByText("为每一行选择一个方向；需要自定义时，请先选中自定义。")).toBeNull();
+    fireEvent.change(draft, { target: { value: "  Custom skateboard  " } });
+    view.rerender(<BrandFormInteraction interaction={prefilledInteraction()} pending={false} issue={null} onSubmit={submit} />);
+    expect(draft.value).toBe("  Custom skateboard  ");
+    expect(screen.getByText("0 of 2 answered")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "确认整张表" }).hasAttribute("disabled")).toBe(true);
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole("radio", { name: /自定义/ })[0]!);
+    expect(screen.getByText("1 of 2 answered")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "确认整张表" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: /Teams/ }));
+    fireEvent.click(screen.getByRole("button", { name: "确认整张表" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      expected_interaction_revision: interaction.revision,
+      expected_session_revision: interaction.expected_session_revision,
+      answers: [
+        { question_id: "tone", selected_option_id: "custom", custom_text: "Custom skateboard" },
+        { question_id: "audience", selected_option_id: "teams" },
+      ],
+    })));
+  });
+
+  it("does not confirm a prefill after remount and preserves explicit blank edits and custom drafts when switching options", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    const props = { interaction: prefilledInteraction(), pending: false, issue: null, onSubmit: submit };
+    const view = render(<BrandFormInteraction {...props} />);
+    const draft = screen.getByRole("textbox", { name: "自定义内容：What tone should lead?" }) as HTMLInputElement;
+    fireEvent.change(draft, { target: { value: "" } });
+    view.rerender(<BrandFormInteraction {...props} interaction={prefilledInteraction()} />);
+    expect(draft.value).toBe("");
+    fireEvent.change(draft, { target: { value: "Edited skateboard" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
+    expect(draft.value).toBe("Edited skateboard");
+    fireEvent.click(screen.getAllByRole("radio", { name: /自定义/ })[0]!);
+    expect(draft.value).toBe("Edited skateboard");
+    view.unmount();
+    render(<BrandFormInteraction {...props} />);
+    expect((screen.getByRole("textbox", { name: "自定义内容：What tone should lead?" }) as HTMLInputElement).value).toBe("Skateboard");
+    expect(screen.getAllByRole("radio").every(input => !(input as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByText("0 of 2 answered")).toBeTruthy();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("omits prefilled and edited draft text when a recommendation is selected", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    render(<BrandFormInteraction interaction={prefilledInteraction()} pending={false} issue={null} onSubmit={submit} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "自定义内容：What tone should lead?" }), { target: { value: "My skateboard" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Teams/ }));
+    fireEvent.click(screen.getByRole("button", { name: "确认整张表" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      answers: [
+        { question_id: "tone", selected_option_id: "warm" },
+        { question_id: "audience", selected_option_id: "teams" },
+      ],
+    })));
+  });
+
   it("requires every row and omits custom text when a recommendation is selected", async () => {
     const submit = vi.fn().mockResolvedValue(true);
     render(<BrandFormInteraction interaction={interaction} pending={false} issue={null} onSubmit={submit} />);

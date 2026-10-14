@@ -43,8 +43,17 @@ export function BrandFormInteraction({
 }: BrandFormInteractionProps) {
   const content = interaction.content.content_kind === "brand_form" ? interaction.content : null;
   const [internalAnswers, setInternalAnswers] = useState<BrandFormAnswers>({});
-  const answers = controlledAnswers ?? internalAnswers;
+  const drafts = controlledAnswers ?? internalAnswers;
+  // Prefills are only text drafts. Overlay explicit edits (including an empty
+  // string) so refreshing the same form never selects or confirms an answer.
+  const answers = useMemo<BrandFormAnswers>(() => Object.fromEntries(
+    content?.rows.map((row) => [row.question_id, drafts[row.question_id] ?? {
+      selectedOptionId: "",
+      customText: row.prefill_value ?? "",
+    }]) ?? [],
+  ), [content, drafts]);
   const [submitted, setSubmitted] = useState(false);
+  const submittedState = submitted || interaction.status === "submitted";
   const fieldIdBase = useId();
 
   const answeredCount = useMemo(
@@ -56,7 +65,8 @@ export function BrandFormInteraction({
   const complete = content.rows.length > 0 && content.rows.every((row) => answerIsComplete(row, answers[row.question_id]));
   const canSubmit = complete
     && (interaction.allowed_actions.includes("select") || interaction.allowed_actions.includes("custom"))
-    && !submitted
+    && !submittedState
+    && !pending
     && !disabled;
 
   const setAnswers = (update: (current: BrandFormAnswers) => BrandFormAnswers) => {
@@ -65,10 +75,10 @@ export function BrandFormInteraction({
     else setInternalAnswers(next);
   };
 
-  const updateAnswer = (questionId: string, selectedOptionId: string, customText = "") => {
+  const updateAnswer = (questionId: string, selectedOptionId: string) => {
     setAnswers((current) => ({
       ...current,
-      [questionId]: { selectedOptionId, customText },
+      [questionId]: { selectedOptionId, customText: current[questionId]?.customText ?? "" },
     }));
     setSubmitted(false);
   };
@@ -111,7 +121,7 @@ export function BrandFormInteraction({
     <DecisionDockFrame
       title={content.title}
       context={content.instructions}
-      pending={pending || submitted || disabled}
+      pending={pending || submittedState || disabled}
       issue={issue}
       footerSummary={`${answeredCount} of ${content.rows.length} answered`}
       submitLabel="确认整张表"
@@ -121,7 +131,6 @@ export function BrandFormInteraction({
       <div className="agent-chat__brand-form" data-testid="brand-form">
         <div className="agent-chat__brand-form-intro">
           <span>{content.stage === "brand-memory" ? "Brand Memory" : "Campaign"}</span>
-          <small>为每一行选择一个方向；需要自定义时，请先选中自定义。</small>
         </div>
         <div className="agent-chat__brand-form-table" role="table" aria-label={content.title ?? interaction.title}>
           {content.rows.map((row, rowIndex) => {
@@ -148,7 +157,7 @@ export function BrandFormInteraction({
                           name={`${interaction.interaction_id}-${row.question_id}`}
                           value={option.option_id}
                           checked={selected}
-                          disabled={pending || submitted || disabled}
+                          disabled={pending || submittedState || disabled}
                           onChange={() => updateAnswer(row.question_id, option.option_id)}
                         />
                         <span className="agent-chat__brand-form-option-mark" aria-hidden="true">✓</span>
@@ -167,8 +176,8 @@ export function BrandFormInteraction({
                       name={`${interaction.interaction_id}-${row.question_id}`}
                       value={row.custom_option_id}
                       checked={answer?.selectedOptionId === row.custom_option_id}
-                      disabled={pending || submitted || disabled}
-                      onChange={() => updateAnswer(row.question_id, row.custom_option_id, answer?.customText ?? "")}
+                      disabled={pending || submittedState || disabled}
+                      onChange={() => updateAnswer(row.question_id, row.custom_option_id)}
                     />
                     <span className="agent-chat__brand-form-option-mark" aria-hidden="true">✓</span>
                     <span className="agent-chat__brand-form-option-copy">
@@ -186,7 +195,7 @@ export function BrandFormInteraction({
                     type="text"
                     value={answer?.customText ?? ""}
                     placeholder="仅在选择自定义后提交"
-                    disabled={pending || submitted || disabled || answer?.selectedOptionId !== row.custom_option_id}
+                    disabled={pending || submittedState || disabled || (row.prefill_value == null && answer?.selectedOptionId !== row.custom_option_id)}
                     onChange={(event) => updateCustomText(row.question_id, event.target.value)}
                   />
                   {rowIssue ? <small id={errorId} className="agent-chat__decision-dock-field-error">{rowIssue.summary}</small> : null}
@@ -195,7 +204,7 @@ export function BrandFormInteraction({
             );
           })}
         </div>
-        {submitted ? <p className="agent-chat__brand-form-status" role="status">已确认，正在准备下一阶段。</p> : null}
+        {submittedState ? <p className="agent-chat__brand-form-status" role="status">已确认，正在准备下一阶段。</p> : null}
       </div>
     </DecisionDockFrame>
   );

@@ -78,6 +78,18 @@ describe("Brand form normalization", () => {
     expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], options: form.rows[0]!.options.slice(0, 3) }] })).toThrow();
     expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], custom_option_id: "missing" }] })).toThrow();
   });
+
+  it("preserves optional draft prefills and rejects non-text values", () => {
+    for (const prefill_value of [undefined, null, "Skateboard"]) {
+      const normalized = normalizeGuidedBrandFormV1({
+        ...form, rows: [{ ...form.rows[0], prefill_value }],
+      });
+      expect(normalized.rows[0]?.prefill_value).toBe(prefill_value ?? null);
+    }
+    expect(() => normalizeGuidedBrandFormV1({
+      ...form, rows: [{ ...form.rows[0], prefill_value: 42 }],
+    })).toThrow(/prefill_value/);
+  });
 });
 
 describe("Presentation Stream normalization", () => {

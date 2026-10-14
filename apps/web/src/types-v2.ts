@@ -3701,6 +3701,8 @@ export interface GuidedBrandFormRowV1 {
   options: GuidedBrandFormOptionV1[];
   custom_option_id: string;
   required: boolean;
+  /** Unconfirmed draft evidence; never an implicit option selection. */
+  prefill_value?: string | null;
 }
 
 export interface GuidedInteractionV1 {
