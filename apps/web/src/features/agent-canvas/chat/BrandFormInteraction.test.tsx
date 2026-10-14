@@ -68,12 +68,12 @@ describe("BrandFormInteraction", () => {
     render(<BrandFormInteraction interaction={interaction} pending={false} issue={null} onSubmit={submit} />);
 
     expect(screen.getByText("0 of 2 answered")).toBeTruthy();
-    const confirm = screen.getByRole("button", { name: "确认整张表" });
+    const confirm = screen.getByRole("button", { name: "Confirm entire form" });
     expect(confirm.hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
-    fireEvent.click(screen.getAllByRole("radio", { name: /自定义/ })[1]!);
-    fireEvent.change(screen.getByRole("textbox", { name: "自定义内容：Who is this for?" }), { target: { value: "Independent artists" } });
+    fireEvent.click(screen.getAllByRole("radio", { name: /Custom/ })[1]!);
+    fireEvent.change(screen.getByRole("textbox", { name: "Custom content: Who is this for?" }), { target: { value: "Independent artists" } });
     expect(screen.getByText("2 of 2 answered")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("radio", { name: /Teams/ }));
@@ -98,9 +98,9 @@ describe("BrandFormInteraction", () => {
     const submit = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
     const { rerender } = render(<BrandFormInteraction interaction={interaction} pending={false} issue={null} onSubmit={submit} />);
     fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
-    fireEvent.click(screen.getAllByRole("radio", { name: /自定义/ })[1]!);
-    fireEvent.change(screen.getByRole("textbox", { name: "自定义内容：Who is this for?" }), { target: { value: "  Independent artists  " } });
-    fireEvent.click(screen.getByRole("button", { name: "确认整张表" }));
+    fireEvent.click(screen.getAllByRole("radio", { name: /Custom/ })[1]!);
+    fireEvent.change(screen.getByRole("textbox", { name: "Custom content: Who is this for?" }), { target: { value: "  Independent artists  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm entire form" }));
 
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({
       answers: [
@@ -111,6 +111,6 @@ describe("BrandFormInteraction", () => {
     rerender(<BrandFormInteraction interaction={interaction} pending issue={null} onSubmit={submit} />);
     expect(screen.getByRole("button", { name: "Submitting" }).hasAttribute("disabled")).toBe(true);
     finish(true);
-    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("正在准备下一阶段"));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Preparing the next stage"));
   });
 });

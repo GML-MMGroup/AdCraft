@@ -1,6 +1,8 @@
+import { useTranslation } from "./i18n/useTranslation";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import type { AppNavigateOptions, RouteName } from "./types";
+import { LocaleProvider } from "./i18n/locale.tsx";
 
 const LightweightShell = lazy(() => import("./components/Layout").then((module) => ({ default: module.LayoutRoute })));
 const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
@@ -25,9 +27,10 @@ function routePath(route: RouteName, projectId?: string | null) {
 }
 
 function RouteFallback() {
+  const t = useTranslation();
   return (
-    <section className="content-wrap route-fallback" aria-label="Loading page">
-      <div className="route-loading" role="status" aria-label="Loading page">
+    <section className="content-wrap route-fallback" aria-label={t("Loading page")}>
+      <div className="route-loading" role="status" aria-label={t("Loading page")}>
         <span className="route-loading-spinner" aria-hidden="true" />
       </div>
     </section>
@@ -73,8 +76,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <LocaleProvider initialLocale="zh-CN">
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </LocaleProvider>
   );
 }

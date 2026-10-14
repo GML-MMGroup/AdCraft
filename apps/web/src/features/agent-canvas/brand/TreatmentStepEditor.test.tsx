@@ -14,9 +14,9 @@ it("preserves authored candidate and selected-step titles/text verbatim",()=>{
 it("sends exact sections and revision, retaining user text on 422",async()=>{
   vi.mocked(agentCanvasApi.brandEditTreatment).mockRejectedValue(new Error("brand_treatment_detail_invalid"));
   render(<TreatmentStepEditor panel={panel} step={panel.treatment_steps[0]} onSaved={vi.fn()} onCancel={vi.fn()}/>);
-  const input=screen.getAllByLabelText("段落内容")[0];fireEvent.change(input,{target:{value:"修改后的开场"}});
-  fireEvent.click(screen.getByRole("button",{name:"保存修改"}));await screen.findByRole("alert");
+  const input=screen.getAllByLabelText("Section content")[0];fireEvent.change(input,{target:{value:"修改后的开场"}});
+  fireEvent.click(screen.getByRole("button",{name:"Save changes"}));await screen.findByRole("alert");
   expect((input as HTMLTextAreaElement).value).toBe("修改后的开场");
   expect(agentCanvasApi.brandEditTreatment).toHaveBeenCalledWith("w","hook",{expected_stage_revision:12,selected_label:"开场方案",detail:{sections:[{...detail.sections[0],text:"修改后的开场"},detail.sections[1]]}});
-  await waitFor(()=>expect((screen.getByRole("button",{name:"保存修改"}) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(()=>expect((screen.getByRole("button",{name:"Save changes"}) as HTMLButtonElement).disabled).toBe(false));
 });

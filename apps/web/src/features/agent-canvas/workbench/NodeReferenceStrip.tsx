@@ -5,6 +5,7 @@ import type {
 } from "../../../types-v2.ts";
 import { mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 function referencePreview(asset: AgentCanvasWorkflowV2["assets"][number] | undefined | null): string | null {
   if (!asset) return null;
@@ -49,6 +50,7 @@ export function NodeReferenceStrip({
   pending: boolean;
   perform: (action: () => Promise<unknown>) => Promise<boolean>;
 }) {
+  const t = useTranslation("en-US");
   const inboundBindings = workflow.bindings
     .filter((binding) => binding.target_node_id === node.node_id)
     .sort((left, right) => left.order - right.order);
@@ -56,17 +58,17 @@ export function NodeReferenceStrip({
   if (!inboundBindings.length) return null;
 
   return (
-    <section className="agent-node-workbench__references" aria-label="Node references">
+    <section className="agent-node-workbench__references" aria-label={t("Node references")}>
       <div className="agent-node-workbench__reference-list">
         {inboundBindings.map((binding, index) => {
           const source = sourcePresentation(workflow, binding);
-          const label = binding.label || source.name || `Reference ${index + 1}`;
+          const label = binding.label || source.name || `${t("Reference")} ${index + 1}`;
           return (
             <article
               key={binding.binding_id}
               className={`${source.previewUrl ? "is-media" : "is-text"}${!binding.enabled ? " is-disabled" : ""}`}
               title={label}
-              aria-label={source.previewUrl ? undefined : `${label} text reference`}
+              aria-label={source.previewUrl ? undefined : `${label} ${t("text reference")}`}
             >
               {source.previewUrl ? (
                 <StableMediaPreview src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
@@ -77,8 +79,8 @@ export function NodeReferenceStrip({
               )}
               <button
                 type="button"
-                aria-label={`Remove ${label} reference`}
-                title={`Remove ${label}`}
+                aria-label={t("Remove {label} reference", { label })}
+                title={t("Remove {label}", { label })}
                 disabled={pending || !deleteBinding}
                 onClick={() => deleteBinding && void perform(() => deleteBinding(binding.binding_id))}
               >

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n/useTranslation";
 import { useEffect, useMemo, useState } from "react";
 import type { WorkflowNodeV2 } from "../../types-v2";
 import { ReadableCallValue } from "./ReadableCallValue";
@@ -19,6 +20,7 @@ function persistedPromptRows(nodes: WorkflowNodeV2[]) {
 
 
 export function CallDraftPrompts({ readWorkflowNodes, prompts }: { readWorkflowNodes: () => Promise<WorkflowNodeV2[]>; prompts: Record<string, unknown> }) {
+  const t = useTranslation();
   const [nodes, setNodes] = useState<WorkflowNodeV2[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   useEffect(() => {
@@ -30,13 +32,13 @@ export function CallDraftPrompts({ readWorkflowNodes, prompts }: { readWorkflowN
   }, [readWorkflowNodes]);
   const saved = useMemo(() => persistedPromptRows(nodes), [nodes]);
   return <>
-    <h3>这次调用中识别出的提示词</h3>
-    <p className="llm-call-history__muted">仅展示记录中已有的提示词字段，不代表已写入画布。</p>
+    <h3>{t("Prompts identified in this call")}</h3>
+    <p className="llm-call-history__muted">{t("Only recorded prompt fields are shown; they may not have been saved to the canvas.")}</p>
     {Object.keys(prompts).length ? Object.entries(prompts).map(([key, value]) => <section className="llm-call-history__reading" key={key}>
       <h4>{fieldLabel(key)}</h4><ReadableCallValue value={value}/>
-    </section>) : <p className="llm-call-history__empty-panel">未识别到提示词字段。这次调用可能用于提问或规划；也可以在输出和原始 JSON 中核对。</p>}
-    <h3>画布当前保存的提示词</h3>
-    <p className="llm-call-history__muted">这是本页首次读取到的画布内容，不是本次调用时的历史快照，也不表示全部由本次调用生成。重新打开日志页可更新。</p>
-    {status === "loading" ? <p>读取画布提示词…</p> : status === "failed" ? <p role="alert">画布提示词暂时无法读取，调用记录仍可查看。</p> : saved.length ? saved.map(row => <section className="llm-call-history__reading" key={row.key}><h4>{row.title}</h4><ReadableCallValue value={row.value}/></section>) : <p className="llm-call-history__empty-panel">当前画布没有已保存的草稿提示词。</p>}
+    </section>) : <p className="llm-call-history__empty-panel">{t("No prompt fields identified. This call may have asked questions or planned work; check Output and Raw JSON.")}</p>}
+    <h3>{t("Prompts currently saved on the canvas")}</h3>
+    <p className="llm-call-history__muted">{t("This is the canvas when first read by this page, not a historical snapshot of this call. Reopen this page to update it.")}</p>
+    {status === "loading" ? <p>{t("Reading canvas prompts…")}</p> : status === "failed" ? <p role="alert">{t("Canvas prompts could not be read; call records remain available.")}</p> : saved.length ? saved.map(row => <section className="llm-call-history__reading" key={row.key}><h4>{row.title}</h4><ReadableCallValue value={row.value}/></section>) : <p className="llm-call-history__empty-panel">{t("No draft prompts are currently saved on the canvas.")}</p>}
   </>;
 }

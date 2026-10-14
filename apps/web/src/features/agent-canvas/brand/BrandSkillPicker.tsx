@@ -1,3 +1,4 @@
+import { useUiLocale } from "../../../i18n/locale";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
@@ -21,7 +22,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   onUpdated: (panel: BrandDecisionPanelV1) => void;
   onConversationRefresh: () => Promise<void> | void;
 }) {
-  const zh = responseLocale.startsWith("zh");
+  const zh = useUiLocale(responseLocale).startsWith("zh");
   const [panel, setPanel] = useState(decisions);
   const [catalog, setCatalog] = useState<BrandCreativeMethod[] | null>(null);
   const [methods, setMethods] = useState(() => selectionFrom(decisions).methods);

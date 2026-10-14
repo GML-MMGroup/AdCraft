@@ -71,6 +71,7 @@ import {
 import { structuredMessageTurnId } from "./failedTurnPresentation.ts";
 import { useBrandCardRecovery } from "./useBrandCardRecovery";
 import type { BrandDecisionPanelV1, BrandStageV2 } from "../brand/brandDecisions.ts";
+import { localeChangedEventName, useLocale } from "../../../i18n/locale.tsx";
 
 type SubmitDraft = {
   text: string;
@@ -256,6 +257,7 @@ export function useAgentCanvasChat({
   onBrandDecisionsRefresh?: () => Promise<BrandStageV2 | null> | BrandStageV2 | null;
   onBrandDecisionsUpdated?: (panel: BrandDecisionPanelV1) => void;
 }) {
+  const { locale, setLocale } = useLocale();
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
   const [guidedAnswerBubbles, setGuidedAnswerBubbles] = useState<GuidedAnswerBubbleV1[]>([]);
@@ -756,6 +758,23 @@ export function useAgentCanvasChat({
       await refreshConversation();
     }
   }, [runRefresh]);
+
+  useEffect(() => {
+    if (!workflowId) return;
+    const onLocaleChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ workflowId?: string; session?: GuidedSessionStateV2 }>).detail;
+      if (detail?.workflowId !== workflowId) return;
+      if (detail.session) setGuidanceSession(current => mergeGuidedSessionState(current, detail.session!));
+      void refresh();
+    };
+    window.addEventListener(localeChangedEventName, onLocaleChanged);
+    return () => window.removeEventListener(localeChangedEventName, onLocaleChanged);
+  }, [refresh, workflowId]);
+
+  useEffect(() => {
+    const persisted = guidanceSession?.response_locale;
+    if (persisted === "zh-CN" || persisted === "en-US") setLocale(persisted);
+  }, [guidanceSession?.response_locale, setLocale]);
 
   const scheduleChatRevisionRefresh = useCallback(() => {
     if (chatRevisionRefreshTimerRef.current !== null) return;
@@ -1356,6 +1375,7 @@ export function useAgentCanvasChat({
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
         video_skill_run_id: videoSkillRunId,
+        response_locale: locale,
       }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
@@ -1407,7 +1427,7 @@ export function useAgentCanvasChat({
         setSending(false);
       }
     }
-  }, [activeVideoSkillRunId, trackAcceptedTurn, workflowId]);
+  }, [activeVideoSkillRunId, locale, trackAcceptedTurn, workflowId]);
 
   const selectProposal = useCallback(async (
     proposal: Pick<ConceptProposalV2, "proposal_id" | "availability">,

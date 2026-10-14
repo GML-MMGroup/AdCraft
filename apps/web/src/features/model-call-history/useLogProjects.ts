@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { agentModelCallHistoryApi } from "../../api/agentModelCallHistoryApi";
 import type { ProjectV2Status, ProjectV2Summary } from "../../types-v2";
 import { READ_INTERVAL_MS } from "./useCallHistory";
+import { useTranslation } from "../../i18n/useTranslation";
 
 /** Metadata only, page-scoped. The owning directory is keyed by project status. */
 export function useLogProjects(status: ProjectV2Status) {
+  const t = useTranslation();
   const [items, setItems] = useState<ProjectV2Summary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,7 @@ export function useLogProjects(status: ProjectV2Status) {
       ].map(project => [project.project_id, project])).values()]);
       setNextCursor(page.next_cursor === cursor ? null : page.next_cursor);
     } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "项目目录读取失败，请重试。");
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : t("Project directory could not be read. Retry."));
     } finally {
       if (request.current === controller) request.current = null;
       if (!controller.signal.aborted) setLoading(false);

@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useModeLaunch } from "../features/mode-selection/ModeLaunchContext";
 import { useApp } from "../AppContextValue";
 import { ModeChoicePanel, type ModeId } from "../features/mode-selection/ModeChoicePanel";
+import { useLocale, localeText } from "../i18n/locale.tsx";
 import "./mode-selection.css";
 
 
 export function ModeSelectionPage() {
   const { startNewProject } = useApp();
   const launch = useModeLaunch();
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh.mode : localeText.en.mode;
   const [selectedMode, setSelectedMode] = useState<ModeId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -32,13 +35,13 @@ export function ModeSelectionPage() {
       if (!mounted.current) return;
       pending.current = false;
       setSelectedMode(null);
-      setError("Unable to create your project. Please choose a mode to try again.");
+      setError(labels.error);
     }
   }
 
   const statusLabel = selectedMode
-    ? `Opening ${selectedMode === "creation" ? "personal creation" : "brand professional"}…`
-    : "Choose your creation mode";
+    ? (selectedMode === "creation" ? labels.openingPersonal : labels.openingBrand)
+    : labels.status;
 
   return (
     <main
@@ -52,22 +55,22 @@ export function ModeSelectionPage() {
         <span className="mode-selection-header__status" role="status"><i aria-hidden="true" /> {statusLabel}</span>
       </header>
 
-      <section className="mode-choice-stage" aria-label="Choose a creation mode">
+      <section className="mode-choice-stage" aria-label={labels.stageLabel}>
         <div className="stage-surface" aria-hidden="true" />
         <div className="mode-choice-assembly">
           <ModeChoicePanel
             id="creation"
-            eyebrow="Individual practice"
-            title="Personal Creation"
-            description="Start with your own point of view and turn a first idea into a moving frame."
+            eyebrow={labels.personalEyebrow}
+            title={labels.personalTitle}
+            description={labels.personalDescription}
             onChoose={chooseMode}
             paused={selectedMode !== null}
           />
           <ModeChoicePanel
             id="brand"
-            eyebrow="Brand system"
-            title="Brand Professional"
-            description="Build inside a living identity with a guided system for every campaign decision."
+            eyebrow={labels.brandEyebrow}
+            title={labels.brandTitle}
+            description={labels.brandDescription}
             onChoose={chooseMode}
             paused={selectedMode !== null}
           />

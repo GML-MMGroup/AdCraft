@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n/useTranslation";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -31,6 +32,7 @@ export function ModelDefaultsPanel({
   notice: ApiSpaceNotice;
   onSave: (changes: ModelDefaultsPatchRequestV1) => Promise<void>;
 }) {
+  const t = useTranslation();
   const [modelDraft, setModelDraft] = useState(defaults.defaults);
   const [modeDraft, setModeDraft] = useState(defaults.modes ?? {});
   const [thinkingModeDraft, setThinkingModeDraft] = useState(defaults.thinking_modes ?? {});
@@ -96,13 +98,13 @@ export function ModelDefaultsPanel({
     <section className="api-space-provider-surface api-space-defaults" aria-labelledby="model-defaults-title">
       <header className="api-space-provider-header">
         <div>
-          <span className="api-space-eyebrow">Installation defaults</span>
-          <h2 id="model-defaults-title">Default models</h2>
+          <span className="api-space-eyebrow">{t("Installation defaults")}</span>
+          <h2 id="model-defaults-title">{t("Default models")}</h2>
         </div>
-        <span className="api-space-local-badge">Applies to new runs</span>
+        <span className="api-space-local-badge">{t("Applies to new runs")}</span>
       </header>
       <p className="api-space-intro">
-        Choose the backend-approved model used when a node follows its default selection. Explicit node choices stay pinned.
+        {t("Choose the backend-approved model used when a node follows its default selection. Explicit node choices stay pinned.")}
       </p>
       <div className="api-space-default-grid">
         {MODEL_DEFAULT_PURPOSES.map((purpose) => {
@@ -118,16 +120,16 @@ export function ModelDefaultsPanel({
             && !options.some((model) => model.model_ref === visibleSelected);
           return (
             <div className="api-space-default-field" key={purpose}>
-              <label htmlFor={`default-model-${purpose}`}>{defaultLabel(purpose)}</label>
+              <label htmlFor={`default-model-${purpose}`}>{t(defaultLabel(purpose))}</label>
               <select
                 id={`default-model-${purpose}`}
-                aria-label={`${defaultLabel(purpose)} default model`}
+                aria-label={t("{purpose} default model", { purpose: t(defaultLabel(purpose)) })}
                 value={visibleSelected}
                 disabled={disabled}
                 onChange={(event) => updateModel(purpose, event.currentTarget.value)}
               >
-                <option value="">No default selected</option>
-                {selectedMissing ? <option value={visibleSelected}>{visibleSelected} (unavailable)</option> : null}
+                <option value="">{t("No default selected")}</option>
+                {selectedMissing ? <option value={visibleSelected}>{visibleSelected} ({t("unavailable")})</option> : null}
                 {options.map((model) => (
                   <option key={model.model_ref} value={model.model_ref}>
                     {model.display_name} · {model.provider_id}
@@ -136,7 +138,7 @@ export function ModelDefaultsPanel({
               </select>
               {purpose === "audio" ? (
                 <div className="api-space-routing-mode">
-                  <span id="audio-routing-mode-label">Audio routing mode</span>
+                  <span id="audio-routing-mode-label">{t("Audio routing mode")}</span>
                   <div aria-labelledby="audio-routing-mode-label" className="api-space-routing-toggle" role="radiogroup">
                     {(["automatic", "explicit"] as const).map((mode) => (
                       <button
@@ -148,7 +150,7 @@ export function ModelDefaultsPanel({
                         role="radio"
                         type="button"
                       >
-                        {mode === "automatic" ? "Automatic" : "Explicit"}
+                        {t(mode === "automatic" ? "Automatic" : "Explicit")}
                       </button>
                     ))}
                   </div>
@@ -169,7 +171,7 @@ export function ModelDefaultsPanel({
       </div>
       <footer className="api-space-save-bar">
         <button className="send-btn" type="button" disabled={!hasChanges || disabled} onClick={() => void onSave(changes)}>
-          {pending ? "Saving defaults..." : "Save default models"}
+          {t(pending ? "Saving defaults..." : "Save default models")}
         </button>
         {notice ? <span className={`api-space-inline-notice is-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.message}</span> : null}
       </footer>
@@ -190,6 +192,7 @@ function ThinkingModeControl({
   disabled: boolean;
   onChange: (purpose: ModelDefaultPurpose, mode: ModelThinkingModeV1) => void;
 }) {
+  const t = useTranslation();
   const supported = model?.capability_metadata?.supported_thinking_modes;
   if (
     !Array.isArray(supported)
@@ -200,7 +203,7 @@ function ThinkingModeControl({
   }
   return (
     <div className="api-space-routing-mode">
-      <span id={`${purpose}-thinking-mode-label`}>Thinking mode</span>
+      <span id={`${purpose}-thinking-mode-label`}>{t("Thinking mode")}</span>
       <div
         aria-labelledby={`${purpose}-thinking-mode-label`}
         className="api-space-routing-toggle"
@@ -216,7 +219,7 @@ function ThinkingModeControl({
             role="radio"
             type="button"
           >
-            {mode === "enabled" ? "Thinking" : "Non-thinking"}
+            {t(mode === "enabled" ? "Thinking" : "Non-thinking")}
           </button>
         ))}
       </div>
@@ -224,6 +227,6 @@ function ThinkingModeControl({
   );
 }
 
-function defaultLabel(purpose: ModelDefaultPurpose): string {
-  return purpose.charAt(0).toUpperCase() + purpose.slice(1);
+function defaultLabel(purpose: ModelDefaultPurpose): "Agent" | "Text" | "Image" | "Video" | "Audio" {
+  return ({ agent: "Agent", text: "Text", image: "Image", video: "Video", audio: "Audio" } as const)[purpose];
 }

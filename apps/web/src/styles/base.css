@@ -331,6 +331,45 @@ a {
   gap: 9px;
 }
 
+.language-switcher-control { position: relative; }
+.language-switcher-error {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 8px;
+  background: #171719;
+  color: #f0f0f0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.language-switcher {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 180ms ease, transform 180ms ease, opacity 180ms ease;
+}
+
+.language-switcher:hover:not(:disabled),
+.language-switcher:focus-visible:not(:disabled) {
+  background: rgba(255, 255, 255, 0.72);
+  transform: translateY(-1px);
+}
+
+.language-switcher:disabled { cursor: wait; opacity: 0.58; }
+
 .ghost-btn,
 .icon-btn,
 .avatar-btn,

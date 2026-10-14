@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n/useTranslation";
 import { useId, useMemo, useState } from "react";
 
 import type {
@@ -41,6 +42,7 @@ export function BrandFormInteraction({
   onAnswersChange,
   onSubmit,
 }: BrandFormInteractionProps) {
+  const t = useTranslation("en-US");
   const content = interaction.content.content_kind === "brand_form" ? interaction.content : null;
   const [internalAnswers, setInternalAnswers] = useState<BrandFormAnswers>({});
   const answers = controlledAnswers ?? internalAnswers;
@@ -113,15 +115,15 @@ export function BrandFormInteraction({
       context={content.instructions}
       pending={pending || submitted || disabled}
       issue={issue}
-      footerSummary={`${answeredCount} of ${content.rows.length} answered`}
-      submitLabel="确认整张表"
+      footerSummary={t("{count} of {total} answered", { count: answeredCount, total: content.rows.length })}
+      submitLabel={t("Confirm entire form")}
       submitDisabled={!canSubmit}
       onSubmit={() => void submit()}
     >
       <div className="agent-chat__brand-form" data-testid="brand-form">
         <div className="agent-chat__brand-form-intro">
-          <span>{content.stage === "brand-memory" ? "Brand Memory" : "Campaign"}</span>
-          <small>为每一行选择一个方向；需要自定义时，请先选中自定义。</small>
+          <span>{t(content.stage === "brand-memory" ? "Brand Memory" : "Campaign")}</span>
+          <small>{t("Choose one direction per row. Select Custom before entering your own answer.")}</small>
         </div>
         <div className="agent-chat__brand-form-table" role="table" aria-label={content.title ?? interaction.title}>
           {content.rows.map((row, rowIndex) => {
@@ -133,7 +135,7 @@ export function BrandFormInteraction({
                 <div className="agent-chat__brand-form-prompt" role="rowheader">
                   <span className="agent-chat__brand-form-row-number">{String(rowIndex + 1).padStart(2, "0")}</span>
                   <strong>{row.prompt}</strong>
-                  {row.required ? <em>必填</em> : null}
+                  {row.required ? <em>{t("Required")}</em> : null}
                 </div>
                 <div className="agent-chat__brand-form-options" role="radiogroup" aria-label={row.prompt}>
                   {row.options.filter((option) => option.option_id !== row.custom_option_id).map((option) => {
@@ -172,20 +174,20 @@ export function BrandFormInteraction({
                     />
                     <span className="agent-chat__brand-form-option-mark" aria-hidden="true">✓</span>
                     <span className="agent-chat__brand-form-option-copy">
-                      <strong>自定义</strong>
-                      <small>写下你希望保留的方向。</small>
+                      <strong>{t("Custom")}</strong>
+                      <small>{t("Describe the direction you want to keep.")}</small>
                     </span>
                   </label>
                 </div>
                 <label className="agent-chat__brand-form-custom-input">
-                  <span>自定义内容</span>
+                  <span>{t("Custom content")}</span>
                   <input
-                    aria-label={`自定义内容：${row.prompt}`}
+                    aria-label={t("Custom content: {prompt}", { prompt: row.prompt })}
                     aria-describedby={rowIssue ? errorId : undefined}
                     aria-invalid={rowIssue ? "true" : undefined}
                     type="text"
                     value={answer?.customText ?? ""}
-                    placeholder="仅在选择自定义后提交"
+                    placeholder={t("Submitted only when Custom is selected")}
                     disabled={pending || submitted || disabled || answer?.selectedOptionId !== row.custom_option_id}
                     onChange={(event) => updateCustomText(row.question_id, event.target.value)}
                   />
@@ -195,7 +197,7 @@ export function BrandFormInteraction({
             );
           })}
         </div>
-        {submitted ? <p className="agent-chat__brand-form-status" role="status">已确认，正在准备下一阶段。</p> : null}
+        {submitted ? <p className="agent-chat__brand-form-status" role="status">{t("Confirmed. Preparing the next stage.")}</p> : null}
       </div>
     </DecisionDockFrame>
   );
