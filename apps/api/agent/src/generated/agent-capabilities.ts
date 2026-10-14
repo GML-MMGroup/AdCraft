@@ -12,6 +12,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
         "bgm_prompt",
         "brand_hypothesis",
         "brand_skill_recommendation",
+        "brand_slot_form",
         "brand_slot_question",
         "brand_treatment_review",
         "brand_treatment_step",

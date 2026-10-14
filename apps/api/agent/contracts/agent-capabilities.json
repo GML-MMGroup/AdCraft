@@ -58,6 +58,7 @@
         "revise_character_asset",
         "revise_scene_asset",
         "brand_slot_question",
+        "brand_slot_form",
         "brand_hypothesis",
         "brand_skill_recommendation",
         "brand_treatment_step",

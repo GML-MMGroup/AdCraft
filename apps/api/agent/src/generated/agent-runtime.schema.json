@@ -7685,20 +7685,6 @@
           "title": "Options",
           "type": "array"
         },
-        "prefill_value": {
-          "anyOf": [
-            {
-              "maxLength": 2048,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Prefill Value"
-        },
         "prompt": {
           "maxLength": 400,
           "minLength": 1,
@@ -7877,34 +7863,6 @@
           "minItems": 3,
           "title": "Options",
           "type": "array"
-        },
-        "prefill_source_quote": {
-          "anyOf": [
-            {
-              "maxLength": 2048,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Prefill Source Quote"
-        },
-        "prefill_value": {
-          "anyOf": [
-            {
-              "maxLength": 2048,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Prefill Value"
         },
         "question": {
           "maxLength": 400,
@@ -13234,7 +13192,7 @@
         },
         "production_readiness": {
           "default": "not_ready",
-          "description": "Whether a fresh guided request is authorized now and names a coarse promoted product, service, or brand; other brief facts are collected by forms. Use not_ready for discussion, future intent, or a missing subject.",
+          "description": "Whether a fresh guided advertising request has enough structured product or service context and an audience or advertising objective to begin production. Use not_ready for a bare advertising mention or a clarification request.",
           "enum": [
             "not_ready",
             "ready"
@@ -39492,6 +39450,18 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "brand_slot_question",
+      "result_contract_name": "BrandStrategyOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_brand_strategy",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_slot_form",
       "result_contract_name": "BrandStrategyOutputV1",
       "style_projection_role": null,
       "validation_profile": null

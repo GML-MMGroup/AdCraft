@@ -252,6 +252,12 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
         internal_skill_id="brand_agent_brand_strategy",
     ),
     _definition(
+        "brand_slot_form",
+        "AgentRunContext",
+        "BrandStrategyOutputV1",
+        internal_skill_id="brand_agent_brand_strategy",
+    ),
+    _definition(
         "brand_hypothesis",
         "AgentRunContext",
         "CreativeStrategyOutputV1",
