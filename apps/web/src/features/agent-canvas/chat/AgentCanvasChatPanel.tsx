@@ -1038,18 +1038,6 @@ export function AgentCanvasChatPanel({
         onRefresh={() => { setSelectedConceptOptionId(null); setDraft(""); void chat.actions.refreshBrandCard(); }}
       /> : null}
 
-      {chat.state.brandNextQuestionIssue ? (
-        <div className="agent-chat__brand-form-next-issue" role="alert">
-          <span>{chat.state.brandNextQuestionIssue}</span>
-          <button
-            type="button"
-            disabled={chat.state.agentWorking}
-            onClick={() => { void chat.actions.retryBrandNextQuestion(); }}
-          >
-            {t("Retry loading")}</button>
-        </div>
-      ) : null}
-
       {chat.state.composerRecovery ? (
         <ConversationRecoverySurface
           recovery={chat.state.composerRecovery}
