@@ -2147,7 +2147,7 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__current-interaction--overlay {
   position: relative;
   z-index: 1;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   max-height: min(50vh, 480px);
   padding: 10px 12px 0;
   background: var(--agent-chat-panel);

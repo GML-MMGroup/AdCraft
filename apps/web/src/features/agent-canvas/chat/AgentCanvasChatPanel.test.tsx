@@ -1857,7 +1857,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(currentInteractionRule).toContain("display: flex");
     expect(css).toMatch(/\.agent-chat__timeline-shell\s*\{[\s\S]*display: flex;[\s\S]*flex-direction: column;/m);
     expect(css).toMatch(/\.agent-chat__timeline\s*\{[\s\S]*flex: 1 1 auto;/m);
-    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*\{[\s\S]*position: relative;[\s\S]*flex: 0 1 auto;/m);
+    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*\{[\s\S]*position: relative;[\s\S]*flex: 0 0 auto;/m);
     const dockRule = css.match(/\.agent-chat__current-interaction--overlay\s*\{([\s\S]*?)\n\}/m)?.[1] ?? "";
     expect(dockRule).not.toContain("position: absolute");
     expect(dockRule).not.toContain("pointer-events");
