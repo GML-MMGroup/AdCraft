@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n/useTranslation";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { ChevronDownIcon, ChevronRightIcon } from "../../../icons.tsx";
@@ -28,6 +29,10 @@ export function DecisionDockFrame({
   showSubmitBar = true,
   children,
 }: DecisionDockFrameProps) {
+  // Keep the standalone dock usable in isolation (including its component
+  // tests); the application-level LocaleProvider still overrides this
+  // fallback when the dock is rendered inside the product.
+  const t = useTranslation("en-US");
   const issueRef = useRef<HTMLDivElement>(null);
   const actionLocked = pending || submitDisabled;
 
@@ -52,7 +57,7 @@ export function DecisionDockFrame({
           <strong>{issue.summary}</strong>
           {issue.detail ? (
             <details>
-              <summary>Technical details</summary>
+              <summary>{t("Technical details")}</summary>
               <code>{issue.detail}</code>
             </details>
           ) : null}
@@ -69,7 +74,7 @@ export function DecisionDockFrame({
               if (!actionLocked) onSubmit?.();
             }}
           >
-            {pending ? "Submitting" : submitLabel}
+            {pending ? t("Submitting") : submitLabel === "Submit" ? t("Submit") : submitLabel}
           </button>
         </footer>
       ) : null}

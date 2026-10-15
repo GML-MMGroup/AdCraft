@@ -27,6 +27,7 @@ import {
 import { useAgentCanvasAssets } from "./useAgentCanvasAssets.ts";
 import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import "./AgentAssetBrowser.css";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export type {
   AgentAssetReferenceSelection,
@@ -98,11 +99,11 @@ function AssetPreview({ item }: { item: AgentAssetBrowserItem }) {
   );
 }
 
-function emptyLabel(scope: AgentAssetScope, hasQuery: boolean): string {
-  if (hasQuery) return "No matching assets";
-  if (scope === "project") return "No project assets yet";
-  if (scope === "my") return "No saved images";
-  return "No recommended images";
+function emptyLabel(scope: AgentAssetScope, hasQuery: boolean, t: ReturnType<typeof useTranslation>): string {
+  if (hasQuery) return t("No matching assets");
+  if (scope === "project") return t("No project assets yet");
+  if (scope === "my") return t("No saved images");
+  return t("No recommended images");
 }
 
 export function AgentAssetBrowser({
@@ -115,6 +116,7 @@ export function AgentAssetBrowser({
   onUploadComplete,
   onClose,
 }: AgentAssetBrowserProps) {
+  const t = useTranslation("en-US");
   const [scope, setScope] = useState<AgentAssetScope>("project");
   const [mediaType, setMediaType] = useState<AgentAssetMediaFilter>("all");
   const [search, setSearch] = useState("");
@@ -177,7 +179,7 @@ export function AgentAssetBrowser({
       setActionError(
         referenceError instanceof Error
           ? referenceError.message
-          : "Unable to add references.",
+          : t("Unable to add references."),
       );
     } finally {
       setAddingReferences(false);
@@ -195,7 +197,7 @@ export function AgentAssetBrowser({
       setActionError(
         sourceError instanceof Error
           ? sourceError.message
-          : "Unable to create a source node.",
+          : t("Unable to create a source node."),
       );
     } finally {
       setPendingSourceIds((current) => {
@@ -222,24 +224,24 @@ export function AgentAssetBrowser({
   };
 
   return (
-    <section className="agent-asset-browser" aria-label="Agent Canvas assets">
+    <section className="agent-asset-browser" aria-label={t("Agent Canvas assets")}>
       <header className="agent-asset-browser__header">
         {onClose ? (
-          <button type="button" className="agent-asset-browser__close" aria-label="Close assets" title="Close assets" onClick={onClose}>
+          <button type="button" className="agent-asset-browser__close" aria-label={t("Close assets")} title={t("Close assets")} onClick={onClose}>
             <span aria-hidden="true">×</span>
           </button>
         ) : null}
         <div className="agent-asset-browser__title">
           <AssetsIcon aria-hidden="true" />
           <div>
-            <h2>Assets</h2>
-            <p>Attach references or place ready media on the canvas.</p>
+            <h2>{t("Assets")}</h2>
+            <p>{t("Attach references or place ready media on the canvas.")}</p>
           </div>
         </div>
       </header>
 
       <div className="agent-asset-browser__controls">
-        <div className="agent-asset-browser__tabs" role="tablist" aria-label="Asset source">
+        <div className="agent-asset-browser__tabs" role="tablist" aria-label={t("Asset source")}>
           {SCOPES.map((option) => (
             <button
               key={option.value}
@@ -249,7 +251,7 @@ export function AgentAssetBrowser({
               className={scope === option.value ? "is-active" : ""}
               onClick={() => selectScope(option.value)}
             >
-              {option.label}
+              {t(option.label as "Project Assets" | "My Assets" | "Recommended")}
             </button>
           ))}
         </div>
@@ -257,13 +259,13 @@ export function AgentAssetBrowser({
           className="agent-asset-browser__search"
           type="search"
           value={search}
-          aria-label="Search assets"
-          placeholder="Search assets"
+          aria-label={t("Search assets")}
+          placeholder={t("Search assets")}
           onChange={(event) => setSearch(event.currentTarget.value)}
         />
       </div>
 
-      <div className="agent-asset-browser__filters" aria-label="Media type filters">
+      <div className="agent-asset-browser__filters" aria-label={t("Media type filters")}>
         {scope === "project" ? MEDIA_FILTERS.map((filter) => (
           <button
             key={filter.value}
@@ -272,12 +274,12 @@ export function AgentAssetBrowser({
             aria-pressed={mediaType === filter.value}
             onClick={() => setMediaType(filter.value)}
           >
-            {filter.label}
+            {t(filter.label as "All media" | "Images" | "Videos" | "Audio")}
           </button>
         )) : (
           <span className="agent-asset-browser__image-only">
             <ImageIcon aria-hidden="true" />
-            Images only
+            {t("Images only")}
           </span>
         )}
       </div>
@@ -289,23 +291,23 @@ export function AgentAssetBrowser({
         {loading ? (
           <div className="agent-asset-browser__state" role="status">
             <span className="agent-asset-browser__spinner" aria-hidden="true" />
-            Loading assets
+            {t("Loading assets")}
           </div>
         ) : error ? (
           <div className="agent-asset-browser__state agent-asset-browser__state--error" role="alert">
             <p>{error}</p>
-            <button type="button" aria-label="Retry loading assets" onClick={() => void retry()}>
-              Retry
+            <button type="button" aria-label={t("Retry loading assets")} onClick={() => void retry()}>
+              {t("Retry")}
             </button>
           </div>
         ) : items.length === 0 ? (
           <div className="agent-asset-browser__state">
             <AssetTypeIcon mediaType={scope === "project" && mediaType !== "all" ? mediaType : "image"} />
-            <p>{emptyLabel(scope, Boolean(search.trim()))}</p>
+            <p>{emptyLabel(scope, Boolean(search.trim()), t)}</p>
             {scope === "project" && !search.trim() ? (
               <button type="button" onClick={() => fileInputRef.current?.click()}>
                 <UploadIcon aria-hidden="true" />
-                Upload media
+                {t("Upload media")}
               </button>
             ) : null}
           </div>
@@ -332,7 +334,7 @@ export function AgentAssetBrowser({
                           type="checkbox"
                           checked={selected}
                           disabled={item.status !== "ready"}
-                          aria-label={`Select ${item.displayName}`}
+                          aria-label={t("Select {name}", { name: item.displayName })}
                           onChange={() => toggleReference(item)}
                         />
                         <span aria-hidden="true" />
@@ -341,18 +343,18 @@ export function AgentAssetBrowser({
                   </div>
                   <div className="agent-asset-card__meta">
                     <strong title={item.displayName}>{item.displayName}</strong>
-                    <span>{item.status === "ready" ? item.mediaType : "Unavailable"}</span>
+                    <span>{item.status === "ready" ? item.mediaType : t("Unavailable")}</span>
                   </div>
                   {sourceSelection ? (
                     <button
                       type="button"
                       className="agent-asset-card__source-action"
                       disabled={item.status !== "ready" || pendingSourceIds.has(item.id)}
-                      aria-label={`Create Ready ${item.mediaType} node from ${item.displayName}`}
+                      aria-label={t("Create Ready {type} node from {name}", { type: item.mediaType, name: item.displayName })}
                       onClick={() => void createSourceNode(item)}
                     >
                       <PlusIcon aria-hidden="true" />
-                      {pendingSourceIds.has(item.id) ? "Adding" : `Add ${item.mediaType} node`}
+                      {pendingSourceIds.has(item.id) ? t("Adding") : t("Add {type} node", { type: item.mediaType })}
                     </button>
                   ) : null}
                 </article>
@@ -365,19 +367,21 @@ export function AgentAssetBrowser({
       <footer className="agent-asset-browser__footer">
         <span>
           {selectedReferences.length
-            ? `${selectedReferences.length} image${selectedReferences.length === 1 ? "" : "s"} selected`
-            : "Select compatible images to attach"}
+            ? (selectedReferences.length === 1
+              ? t("1 image selected")
+              : t("{count} images selected", { count: selectedReferences.length }))
+            : t("Select compatible images to attach")}
         </span>
         {scope === "project" ? (
           <label className={`agent-asset-browser__upload${uploading ? " is-busy" : ""}`}>
             <UploadIcon aria-hidden="true" />
-            <span>{uploading ? "Uploading" : "Upload"}</span>
+            <span>{uploading ? t("Uploading") : t("Upload")}</span>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*,video/*,audio/*"
               multiple
-              aria-label="Upload project media"
+              aria-label={t("Upload project media")}
               disabled={uploading}
               onChange={handleUpload}
             />
@@ -391,8 +395,10 @@ export function AgentAssetBrowser({
         >
           <PlusIcon aria-hidden="true" />
           {addingReferences
-            ? "Adding references"
-            : `Add ${selectedReferences.length || ""} reference${selectedReferences.length === 1 ? "" : "s"}`}
+            ? t("Adding references")
+            : selectedReferences.length === 1
+              ? t("Add 1 reference")
+              : t("Add {count} references", { count: selectedReferences.length })}
         </button>
       </footer>
     </section>

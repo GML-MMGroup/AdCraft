@@ -11,6 +11,7 @@ import {
   nodeActionableFailure,
 } from "../chat/actionableFailure.ts";
 import type { RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export function TextWorkbench({
   node,
@@ -33,6 +34,7 @@ export function TextWorkbench({
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
   preparingPrompt?: boolean;
 }) {
+  const t = useTranslation("en-US");
   const isWorldSetting = node.creative_role === "world_setting";
   const canRun = !isWorldSetting && (node.status === "draft" || node.status === "failed");
   const retryingExecution = node.status === "failed" && canRetryNodeExecution(node);
@@ -43,13 +45,13 @@ export function TextWorkbench({
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
         <FourLinePromptEditor
-          ariaLabel={isWorldSetting ? "World Setting content" : canRun ? "Text prompt" : "Text content"}
+          ariaLabel={isWorldSetting ? t("World Setting content") : canRun ? t("Text prompt") : t("Text content")}
           value={isWorldSetting || !canRun ? draft.textContent : draft.prompt}
           preparing={canRun && preparingPrompt}
           disabled={draft.pending}
           placeholder={isWorldSetting
-            ? "Describe the world, its rules, place, era, and visual continuity."
-            : canRun ? "Describe the text you want to create." : "Write the brief, direction, or notes for the next node."}
+            ? t("Describe the world, its rules, place, era, and visual continuity.")
+            : canRun ? t("Describe the text you want to create.") : t("Write the brief, direction, or notes for the next node.")}
           onChange={(event) => {
             if (isWorldSetting || !canRun) draft.setTextContent(event.currentTarget.value);
             else draft.setPrompt(event.currentTarget.value);
@@ -66,7 +68,7 @@ export function TextWorkbench({
       <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer agent-node-workbench__footer--text">
         <div className="agent-node-workbench__composer-actions">
           {!isWorldSetting ? (
-            <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label="Text generation options">
+            <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label={t("Text generation options")}>
               <CanvasModelPicker
                 appearance="monochrome"
                 showOptionDetails={false}
@@ -88,11 +90,11 @@ export function TextWorkbench({
             type="button"
             className="agent-node-workbench__run"
             aria-label={isWorldSetting
-              ? "Save World Setting changes"
-              : !canRun ? "Save text changes" : retryingExecution ? "Retry text node" : regenerating ? "Regenerate text node" : "Run text node"}
+              ? t("Save World Setting changes")
+              : !canRun ? t("Save text changes") : retryingExecution ? t("Retry text node") : regenerating ? t("Regenerate text node") : t("Run text node")}
             title={!canRun
-              ? "Save changes"
-              : retryingExecution ? "Retry text" : regenerating ? "Regenerate text" : "Run text"}
+              ? t("Save changes")
+              : retryingExecution ? t("Retry text") : regenerating ? t("Regenerate text") : t("Run text")}
             disabled={draft.pending || (canRun && !draft.prompt.trim())}
             onClick={() => void (isWorldSetting || !canRun ? draft.save() : draft.run())}
           >

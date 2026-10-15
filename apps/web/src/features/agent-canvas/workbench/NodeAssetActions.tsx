@@ -1,4 +1,5 @@
 import { AssetsIcon, UploadIcon } from "../../../icons.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export function NodeAssetActions({
   disabled = false,
@@ -11,13 +12,14 @@ export function NodeAssetActions({
   onUpload: () => void;
   onOpenAssets: () => void;
 }) {
+  const t = useTranslation("en-US");
   return (
-    <div className="agent-node-workbench__asset-actions" aria-label="Reference actions">
+    <div className="agent-node-workbench__asset-actions" aria-label={t("Reference actions")}>
       {showUpload ? (
         <button
           type="button"
-          aria-label="Upload image reference"
-          title="Upload reference"
+          aria-label={t("Upload image reference")}
+          title={t("Upload reference")}
           disabled={disabled}
           onClick={onUpload}
         >
@@ -26,8 +28,8 @@ export function NodeAssetActions({
       ) : null}
       <button
         type="button"
-        aria-label="Choose asset references"
-        title="Choose from Assets"
+        aria-label={t("Choose asset references")}
+        title={t("Choose from Assets")}
         disabled={disabled}
         onClick={onOpenAssets}
       >

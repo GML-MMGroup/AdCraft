@@ -9,6 +9,7 @@ import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCa
 import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
 import type { V2AssetLibraryCategory } from "../types-v2.ts";
 import "./assets.css";
+import { useLocale, localeText } from "../i18n/locale.tsx";
 
 type AssetPageScope = "my" | "recommended";
 
@@ -23,6 +24,8 @@ const ASSET_CATEGORIES: Array<{ id: V2AssetLibraryCategory; label: string }> = [
 ];
 
 export function AssetsPage() {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh.assetsPage : localeText.en.assetsPage;
   const [scope, setScope] = useState<AssetPageScope>("my");
   const [category, setCategory] = useState<V2AssetLibraryCategory>("characters");
   const [search, setSearch] = useState("");
@@ -90,19 +93,19 @@ export function AssetsPage() {
 
   return (
     <section ref={assetLibraryRef} className="v2-asset-library-page">
-      <PageHeader title="Assets" editorial />
+      <PageHeader title={labels.title} editorial />
       <CatalogToolbar className="asset-catalog-toolbar">
-        <div className="v2-asset-library-tabs toolbar-row" role="tablist" aria-label="Asset library scope">
-          <CatalogFilterButton active={scope === "my"} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>My Assets</CatalogFilterButton>
-          <CatalogFilterButton active={scope === "recommended"} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>Recommended Assets</CatalogFilterButton>
+        <div className="v2-asset-library-tabs toolbar-row" role="tablist" aria-label={labels.scope}>
+          <CatalogFilterButton active={scope === "my"} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>{labels.my}</CatalogFilterButton>
+          <CatalogFilterButton active={scope === "recommended"} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>{labels.recommended}</CatalogFilterButton>
         </div>
         <div className="catalog-toolbar-actions">
-          <CatalogSearch aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
+          <CatalogSearch aria-label={labels.search} value={search} placeholder={labels.search} onChange={(event) => setSearch(event.currentTarget.value)} />
         </div>
       </CatalogToolbar>
-      <div className="v2-asset-library-categories toolbar-row" role="tablist" aria-label="Asset category">
+      <div className="v2-asset-library-categories toolbar-row" role="tablist" aria-label={labels.category}>
         {ASSET_CATEGORIES.map((item) => (
-          <CatalogFilterButton key={item.id} active={category === item.id} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{item.label}</CatalogFilterButton>
+          <CatalogFilterButton key={item.id} active={category === item.id} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{labels.categories[item.id]}</CatalogFilterButton>
         ))}
       </div>
       <div className="v2-asset-library-layout">
@@ -122,8 +125,8 @@ export function AssetsPage() {
           ) : (
             <>
               {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
-              {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
-              {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
+              {library.loading ? <p className="asset-library-status">{labels.loading}</p> : null}
+              {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">{labels.empty}</p> : null}
               {showRecommendedSceneHologram ? (
                 <RecommendedSceneHologram
                   assets={displayedAssets}

@@ -1,3 +1,5 @@
+import { useTranslation } from "../../../i18n/useTranslation";
+import type { UiMessageKey } from "../../../i18n/uiMessages";
 import { BrandDecisionContent } from "./BrandDecisionContent.tsx";
 import { DecisionChevron } from "./DecisionChevron.tsx";
 import { useId, useState } from "react";
@@ -17,7 +19,7 @@ const STAGE_ORDER: BrandStageV2[] = [
   "production",
 ];
 
-const STAGE_LABELS: Record<BrandStageV2, string> = {
+const STAGE_LABELS: Record<BrandStageV2, UiMessageKey> = {
   "brand-memory": "Brand Memory",
   campaign: "Campaign",
   hypothesis: "Hypothesis",
@@ -29,7 +31,7 @@ const STAGE_LABELS: Record<BrandStageV2, string> = {
 
 const STAGE_STATUS_LABELS: Record<
   BrandDecisionPanelV1["journey"]["stage_status"],
-  string
+  UiMessageKey
 > = {
   ready: "Ready",
   working: "Working",
@@ -73,20 +75,21 @@ function BrandDecisionPanelContent({
   onRefresh: () => void;
   onChooseSkills?: () => void;
 }) {
+  const t = useTranslation();
   const [expandedStages, setExpandedStages] = useState<Partial<Record<BrandStageV2, boolean>>>({});
   const currentStageIndex = stageIndex(decisions.journey.stage);
   const panelId = useId();
 
   return (
-    <aside className="brand-decision-panel" aria-label="Brand decision panel">
+    <aside className="brand-decision-panel" aria-label={t("Brand decision panel")}>
       <header className="brand-decision-panel__header">
         <div>
-          <p className="brand-decision-panel__eyebrow">Brand decisions</p>
-          <h2>{decisions.brand_name || "Brand project"}</h2>
+          <p className="brand-decision-panel__eyebrow">{t("Brand decisions")}</p>
+          <h2>{decisions.brand_name || t("Brand project")}</h2>
           <p className="brand-decision-panel__stage">
-            {STAGE_LABELS[decisions.journey.stage]}
+            {t(STAGE_LABELS[decisions.journey.stage])}
             {" · "}
-            {STAGE_STATUS_LABELS[decisions.journey.stage_status]}
+            {t(STAGE_STATUS_LABELS[decisions.journey.stage_status])}
             {decisions.journey.treatment_substep
               ? ` · ${decisions.journey.treatment_substep}`
               : ""}
@@ -98,12 +101,12 @@ function BrandDecisionPanelContent({
           onClick={onRefresh}
           disabled={refreshing}
         >
-          {refreshing ? "Refreshing…" : "Refresh"}
+          {t(refreshing ? "Refreshing…" : "Refresh")}
         </button>
       </header>
       {decisions.treatment_locked ? (
         <p className="brand-decision-panel__locked" role="status">
-          Treatment locked. Decisions are read-only.
+          {t("Treatment locked. Decisions are read-only.")}
         </p>
       ) : null}
       <div className="brand-decision-panel__sections">
@@ -135,27 +138,27 @@ function BrandDecisionPanelContent({
                 <span className="brand-decision-panel__section-index" aria-hidden="true">
                   {String(stageIndex(stage) + 1).padStart(2, "0")}
                 </span>
-                <span className="brand-decision-panel__section-title">{STAGE_LABELS[stage]}</span>
-                {isCurrent ? <span className="brand-decision-panel__tag">Now</span> : null}
-                {!isCurrent && isCompleted ? <span className="brand-decision-panel__tag is-muted">Done</span> : null}
+                <span className="brand-decision-panel__section-title">{t(STAGE_LABELS[stage])}</span>
+                {isCurrent ? <span className="brand-decision-panel__tag">{t("Now")}</span> : null}
+                {!isCurrent && isCompleted ? <span className="brand-decision-panel__tag is-muted">{t("Done")}</span> : null}
                 <DecisionChevron />
               </button>
               {!expanded && preview.length > 0 ? (
-                <div className="brand-decision-panel__section-preview" aria-label={`${STAGE_LABELS[stage]} summary`}>
+                <div className="brand-decision-panel__section-preview" aria-label={t("{stage} summary", { stage: t(STAGE_LABELS[stage]) })}>
                   {preview.slice(0, 2).map((value, index) => <span key={index}>{value}</span>)}
-                  {preview.length > 2 ? <small>+{preview.length - 2} more</small> : null}
+                  {preview.length > 2 ? <small>{t("+{count} more", { count: preview.length - 2 })}</small> : null}
                 </div>
               ) : null}
               <div id={`${panelId}-${stage}`} hidden={!expanded}>
                 {expanded ? <div className="brand-decision-panel__section-body">
-                  {!hasContent ? <p className="brand-decision-panel__empty">{stage === "production"
+                  {!hasContent ? <p className="brand-decision-panel__empty">{t(stage === "production"
                     ? "Continue production on the canvas. Your creative brief is available above."
-                    : "Decisions will appear here as you complete this stage in chat."}</p> : null}
+                    : "Decisions will appear here as you complete this stage in chat.")}</p> : null}
                   <BrandDecisionContent decisions={decisions} stage={stage}/>
                   {stage === "skill-stack" && isCurrent && onChooseSkills ? (
                     <button type="button" className="brand-decision-panel__option"
                       disabled={refreshing || decisions.open_card?.stage !== "skill-stack"}
-                      onClick={onChooseSkills}>Choose Skills</button>
+                      onClick={onChooseSkills}>{t("Choose Skills")}</button>
                   ) : null}
                 </div> : null}
               </div>

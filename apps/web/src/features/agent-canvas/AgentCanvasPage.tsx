@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n/useTranslation";
 import { lazy, Suspense } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 
@@ -11,10 +12,11 @@ const AgentCanvasPageSurface = lazy(() => import("./AgentCanvasPageSurface.tsx")
 })));
 
 export function AgentCanvasPage() {
+  const t = useTranslation();
   return (
     <ReactFlowProvider>
       <ConnectionEffectsProvider>
-        <Suspense fallback={<div className="agent-canvas-state" role="status">Opening project...</div>}>
+        <Suspense fallback={<div className="agent-canvas-state" role="status">{t("Opening project...")}</div>}>
           <AgentCanvasPageSurface />
         </Suspense>
         <ProviderBalanceNoticeHost />

@@ -1,34 +1,39 @@
 /** Display labels only: unknown operations and values retain their recorded names. */
-const operations: Record<string, [string, string]> = {
-  decide_turn_intent: ["理解用户需求", "判断这条消息的意图与后续处理方向。"],
-  decide_next_action: ["规划下一步", "根据当前项目状态选择下一步工作。"],
-  author_decision_bundle: ["整理创作方案", "生成供用户选择的创作决策。"],
-  brand_slot_question: ["梳理品牌需求", "围绕尚待明确的品牌信息生成问题和选项。"],
-  brand_hypothesis: ["提出品牌创意方向", "根据品牌与广告需求提出候选创意。"],
-  brand_skill_recommendation: ["推荐创作 Skills", "为当前项目推荐创意方法和视听风格。"],
-  brand_treatment_step: ["细化创意方案", "生成当前方案步骤的内容与选项。"],
-  author_guided_script_checkpoint: ["设计脚本方案", "整理脚本内容与待确认的创作方向。"],
-  prepare_role_prompt: ["编写生成提示词", "为当前创作角色准备素材生成提示词。"],
+const operations: Record<string, [string, string, string, string]> = {
+  decide_turn_intent: ["理解用户需求", "Understand user request", "判断这条消息的意图与后续处理方向。", "Classify this message and choose the next handling path."],
+  decide_next_action: ["规划下一步", "Plan next step", "根据当前项目状态选择下一步工作。", "Choose the next action from the current project state."],
+  author_decision_bundle: ["整理创作方案", "Organize creative plan", "生成供用户选择的创作决策。", "Generate creative decisions for the user to choose."],
+  brand_slot_question: ["梳理品牌需求", "Clarify brand requirements", "围绕尚待明确的品牌信息生成问题和选项。", "Generate questions and options for unresolved brand information."],
+  brand_hypothesis: ["提出品牌创意方向", "Propose brand direction", "根据品牌与广告需求提出候选创意。", "Propose creative candidates from the brand and ad requirements."],
+  brand_skill_recommendation: ["推荐创作 Skills", "Recommend creative Skills", "为当前项目推荐创意方法和视听风格。", "Recommend creative methods and audiovisual styles for this project."],
+  brand_treatment_step: ["细化创意方案", "Develop treatment step", "生成当前方案步骤的内容与选项。", "Generate content and options for the current treatment step."],
+  author_guided_script_checkpoint: ["设计脚本方案", "Design script plan", "整理脚本内容与待确认的创作方向。", "Organize script content and directions awaiting confirmation."],
+  prepare_role_prompt: ["编写生成提示词", "Prepare generation prompt", "为当前创作角色准备素材生成提示词。", "Prepare a media generation prompt for the current creative role."],
 };
 
-export function operationPresentation(operation: string | null) {
+export function operationPresentation(operation: string | null, locale = "zh-CN") {
   const known = operation ? operations[operation] : null;
-  return { title: known?.[0] ?? operation ?? "未命名操作", description: known?.[1] ?? "用途暂未标注，请查看这次调用的输入与输出。" };
+  const english = locale.toLowerCase().startsWith("en");
+  return { title: known ? (english ? known[1] : known[0]) : operation ?? (english ? "Unnamed operation" : "未命名操作"), description: known ? (english ? known[3] : known[2]) : (english ? "Purpose is not labeled; inspect this call's input and output." : "用途暂未标注，请查看这次调用的输入与输出。") };
 }
 
-export function stageLabel(stage: string | null) {
-  return ({ initial: "首次调用", transport_retry: "传输重试", structured_repair: "结构化修复", capability_fallback: "能力回退" } as Record<string, string>)[stage ?? ""] ?? stage ?? "未提供";
+export function stageLabel(stage: string | null, locale = "zh-CN") {
+  const english = locale.toLowerCase().startsWith("en");
+  const values = english ? { initial: "Initial call", transport_retry: "Transport retry", structured_repair: "Structured repair", capability_fallback: "Capability fallback" } : { initial: "首次调用", transport_retry: "传输重试", structured_repair: "结构化修复", capability_fallback: "能力回退" };
+  return values[stage as keyof typeof values] ?? stage ?? (english ? "Not provided" : "未提供");
 }
 
-export function statusLabel(status: string | null) {
-  return ({ completed: "调用完成", failed: "调用失败", incomplete: "记录不完整" } as Record<string, string>)[status ?? ""] ?? status ?? "未提供";
+export function statusLabel(status: string | null, locale = "zh-CN") {
+  const english = locale.toLowerCase().startsWith("en");
+  const values = english ? { completed: "Call completed", failed: "Call failed", incomplete: "Incomplete record" } : { completed: "调用完成", failed: "调用失败", incomplete: "记录不完整" };
+  return values[status as keyof typeof values] ?? status ?? (english ? "Not provided" : "未提供");
 }
 
-export function callTime(value: string | null) {
-  if (!value) return "时间未提供";
+export function callTime(value: string | null, locale = "zh-CN") {
+  if (!value) return locale.toLowerCase().startsWith("en") ? "Time not provided" : "时间未提供";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
+  return new Intl.DateTimeFormat(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
 }
 
 const fields: Record<string, string> = {
@@ -76,7 +81,10 @@ const fields: Record<string, string> = {
   style_skill_catalog: "风格 Skills 目录", requested_capability: "请求的能力",
   session_exists: "会话是否已存在", option_id: "选项标识", why: "推荐理由",
 };
-export function fieldLabel(key: string) { return fields[key] ?? key; }
+export function fieldLabel(key: string, locale = "zh-CN") {
+  if (!locale.toLowerCase().startsWith("en")) return fields[key] ?? key;
+  return key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").replace(/\b\w/g, character => character.toUpperCase());
+}
 
 /** Translate a small set of known enum values, keeping original values available on hover. */
 export function recordedEnumLabel(key: string | undefined, value: unknown): string | undefined {

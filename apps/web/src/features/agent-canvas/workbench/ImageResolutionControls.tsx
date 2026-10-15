@@ -10,6 +10,7 @@ import {
   type ImageResolutionPairParameter,
 } from "./imageResolutionCapabilities.ts";
 import { InlineParameterSelect } from "./InlineParameterSelect.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 function parameterSelect({
   label,
@@ -53,6 +54,7 @@ export function ImageResolutionControls({
   onChange: (parameters: Record<string, unknown>) => void;
   layout?: "default" | "inline";
 }) {
+  const t = useTranslation("en-US");
   const modes = capabilities.parameter_modes;
   const issues = imageResolutionIssues(capabilities, parameters);
   const issueByName = new Map(issues.map((issue) => [issue.name, issue.message]));
@@ -85,10 +87,10 @@ export function ImageResolutionControls({
   };
 
   return (
-    <div className={`agent-node-workbench__model-parameters${layout === "inline" ? " agent-node-workbench__model-parameters--inline" : ""}`} aria-label="Image resolution">
+    <div className={`agent-node-workbench__model-parameters${layout === "inline" ? " agent-node-workbench__model-parameters--inline" : ""}`} aria-label={t("Image resolution")}>
       {modes.includes("size")
         ? parameterSelect({
-          label: "Size",
+          label: t("Size"),
           name: IMAGE_SIZE_PARAMETER,
           value: imageResolutionParameter(parameters, IMAGE_SIZE_PARAMETER)
             ?? defaultImageResolutionParameter(capabilities, IMAGE_SIZE_PARAMETER)
@@ -102,7 +104,7 @@ export function ImageResolutionControls({
         ? ([IMAGE_RESOLUTION_PARAMETER, IMAGE_ASPECT_RATIO_PARAMETER] as const).map((name) => (
           <div key={name}>
             {parameterSelect({
-              label: name === IMAGE_RESOLUTION_PARAMETER ? "Resolution" : "Ratio",
+              label: name === IMAGE_RESOLUTION_PARAMETER ? t("Resolution setting") : t("Ratio"),
               name,
               value: imageResolutionParameter(parameters, name)
                 ?? defaultImageResolutionParameter(capabilities, name)

@@ -1003,6 +1003,20 @@ export const v2Api = {
     );
   },
 
+  updateAgentCanvasCreativeSessionLocale(
+    workflowId: string,
+    request: { expected_revision: number; response_locale: string },
+  ): Promise<GuidedSessionStateV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/creative-session/locale`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
+      normalizeGuidedSessionStateV2,
+    );
+  },
+
   agentCanvasDecisionBundle(
     workflowId: string,
     bundleId: string,

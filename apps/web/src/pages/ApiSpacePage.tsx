@@ -1,3 +1,4 @@
+import { useTranslation } from "../i18n/useTranslation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client.ts";
@@ -20,6 +21,7 @@ type ModelsByPurpose = Record<ModelDefaultPurpose, ProviderModelSummaryV1[]>;
 const HIDDEN_PROVIDER_IDS = new Set(["fake", "litellm", "openai"]);
 
 export function ApiSpacePage() {
+  const t = useTranslation();
   const [providers, setProviders] = useState<ProviderConnectionStatusV1[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<ModelsByProvider>({});
   const [defaults, setDefaults] = useState<ModelDefaultsResponseV1>({ defaults: {}, modes: {}, revisions: {} });
@@ -96,28 +98,28 @@ export function ApiSpacePage() {
     try {
       const response = await api.patchModelDefaults(changes);
       setDefaults(response);
-      setDefaultsNotice({ kind: "success", message: "Default model settings saved." });
+      setDefaultsNotice({ kind: "success", message: t("Default model settings saved.") });
     } catch (error) {
       setDefaultsNotice({ kind: "error", message: providerRegistryErrorMessage(error, "defaults") });
     } finally {
       setDefaultsPending(false);
     }
-  }, []);
+  }, [t]);
 
   return (
     <section className="content-wrap api-space-page">
-      <PageHeader title="API Space" subtitle="Configure local provider credentials and the models used by new runs." />
+      <PageHeader title={t("API Space")} subtitle={t("Configure local provider credentials and the models used by new runs.")} />
 
       {loadError ? (
         <div className="api-space-status-error" role="alert">
           <span>{loadError}</span>
           <button className="small-action" type="button" disabled={loading} onClick={() => void load()}>
-            Reload providers
+            {t("Reload providers")}
           </button>
         </div>
       ) : null}
 
-      {loading && !providers.length ? <p className="api-space-loading">Loading provider settings...</p> : null}
+      {loading && !providers.length ? <p className="api-space-loading">{t("Loading provider settings...")}</p> : null}
 
       {providers.map((provider) => (
         <ProviderCredentialCard

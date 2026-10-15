@@ -1411,7 +1411,7 @@ describe("useAgentCanvasChat", () => {
           source_entry_ids: ["entry-1"],
           message_key: "planning_progress.next_action",
           message_args: {},
-          response_locale: "zh-CN",
+          response_locale: "en-US",
           item: {
             item_type: "message",
             message_id: "entry-1",
@@ -2636,6 +2636,7 @@ describe("useAgentCanvasChat", () => {
       "workflow-1",
       {
         text: "Use these references.",
+        response_locale: "en-US",
         mentioned_node_ids: ["node-script-1", "node-video-1"],
         mentioned_image_asset_ids: ["asset-image-1"],
         video_skill_run_id: null,
@@ -2673,6 +2674,7 @@ describe("useAgentCanvasChat", () => {
       "workflow-1",
       {
         text: "Use this visual language.",
+        response_locale: "en-US",
         mentioned_node_ids: [],
         mentioned_image_asset_ids: [],
         video_skill_run_id: null,
