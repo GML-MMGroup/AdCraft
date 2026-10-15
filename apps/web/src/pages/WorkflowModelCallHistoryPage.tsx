@@ -17,9 +17,11 @@ export function WorkflowModelCallHistoryPage() {
   const projectName = typeof location.state?.projectName === "string" ? location.state.projectName : undefined;
 
   return <main className="llm-call-history log-workspace" aria-label={t("Project logs")}>
+    <div className="log-workspace__toolbar" aria-label={t("Log workspace tools")}>
+      <LanguageSwitcher workflowId={workflowId || null} />
+    </div>
     <aside className="log-projects" aria-label={t("Project log list")}>
       <Link className="log-projects__brand" to="/logs">{t("Logs")}<span>{t("AdCraft · Read-only call records")}</span></Link>
-      <LanguageSwitcher />
       <label className="log-projects__scope">{t("Project scope")}
         <select value={status} onChange={event => setStatus(event.target.value as ProjectV2Status)}>
           <option value="active">{t("Active projects")}</option><option value="archived">{t("Archived projects")}</option><option value="trashed">{t("Trashed projects")}</option>

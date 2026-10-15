@@ -1,5 +1,6 @@
 /* An independent read-only workspace; no canvas or application rail styles. */
-.log-workspace { display: grid; grid-template-columns: 252px minmax(0, 1fr); padding: 0; min-height: 0; }
+.log-workspace { position: relative; display: grid; grid-template-columns: 252px minmax(0, 1fr); padding: 0; min-height: 0; }
+.log-workspace__toolbar { position: absolute; z-index: 3; top: 24px; right: clamp(20px, 3vw, 48px); }
 .log-projects { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--call-line); background: var(--call-surface); }
 .log-projects__brand { display: flex; flex-direction: column; gap: 5px; padding: 26px 22px; color: var(--call-text); text-decoration: none; font: 400 28px/1.3 Georgia, serif; }
 .log-projects__brand span { color: var(--call-muted); font: 11px/1.6 var(--font-body, sans-serif); }
@@ -22,6 +23,7 @@
 .llm-call-history__workflow-id { overflow-wrap: anywhere; font: 11px/1.6 var(--font-mono, monospace); }
 .log-workspace .llm-call-history__header { margin-bottom: 20px; }
 .log-workspace .llm-call-history__header > div:first-child { min-width: 0; }
+.log-workspace .llm-call-history__header { padding-right: 106px; }
 .log-workspace .llm-call-history__header h1 { font-size: 24px; overflow-wrap: anywhere; }
 .log-workspace .llm-call-history__actions { flex-shrink: 0; }
 .log-workspace .llm-call-history__layout { grid-template-columns: 280px minmax(0, 1fr); }
@@ -30,11 +32,13 @@
 .log-workspace__welcome p { color: var(--call-muted); }
 @media (max-width: 1100px) {
   .log-workspace { grid-template-columns: 210px minmax(0, 1fr); }
+  .log-workspace__toolbar { right: 20px; }
   .log-workspace .llm-call-history__layout { grid-template-columns: 240px minmax(0, 1fr); }
   .log-workspace .llm-call-history__detail { padding-right: 18px; padding-left: 18px; }
 }
 @media (max-width: 800px) {
   .log-workspace { grid-template-columns: 190px minmax(0, 1fr); height: 100dvh; padding: 0; }
+  .log-workspace__toolbar { top: 18px; right: 20px; }
   .log-workspace .llm-call-history__layout { display: flex; flex-direction: column; overflow-y: auto; }
   .log-workspace .llm-call-history__list { min-height: 260px; max-height: 340px; flex-shrink: 0; border-right: 0; }
   .log-workspace .llm-call-history__detail { overflow: visible; }
