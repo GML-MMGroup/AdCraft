@@ -2154,6 +2154,15 @@ button.agent-chat__node-links--related:hover {
   border-top: 0;
 }
 
+.agent-chat__current-interaction--overlay.agent-chat__current-interaction--brand-form-expanded,
+.agent-chat__decision-dock--brand-form.is-expanded {
+  max-height: min(68vh, 620px);
+}
+
+.agent-chat__decision-dock--brand-form:not(.is-expanded) {
+  max-height: min(50vh, 480px);
+}
+
 .agent-chat__interaction-collapse {
   position: absolute;
   top: 14px;
@@ -3424,7 +3433,7 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__brand-form-option {
   display: grid;
   min-width: 0;
-  grid-template-columns: 14px 15px minmax(0, 1fr);
+  grid-template-columns: 15px minmax(0, 1fr);
   gap: 7px;
   align-items: start;
   padding: 8px;
@@ -3446,10 +3455,18 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__brand-form-option input {
-  width: 13px;
-  height: 13px;
-  margin: 1px 0 0;
-  accent-color: var(--agent-chat-primary);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.agent-chat__brand-form-option:has(input:focus-visible) {
+  outline: 2px solid var(--agent-chat-primary);
+  outline-offset: 2px;
 }
 
 .agent-chat__brand-form-option-mark {

@@ -120,6 +120,7 @@ export function BrandFormInteraction({
 
   return (
     <DecisionDockFrame
+      className={`agent-chat__decision-dock--brand-form${content.rows.some(row => row.options.filter(option => option.option_id !== row.custom_option_id).length > 3) ? " is-expanded" : ""}`}
       title={content.title}
       context={content.instructions}
       pending={pending || submittedState || disabled}

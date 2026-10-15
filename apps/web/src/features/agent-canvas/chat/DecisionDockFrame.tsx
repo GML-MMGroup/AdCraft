@@ -14,6 +14,7 @@ export interface DecisionDockFrameProps {
   submitDisabled?: boolean;
   onSubmit?: () => void;
   showSubmitBar?: boolean;
+  className?: string;
   children: ReactNode;
 }
 
@@ -27,6 +28,7 @@ export function DecisionDockFrame({
   submitDisabled = false,
   onSubmit,
   showSubmitBar = true,
+  className,
   children,
 }: DecisionDockFrameProps) {
   // Keep the standalone dock usable in isolation (including its component
@@ -41,7 +43,7 @@ export function DecisionDockFrame({
   }, [issue]);
 
   return (
-    <article className="agent-chat__decision-dock" aria-label={title} aria-busy={pending}>
+    <article className={`agent-chat__decision-dock${className ? ` ${className}` : ""}`} aria-label={title} aria-busy={pending}>
       <header className="agent-chat__decision-dock-header">
         <strong>{title}</strong>
         {context ? <p>{context}</p> : null}
