@@ -174,6 +174,36 @@ describe("BrandFormInteraction", () => {
     });
   });
 
+  it("renders and submits a newly added recommendation alongside existing options", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    const expandedInteraction: GuidedInteractionV1 = {
+      ...interaction,
+      content: interaction.content.content_kind !== "brand_form" ? interaction.content : {
+        ...interaction.content,
+        rows: interaction.content.rows.map((row, index) => index === 0 ? {
+          ...row,
+          options: [
+            ...row.options,
+            { option_id: "new-direction", label: "New direction", why: "Recently added." },
+            { option_id: "new-mood", label: "New mood", why: "Also newly added." },
+            { option_id: "new-tone", label: "New tone", why: null },
+          ],
+        } : row),
+      },
+    };
+    render(<BrandFormInteraction interaction={expandedInteraction} pending={false} issue={null} onSubmit={submit} />);
+    expect(screen.getByRole("radio", { name: /New direction/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /New direction/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Teams/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm entire form" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      answers: [
+        { question_id: "tone", selected_option_id: "new-direction" },
+        { question_id: "audience", selected_option_id: "teams" },
+      ],
+    })));
+  });
+
   it("submits custom text only for the selected custom option and locks during submission", async () => {
     let finish!: (accepted: boolean) => void;
     const submit = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));

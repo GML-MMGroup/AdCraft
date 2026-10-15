@@ -74,9 +74,44 @@ describe("Brand form normalization", () => {
     });
   });
 
+  it("preserves an expanded option set without truncating old or new recommendations", () => {
+    const expanded = {
+      ...form,
+      rows: [{
+        ...form.rows[0],
+        options: [
+          ...form.rows[0]!.options,
+          { option_id: "four", label: "Four", why: "Reason four" },
+          { option_id: "five", label: "Five", why: "Reason five" },
+          { option_id: "six", label: "Six", why: "Reason six" },
+        ],
+      }],
+    };
+    expect(normalizeGuidedBrandFormV1(expanded).rows[0]?.options.map(option => option.option_id)).toEqual([
+      "one", "two", "three", "custom", "four", "five", "six",
+    ]);
+  });
+
   it("rejects incomplete rows and a custom option outside the option set", () => {
     expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], options: form.rows[0]!.options.slice(0, 3) }] })).toThrow();
     expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], custom_option_id: "missing" }] })).toThrow();
+    expect(() => normalizeGuidedBrandFormV1({
+      ...form,
+      rows: [{ ...form.rows[0], options: [
+        { option_id: "one", label: "One", why: null },
+        { option_id: "two", label: "Two", why: null },
+        { option_id: "custom", label: "Custom", why: null },
+        { option_id: "two", label: "Duplicate", why: null },
+      ] }],
+    })).toThrow(/unique/);
+    expect(() => normalizeGuidedBrandFormV1({
+      ...form,
+      rows: [{ ...form.rows[0], options: [
+        { option_id: "one", label: "One", why: null },
+        { option_id: "two", label: "Two", why: null },
+        { option_id: "custom", label: "Custom", why: null },
+      ] }],
+    })).toThrow(/between four and sixty-four/);
   });
 
   it("preserves optional draft prefills and rejects non-text values", () => {

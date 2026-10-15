@@ -5289,7 +5289,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
           why: nullableStringWithDefault(optionRecord.why, `${optionPath}.why`),
         };
       });
-      if (options.length !== 4) fail(`${rowPath}.options`, "expected exactly three recommended options and one custom option");
+      if (options.length < 4 || options.length > 64) fail(`${rowPath}.options`, "expected between four and sixty-four options");
       if (new Set(options.map((option) => option.option_id)).size !== options.length) {
         fail(`${rowPath}.options`, "option IDs must be unique");
       }
@@ -5297,8 +5297,8 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       if (options.filter((option) => option.option_id === customOptionId).length !== 1) {
         fail(`${rowPath}.custom_option_id`, "custom option ID must identify exactly one option");
       }
-      if (options.filter((option) => option.option_id !== customOptionId).length !== 3) {
-        fail(`${rowPath}.options`, "expected exactly three recommended options");
+      if (options.filter((option) => option.option_id !== customOptionId).length < 3) {
+        fail(`${rowPath}.options`, "expected at least three recommended options");
       }
       return {
         question_id: expectNonEmptyString(row.question_id, `${rowPath}.question_id`),
