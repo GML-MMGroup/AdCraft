@@ -31,7 +31,6 @@ const discoverCards: readonly DiscoverOrbitItem[] = [
   { title: "Color Script", image: imageSrc(images[7]) },
 ];
 const discoverCardsZh = ["广告流程", "角色研究", "海报动效", "场景延展", "产品光感", "编辑剪辑", "肖像火花", "色彩脚本"];
-const heroTitleLinesZh = ["一句话", "变成一部", "广告片。"] as const;
 
 type RevealState = "pending" | "visible";
 
@@ -232,8 +231,10 @@ function HeroMainTitleLine({ line, direction }: { line: string; direction: HeroQ
 
 function HeroTitle() {
   const { locale } = useLocale();
-  const titleLines = locale === "zh-CN" ? heroTitleLinesZh : heroTitleLines;
-  const titleAriaLabel = locale === "zh-CN" ? titleLines.join(" ") : "One Sentence Becomes an Ad film.";
+  // Keep the editorial hero lockup in English in both locales; supporting
+  // navigation and product copy still follow the selected UI language.
+  const titleLines = heroTitleLines;
+  const titleAriaLabel = "One Sentence Becomes an Ad film.";
   return (
     <h1
       className="home-product-hero__title"
