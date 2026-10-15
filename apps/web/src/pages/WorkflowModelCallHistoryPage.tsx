@@ -17,7 +17,7 @@ export function WorkflowModelCallHistoryPage() {
   const projectName = typeof location.state?.projectName === "string" ? location.state.projectName : undefined;
 
   return <main className="llm-call-history log-workspace" aria-label={t("Project logs")}>
-    <div className="log-workspace__toolbar" aria-label={t("Log workspace tools")}>
+    <div className="log-workspace__toolbar" aria-label={t("Project logs")}>
       <LanguageSwitcher />
     </div>
     <aside className="log-projects" aria-label={t("Project log list")}>
