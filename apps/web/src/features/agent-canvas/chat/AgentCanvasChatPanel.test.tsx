@@ -1855,8 +1855,12 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(currentInteractionRule).toContain("overflow: hidden");
     expect(currentInteractionRule).not.toContain("overflow-y: auto");
     expect(currentInteractionRule).toContain("display: flex");
-    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*\{[\s\S]*position: absolute;[\s\S]*bottom: 0;[\s\S]*z-index:/m);
-    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*>\s*\*\s*\{[\s\S]*pointer-events: auto;/m);
+    expect(css).toMatch(/\.agent-chat__timeline-shell\s*\{[\s\S]*display: flex;[\s\S]*flex-direction: column;/m);
+    expect(css).toMatch(/\.agent-chat__timeline\s*\{[\s\S]*flex: 1 1 auto;/m);
+    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*\{[\s\S]*position: relative;[\s\S]*flex: 0 1 auto;/m);
+    const dockRule = css.match(/\.agent-chat__current-interaction--overlay\s*\{([\s\S]*?)\n\}/m)?.[1] ?? "";
+    expect(dockRule).not.toContain("position: absolute");
+    expect(dockRule).not.toContain("pointer-events");
     expect(currentInteractionDockRule).toContain("max-height: 100%");
     expect(currentInteractionDockRule).toContain("flex: 1 1 auto");
     expect(optionsRule).toContain("min-height: max-content");
@@ -2136,13 +2140,14 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     await waitFor(() => expect(screen.getByRole("radio", { name: /Quiet world/ })).toBeTruthy());
   });
 
-  it("renders open interactions as a floating overlay that no longer squeezes the timeline", () => {
+  it("renders open interactions as a docked bottom region that reserves timeline space", () => {
     renderPanelWithInteraction();
 
     const shell = document.querySelector(".agent-chat__timeline-shell");
     const overlay = shell?.querySelector(":scope > .agent-chat__current-interaction--overlay");
     expect(overlay).not.toBeNull();
     expect(overlay?.querySelector(".agent-chat__decision-dock")).not.toBeNull();
+    expect(overlay?.previousElementSibling?.classList.contains("agent-chat__timeline")).toBe(true);
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
   });
 
@@ -2216,7 +2221,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     ]);
   });
 
-  it("collapses the overlay into a chip and re-expands it on demand", () => {
+  it("collapses the decision dock into an in-flow chip and re-expands it on demand", () => {
     renderPanelWithInteraction();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
@@ -2224,6 +2229,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
     const chip = screen.getByRole("button", { name: /Choose duration/ });
     expect(chip.querySelector(".agent-chat__interaction-chip") ?? chip).toBeTruthy();
+    expect(chip.parentElement?.classList.contains("agent-chat__timeline-shell")).toBe(true);
 
     fireEvent.click(chip);
 

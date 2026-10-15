@@ -241,6 +241,8 @@
 
 .agent-chat__timeline-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 56px;
   flex: 1 1 72px;
@@ -248,8 +250,9 @@
 }
 
 .agent-chat__timeline {
-  height: 100%;
+  height: auto;
   min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--agent-chat-strong-line) transparent;
@@ -2142,19 +2145,13 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__current-interaction--overlay {
-  position: absolute;
-  z-index: 3;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  max-height: 100%;
+  position: relative;
+  z-index: 1;
+  flex: 0 1 auto;
+  max-height: min(50vh, 480px);
   padding: 10px 12px 0;
+  background: var(--agent-chat-panel);
   border-top: 0;
-  pointer-events: none;
-}
-
-.agent-chat__current-interaction--overlay > * {
-  pointer-events: auto;
 }
 
 .agent-chat__interaction-collapse {
@@ -2185,10 +2182,11 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__interaction-chip {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 3;
+  position: relative;
+  align-self: flex-end;
+  flex: 0 0 auto;
+  z-index: 1;
+  margin: 8px 12px 10px;
   display: inline-flex;
   max-width: min(320px, calc(100% - 88px));
   align-items: center;
