@@ -18,7 +18,7 @@ export function WorkflowModelCallHistoryPage() {
 
   return <main className="llm-call-history log-workspace" aria-label={t("Project logs")}>
     <div className="log-workspace__toolbar" aria-label={t("Log workspace tools")}>
-      <LanguageSwitcher workflowId={workflowId || null} />
+      <LanguageSwitcher />
     </div>
     <aside className="log-projects" aria-label={t("Project log list")}>
       <Link className="log-projects__brand" to="/logs">{t("Logs")}<span>{t("AdCraft · Read-only call records")}</span></Link>
