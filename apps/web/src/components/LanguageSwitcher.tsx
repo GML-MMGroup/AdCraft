@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { agentCanvasApi, isV2ApiError } from "../api/agentCanvasApi.ts";
-import { localeChangedEventName, useLocale, localeText, type AppLocale } from "../i18n/locale.tsx";
+import { localeChangedEventName, useLocale, type AppLocale } from "../i18n/locale.tsx";
 import type { GuidedSessionStateV2 } from "../types-v2.ts";
 
 export function LanguageSwitcher({ workflowId }: { workflowId?: string | null }) {
@@ -62,17 +62,34 @@ export function LanguageSwitcher({ workflowId }: { workflowId?: string | null })
 
   return (
     <div className="language-switcher-control">
-    <button
-      type="button"
-      className="language-switcher"
-      aria-label={chinese ? "切换到英文" : "Switch to Chinese"}
+    <div
+      className={`language-switcher${chinese ? " is-chinese" : " is-english"}`}
+      role="group"
+      aria-label={chinese ? "语言：中文" : "Language: English"}
       aria-busy={pending}
-      disabled={pending}
-      onClick={() => void changeLocale(chinese ? "en-US" : "zh-CN")}
     >
-      <span aria-hidden="true">{chinese ? "中" : "EN"}</span>
-      <span>{chinese ? localeText.zh.language : localeText.en.language}</span>
-    </button>
+      <span className="language-switcher__thumb" aria-hidden="true" />
+      <button
+        type="button"
+        className="language-switcher__option"
+        aria-label="切换到中文"
+        aria-pressed={chinese}
+        disabled={pending || chinese}
+        onClick={() => void changeLocale("zh-CN")}
+      >
+        中
+      </button>
+      <button
+        type="button"
+        className="language-switcher__option"
+        aria-label="Switch to English"
+        aria-pressed={!chinese}
+        disabled={pending || !chinese}
+        onClick={() => void changeLocale("en-US")}
+      >
+        EN
+      </button>
+    </div>
     {error ? <span className="language-switcher-error" role="alert">{error}</span> : null}
     </div>
   );
