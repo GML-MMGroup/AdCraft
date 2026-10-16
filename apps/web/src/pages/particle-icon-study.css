@@ -32,7 +32,6 @@
 .particle-study__numbers span { padding-left: 28px; }
 .particle-study__art { display: block; position: relative; height: clamp(340px, 47vh, 520px); }
 .particle-study__art canvas { display: block; width: 100%; height: 100%; }
-.particle-study__art canvas[hidden] { display: none; }
 .particle-study__controls { display: flex; justify-content: flex-end; padding: 16px 0; }
 .particle-study__controls button { border: 1px solid #484b56; border-radius: 4px; padding: 8px 12px; background: transparent; color: #bfc1c9; font: inherit; font-size: 12px; cursor: pointer; }
 .particle-study__controls button:focus-visible { outline: 2px solid #bfc1c9; outline-offset: 3px; }
