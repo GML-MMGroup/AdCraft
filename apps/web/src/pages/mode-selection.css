@@ -222,6 +222,10 @@
   height: 100%;
 }
 
+.mode-choice-particles canvas[hidden] {
+  display: none;
+}
+
 .mode-choice-particles .particle-study__error {
   position: absolute;
   inset: 30% 0 auto;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createParticleGeometry, type ParticleShape } from "./particleGeometry";
 import { vertexSource, fragmentSource } from "./particleShaders";
 import { createParticleMotion, type ParticleMotionFrame } from "./particleMotion";
+import { drawParticleFallback } from "./particleFallback";
 
 export function ParticleIconStudy({ paused = false, shape, hoverOnly = false, accented = false, className = "particle-study__art" }: {
   paused?: boolean;
@@ -11,14 +12,25 @@ export function ParticleIconStudy({ paused = false, shape, hoverOnly = false, ac
   accented?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fallbackRef = useRef<HTMLCanvasElement>(null);
   const motionRef = useRef<ReturnType<typeof createParticleMotion> | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  // Bumped when a lost context is restored so the effect rebuilds GPU resources.
+  const [contextGeneration, setContextGeneration] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const gl = canvas.getContext("webgl", { alpha: true, antialias: false, premultipliedAlpha: false });
     if (!gl) { setUnavailable(true); return; }
+    const restored = () => { setUnavailable(false); setContextGeneration(generation => generation + 1); };
+    canvas.addEventListener("webglcontextrestored", restored);
+    // Browsers cap live WebGL contexts (about 16 in Chrome) and only reclaim a
+    // removed canvas on GC, so release it explicitly once it is truly unmounted.
+    // The deferred check keeps StrictMode's remount of the same canvas working.
+    const release = () => window.setTimeout(() => {
+      if (!canvas.isConnected) gl.getExtension("WEBGL_lose_context")?.loseContext();
+    });
     const shaders: WebGLShader[] = [];
     const buffers: WebGLBuffer[] = [];
     let program: WebGLProgram | null = null;
@@ -33,6 +45,14 @@ export function ParticleIconStudy({ paused = false, shape, hoverOnly = false, ac
     };
     const lost = (event: Event) => { event.preventDefault(); motionRef.current?.dispose(); setUnavailable(true); };
     canvas.addEventListener("webglcontextlost", lost);
+    const cleanup = () => {
+      canvas.removeEventListener("webglcontextlost", lost);
+      canvas.removeEventListener("webglcontextrestored", restored);
+      dispose();
+      release();
+    };
+    // A context lost elsewhere stays lost until the browser restores it.
+    if (gl.isContextLost()) { setUnavailable(true); return cleanup; }
     try {
       const compile = (type: number, source: string) => {
         const shader = gl.createShader(type);
@@ -123,13 +143,27 @@ export function ParticleIconStudy({ paused = false, shape, hoverOnly = false, ac
       setUnavailable(true);
       dispose();
     }
-    return () => { canvas.removeEventListener("webglcontextlost", lost); dispose(); };
-  }, [shape, hoverOnly, accented]);
+    return cleanup;
+  }, [shape, hoverOnly, accented, contextGeneration]);
 
   useEffect(() => { motionRef.current?.setPaused(paused); }, [paused]);
 
+  // Without WebGL, show the resting frame drawn with Canvas 2D instead of a blank card.
+  useEffect(() => {
+    const fallback = fallbackRef.current;
+    if (!unavailable || !fallback) return;
+    const shapes: ParticleShape[] = shape ? [shape] : ["butterfly", "infinity"];
+    const draw = () => { drawParticleFallback(fallback, shapes, accented); };
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(fallback);
+    return () => observer.disconnect();
+  }, [unavailable, shape, accented]);
+
   return <span className={className} aria-hidden={shape ? true : undefined}>
-    <canvas ref={canvasRef} role="img" aria-label={shape ? undefined : "Silver particle butterfly and silver particle infinity loop"} />
-    {unavailable && <span className="particle-study__error">The artwork could not load. Check your connection and WebGL support, then reload.</span>}
+    <canvas ref={canvasRef} role="img" hidden={unavailable} aria-label={shape ? undefined : "Silver particle butterfly and silver particle infinity loop"} />
+    {unavailable && <canvas ref={fallbackRef} data-particle-fallback="" aria-hidden="true" />}
+    {/* Only the design lab surfaces the failure; product pages rely on the static fallback. */}
+    {unavailable && !shape && <span className="particle-study__error">The artwork could not load. Check your connection and WebGL support, then reload.</span>}
   </span>;
 }
