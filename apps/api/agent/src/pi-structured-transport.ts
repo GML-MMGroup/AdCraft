@@ -39,6 +39,7 @@ import {
 import type { LoadedSkill } from "./skills.js";
 import { intakeRepairPolicy } from "./prompts/intake-repair.js";
 import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
+import { brandFormSupplementalRepairPolicy } from "./prompts/brand-form-repair.js";
 
 
 interface StructuredCompletionRequestBase {
@@ -837,6 +838,8 @@ function repairPayload(
     typeof currentUserInput === "string";
   const isTreatment = input.request.operation === "brand_treatment_step" &&
     input.request.contract_name === "CreativeTreatmentOutputV1";
+  const isSupplementalBrandForm = input.request.operation === "brand_slot_form" &&
+    input.request.validation_profile === "brand_form_supplemental_novelty_v1";
   const malformedExcerpt = isTreatment && invalidValue === undefined && invalidContent
     ? JSON.stringify({
       content: invalidContent.slice(0, 8_192),
@@ -852,6 +855,8 @@ function repairPayload(
           ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
           : isTreatment
             ? `${input.systemPrompt}\n\n${treatmentRepairPolicy}`
+            : isSupplementalBrandForm
+              ? `${input.systemPrompt}\n\n${brandFormSupplementalRepairPolicy}`
           : "Return exactly one JSON object matching the supplied schema.",
       },
       {

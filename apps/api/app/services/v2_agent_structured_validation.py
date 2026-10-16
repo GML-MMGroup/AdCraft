@@ -252,6 +252,8 @@ def _semantic_violations(
         return _storyboard_sequence_window_violations(context, value)
     if profile == "proposal_candidate_count_v1":
         return _proposal_candidate_count_violations(context, value)
+    if profile == "brand_form_supplemental_novelty_v1":
+        return _brand_form_supplemental_novelty_violations(context, value)
     if profile == "role_prompt_contract_v1":
         return _role_prompt_contract_violations(context, value)
     if profile != "frozen_fields_v1":
@@ -287,6 +289,122 @@ def _semantic_violations(
                 )
             )
     return tuple(violations)
+
+
+def _brand_form_supplemental_novelty_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    """Require each requested supplemental row to add genuinely new options."""
+
+    requested_slot_ids = context.get("requested_slot_ids")
+    previous_options_by_slot = context.get("previous_options_by_slot")
+    minimum_new_options = context.get("minimum_new_options", 2)
+    if (
+        not isinstance(requested_slot_ids, list)
+        or not requested_slot_ids
+        or len(set(requested_slot_ids)) != len(requested_slot_ids)
+        or not all(isinstance(slot_id, str) and slot_id for slot_id in requested_slot_ids)
+        or not isinstance(previous_options_by_slot, dict)
+        or not isinstance(minimum_new_options, int)
+        or isinstance(minimum_new_options, bool)
+        or minimum_new_options < 1
+        or minimum_new_options > 3
+    ):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The supplemental Brand form validation context is incomplete.",
+                field_path="validation_context",
+            ),
+        )
+
+    previous_labels_by_slot: dict[str, set[str]] = {}
+    for slot_id in requested_slot_ids:
+        previous = previous_options_by_slot.get(slot_id)
+        if not isinstance(previous, list) or not previous:
+            return (
+                StructuredViolation(
+                    code="agent_validation_context_invalid",
+                    message="Previous Brand form options are unavailable for a requested slot.",
+                    field_path=f"previous_options_by_slot.{slot_id}",
+                ),
+            )
+        labels: set[str] = set()
+        for option in previous:
+            if not isinstance(option, dict) or not isinstance(option.get("label"), str):
+                return (
+                    StructuredViolation(
+                        code="agent_validation_context_invalid",
+                        message="Previous Brand form options must contain labels.",
+                        field_path=f"previous_options_by_slot.{slot_id}",
+                    ),
+                )
+            labels.add(_normalized_form_option_label(option["label"]))
+        previous_labels_by_slot[slot_id] = labels
+
+    cards = value.get("form_cards")
+    if not isinstance(cards, list):
+        return (
+            StructuredViolation(
+                code="brand_form_supplemental_novelty_missing",
+                message="Supplemental Brand form output must contain form cards.",
+                field_path="form_cards",
+            ),
+        )
+    cards_by_slot = {
+        card.get("target_slot_id"): (index, card)
+        for index, card in enumerate(cards)
+        if isinstance(card, dict) and isinstance(card.get("target_slot_id"), str)
+    }
+    violations: list[StructuredViolation] = []
+    for slot_id in requested_slot_ids:
+        card_entry = cards_by_slot.get(slot_id)
+        if card_entry is None:
+            violations.append(
+                StructuredViolation(
+                    code="brand_form_supplemental_novelty_missing",
+                    message="Supplemental Brand form output is missing a requested slot.",
+                    field_path="form_cards",
+                    expected=slot_id,
+                )
+            )
+            continue
+        card_index, card = card_entry
+        options = card.get("options")
+        labels = (
+            [option.get("label") for option in options if isinstance(option, dict)]
+            if isinstance(options, list)
+            else []
+        )
+        normalized_labels = [
+            _normalized_form_option_label(label)
+            for label in labels
+            if isinstance(label, str) and label.strip()
+        ]
+        novel_count = len(set(normalized_labels) - previous_labels_by_slot[slot_id])
+        if (
+            len(normalized_labels) != len(labels)
+            or len(set(normalized_labels)) != len(normalized_labels)
+            or novel_count < minimum_new_options
+        ):
+            violations.append(
+                StructuredViolation(
+                    code="brand_form_supplemental_novelty_missing",
+                    message=(
+                        "Each requested supplemental Brand form slot must contain "
+                        f"at least {minimum_new_options} new options."
+                    ),
+                    field_path=f"form_cards.{card_index}.options",
+                    expected={"minimum_new_options": minimum_new_options},
+                    actual={"novel_option_count": novel_count},
+                )
+            )
+    return tuple(violations)
+
+
+def _normalized_form_option_label(label: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", label).split()).casefold()
 
 
 def _role_prompt_contract_violations(

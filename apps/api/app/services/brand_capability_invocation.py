@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import json
 from hashlib import sha256
 from typing import Literal, cast
+import unicodedata
 from uuid import uuid4
 
 from sqlalchemy import select, text as sql_text
@@ -407,65 +408,89 @@ class BrandCapabilityInvocationService:
                 )
             expected_slots = tuple(expected_by_id[slot_id] for slot_id in requested)
         if output is None:
-            spec = StructuredGenerationSpec[BrandStrategyOutputV1](
-                stage_name="brand_slot_form",
-                contract_name="BrandStrategyOutputV1",
-                model_id=model_id or self._settings.llm_creative_model,
-                system_prompt=(
-                    _BRAND_STRATEGY_PROMPT
-                    + " For form_mode=true, return form_cards with one card for every supplied "
-                    "slot in the requested stage; do not persist or assume any answer."
-                    + (
-                        " For supplemental_form_mode=true, create three new options per supplied slot; "
-                        "the supplied previous options are reference data and must not be repeated verbatim."
-                        if requested_slot_ids is not None
-                        else ""
-                    )
-                ),
-                input_payload={
-                    "product_context": product_context.payload,
-                    "stage": stage,
-                    "form_mode": True,
-                    "supplemental_form_mode": requested_slot_ids is not None,
-                    "response_locale": self._workflow_response_locale(brand_id),
-                    "slot_schema_version": SLOT_SCHEMA_VERSION,
-                    "slots": [
-                        {
-                            "stage": slot.stage,
-                            "slot_id": slot.slot_id,
-                            "question": slot.question,
-                            "required": slot.required,
-                        }
-                        for slot in expected_slots
-                    ],
-                    "previous_options_by_slot": {
-                        slot_id: [option.model_dump(mode="json") for option in options]
-                        for slot_id, options in (previous_options_by_slot or {}).items()
+
+            def build_spec() -> StructuredGenerationSpec[BrandStrategyOutputV1]:
+                supplemental = requested_slot_ids is not None
+                return StructuredGenerationSpec[BrandStrategyOutputV1](
+                    stage_name="brand_slot_form",
+                    contract_name="BrandStrategyOutputV1",
+                    model_id=model_id or self._settings.llm_creative_model,
+                    system_prompt=(
+                        _BRAND_STRATEGY_PROMPT
+                        + " For form_mode=true, return form_cards with one card for every supplied "
+                        "slot in the requested stage; do not persist or assume any answer."
+                        + (
+                            " For supplemental_form_mode=true, return three recommendations per "
+                            "supplied slot, including at least two genuinely new alternatives. "
+                            "The supplied previous options may be repeated for comparison, but must "
+                            "not be the entire response and new options must not be rewordings or copies."
+                            if requested_slot_ids is not None
+                            else ""
+                        )
+                        + (
+                            " The structured validator will reject repeated alternatives and allow "
+                            "one bounded repair; use that repair to replace repeated options with "
+                            "genuinely new alternatives."
+                            if supplemental
+                            else ""
+                        )
+                    ),
+                    input_payload={
+                        "product_context": product_context.payload,
+                        "stage": stage,
+                        "form_mode": True,
+                        "supplemental_form_mode": supplemental,
+                        "supplemental_attempt_no": 0 if supplemental else None,
+                        "response_locale": self._workflow_response_locale(brand_id),
+                        "slot_schema_version": SLOT_SCHEMA_VERSION,
+                        "slots": [
+                            {
+                                "stage": slot.stage,
+                                "slot_id": slot.slot_id,
+                                "question": slot.question,
+                                "required": slot.required,
+                            }
+                            for slot in expected_slots
+                        ],
+                        "previous_options_by_slot": {
+                            slot_id: [option.model_dump(mode="json") for option in options]
+                            for slot_id, options in (previous_options_by_slot or {}).items()
+                        },
+                        "confirmed_values": [
+                            value.model_dump(mode="json")
+                            for value in self._repository.get_slot_values(brand_id)
+                        ],
                     },
-                    "confirmed_values": [
-                        value.model_dump(mode="json")
-                        for value in self._repository.get_slot_values(brand_id)
-                    ],
-                },
-                output_model=BrandStrategyOutputV1,
-                trace_metadata={"workflow_id": product_context.workflow_id},
-            )
-            output = self._runtime.run(spec).output
+                    output_model=BrandStrategyOutputV1,
+                    trace_metadata={"workflow_id": product_context.workflow_id},
+                    validation_profile=(
+                        "brand_form_supplemental_novelty_v1" if supplemental else None
+                    ),
+                    validation_context=(
+                        {
+                            "requested_slot_ids": [slot.slot_id for slot in expected_slots],
+                            "previous_options_by_slot": {
+                                slot_id: [option.model_dump(mode="json") for option in options]
+                                for slot_id, options in (previous_options_by_slot or {}).items()
+                            },
+                            "minimum_new_options": 2,
+                        }
+                        if supplemental
+                        else {}
+                    ),
+                )
+
+            output = self._runtime.run(build_spec()).output
         cards = tuple(output.form_cards)
         by_slot = {card.target_slot_id: card for card in cards}
-        if (
-            len(cards) != len(expected_slots)
-            or set(by_slot) != {slot.slot_id for slot in expected_slots}
-            or any(card.stage != stage or card.target_slot_id is None for card in cards)
-        ):
-            raise V2PersistenceError(
-                "brand_form_generation_invalid",
-                "Brand foundation form did not contain one valid row for every slot.",
-                stage="brand_capability_invocation",
-            )
         try:
-            for card in cards:
-                _validate_card(card, stage)
+            _validate_form_cards(output, stage, expected_slots)
+            if requested_slot_ids is not None:
+                _validate_supplemental_options(
+                    output,
+                    previous_options_by_slot or {},
+                    expected_slots,
+                )
         except (ValueError, V2PersistenceError) as error:
             raise V2PersistenceError(
                 "brand_form_generation_invalid",
@@ -1624,6 +1649,58 @@ def _with_declared_information_nature(
 def _validate_card(card: BrandOptionCardV1, stage: BrandStage) -> None:
     if card.stage != stage:
         raise _card_invalid("Option card stage does not match the current stage.")
+
+
+def _validate_form_cards(
+    output: BrandStrategyOutputV1,
+    stage: Literal["brand-memory", "campaign"],
+    expected_slots: tuple[object, ...],
+) -> None:
+    """Validate the model's one-card-per-slot form contract before publishing."""
+
+    cards = tuple(output.form_cards)
+    by_slot = {card.target_slot_id: card for card in cards}
+    expected_slot_ids = {str(slot.slot_id) for slot in expected_slots}
+    if (
+        len(cards) != len(expected_slots)
+        or set(by_slot) != expected_slot_ids
+        or any(card.stage != stage or card.target_slot_id is None for card in cards)
+    ):
+        raise V2PersistenceError(
+            "brand_form_generation_invalid",
+            "Brand foundation form did not contain one valid row for every slot.",
+            stage="brand_capability_invocation",
+        )
+    for card in cards:
+        _validate_card(card, stage)
+
+
+def _validate_supplemental_options(
+    output: BrandStrategyOutputV1,
+    previous_options_by_slot: dict[str, tuple[BrandFormOptionV1, ...]],
+    expected_slots: tuple[object, ...],
+) -> None:
+    """Reject a supplemental response that merely repeats prior recommendations."""
+
+    cards_by_slot = {str(card.target_slot_id): card for card in output.form_cards}
+    for slot in expected_slots:
+        slot_id = str(slot.slot_id)
+        previous_labels = {
+            _normalized_form_option_label(option.label)
+            for option in previous_options_by_slot.get(slot_id, ())
+        }
+        new_labels = [
+            _normalized_form_option_label(option.label) for option in cards_by_slot[slot_id].options
+        ]
+        novel_labels = set(new_labels) - previous_labels
+        if len(set(new_labels)) != len(new_labels) or len(novel_labels) < 2:
+            raise ValueError(
+                f"Supplemental options for {slot_id} did not contain enough new recommendations."
+            )
+
+
+def _normalized_form_option_label(label: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", label).split()).casefold()
 
 
 def cast_step(slot_id: str | None) -> BrandTreatmentSubstep:

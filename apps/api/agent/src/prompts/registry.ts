@@ -104,6 +104,9 @@ function instructionForOperation(operation: string): string {
       "Return exactly one form_cards entry per supplied slot, including optional slots; do not omit, merge, reorder, or invent slots.",
       "Each card must target its supplied slot and contain exactly three concrete, mutually useful answer options grounded in product_context, plus a clear custom-answer path for user-provided text.",
       "Options must be specific to the product and campaign rather than generic placeholders. Do not select, confirm, or persist any answer.",
+      "When supplemental_form_mode=true, generate alternatives only for the supplied requested slots. Treat previous_options_by_slot as the comparison baseline: previous options may remain visible for comparison, but the generated card must include at least two genuinely new options for every requested slot.",
+      "A genuinely new supplemental option is not an exact duplicate, near-duplicate, or light rewording of any previous option. Do not return only previous options. If Python reports a supplemental novelty violation, replace the repeated options with concrete new alternatives during the single bounded repair.",
+      "Use supplemental_attempt_no only as diagnostic context; it never permits repeating the previous options. Preserve response_locale for every user-facing label and explanation.",
       "Python owns form validation, stage transitions, user confirmation, and persistence. Return only the BrandStrategyOutputV1 contract in response_locale.",
     ].join(" ");
   }
