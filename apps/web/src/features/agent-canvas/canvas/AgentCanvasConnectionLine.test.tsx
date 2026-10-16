@@ -1,9 +1,12 @@
-import { getBezierPath, Position, type ConnectionLineComponentProps } from "@xyflow/react";
-import { render } from "@testing-library/react";
+import { getBezierPath, Position, ReactFlowProvider, type ConnectionLineComponentProps } from "@xyflow/react";
+import { render as renderComponent } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { AgentCanvasConnectionLine } from "./AgentCanvasConnectionLine.tsx";
 import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
+
+const render = (element: ReactElement) => renderComponent(element, { wrapper: ReactFlowProvider });
 
 function connectionProps(
   overrides: Partial<ConnectionLineComponentProps<AgentCanvasFlowNode>> = {},

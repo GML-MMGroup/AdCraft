@@ -1,0 +1,75 @@
+.brand-dev-page h1 {
+  margin-bottom: 4px;
+  font-size: 22px;
+}
+
+.brand-dev-page__hint {
+  margin: 0 0 16px;
+  color: var(--muted, #666);
+}
+
+.brand-dev-page__form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.brand-dev-page__form input {
+  min-width: 280px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+}
+
+.brand-dev-page__form button {
+  padding: 8px 16px;
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+}
+
+.brand-dev-page__error {
+  color: #b3403a;
+}
+
+.brand-dev-page__content {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.brand-dev-page__panel {
+  max-height: 80vh;
+  overflow-y: auto;
+  border: 1px solid #2c2c2c;
+  border-radius: 10px;
+}
+
+.brand-dev-page__tables h2 {
+  margin: 24px 0 8px;
+  font-size: 16px;
+}
+
+.brand-dev-page__tables table {
+  width: 100%;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+
+.brand-dev-page__tables th,
+.brand-dev-page__tables td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  vertical-align: top;
+}
+
+.brand-dev-page__tables pre {
+  max-height: 420px;
+  padding: 12px;
+  overflow: auto;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+}

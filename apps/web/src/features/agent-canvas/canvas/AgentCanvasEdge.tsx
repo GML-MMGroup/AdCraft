@@ -3,11 +3,15 @@ import {
   getBezierPath,
   type EdgeProps,
 } from "@xyflow/react";
-import { memo } from "react";
+import { memo, type CSSProperties } from "react";
 
 import { nodeBorderPointFromHandleBoundary } from "./canvasConnectionGeometry.ts";
 
+import { canvasConnectionColor } from "./connection-effects/connectionColor.ts";
+import { CanvasEdgeFlow } from "./connection-effects/CanvasEdgeFlow.tsx";
+
 function AgentCanvasEdgeComponent({
+  source: sourceNodeId,
   id,
   sourceX,
   sourceY,
@@ -38,14 +42,17 @@ function AgentCanvasEdgeComponent({
   });
 
   return (
-    <BaseEdge
-      id={id}
-      path={path}
-      markerStart={markerStart}
-      markerEnd={markerEnd}
-      style={style}
-      interactionWidth={interactionWidth}
-    />
+    <g className="canvas-colored-connection" style={{ "--connection-color": canvasConnectionColor(sourceNodeId) } as CSSProperties}>
+      <BaseEdge
+        id={id}
+        path={path}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
+        style={style}
+        interactionWidth={interactionWidth}
+      />
+      <CanvasEdgeFlow path={path} />
+    </g>
   );
 }
 

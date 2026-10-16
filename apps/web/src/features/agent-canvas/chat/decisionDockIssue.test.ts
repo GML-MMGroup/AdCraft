@@ -21,6 +21,12 @@ function apiError(status: number, code: string | undefined, message: string) {
   });
 }
 
+it("treats Brand context conflicts as refresh-only, not resubmittable network failures", () => {
+  const error = apiError(409, "brand_context_stale", "Brief changed");
+  expect(isDecisionDockStaleError(error)).toBe(true);
+  expect(decisionDockIssueFromError(error)).toMatchObject({ code: "brand_context_stale", retryable: false });
+});
+
 describe("decisionDockIssueFromError", () => {
   it("maps duration validation to its field without exposing the code in summary", () => {
     const issue = decisionDockIssueFromError(apiError(

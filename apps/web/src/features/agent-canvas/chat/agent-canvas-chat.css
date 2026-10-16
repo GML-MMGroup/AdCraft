@@ -241,6 +241,8 @@
 
 .agent-chat__timeline-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 56px;
   flex: 1 1 72px;
@@ -248,8 +250,9 @@
 }
 
 .agent-chat__timeline {
-  height: 100%;
+  height: auto;
   min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--agent-chat-strong-line) transparent;
@@ -274,6 +277,11 @@
 
 .agent-chat__timeline-virtualized-item {
   min-width: 0;
+}
+
+/* Keep compact spacing outside the item's content-visibility paint boundary. */
+.agent-chat__timeline-virtualized-item:not(:first-child):has(> .agent-chat__message--agent.continues-speaker-run) {
+  margin-top: -8px;
 }
 
 .agent-chat__timeline-virtualized-placeholder {
@@ -379,15 +387,6 @@
   min-width: 0;
 }
 
-.agent-chat__message-body.is-collapsed {
-  max-height: calc(1.58em * 8);
-  overflow: hidden;
-}
-
-.agent-chat__message-body.is-expanded {
-  max-height: none;
-}
-
 .agent-chat__message-meta {
   display: flex;
   min-height: 16px;
@@ -395,15 +394,6 @@
   gap: 8px;
   color: var(--agent-chat-muted);
   font-size: 9px;
-}
-
-.agent-chat__message-meta button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--agent-chat-secondary);
-  font: inherit;
-  cursor: pointer;
 }
 
 .agent-chat__message-meta time {
@@ -536,10 +526,6 @@
   align-self: flex-start;
 }
 
-.agent-chat__message--agent.continues-speaker-run {
-  margin-top: -8px;
-}
-
 .agent-chat__message--agent > span {
   display: none;
 }
@@ -650,6 +636,27 @@
 
 .agent-chat__guided-answer-bubble {
   animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+.agent-chat__guided-answer-pair {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  /* Keep the answer tail inside the virtualized item's paint boundary. */
+  padding-bottom: 8px;
+}
+
+.agent-chat__guided-question-bubble {
+  animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+.agent-chat__pending-question {
+  /* Keep the tail inside the virtualized row's paint containment. */
+  padding-bottom: 8px;
+}
+
+.agent-chat__guided-question-bubble .agent-chat__message-body {
+  margin: 0;
 }
 
 .agent-chat__guided-answer-bubble .agent-chat__message-body {
@@ -1201,6 +1208,25 @@
   border-top: 1px solid var(--agent-chat-border);
   background: transparent;
   animation: agent-chat-section-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.agent-chat__stage-thread--loading {
+  min-height: 48px;
+  align-items: center;
+}
+
+.agent-chat__role-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--agent-chat-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-chat__role-loading-loader {
+  color: var(--agent-chat-secondary);
 }
 
 .agent-chat__stage-thread > header {
@@ -2119,25 +2145,52 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__current-interaction--overlay {
-  position: absolute;
-  z-index: 3;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  max-height: 100%;
+  position: relative;
+  z-index: 1;
+  /* Shrink before the timeline drops below its floor so the conversation stays readable. */
+  flex: 0 1 auto;
+  min-height: 140px;
+  max-height: min(50vh, 480px);
   padding: 10px 12px 0;
+  background: var(--agent-chat-panel);
   border-top: 0;
-  pointer-events: none;
 }
 
-.agent-chat__current-interaction--overlay > * {
-  pointer-events: auto;
+.agent-chat__current-interaction--overlay.agent-chat__current-interaction--brand-form-expanded,
+.agent-chat__decision-dock--brand-form.is-expanded {
+  max-height: min(68vh, 620px);
+}
+
+.agent-chat__decision-dock--brand-form:not(.is-expanded) {
+  max-height: min(50vh, 480px);
+}
+
+.agent-chat__current-interaction--overlay[hidden] {
+  display: none;
+}
+
+/* The overlay owns the height cap; the dock stretches to it so its body scrolls
+   and the footer stays visible when the overlay shrinks. */
+.agent-chat__current-interaction--overlay > .agent-chat__decision-dock {
+  max-height: none;
+}
+
+.agent-chat__current-interaction--overlay .agent-chat__decision-dock-header {
+  padding-right: 44px;
+}
+
+/* A zero basis makes the timeline take only the leftover space; with an auto
+   basis its long content would absorb almost none of the shrink and squeeze
+   the card down to its floor. */
+.agent-chat__timeline-shell:has(> .agent-chat__current-interaction--overlay:not([hidden])) > .agent-chat__timeline {
+  flex: 1 1 0;
+  min-height: clamp(88px, 16vh, 180px);
 }
 
 .agent-chat__interaction-collapse {
   position: absolute;
-  top: 14px;
-  right: 18px;
+  top: 19px;
+  right: 21px;
   z-index: 1;
   display: grid;
   width: 24px;
@@ -2162,10 +2215,11 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__interaction-chip {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 3;
+  position: relative;
+  align-self: flex-end;
+  flex: 0 0 auto;
+  z-index: 1;
+  margin: 8px 12px 10px;
   display: inline-flex;
   max-width: min(320px, calc(100% - 88px));
   align-items: center;
@@ -2200,25 +2254,6 @@ button.agent-chat__node-links--related:hover {
   width: 14px;
   height: 14px;
   flex: 0 0 auto;
-  color: var(--agent-chat-secondary);
-}
-
-.agent-chat__optimistic-interaction-status {
-  display: flex;
-  width: 100%;
-  min-height: 44px;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--agent-chat-border);
-  background: var(--agent-chat-raised);
-  color: var(--agent-chat-primary);
-  font-size: 11px;
-}
-
-.agent-chat__optimistic-interaction-status span {
   color: var(--agent-chat-secondary);
 }
 
@@ -3335,6 +3370,263 @@ button.agent-chat__node-links--related:hover {
   color: var(--agent-chat-secondary);
   font-size: 9px;
   line-height: 1.4;
+}
+
+.agent-chat__brand-form {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.agent-chat__brand-form-intro {
+  display: grid;
+  gap: 3px;
+  padding: 2px 0 4px;
+}
+
+.agent-chat__brand-form-intro span {
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-chat__brand-form-intro small {
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.agent-chat__brand-form-table {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 8px;
+  background: var(--agent-chat-panel);
+}
+
+.agent-chat__brand-form-row {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 11px 10px 12px;
+  border-bottom: 1px solid var(--agent-chat-border);
+}
+
+.agent-chat__brand-form-row:last-child {
+  border-bottom: 0;
+}
+
+.agent-chat__brand-form-row.is-answered .agent-chat__brand-form-row-number {
+  color: var(--agent-chat-primary);
+}
+
+.agent-chat__brand-form-prompt {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+
+.agent-chat__brand-form-row-number {
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.agent-chat__brand-form-prompt strong {
+  color: var(--agent-chat-primary);
+  font-size: 11px;
+  font-weight: 620;
+  line-height: 1.45;
+}
+
+.agent-chat__brand-form-prompt em {
+  color: var(--agent-chat-muted);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.agent-chat__brand-form-options {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.agent-chat__brand-form-option {
+  /* Anchors the visually hidden radio; otherwise it is positioned against the
+     overlay, overflows it, and focusing it scrolls the whole card away. */
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 15px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.agent-chat__brand-form-option:hover:has(input:not(:disabled)) {
+  border-color: var(--agent-chat-strong-line);
+  background: var(--agent-chat-raised);
+}
+
+.agent-chat__brand-form-option.is-selected {
+  border-color: var(--agent-chat-primary);
+  background: var(--agent-chat-selected);
+}
+
+.agent-chat__brand-form-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.agent-chat__brand-form-option:has(input:focus-visible) {
+  outline: 2px solid var(--agent-chat-primary);
+  outline-offset: 2px;
+}
+
+.agent-chat__brand-form-option-mark {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid var(--agent-chat-strong-line);
+  border-radius: 50%;
+  color: transparent;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.agent-chat__brand-form-option.is-selected .agent-chat__brand-form-option-mark {
+  border-color: var(--agent-chat-primary);
+  background: var(--agent-chat-primary);
+  color: var(--agent-chat-panel);
+}
+
+.agent-chat__brand-form-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.agent-chat__brand-form-option-copy strong {
+  overflow-wrap: anywhere;
+  color: var(--agent-chat-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.agent-chat__brand-form-option-copy small {
+  overflow-wrap: anywhere;
+  color: var(--agent-chat-secondary);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.agent-chat__brand-form-custom-input {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.agent-chat__brand-form-custom-input > span {
+  color: var(--agent-chat-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.agent-chat__brand-form-custom-input input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-primary);
+  font: inherit;
+  font-size: 10px;
+}
+
+.agent-chat__brand-form-custom-input input:focus {
+  border-color: var(--agent-chat-strong-line);
+}
+
+.agent-chat__brand-form-custom-hint {
+  color: var(--agent-chat-secondary);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.agent-chat__brand-form-custom-input input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.agent-chat__brand-form-jump {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--agent-chat-primary);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.agent-chat__brand-form-status {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-chat__brand-form-next-issue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 12px;
+  padding: 10px;
+  border: 1px solid var(--agent-chat-strong-line);
+  border-radius: 8px;
+  color: var(--agent-chat-primary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-chat__brand-form-next-issue button {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid var(--agent-chat-primary);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--agent-chat-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.agent-chat__brand-form-next-issue button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .agent-chat__decision-dock-question-custom {

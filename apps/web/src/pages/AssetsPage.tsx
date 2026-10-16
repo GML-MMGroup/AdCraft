@@ -1,3 +1,4 @@
+import { CatalogToolbar, CatalogFilterButton, CatalogSearch } from "../components/CatalogToolbar";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "../components/Layout.tsx";
@@ -8,6 +9,7 @@ import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCa
 import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
 import type { V2AssetLibraryCategory } from "../types-v2.ts";
 import "./assets.css";
+import { useLocale, localeText } from "../i18n/locale.tsx";
 
 type AssetPageScope = "my" | "recommended";
 
@@ -22,6 +24,8 @@ const ASSET_CATEGORIES: Array<{ id: V2AssetLibraryCategory; label: string }> = [
 ];
 
 export function AssetsPage() {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh.assetsPage : localeText.en.assetsPage;
   const [scope, setScope] = useState<AssetPageScope>("my");
   const [category, setCategory] = useState<V2AssetLibraryCategory>("characters");
   const [search, setSearch] = useState("");
@@ -89,19 +93,19 @@ export function AssetsPage() {
 
   return (
     <section ref={assetLibraryRef} className="v2-asset-library-page">
-      <PageHeader title="Assets" subtitle="Reusable visual building blocks for every workflow." />
-      <div className="v2-asset-library-controls">
-        <div className="v2-asset-library-tabs" role="tablist" aria-label="Asset library scope">
-          <button className={scope === "my" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>My Assets</button>
-          <button className={scope === "recommended" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>Recommended Assets</button>
+      <PageHeader title={labels.title} editorial />
+      <CatalogToolbar className="asset-catalog-toolbar">
+        <div className="v2-asset-library-tabs toolbar-row" role="tablist" aria-label={labels.scope}>
+          <CatalogFilterButton active={scope === "my"} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>{labels.my}</CatalogFilterButton>
+          <CatalogFilterButton active={scope === "recommended"} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>{labels.recommended}</CatalogFilterButton>
         </div>
-        <div className="v2-asset-library-actions">
-          <input aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
+        <div className="catalog-toolbar-actions">
+          <CatalogSearch aria-label={labels.search} value={search} placeholder={labels.search} onChange={(event) => setSearch(event.currentTarget.value)} />
         </div>
-      </div>
-      <div className="v2-asset-library-categories" role="tablist" aria-label="Asset category">
+      </CatalogToolbar>
+      <div className="v2-asset-library-categories toolbar-row" role="tablist" aria-label={labels.category}>
         {ASSET_CATEGORIES.map((item) => (
-          <button key={item.id} className={category === item.id ? "is-active" : ""} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{item.label}</button>
+          <CatalogFilterButton key={item.id} active={category === item.id} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{labels.categories[item.id]}</CatalogFilterButton>
         ))}
       </div>
       <div className="v2-asset-library-layout">
@@ -121,8 +125,8 @@ export function AssetsPage() {
           ) : (
             <>
               {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
-              {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
-              {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
+              {library.loading ? <p className="asset-library-status">{labels.loading}</p> : null}
+              {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">{labels.empty}</p> : null}
               {showRecommendedSceneHologram ? (
                 <RecommendedSceneHologram
                   assets={displayedAssets}

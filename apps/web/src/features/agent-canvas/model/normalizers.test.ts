@@ -28,6 +28,7 @@ import {
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
   normalizeGuidedSessionStateV2,
+  normalizeGuidedBrandFormV1,
   normalizeGuidedReferenceCandidateListResponseV2,
   normalizeProjectAssetListResponseV2,
   normalizeProjectAssetUploadResponseV2,
@@ -40,6 +41,91 @@ import {
   normalizeVideoSkillCatalogResponseV2,
   normalizeVideoSkillPublicDetailV2,
 } from "./normalizers.ts";
+
+describe("Brand form normalization", () => {
+  const form = {
+    content_kind: "brand_form",
+    form_id: "brand-form-1",
+    stage: "brand-memory",
+    revision: 1,
+    response_locale: "zh-CN",
+    context_digest: "a".repeat(64),
+    title: "Brand Memory",
+    instructions: "Choose one option for every row.",
+    rows: [{
+      question_id: "tone",
+      slot_id: "tone",
+      prompt: "What tone?",
+      options: [
+        { option_id: "one", label: "One", why: "Reason one" },
+        { option_id: "two", label: "Two", why: null },
+        { option_id: "three", label: "Three", why: "Reason three" },
+        { option_id: "custom", label: "Other (custom)", why: null },
+      ],
+      custom_option_id: "custom",
+      required: true,
+    }],
+  };
+
+  it("accepts the backend's three recommendations plus explicit custom option", () => {
+    expect(normalizeGuidedBrandFormV1(form)).toMatchObject({
+      form_id: "brand-form-1",
+      rows: [{ options: [{ option_id: "one" }, { option_id: "two", why: null }, { option_id: "three" }, { option_id: "custom" }] }],
+    });
+  });
+
+  it("preserves an expanded option set without truncating old or new recommendations", () => {
+    const expanded = {
+      ...form,
+      rows: [{
+        ...form.rows[0],
+        options: [
+          ...form.rows[0]!.options,
+          { option_id: "four", label: "Four", why: "Reason four" },
+          { option_id: "five", label: "Five", why: "Reason five" },
+          { option_id: "six", label: "Six", why: "Reason six" },
+        ],
+      }],
+    };
+    expect(normalizeGuidedBrandFormV1(expanded).rows[0]?.options.map(option => option.option_id)).toEqual([
+      "one", "two", "three", "custom", "four", "five", "six",
+    ]);
+  });
+
+  it("rejects incomplete rows and a custom option outside the option set", () => {
+    expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], options: form.rows[0]!.options.slice(0, 3) }] })).toThrow();
+    expect(() => normalizeGuidedBrandFormV1({ ...form, rows: [{ ...form.rows[0], custom_option_id: "missing" }] })).toThrow();
+    expect(() => normalizeGuidedBrandFormV1({
+      ...form,
+      rows: [{ ...form.rows[0], options: [
+        { option_id: "one", label: "One", why: null },
+        { option_id: "two", label: "Two", why: null },
+        { option_id: "custom", label: "Custom", why: null },
+        { option_id: "two", label: "Duplicate", why: null },
+      ] }],
+    })).toThrow(/unique/);
+    expect(() => normalizeGuidedBrandFormV1({
+      ...form,
+      rows: [{ ...form.rows[0], options: [
+        { option_id: "one", label: "One", why: null },
+        { option_id: "two", label: "Two", why: null },
+        { option_id: "custom", label: "Custom", why: null },
+      ] }],
+    })).toThrow(/between four and sixty-four/);
+  });
+
+  it("preserves optional draft prefills and rejects non-text values", () => {
+    for (const prefill_value of [undefined, null, "Skateboard"]) {
+      const normalized = normalizeGuidedBrandFormV1({
+        ...form, rows: [{ ...form.rows[0], prefill_value }],
+      });
+      expect(normalized.rows[0]?.prefill_value).toBe(prefill_value ?? null);
+    }
+    expect(() => normalizeGuidedBrandFormV1({
+      ...form, rows: [{ ...form.rows[0], prefill_value: 42 }],
+    })).toThrow(/prefill_value/);
+  });
+});
 
 describe("Presentation Stream normalization", () => {
   const delta = {
@@ -3819,6 +3905,9 @@ describe("Agent Canvas normalizers", () => {
         metadata: {
           capability_id: "world_setting",
           proposal_id: "proposal-world-1",
+          materialization_id: "materialization-world-1",
+          turn_id: "turn-world-1",
+          status: "queued",
         },
         command_plan: null,
         action_receipt: null,
@@ -3832,6 +3921,11 @@ describe("Agent Canvas normalizers", () => {
       message_kind: "planning_progress",
       capability_id: "world_setting",
       proposal_id: "proposal-world-1",
+      metadata: {
+        materialization_id: "materialization-world-1",
+        turn_id: "turn-world-1",
+        status: "queued",
+      },
     });
   });
 

@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { api } from "../../src/api/client.ts";
 import type { ProviderModelSummaryV1 } from "../../src/api/providerRegistry.ts";
 import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../src/types-v2.ts";
 import { AgentCanvasInlineWorkbench } from "../../src/features/agent-canvas/workbench/AgentCanvasInlineWorkbench.tsx";
+import { useAgentCanvasProviderModels } from "../../src/features/agent-canvas/model/useAgentCanvasProviderModels.ts";
 import { AgentAssetBrowser } from "../../src/features/agent-canvas/assets/AgentAssetBrowser.tsx";
 import { CloseIcon } from "../../src/icons.tsx";
 import "../../src/features/agent-canvas/agent-canvas-page.css";
@@ -136,7 +138,11 @@ function App() {
   const testModelMenu = searchParams.get("modelMenu") === "1";
   const audioToggle = searchParams.get("audioToggle");
   const testManualVideo = searchParams.get("manualVideo") === "1";
-  const testVideoToolbar = searchParams.get("videoToolbar") === "1" || audioToggle !== null || testManualVideo;
+  const testModelCache = searchParams.get("modelCache") === "1";
+  const promptPreparingType = (["image", "video", "audio", "text", "script"] as const)
+    .find(type => type === searchParams.get("promptPreparing"));
+  const [panelOpen, setPanelOpen] = useState(true);
+  const testVideoToolbar = searchParams.get("videoToolbar") === "1" || audioToggle !== null || testManualVideo || testModelCache;
   const audioModel: ProviderModelSummaryV1 = {
     ...videoModel,
     parameter_descriptors: [
@@ -165,7 +171,13 @@ function App() {
     || preparation === "superseded"
     ? preparation
     : "waiting_user";
-  const [node, setNode] = useState<CanvasNodeV2>(() => textPanel ? {
+  const [node, setNode] = useState<CanvasNodeV2>(() => promptPreparingType ? {
+    ...manualNode("queued"),
+    node_type: promptPreparingType,
+    node_id: `prompt-preparing-${promptPreparingType}`,
+    creative_role: promptPreparingType === "text" ? "general_text" : promptPreparingType === "script" ? "script" : `general_${promptPreparingType}`,
+    generation_prompt: null,
+  } : textPanel ? {
     ...manualNode(initialPreparation), node_type: "text", node_id: "text-panel-node",
     creative_role: textPanel === "world" ? "world_setting" : "general_text",
     status: textPanel === "world" || textPanel === "ready" ? "ready" : textPanel === "failed" ? "failed" : "draft",
@@ -206,8 +218,53 @@ function App() {
     active_style_skill: null,
   }), [node, referenceNodes, referenceCount, removedReferences]);
 
+  const cachedModels = useAgentCanvasProviderModels(workflow, testModelCache && panelOpen ? node : null);
+  const openCacheNode = (nodeType: "image" | "video", nodeId: string) => {
+    setNode({
+      ...manualNode(),
+      node_type: nodeType,
+      node_id: nodeId,
+      creative_role: nodeType === "video" ? "general_video" : "general_image",
+      generation_prompt: `${nodeId} prompt`,
+    });
+    setPanelOpen(true);
+  };
+
   return (
     <main className={`manual-prompt-mock${assetBrowserMode ? " has-asset-browser" : ""}`}>
+      {testModelCache ? (
+        <nav aria-label="Model cache test controls">
+          <button onClick={() => openCacheNode("video", "video-a")}>Open video A</button>
+          <button onClick={() => openCacheNode("video", "video-b")}>Open video B</button>
+          <button onClick={() => openCacheNode("image", "image-a")}>Open image</button>
+          <button onClick={() => setPanelOpen(false)}>Close panel</button>
+          <button onClick={() => void api.patchModelDefaults({ defaults: { video: "mock:video-alternate" } })
+            .catch(() => setEvents(current => [...current, "defaults-save-failed"]))}>Change default</button>
+        </nav>
+      ) : null}
+      {promptPreparingType ? (
+        <nav aria-label="Prompt preparing test controls">
+          <button onClick={() => setPanelOpen(false)}>Close panel</button>
+          <button onClick={() => setPanelOpen(true)}>Open panel</button>
+          <button onClick={() => setNode(current => ({
+            ...current,
+            revision: current.revision + 1,
+            prompt_preparation: current.prompt_preparation ? { ...current.prompt_preparation, status: "working" } : null,
+          }))}>Mark prompt working</button>
+          <button onClick={() => setNode(current => ({
+            ...current,
+            revision: current.revision + 1,
+            generation_prompt: "Prepared generation prompt",
+            prompt_preparation: current.prompt_preparation ? { ...current.prompt_preparation, status: "ready", prompt_digest: "a".repeat(64) } : null,
+          }))}>Mark prompt ready</button>
+          <button onClick={() => setNode(current => ({
+            ...current,
+            revision: current.revision + 1,
+            prompt_preparation: current.prompt_preparation ? { ...current.prompt_preparation, status: "failed" } : null,
+          }))}>Mark prompt failed</button>
+        </nav>
+      ) : null}
+      {panelOpen ? (
       <AgentCanvasInlineWorkbench
         workflow={workflow}
         node={node}
@@ -235,10 +292,13 @@ function App() {
         onOpenEditing={() => undefined}
         onOpenAssets={() => { if (assetBrowserMode) setAssetsOpen(true); }}
         onUploadReferences={() => undefined}
-        onClose={() => undefined}
-        providerModels={useProviderContract || testVideoToolbar || textPanel ? providerModels : undefined}
-        providerDefaultModelRef={useProviderContract || testVideoToolbar || textPanel ? providerModels[0].model_ref : undefined}
+        onClose={() => { if (testModelCache) setPanelOpen(false); }}
+        providerModels={testModelCache ? cachedModels.models : useProviderContract || testVideoToolbar || textPanel ? providerModels : undefined}
+        providerDefaultModelRef={testModelCache ? cachedModels.defaultModelRef : useProviderContract || testVideoToolbar || textPanel ? providerModels[0].model_ref : undefined}
+        providerModelsLoading={testModelCache ? cachedModels.loading : false}
+        providerModelsError={testModelCache ? cachedModels.error : null}
       />
+      ) : null}
       {assetsOpen ? (
         <div className="agent-canvas-overlay agent-canvas-overlay--assets" role="dialog" aria-modal="true" aria-label="Project assets">
           <button type="button" className="agent-canvas-overlay__close" aria-label="Close assets" onClick={() => setAssetsOpen(false)}><CloseIcon /></button>

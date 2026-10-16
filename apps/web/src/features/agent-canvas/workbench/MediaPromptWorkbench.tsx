@@ -3,6 +3,8 @@ import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2, NodeRuntimeV2 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
 import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
+import { ImageResolutionControls } from "./ImageResolutionControls.tsx";
+import { staleImageResolutionParameters } from "./imageResolutionCapabilities.ts";
 import { ModelParameterControls } from "./ModelParameterControls.tsx";
 import { VideoAudioToggle } from "./VideoAudioToggle.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
@@ -14,7 +16,8 @@ import {
   failureUserAction,
   nodeActionableFailure,
 } from "../chat/actionableFailure.ts";
-import type { RefObject } from "react";
+import { useEffect, type RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 const VIDEO_TOOLBAR_PARAMETERS = ["duration_seconds", "resolution", "aspect_ratio"];
 
@@ -45,6 +48,7 @@ export function MediaPromptWorkbench({
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
   preparingPrompt?: boolean;
 }) {
+  const t = useTranslation("en-US");
   const canConfigureProvider = ["draft", "failed", "ready", "working"].includes(node.status);
   const selectedModelRef = draft.modelSelectionMode === "explicit"
     ? draft.modelRef
@@ -54,16 +58,26 @@ export function MediaPromptWorkbench({
     ? models.find((model) => model.model_ref === selectedModelRef) ?? null
     : null;
   const parameterDescriptors = selectedModel?.parameter_descriptors ?? [];
+  const resolutionCapabilities = selectedModel?.image_resolution_capabilities ?? null;
+  const setDraftParameters = draft.setParameters;
+  useEffect(() => {
+    if (node.node_type !== "image" || !resolutionCapabilities) return;
+    const stale = staleImageResolutionParameters(resolutionCapabilities, draft.parameters);
+    if (!stale.length) return;
+    const next = { ...draft.parameters };
+    stale.forEach((name) => delete next[name]);
+    setDraftParameters(next);
+  }, [draft.parameters, node.node_type, resolutionCapabilities, setDraftParameters]);
   const audioDescriptor = node.node_type === "video"
     ? parameterDescriptors.find((descriptor) => descriptor.name === "generate_audio" && descriptor.value_type === "boolean")
     : undefined;
   const audioEnabled = typeof draft.parameters.generate_audio === "boolean"
     ? draft.parameters.generate_audio
     : audioDescriptor?.default === true;
-  const audioDisabledReason = modelsLoading ? "正在加载模型能力"
-    : modelsError ? "模型能力加载失败"
-      : !canConfigureProvider || !audioDescriptor ? "当前模型不支持生成音频"
-        : draft.pending ? "正在提交，请稍候" : null;
+  const audioDisabledReason = modelsLoading ? t("Loading model capability")
+    : modelsError ? t("Model capability could not be loaded")
+      : !canConfigureProvider || !audioDescriptor ? t("The current model does not support audio generation")
+        : draft.pending ? t("Submitting, please wait") : null;
   const inlineDescriptors = node.node_type === "video"
     ? VIDEO_TOOLBAR_PARAMETERS.flatMap((name) => parameterDescriptors.filter((descriptor) => descriptor.name === name))
     : [];
@@ -89,7 +103,7 @@ export function MediaPromptWorkbench({
   );
 
   const modelPicker = canConfigureProvider ? (
-    <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label="Generation options">
+    <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label={t("Generation options")}>
       <CanvasModelPicker
         appearance={node.node_type !== "audio" ? "monochrome" : "default"}
         showOptionDetails={node.node_type === "audio"}
@@ -112,10 +126,10 @@ export function MediaPromptWorkbench({
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
         <FourLinePromptEditor
-          ariaLabel="Generation prompt"
+          ariaLabel={t("Generation prompt")}
           value={draft.prompt}
           disabled={draft.pending}
-          placeholder={`Describe the ${node.node_type} you want to create.`}
+          placeholder={t("Describe the {type} you want to create.", { type: node.node_type })}
           preparing={preparingPrompt}
           onChange={(event) => draft.setPrompt(event.currentTarget.value)}
           onBlur={() => void draft.flushPrompt()}
@@ -132,7 +146,7 @@ export function MediaPromptWorkbench({
       ) : <NodeWorkbenchError draft={draft} />}
       {audioIssue ? (
         <p className="agent-node-workbench__field-error">
-          Generate audio: {audioIssue.message}
+          {t("Generate audio")}: {audioIssue.message}
         </p>
       ) : null}
 
@@ -163,6 +177,15 @@ export function MediaPromptWorkbench({
         ) : assetActions}
         <div className="agent-node-workbench__composer-actions">
           {node.node_type !== "video" ? modelPicker : null}
+          {node.node_type === "image" && canConfigureProvider && resolutionCapabilities ? (
+            <ImageResolutionControls
+              layout="inline"
+              capabilities={resolutionCapabilities}
+              parameters={draft.parameters}
+              disabled={draft.pending}
+              onChange={draft.setParameters}
+            />
+          ) : null}
           {node.node_type === "video" ? (
             <VideoAudioToggle
               checked={audioEnabled}
@@ -174,11 +197,11 @@ export function MediaPromptWorkbench({
             type="button"
             className="agent-node-workbench__run"
             aria-label={retryingExecution
-              ? `Retry ${node.node_type} node`
+              ? t("Retry {type} node", { type: node.node_type })
               : node.status === "ready" || regenerating
-                ? `Regenerate ${node.node_type} node`
-                : `Run ${node.node_type} node`}
-            title={retryingExecution ? "Retry node" : node.status === "ready" || regenerating ? "Regenerate node" : "Run node"}
+                ? t("Regenerate {type} node", { type: node.node_type })
+                : t("Run {type} node", { type: node.node_type })}
+            title={retryingExecution ? t("Retry node") : node.status === "ready" || regenerating ? t("Regenerate node") : t("Run node")}
             disabled={draft.pending || publishing || !draft.prompt.trim() || node.status === "working" || parametersInvalid}
             onClick={() => void draft.run()}
           >

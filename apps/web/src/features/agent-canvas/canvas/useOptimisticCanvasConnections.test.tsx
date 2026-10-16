@@ -24,13 +24,34 @@ function setup() {
   const pending = deferred();
   const createBinding = vi.fn((_request: CanvasBindingCreateRequestV2, _guard?: { isCurrent?: () => boolean }) => pending.promise);
   const onError = vi.fn();
-  const hook = renderHook(({ workflow, edges }) => useOptimisticCanvasConnections({ workflow, edges, createBinding, onError }), {
+  const onStarted = vi.fn();
+  const hook = renderHook(({ workflow, edges }) => useOptimisticCanvasConnections({ workflow, edges, createBinding, onError, onStarted }), {
     initialProps: { workflow: workflow(), edges: [] as Edge[] },
   });
-  return { ...hook, pending, createBinding, onError };
+  return { ...hook, pending, createBinding, onError, onStarted };
 }
 
 describe("optimistic canvas connections", () => {
+  it("does not animate rejected or already existing connections", () => {
+    const h = setup();
+    act(() => { void h.result.current.submit({ ...request, target_node_id: "missing" }); });
+    h.rerender({ workflow: workflow("a", [binding]), edges: [edge] });
+    act(() => { void h.result.current.submit(request); });
+    expect(h.onStarted).not.toHaveBeenCalled();
+    expect(h.createBinding).not.toHaveBeenCalled();
+  });
+
+  it("still saves a binding when its immediate visual observer fails", async () => {
+    const h = setup();
+    h.onStarted.mockImplementation(() => { throw new Error("visual failure"); });
+    act(() => { void h.result.current.submit(request); });
+    h.rerender({ workflow: workflow("a", [binding]), edges: [] });
+    await act(async () => { h.pending.resolve(binding); });
+    expect(h.onStarted).toHaveBeenCalledOnce();
+    expect(h.onError).not.toHaveBeenCalled();
+    expect(h.result.current.displayEdges).toHaveLength(1);
+  });
+
   it("draws immediately without a substitute Binding, then replaces without a gap", async () => {
     const h = setup();
     act(() => { void h.result.current.submit(request); });
@@ -40,9 +61,12 @@ describe("optimistic canvas connections", () => {
     expect(temporary.data?.optimistic).toBe(true);
     expect(temporary.deletable).toBe(false);
     expect(h.createBinding).toHaveBeenCalledTimes(1);
+    expect(h.onStarted).toHaveBeenCalledExactlyOnceWith(request, temporary.id);
+    expect(h.onStarted.mock.invocationCallOrder[0]).toBeLessThan(h.createBinding.mock.invocationCallOrder[0]);
     // Authority arrives before the parent effect commits the canonical display list.
     h.rerender({ workflow: workflow("a", [binding]), edges: [] });
     await act(async () => { h.pending.resolve(binding); });
+    expect(h.onStarted).toHaveBeenCalledExactlyOnceWith(request, temporary.id);
     expect(h.result.current.displayEdges).toHaveLength(1);
     h.rerender({ workflow: workflow("a", [binding]), edges: [edge] });
     expect(h.result.current.displayEdges).toEqual([edge]);
@@ -56,6 +80,7 @@ describe("optimistic canvas connections", () => {
     await act(async () => { h.pending.reject(new Error("conflict")); });
     expect(h.result.current.displayEdges).toEqual([edge]);
     expect(h.onError).toHaveBeenCalledOnce();
+    expect(h.onStarted).toHaveBeenCalledOnce();
   });
 
   it("deduplicates pending requests, but preserves distinct semantic roles", () => {
@@ -66,6 +91,7 @@ describe("optimistic canvas connections", () => {
       void h.result.current.submit({ ...request, input_role: "text_context" });
     });
     expect(h.createBinding).toHaveBeenCalledTimes(2);
+    expect(h.onStarted).toHaveBeenCalledTimes(2);
     expect(h.result.current.displayEdges).toHaveLength(2);
     expect(h.createBinding.mock.calls[1][0].order).toBe(0);
     expect(h.result.current.nextOrder("target")).toBe(1);
@@ -89,8 +115,10 @@ describe("optimistic canvas connections", () => {
     h.rerender({ workflow: workflow("a", [{ ...binding, enabled: false }]), edges: [] });
     await act(async () => { h.pending.resolve(binding); });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onStarted).toHaveBeenCalledOnce();
     h.rerender({ workflow: workflow("a", [{ ...binding, enabled: false }]), edges: [] });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onStarted).toHaveBeenCalledOnce();
   });
 
   it("does not duplicate an SSE-confirmed edge while HTTP is still pending", async () => {
@@ -120,8 +148,10 @@ describe("optimistic canvas connections", () => {
     act(() => h.result.current.cancelForNodes(["target"]));
     expect(guard()).toBe(false);
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onStarted).toHaveBeenCalledOnce();
     await act(async () => { h.pending.resolve(binding); });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onStarted).toHaveBeenCalledOnce();
   });
 
   it("removes connections when endpoints vanish from authority", async () => {
@@ -129,6 +159,7 @@ describe("optimistic canvas connections", () => {
     act(() => { void h.result.current.submit(request); });
     h.rerender({ workflow: workflow("a", [], ["source"]), edges: [] });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onStarted).toHaveBeenCalledOnce();
     await act(async () => { h.pending.reject(new Error("late failure")); });
     expect(h.onError).not.toHaveBeenCalled();
   });
@@ -142,6 +173,7 @@ describe("optimistic canvas connections", () => {
     expect(guard()).toBe(false);
     await act(async () => { h.pending.resolve(binding); });
     expect(h.result.current.displayEdges).toHaveLength(0);
+    expect(h.onStarted).toHaveBeenCalledOnce();
   });
 
   it("invalidates the mutation guard on unmount", async () => {

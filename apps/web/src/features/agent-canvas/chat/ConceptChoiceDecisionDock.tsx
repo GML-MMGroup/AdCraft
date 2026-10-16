@@ -6,6 +6,7 @@ import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 export interface ConceptChoiceDecisionDockProps {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  disabled?: boolean;
   issue: DecisionDockIssue | null;
   selectedOptionId: string | null;
   onSelectOption: (optionId: string) => void;
@@ -18,6 +19,7 @@ function optionMarker(index: number): string {
 export function ConceptChoiceDecisionDock({
   interaction,
   pending,
+  disabled = false,
   issue,
   selectedOptionId,
   onSelectOption,
@@ -44,7 +46,7 @@ export function ConceptChoiceDecisionDock({
             summary={option.summary}
             recommended={option.recommended}
             selected={selectedOptionId === option.option_id}
-            disabled={pending}
+            disabled={pending || disabled}
             onSelect={() => onSelectOption(option.option_id)}
           />
         ))}

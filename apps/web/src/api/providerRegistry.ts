@@ -4,6 +4,7 @@ export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
 export const MODEL_DEFAULT_PURPOSES = ["agent", "text", "image", "video", "audio"] as const;
 export type ModelDefaultPurpose = (typeof MODEL_DEFAULT_PURPOSES)[number];
 export type ModelDefaultModeV1 = "automatic" | "explicit";
+export type ModelThinkingModeV1 = "disabled" | "enabled";
 
 export type ProviderConnectionState = "configured" | "unconfigured" | "invalid";
 export type ProviderCredentialSource = "project_dotenv" | "process_environment" | "unconfigured";
@@ -102,6 +103,7 @@ export interface ProviderModelSummaryV1 {
   accepted_input_modes?: string[];
   parameter_schema_id?: string | null;
   parameter_descriptors?: ModelParameterDescriptorV1[];
+  image_resolution_capabilities?: ImageResolutionCapabilitiesV1 | null;
   reference_policy?: ReferenceInputPolicyV1 | null;
 }
 
@@ -113,6 +115,23 @@ export interface ModelParameterDescriptorV1 {
   minimum: number | null;
   maximum: number | null;
   default: unknown;
+}
+
+export type ImageResolutionParameterModeV1 = "size" | "resolution_with_aspect_ratio";
+
+export interface ImageResolutionPixelBoundsV1 {
+  minimum: number;
+  maximum: number;
+}
+
+export interface ImageResolutionCapabilitiesV1 {
+  parameter_modes: ImageResolutionParameterModeV1[];
+  size_options: string[];
+  resolution_options: string[];
+  aspect_ratio_options: string[];
+  sizes_by_aspect_ratio: Record<string, string>;
+  pixel_bounds: ImageResolutionPixelBoundsV1 | null;
+  default_parameters: Record<string, unknown>;
 }
 
 export interface ReferenceInputModeV1 {
@@ -148,12 +167,14 @@ export interface ProviderModelSyncResponseV1 {
 export interface ModelDefaultsResponseV1 {
   defaults: Partial<Record<ModelDefaultPurpose, string>>;
   modes: Partial<Record<ModelDefaultPurpose, ModelDefaultModeV1>>;
+  thinking_modes?: Partial<Record<ModelDefaultPurpose, ModelThinkingModeV1>>;
   revisions: Partial<Record<ModelDefaultPurpose, number>>;
 }
 
 export interface ModelDefaultsPatchRequestV1 {
   defaults?: Partial<Record<ModelDefaultPurpose, string>>;
   modes?: Partial<Record<ModelDefaultPurpose, ModelDefaultModeV1>>;
+  thinking_modes?: Partial<Record<ModelDefaultPurpose, ModelThinkingModeV1>>;
 }
 
 export function emptyProviderCredentialDraft(

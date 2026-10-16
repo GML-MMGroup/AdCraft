@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export interface AgentCanvasLayoutConfirmationProps {
   status: "previewing" | "saving" | "save_error";
@@ -17,6 +18,7 @@ export function AgentCanvasLayoutConfirmation({
   onKeep,
   dismissExemptRef,
 }: AgentCanvasLayoutConfirmationProps) {
+  const t = useTranslation();
   const dialogRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLParagraphElement>(null);
   const headingId = useId();
@@ -63,11 +65,11 @@ export function AgentCanvasLayoutConfirmation({
       aria-labelledby={headingId}
       aria-busy={saving}
     >
-      <p id={headingId} ref={headingRef} tabIndex={-1}>是否保留此次排布</p>
+      <p id={headingId} ref={headingRef} tabIndex={-1}>{t("Whether to keep this layout")}</p>
       {error ? <span className="agent-canvas-layout-confirmation__error" role="alert">{error}</span> : null}
       <div className="agent-canvas-layout-confirmation__actions">
-        <button type="button" disabled={saving} onClick={onUndo}>撤销</button>
-        <button type="button" disabled={saving} onClick={onKeep}>保留</button>
+        <button type="button" disabled={saving} onClick={onUndo}>{t("Undo")}</button>
+        <button type="button" disabled={saving} onClick={onKeep}>{t("Keep")}</button>
       </div>
     </div>
   );

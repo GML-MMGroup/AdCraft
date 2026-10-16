@@ -4,6 +4,7 @@ import {
   type AgentCanvasVisibleNodeTypeV2,
 } from "../model/nodeDefaults.ts";
 import { AgentCanvasNodeIcon } from "./AgentCanvasNodeIcon.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 interface AgentCanvasNodePickerProps {
   className?: string;
@@ -16,6 +17,7 @@ export function AgentCanvasNodePicker({
   menuLabel,
   onSelect,
 }: AgentCanvasNodePickerProps) {
+  const t = useTranslation("en-US");
   return (
     <div className={className} role="menu" aria-label={menuLabel}>
       {AGENT_CANVAS_VISIBLE_NODE_TYPES.map((type) => (
@@ -23,11 +25,11 @@ export function AgentCanvasNodePicker({
           type="button"
           role="menuitem"
           key={type}
-          aria-label={`Add ${AGENT_CANVAS_NODE_LABELS[type]} node`}
+          aria-label={t("Add {type} node", { type: AGENT_CANVAS_NODE_LABELS[type] })}
           onClick={() => onSelect(type)}
         >
           <AgentCanvasNodeIcon nodeType={type} />
-          <span>{AGENT_CANVAS_NODE_LABELS[type]}</span>
+          <span>{t(AGENT_CANVAS_NODE_LABELS[type] as "Text" | "Script" | "Image" | "Video" | "Audio" | "Editing")}</span>
         </button>
       ))}
     </div>

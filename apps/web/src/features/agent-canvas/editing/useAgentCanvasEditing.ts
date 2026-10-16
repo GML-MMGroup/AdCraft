@@ -212,12 +212,17 @@ export function useAgentCanvasEditing(
     ? pendingManifestCommit.pending
     : manifestCommitPending(manifestIdentity);
 
-  const canonicalContent = useMemo(() => {
-    if (node.node_type !== "editing") return null;
+  const { content: canonicalContent, error: contentError } = useMemo(() => {
+    if (node.node_type !== "editing" || node.structured_content?.manifest === undefined) {
+      return { content: null, error: null };
+    }
     try {
-      return normalizeEditingNodeContentV2(node.structured_content);
-    } catch {
-      return null;
+      return { content: normalizeEditingNodeContentV2(node.structured_content), error: null };
+    } catch (parseError) {
+      return {
+        content: null,
+        error: parseError instanceof Error ? parseError.message : "Unexpected composition parsing error.",
+      };
     }
   }, [node.node_type, node.structured_content]);
 
@@ -564,6 +569,7 @@ export function useAgentCanvasEditing(
 
   return {
     content,
+    contentError,
     inputs,
     outputAsset: exportAsset,
     terminalExport,
