@@ -1495,6 +1495,7 @@ class AgentConversationService:
         mentioned_node_ids: tuple[str, ...] = (),
         mentioned_image_asset_ids: tuple[str, ...] = (),
         video_skill_run_id: str | None = None,
+        response_locale: str | None = None,
     ) -> ChatTurnAcceptedV2:
         self._workflows.get_workflow(workflow_id)
         current_session = self._conversations.get_guidance_session_or_none(workflow_id)
@@ -1557,6 +1558,7 @@ class AgentConversationService:
             mentioned_node_ids=mentioned_node_ids,
             mentioned_image_asset_ids=mentioned_image_asset_ids,
             video_skill_run_id=video_skill_run_id,
+            response_locale=response_locale,
             idempotency_key=idempotency_key,
         )
 
@@ -1759,13 +1761,15 @@ class AgentConversationService:
         mentioned_asset_ids = tuple(
             str(item) for item in turn.request.get("mentioned_image_asset_ids") or ()
         )
+        requested_response_locale = str(turn.request.get("response_locale") or "").strip() or None
+        current_response_locale = requested_response_locale or (
+            existing_session.response_locale if existing_session is not None else "und"
+        )
         requirements = self._requirements.get_current_revision(turn.workflow_id)
         workflow_context = self._workflow_context.project(
             turn.workflow_id,
             conversation_id=turn.conversation_id,
-            response_locale=(
-                existing_session.response_locale if existing_session is not None else "und"
-            ),
+            response_locale=current_response_locale,
         )
         intent = self._turn_intents.decide(
             TurnIntentContextV2(
@@ -1784,9 +1788,7 @@ class AgentConversationService:
                     turn.workflow_id,
                     mentioned_node_ids=mentioned_node_ids,
                 ),
-                current_response_locale=(
-                    existing_session.response_locale if existing_session is not None else "und"
-                ),
+                current_response_locale=current_response_locale,
                 workflow_context=workflow_context,
                 style_skill_catalog=StyleSkillConsultationResolver(
                     self._video_skills, self._conversations

@@ -2920,6 +2920,7 @@ def submit_chat_message(
             mentioned_node_ids=request.mentioned_node_ids,
             mentioned_image_asset_ids=request.mentioned_image_asset_ids,
             video_skill_run_id=request.video_skill_run_id,
+            response_locale=request.response_locale,
             idempotency_key=idempotency_key,
         )
     except V2PersistenceError as error:

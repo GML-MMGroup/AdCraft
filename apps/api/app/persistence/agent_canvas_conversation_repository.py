@@ -1677,12 +1677,14 @@ class AgentCanvasConversationRepository:
         mentioned_image_asset_ids: tuple[str, ...],
         video_skill_run_id: str | None,
         idempotency_key: str,
+        response_locale: str | None = None,
     ) -> ChatTurnAcceptedV2:
         request = {
             "text": text,
             "mentioned_node_ids": list(mentioned_node_ids),
             "mentioned_image_asset_ids": list(mentioned_image_asset_ids),
             "video_skill_run_id": video_skill_run_id,
+            "response_locale": response_locale,
         }
         return self._create_turn(
             workflow_id,
