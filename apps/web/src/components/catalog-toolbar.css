@@ -40,10 +40,15 @@
   border: 1px solid var(--stroke);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.48);
-  padding: 0 16px 0 40px;
+  padding: 0 16px 0 46px;
   font-size: 14px;
   font-weight: 400;
   outline: 0;
+}
+
+/* Keep the icon's reserved gutter ahead of the shared button/input rules. */
+.catalog-search-shell > .catalog-search {
+  padding-inline-start: 46px;
 }
 
 .catalog-search {
@@ -70,7 +75,7 @@
   color: transparent;
 }
 
-.catalog-search:focus-visible + .catalog-search-icon {
+.catalog-search-shell:focus-within .catalog-search-icon {
   color: #9DAFE6;
 }
 

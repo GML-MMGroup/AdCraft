@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEventHandler } from "react";
 import type { FocusEventHandler } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 const FOUR_LINE_HEIGHT = 88;
-const PREPARING_PROMPT = "提示词正在准备...";
 const PREPARING_CHARACTER_DELAY = 150;
 const PREPARING_HOLD_DELAY = 900;
 
@@ -27,6 +27,8 @@ export function FourLinePromptEditor({
   onBlur?: FocusEventHandler<HTMLTextAreaElement>;
   editorRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
+  const t = useTranslation("en-US");
+  const preparingPromptText = t("Prompt is being prepared...");
   const internalEditorRef = useRef<HTMLTextAreaElement>(null);
   const editorRef = providedEditorRef ?? internalEditorRef;
   const [preparingText, setPreparingText] = useState("");
@@ -37,16 +39,16 @@ export function FourLinePromptEditor({
       return undefined;
     }
 
-    const delay = preparingText.length < PREPARING_PROMPT.length
+    const delay = preparingText.length < preparingPromptText.length
       ? PREPARING_CHARACTER_DELAY
       : PREPARING_HOLD_DELAY;
     const timer = window.setTimeout(() => {
-      setPreparingText((current) => current.length < PREPARING_PROMPT.length
-        ? PREPARING_PROMPT.slice(0, current.length + 1)
+      setPreparingText((current) => current.length < preparingPromptText.length
+        ? preparingPromptText.slice(0, current.length + 1)
         : "");
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [preparing, preparingText, value]);
+  }, [preparing, preparingText, preparingPromptText, value]);
 
   useEffect(() => {
     const editor = editorRef.current;

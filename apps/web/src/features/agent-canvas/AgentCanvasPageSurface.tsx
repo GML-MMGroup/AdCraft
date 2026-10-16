@@ -1,8 +1,9 @@
+import { useTranslation } from "../../i18n/useTranslation";
+import { ConnectionEffectContext } from "./canvas/connection-effects/connectionEffectContext.ts";
+import { canvasConnectionColor } from "./canvas/connection-effects/connectionColor.ts";
 import { PrimaryNavigation } from "../../components/Layout";
 import { ResizableBrandPanel } from "./brand/ResizableBrandPanel";
 import { useModeLaunch } from "../mode-selection/ModeLaunchContext";
-import { ConnectionEffectContext } from "./canvas/connection-effects/connectionEffectContext.ts";
-import { canvasConnectionColor } from "./canvas/connection-effects/connectionColor.ts";
 import {
   applyNodeChanges,
   Controls,
@@ -183,6 +184,7 @@ function reducedMotionPreference(): boolean {
 type CanvasInteractionReason = "viewport" | "node-drag";
 
 export function AgentCanvasPage() {
+  const t = useTranslation();
   const { refreshProjects } = useApp();
   const session = useAgentCanvasSession();
   const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
@@ -554,7 +556,7 @@ export function AgentCanvasPage() {
     const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
     if (node) void runNode(node, { retryFailed }).catch((error) => {
       reportProviderBalanceError(error);
-      setSurfaceError(error instanceof Error ? error.message : "Node run failed.");
+      setSurfaceError(error instanceof Error ? error.message : t("Node run failed."));
     });
   }, [runNode, workflow?.nodes]);
 
@@ -565,12 +567,12 @@ export function AgentCanvasPage() {
 
   const addEditingExportToCanvas = useCallback(async (exportId: string) => {
     if (!workflow || !editingNodeId) {
-      throw new Error("Select an Editing node before importing an export.");
+      throw new Error(t("Select an Editing node before importing an export."));
     }
     const editingNode = workflow.nodes.find((candidate) => (
       candidate.node_id === editingNodeId && candidate.node_type === "editing"
     ));
-    if (!editingNode) throw new Error("The Editing node is no longer available.");
+    if (!editingNode) throw new Error(t("The Editing node is no longer available."));
     const editingAsset = editingNode.output_asset_id
       ? workflow.assets.find((asset) => asset.asset_id === editingNode.output_asset_id) ?? null
       : null;
@@ -600,7 +602,7 @@ export function AgentCanvasPage() {
       });
       setEditingNodeId(null);
     } catch (error) {
-      setSurfaceError(error instanceof Error ? error.message : "The exported video could not be added to canvas.");
+      setSurfaceError(error instanceof Error ? error.message : t("The exported video could not be added to canvas."));
       throw error;
     }
   }, [editingNodeId, importEditingExport, workflow]);
@@ -615,12 +617,12 @@ export function AgentCanvasPage() {
     const targetNode = session.state.selectedNode;
     if (!workflow || !targetNode || !files.length) return;
     if (targetNode.node_type === "editing") {
-      setSurfaceError("Use connected Video and Audio nodes as Editing inputs.");
+      setSurfaceError(t("Use connected Video and Audio nodes as Editing inputs."));
       return;
     }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     if (imageFiles.length !== files.length) {
-      setSurfaceError("Only image files can be attached as prompt references.");
+      setSurfaceError(t("Only image files can be attached as prompt references."));
       return;
     }
     setSurfaceError(null);
@@ -659,7 +661,7 @@ export function AgentCanvasPage() {
       }
       await refreshWorkflow();
     } catch (error) {
-      setSurfaceError(error instanceof Error ? error.message : "Reference upload failed.");
+      setSurfaceError(error instanceof Error ? error.message : t("Reference upload failed."));
     }
   }, [createBinding, refreshWorkflow, session.state.selectedNode, workflow]);
 
@@ -853,7 +855,7 @@ export function AgentCanvasPage() {
         },
       );
     } catch (error) {
-      setSurfaceError(error instanceof Error ? error.message : "Canvas layout could not be calculated.");
+      setSurfaceError(error instanceof Error ? error.message : t("Canvas layout could not be calculated."));
       return;
     }
 
@@ -880,7 +882,7 @@ export function AgentCanvasPage() {
       })
       .catch((error) => {
         if (activeWorkflowIdRef.current === workflowId) {
-          setSurfaceError(error instanceof Error ? error.message : "Canvas layout could not be saved.");
+          setSurfaceError(error instanceof Error ? error.message : t("Canvas layout could not be saved."));
         }
       });
   }, [pointerSpotlight.hostRef, updateNodePositions, visibleCanonicalNodes, workflow]);
@@ -1016,7 +1018,7 @@ export function AgentCanvasPage() {
 
   const connect = useCallback(async (connection: Connection) => {
     if (!workflow || !connectionPolicy || !connection.source || !connection.target || connection.source === connection.target) {
-      if (!connectionPolicy) setSurfaceError("Connection policy is still loading.");
+      if (!connectionPolicy) setSurfaceError(t("Connection policy is still loading."));
       return;
     }
     const source = workflow.nodes.find((node) => node.node_id === connection.source);
@@ -1024,7 +1026,7 @@ export function AgentCanvasPage() {
     if (!source || !target) return;
     const rule = connectionRuleForPair(connectionPolicy, source.node_type, target.node_type);
     if (!rule) {
-      setSurfaceError("These node types cannot be connected.");
+      setSurfaceError(t("These node types cannot be connected."));
       return;
     }
     setSurfaceError(null);
@@ -1062,7 +1064,7 @@ export function AgentCanvasPage() {
       deleteBinding,
       recoverDeletedCanvasState,
     )
-      .catch((error) => setSurfaceError(error instanceof Error ? error.message : "The connection could not be removed."));
+      .catch((error) => setSurfaceError(error instanceof Error ? error.message : t("The connection could not be removed.")));
   }, [deleteBinding, recoverDeletedCanvasState]);
 
   const deleteNodes = useCallback((deleted: AgentCanvasFlowNode[]) => {
@@ -1072,7 +1074,7 @@ export function AgentCanvasPage() {
       deleteNode,
       recoverDeletedCanvasState,
     )
-      .catch((error) => setSurfaceError(error instanceof Error ? error.message : "The node could not be deleted."));
+      .catch((error) => setSurfaceError(error instanceof Error ? error.message : t("The node could not be deleted.")));
   }, [cancelPendingNodeConnections, deleteNode, recoverDeletedCanvasState]);
 
   const deleteContextNode = useCallback((nodeId: string) => {
@@ -1103,7 +1105,7 @@ export function AgentCanvasPage() {
     try {
       await cancelRun();
     } catch (error) {
-      setSurfaceError(error instanceof Error ? error.message : "The run could not be cancelled.");
+      setSurfaceError(error instanceof Error ? error.message : t("The run could not be cancelled."));
     }
   }, [cancelRun]);
 
@@ -1130,16 +1132,16 @@ export function AgentCanvasPage() {
     try {
       await createCanvasNode(createDefaultCanvasNodeRequest(nodeType, position));
     } catch (error) {
-      setSurfaceError(error instanceof Error ? error.message : "The node could not be created.");
+      setSurfaceError(error instanceof Error ? error.message : t("The node could not be created."));
     }
   }, [createCanvasNode, workflow]);
 
   const addReferences = useCallback(async (selections: AgentAssetReferenceSelection[]) => {
     if (!workflow || !session.state.selectedNode) {
-      throw new Error("Select a target node before adding image references.");
+      throw new Error(t("Select a target node before adding image references."));
     }
     if (session.state.selectedNode.node_type === "editing") {
-      throw new Error("Editing nodes accept connected Video nodes and one BGM node, not image references.");
+      throw new Error(t("Editing nodes accept connected Video nodes and one BGM node, not image references."));
     }
     const targetNodeId = session.state.selectedNode.node_id;
     const startOrder = workflow.bindings.filter((binding) => binding.target_node_id === targetNodeId).length;
@@ -1255,7 +1257,7 @@ export function AgentCanvasPage() {
         enqueueReveal(plan);
       })
       .catch((error) => {
-        setSurfaceError(error instanceof Error ? error.message : "New canvas nodes could not be positioned.");
+        setSurfaceError(error instanceof Error ? error.message : t("New canvas nodes could not be positioned."));
       });
   }, [enqueueReveal, placeActionReceiptNodes, releaseRevealNodeIds, reserveRevealNodeIds]);
 
@@ -1279,7 +1281,7 @@ export function AgentCanvasPage() {
         { isolatedRowWidth },
       );
     } catch (error) {
-      setSurfaceError(error instanceof Error ? error.message : "Canvas layout could not be calculated.");
+      setSurfaceError(error instanceof Error ? error.message : t("Canvas layout could not be calculated."));
       return;
     }
 
@@ -1363,13 +1365,13 @@ export function AgentCanvasPage() {
   }, [clearEdgeSelection, setSelectedNodeId]);
 
   if (!session.state.workspaceHydrated) {
-    return <div className="agent-canvas-state">Opening project...</div>;
+    return <div className="agent-canvas-state">{t("Opening project...")}</div>;
   }
   if (!workflow) {
     return (
       <div className="agent-canvas-state agent-canvas-state--error">
-        <strong>Project canvas unavailable</strong>
-        <span>{session.state.workspaceRestoreError || "Open a project or create a new one."}</span>
+        <strong>{t("Project canvas unavailable")}</strong>
+        <span>{session.state.workspaceRestoreError || t("Open a project or create a new one.")}</span>
       </div>
     );
   }
@@ -1555,13 +1557,13 @@ export function AgentCanvasPage() {
           boardRef={pointerSpotlight.hostRef}
         />
 
-        <div className="agent-canvas-toolbar" aria-label="Canvas controls">
+        <div className="agent-canvas-toolbar" aria-label={t("Canvas controls")}>
           <div className="agent-canvas-toolbar__add">
             <button
               type="button"
               className={addMenuOpen ? "is-active" : ""}
-              aria-label="Add node"
-              title="Add node"
+              aria-label={t("Add node")}
+              title={t("Add node")}
               onClick={() => setAddMenuOpen((current) => !current)}
             >
               <PlusIcon />
@@ -1569,7 +1571,7 @@ export function AgentCanvasPage() {
             {addMenuOpen ? (
               <AgentCanvasNodePicker
                 className="agent-canvas-node-picker agent-canvas-add-menu"
-                menuLabel="Add node types"
+                menuLabel={t("Add node types")}
                 onSelect={(nodeType) => void createNode(nodeType)}
               />
             ) : null}
@@ -1578,8 +1580,8 @@ export function AgentCanvasPage() {
             <button
               ref={layoutButtonRef}
               type="button"
-              aria-label="Organize canvas"
-              title="Organize canvas"
+              aria-label={t("Organize canvas")}
+              title={t("Organize canvas")}
               disabled={!nodes.length || layoutPreview.active}
               onClick={organizeCanvas}
             >
@@ -1599,27 +1601,17 @@ export function AgentCanvasPage() {
           <button
             type="button"
             className={assetsOpen ? "is-active" : ""}
-            aria-label="Open assets"
-            title="Assets"
+            aria-label={t("Open assets")}
+            title={t("Assets")}
             onClick={() => setAssetsOpen(true)}
           >
             <AssetsIcon />
           </button>
-          {workflow ? (
-            <button
-              type="button"
-              aria-label="Open LLM call history"
-              title="LLM call history"
-              onClick={() => window.open(`/workflows/${encodeURIComponent(workflow.workflow_id)}/llm-calls`, "_blank", "noopener,noreferrer")}
-            >
-              LOG
-            </button>
-          ) : null}
           {running ? (
             <button
               type="button"
-              aria-label="Cancel run"
-              title="Cancel run"
+              aria-label={t("Cancel run")}
+              title={t("Cancel run")}
               onClick={() => void cancelCurrentRun()}
             >
               <PauseIcon />
@@ -1628,12 +1620,12 @@ export function AgentCanvasPage() {
             <button
               type="button"
               className="agent-canvas-toolbar__run"
-              aria-label="Run all draft nodes"
-              title={hasRunnableDraft ? "Run all" : "No prompt-ready drafts"}
+              aria-label={t("Run all draft nodes")}
+              title={t(hasRunnableDraft ? "Run all" : "No prompt-ready drafts")}
               disabled={live.state.runPending || !hasRunnableDraft}
               onClick={() => void runAll().catch((error) => {
                 reportProviderBalanceError(error);
-                setSurfaceError(error instanceof Error ? error.message : "Run could not start.");
+                setSurfaceError(error instanceof Error ? error.message : t("Run could not start."));
               })}
             >
               <PlayIcon />
@@ -1647,7 +1639,7 @@ export function AgentCanvasPage() {
 
         {workflow.nodes.length === 0 ? (
           <div className="agent-canvas-empty">
-            <strong>Start with a node or talk to AdCraft Video Agent.</strong>
+            <strong>{t("Start with a node or talk to AdCraft Video Agent.")}</strong>
           </div>
         ) : null}
 
@@ -1667,7 +1659,7 @@ export function AgentCanvasPage() {
 
         {canvasMediaUpload.uploading ? (
           <div className="agent-canvas-notice agent-canvas-notice--info" role="status">
-            Uploading media and adding it to the canvas…
+            {t("Uploading media and adding it to the canvas…")}
           </div>
         ) : null}
 
@@ -1675,7 +1667,7 @@ export function AgentCanvasPage() {
           <button
             type="button"
             className="agent-canvas-notice agent-canvas-notice--info"
-            aria-label="Dismiss automatic run notice"
+            aria-label={t("Dismiss automatic run notice")}
             onClick={clearAutoRunNotice}
           >
             {live.state.autoRunNotice}
@@ -1683,7 +1675,7 @@ export function AgentCanvasPage() {
         ) : null}
 
         {assetsOpen ? (
-          <div className="agent-canvas-overlay agent-canvas-overlay--assets" role="dialog" aria-modal="true" aria-label="Project assets">
+          <div className="agent-canvas-overlay agent-canvas-overlay--assets" role="dialog" aria-modal="true" aria-label={t("Project assets")}>
             <Suspense fallback={null}>
               <AgentAssetBrowser
                 workflowId={workflow.workflow_id}
@@ -1726,7 +1718,7 @@ export function AgentCanvasPage() {
           type="file"
           accept="image/*,video/*"
           tabIndex={-1}
-          aria-label="Upload image or video to canvas"
+          aria-label={t("Upload image or video to canvas")}
           onChange={(event) => void canvasMediaUpload.onFileChange(event)}
         />
 

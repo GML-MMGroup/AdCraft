@@ -12,8 +12,11 @@ import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
 import { resolveV2ProjectCoverSummary } from "../projects/v2ProjectCover.ts";
 import "./projects.css";
 import { v2Api, V2ApiError } from "../api/v2Client.ts";
+import { useLocale, localeText } from "../i18n/locale.tsx";
 
 export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh.projectsPage : localeText.en.projectsPage;
   const [tab, setTab] = useState<"all" | "favorite">("all");
   const [search, setSearch] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
@@ -86,8 +89,8 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const partiallySelected = selectedProjects.length > 0 && !allVisibleSelected;
   const selectionBusy = batchAction !== null;
   const favoriteActionLabel = selectedProjects.length > 0 && selectedProjects.every((project) => project.favorite)
-    ? "Remove favorite"
-    : "Favorite";
+    ? labels.removeFavorite
+    : labels.favorite;
 
   useEffect(() => {
     if (!selectionNotice) return undefined;
@@ -113,11 +116,11 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const trashSavedProject = useCallback(async (project: ProjectListItem) => {
     try {
       await moveProjectToTrash(project.projectId);
-      setActionNotice(`${project.name} moved to trash.`);
+      setActionNotice(labels.moveToTrash === "移入回收站" ? `${project.name}已移入回收站。` : `${project.name} moved to trash.`);
     } catch {
-      setActionNotice(`Could not move ${project.name} to trash.`);
+      setActionNotice(labels.moveFailed.replace("{name}", project.name));
     }
-  }, [moveProjectToTrash]);
+  }, [labels, moveProjectToTrash]);
 
   const toggleSavedProjectFavorite = useCallback((project: ProjectListItem) => {
     const summary = savedProjects.find((item) => item.project_id === project.projectId);
@@ -135,9 +138,9 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   }, []);
 
   const clearSelectionForListChange = useCallback(() => {
-    if (selectedProjectIds.size > 0) setSelectionNotice("Selection cleared because the project list changed.");
+    if (selectedProjectIds.size > 0) setSelectionNotice(labels.selectionCleared);
     setSelectedProjectIds(new Set());
-  }, [selectedProjectIds.size]);
+  }, [labels, selectedProjectIds.size]);
 
   const changeTab = useCallback((nextTab: "all" | "favorite") => {
     if (nextTab === tab) return;
@@ -185,7 +188,8 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const runBatchAction = useCallback(async (action: "favorite" | "trash") => {
     if (selectionBusy || selectedProjects.length === 0) return;
     if (action === "trash") {
-      const confirmed = window.confirm(`Move ${selectedProjects.length} ${selectedProjects.length === 1 ? "project" : "projects"} to trash?`);
+      const noun = selectedProjects.length === 1 ? labels.project : labels.projects;
+      const confirmed = window.confirm(labels.moveConfirm.replace("{count}", String(selectedProjects.length)).replace("{noun}", noun));
       if (!confirmed) return;
     }
 
@@ -207,8 +211,10 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
 
     setBatchAction(null);
     if (failedProjectIds.size > 0) {
-      const noun = action === "trash" ? "moved to trash" : "updated";
-      setSelectionError(`${failedProjectIds.size} ${failedProjectIds.size === 1 ? "project could not be" : "projects could not be"} ${noun}.`);
+      setSelectionError(labels.updateFailed
+        .replace("{count}", String(failedProjectIds.size))
+        .replace("{noun}", failedProjectIds.size === 1 ? labels.project : labels.projects)
+        .replace("{action}", action === "trash" ? labels.movedToTrash : labels.updated));
       setSelectedProjectIds(failedProjectIds);
       return;
     }
@@ -216,27 +222,29 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
     setSelectedProjectIds(new Set());
     setSelectionMode(false);
     if (action === "trash") {
-      setActionNotice(`${snapshot.length} ${snapshot.length === 1 ? "project" : "projects"} moved to trash.`);
+      setActionNotice(labels.moved
+        .replace("{count}", String(snapshot.length))
+        .replace("{noun}", snapshot.length === 1 ? labels.project : labels.projects));
     }
-  }, [moveProjectToTrash, savedProjects, selectedProjects, selectionBusy, toggleProjectFavorite]);
+  }, [labels, moveProjectToTrash, savedProjects, selectedProjects, selectionBusy, toggleProjectFavorite]);
 
   return (
     <section className="content-wrap">
-      <PageHeader title="All Projects" editorial />
+      <PageHeader title={labels.title} editorial />
       <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">
           <CatalogFilterButton active={tab === "all"} onClick={() => changeTab("all")}>
-            All
+            {labels.all}
           </CatalogFilterButton>
           <CatalogFilterButton active={tab === "favorite"} onClick={() => changeTab("favorite")}>
-            Favorites
+            {labels.favorites}
           </CatalogFilterButton>
         </div>
         <div className="catalog-toolbar-actions">
-          <CatalogSearch aria-label="Search projects" placeholder="Search projects" value={search} onChange={(event) => changeSearch(event.target.value)} />
+          <CatalogSearch aria-label={labels.search} placeholder={labels.search} value={search} onChange={(event) => changeSearch(event.target.value)} />
           {!selectionMode ? (
             <CatalogFilterButton  type="button" onClick={enterSelectionMode}>
-              Select
+              {labels.select}
             </CatalogFilterButton>
           ) : (
             <>
@@ -244,14 +252,14 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
                 className={` project-selection-toggle${partiallySelected ? " is-partial" : ""}`}
                 type="button"
                 aria-pressed={allVisibleSelected}
-                aria-label={partiallySelected ? "Select all projects" : undefined}
+                aria-label={partiallySelected ? labels.selectAllProjects : undefined}
                 disabled={selectionBusy || projects.length === 0}
                 onClick={toggleVisibleSelection}
               >
-                {allVisibleSelected ? "Clear selection" : "Select all"}
+                {allVisibleSelected ? labels.clearSelection : labels.selectAll}
               </CatalogFilterButton>
               <CatalogFilterButton  type="button" disabled={selectionBusy} onClick={exitSelectionMode}>
-                Done
+                {labels.done}
               </CatalogFilterButton>
             </>
           )}
@@ -260,16 +268,16 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
       {selectionMode ? (
         <div className="project-selection-toolbar" aria-busy={selectionBusy}>
           <div className="project-selection-summary">
-            <strong>{`${selectedProjects.length} selected`}</strong>
+            <strong>{`${selectedProjects.length} ${labels.selected}`}</strong>
             {selectionNotice ? <span role="status">{selectionNotice}</span> : null}
             {selectionError ? <span className="project-selection-error" role="alert">{selectionError}</span> : null}
           </div>
           <div className="project-selection-actions">
             <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchAction("favorite")}>
-              {selectionBusy && batchAction === "favorite" ? "Saving…" : favoriteActionLabel}
+              {selectionBusy && batchAction === "favorite" ? labels.saving : favoriteActionLabel}
             </CatalogFilterButton>
             <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchAction("trash")}>
-              {selectionBusy && batchAction === "trash" ? "Moving…" : "Move to trash"}
+              {selectionBusy && batchAction === "trash" ? labels.moving : labels.moveToTrash}
             </CatalogFilterButton>
           </div>
         </div>
@@ -281,7 +289,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
       />
       {actionNotice ? <div className={`project-action-toast${actionToastExiting ? " is-exiting" : ""}`} role="status" aria-live="polite">{actionNotice}</div> : null}
       <ProjectList
-        leading={<CreateCard title="New Project" onClick={createProject} />}
+        leading={<CreateCard title={labels.newProject} onClick={createProject} />}
         projects={projects}
         onOpenProject={openSavedProject}
         onTrashProject={trashSavedProject}

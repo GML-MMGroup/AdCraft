@@ -112,3 +112,54 @@ test("invalid targets never snap or submit; reverse drags use the same border ge
   await expectPoint(edge, false, await border(page, "source", "right"));
   await expectPoint(edge, true, await border(page, "target", "left"));
 });
+
+
+for (const zoom of [0.5, 1, 1.5]) {
+  test(`proximity wave anticipates without expanding the drop area at zoom ${zoom}`, async ({ page }) => {
+    await open(page, zoom);
+    const source = await center(handle(page, "source", "output"));
+    const target = await center(handle(page, "target", "input"));
+    await page.mouse.move(source.x, source.y);
+    await page.mouse.down();
+    await page.mouse.move(Math.round(target.x - 60), Math.round(target.y), { steps: 8 });
+    await expect(page.locator(preview)).toHaveAttribute("data-connection-status", "pending");
+    await expect(page.locator(preview)).toHaveAttribute("data-proximity-target", "target");
+    await expect(page.locator(".canvas-connection-spark")).toHaveCount(1);
+    const halo = await center(page.locator(".canvas-connection-spark__halo"));
+    expect(Math.hypot(halo.x - target.x, halo.y - target.y)).toBeLessThan(1);
+    await expectPoint(page.locator(preview), true, { x: Math.round(target.x - 60), y: Math.round(target.y) });
+    if (zoom === 1) {
+      await page.mouse.move(target.x - 45, target.y, { steps: 4 });
+      await page.screenshot({ path: "/tmp/canvas-connection-proximity-wave.png" });
+    }
+    await page.mouse.move(target.x, target.y, { steps: 6 });
+    await expect(page.locator(preview)).toHaveAttribute("data-connection-status", "valid");
+    await expect(page.locator(".canvas-connection-spark")).toHaveCount(1);
+    await page.mouse.move(target.x - 110, target.y, { steps: 5 });
+    await expect(page.locator(".canvas-connection-spark")).toHaveCount(0);
+    await page.mouse.move(Math.round(target.x - 60), Math.round(target.y), { steps: 5 });
+    await page.mouse.up();
+    await expect(page.getByTestId("submits")).toHaveText("0");
+    await expect(page.locator(".canvas-connection-spark")).toHaveCount(0);
+  });
+}
+
+test("proximity ignores invalid nodes and supports reverse drags", async ({ page }) => {
+  await open(page, 1);
+  const source = await center(handle(page, "source", "output"));
+  const invalid = await center(handle(page, "invalid", "input"));
+  await page.mouse.move(source.x, source.y);
+  await page.mouse.down();
+  await page.mouse.move(invalid.x - 60, invalid.y, { steps: 8 });
+  await expect(page.locator(".canvas-connection-spark")).toHaveCount(0);
+  await page.mouse.up();
+  const target = await center(handle(page, "target", "input"));
+  await page.mouse.move(target.x, target.y);
+  await page.mouse.down();
+  await page.mouse.move(source.x + 60, source.y, { steps: 8 });
+  await expect(page.locator(preview)).toHaveAttribute("data-proximity-target", "source");
+  await expect(page.locator(".canvas-connection-spark")).toHaveCount(1);
+  await expect(page.locator(preview)).toHaveAttribute("data-connection-status", "pending");
+  await page.mouse.up();
+  await expect(page.getByTestId("submits")).toHaveText("0");
+});

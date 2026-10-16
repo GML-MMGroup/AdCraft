@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
-import { WorkflowModelCallHistoryPage } from "./WorkflowModelCallHistoryPage";
+import { WorkflowCallHistory } from "../features/model-call-history/WorkflowCallHistory";
 import { v2Api } from "../api/v2Client";
 
 const summaries = [
@@ -14,7 +14,7 @@ function setup(outcome: unknown = { payload: { response: { choices: [{ message: 
     : { ...summaries[url.endsWith("repair-call") ? 1 : 0], request: { payload: { user_prompt: 'User request:\n滑板广告\n\nValidated typed operation context:\n{"recent_messages":[]}', model_ref: "recorded-model", provider: "recorded-provider", effective_timeout_ms: 90000 } }, outcome },
   }));
   vi.stubGlobal("fetch", fetchMock);
-  render(<MemoryRouter initialEntries={["/workflows/w/llm-calls"]}><Routes><Route path="/workflows/:workflowId/llm-calls" element={<WorkflowModelCallHistoryPage/>}/></Routes></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/workflows/w/llm-calls"]}><Routes><Route path="/workflows/:workflowId/llm-calls" element={<div className="llm-call-history"><WorkflowCallHistory workflowId="w"/></div>}/></Routes></MemoryRouter>);
   return fetchMock;
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

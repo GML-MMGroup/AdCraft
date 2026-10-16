@@ -1,8 +1,11 @@
+import { useTranslation } from "../../../i18n/useTranslation";
+import type { UiMessageKey } from "../../../i18n/uiMessages";
 import type { ReactNode } from "react";
 import type { BrandDecisionPanelV1, BrandHypothesisCandidateV1, BrandStageV2 } from "./brandDecisions.ts";
 import { TreatmentSections } from "./TreatmentSections.tsx";
+import { DecisionChevron } from "./DecisionChevron.tsx";
 
-const SLOT_LABELS: Record<string, string> = {
+const SLOT_LABELS: Record<string, UiMessageKey> = {
   brand_name: "Brand name", brand_audience: "Audience", brand_tone: "Brand tone",
   brand_product_focus: "Product focus", brand_product_identity: "Product",
   campaign_aspect_ratio: "Format", campaign_duration: "Duration",
@@ -19,22 +22,24 @@ function DecisionDetail({ title, label, children, open = false }: {
   title: string; label?: string; children: ReactNode; open?: boolean;
 }) {
   return <details className="brand-decision-detail" open={open}>
-    <summary>{label ? <small>{label}</small> : null}<span>{title}</span></summary>
+    <summary>{label ? <small>{label}</small> : null}<span>{title}</span><DecisionChevron /></summary>
     <div className="brand-decision-detail__body">{children}</div>
   </details>;
 }
 
 function HypothesisDetail({ candidate, selected }: { candidate: BrandHypothesisCandidateV1; selected: boolean }) {
-  return <DecisionDetail title={candidate.label} label={selected ? "Selected direction" : "Alternative"} open={selected}>
+  const t = useTranslation();
+  return <DecisionDetail title={candidate.label} label={t(selected ? "Selected direction" : "Alternative")} open={selected}>
     <dl className="brand-decision-fields">
       {HYPOTHESIS_FIELDS.map(([key, label]) => candidate[key] ? <div key={key}>
-        <dt>{label}</dt><dd>{candidate[key]}</dd>
+        <dt>{t(label)}</dt><dd>{candidate[key]}</dd>
       </div> : null)}
     </dl>
   </DecisionDetail>;
 }
 
 export function BrandDecisionContent({ decisions, stage }: { decisions: BrandDecisionPanelV1; stage: BrandStageV2 }) {
+  const t = useTranslation();
   const slots = decisions.slot_values.filter(slot => slot.stage === stage);
   const card = decisions.open_card?.stage === stage ? decisions.open_card : null;
   const selected = decisions.hypotheses.find(candidate => candidate.candidate_id === decisions.selected_hypothesis_id);
@@ -42,19 +47,19 @@ export function BrandDecisionContent({ decisions, stage }: { decisions: BrandDec
   return <>
     {slots.length ? <dl className="brand-decision-fields">
       {slots.map(slot => <div key={slot.slot_id}>
-        <dt>{SLOT_LABELS[slot.slot_id] ?? slot.slot_id.replaceAll("_", " ")}</dt>
-        <dd>{slot.value}{slot.provenance === "agent_recommended" ? <small className="brand-decision-source">Agent recommended</small> : null}</dd>
+        <dt>{SLOT_LABELS[slot.slot_id] ? t(SLOT_LABELS[slot.slot_id]!) : slot.slot_id.replaceAll("_", " ")}</dt>
+        <dd>{slot.value}{slot.provenance === "agent_recommended" ? <small className="brand-decision-source">{t("Agent recommended")}</small> : null}</dd>
       </div>)}
     </dl> : null}
     {card ? <div className="brand-decision-pending">
-      <p className="brand-decision-caption">Pending your choice</p><p>{card.question}</p>
+      <p className="brand-decision-caption">{t("Pending your choice")}</p><p>{card.question}</p>
       {card.options.map(option => <DecisionDetail key={option.option_id} title={option.label}>
         {option.why ? <p>{option.why}</p> : null}<TreatmentSections detail={option.detail}/>
       </DecisionDetail>)}
     </div> : null}
     {stage === "hypothesis" ? <>
       {selected ? <HypothesisDetail key={selected.candidate_id} candidate={selected} selected/> : null}
-      {alternatives.length ? <DecisionDetail title={selected ? `Other directions (${alternatives.length})` : `Candidate directions (${alternatives.length})`}>
+      {alternatives.length ? <DecisionDetail title={t(selected ? "Other directions ({count})" : "Candidate directions ({count})", { count: alternatives.length })}>
         {alternatives.map(candidate => <HypothesisDetail key={candidate.candidate_id} candidate={candidate} selected={false}/>)}
       </DecisionDetail> : null}
     </> : null}
@@ -63,7 +68,7 @@ export function BrandDecisionContent({ decisions, stage }: { decisions: BrandDec
         const items = decisions.adspec!.items.filter(item => item.state === state);
         if (!items.length) return null;
         return <section key={state}>
-          <h3>{({ locked: "Locked", open: "To resolve", variable: "Creative freedom" })[state]} <small>{items.length}</small></h3>
+          <h3>{t(({ locked: "Locked", open: "To resolve", variable: "Creative freedom" } as const)[state])} <small>{items.length}</small></h3>
           <ul>{items.map(item => <li key={item.item_key}>{item.item_text}</li>)}</ul>
         </section>;
       })}
@@ -74,12 +79,12 @@ export function BrandDecisionContent({ decisions, stage }: { decisions: BrandDec
         if (!entries.length) return null;
         const chosen = entries.filter(entry => entry.selected);
         const other = entries.filter(entry => !entry.selected);
-        const renderSkill = (entry: typeof entries[number]) => <DecisionDetail key={entry.skill_id} title={entry.title} label={entry.selected ? "Selected" : "Alternative"}>
-          {entry.reason ? <p>{entry.reason}</p> : <p>No rationale provided.</p>}
+        const renderSkill = (entry: typeof entries[number]) => <DecisionDetail key={entry.skill_id} title={entry.title} label={t(entry.selected ? "Selected" : "Alternative")}>
+          {entry.reason ? <p>{entry.reason}</p> : <p>{t("No rationale provided.")}</p>}
         </DecisionDetail>;
-        return <section key={kind}><h3>{kind === "creative_method" ? "Creative method" : "Audiovisual style"}</h3>
+        return <section key={kind}><h3>{t(kind === "creative_method" ? "Creative method" : "Audiovisual style")}</h3>
           {chosen.map(renderSkill)}
-          {other.length ? <DecisionDetail title={`Other options (${other.length})`}>{other.map(renderSkill)}</DecisionDetail> : null}
+          {other.length ? <DecisionDetail title={t("Other options ({count})", { count: other.length })}>{other.map(renderSkill)}</DecisionDetail> : null}
         </section>;
       })}
     </div> : null}

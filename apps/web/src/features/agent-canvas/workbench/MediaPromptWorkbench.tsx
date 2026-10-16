@@ -17,6 +17,7 @@ import {
   nodeActionableFailure,
 } from "../chat/actionableFailure.ts";
 import { useEffect, type RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 const VIDEO_TOOLBAR_PARAMETERS = ["duration_seconds", "resolution", "aspect_ratio"];
 
@@ -47,6 +48,7 @@ export function MediaPromptWorkbench({
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
   preparingPrompt?: boolean;
 }) {
+  const t = useTranslation("en-US");
   const canConfigureProvider = ["draft", "failed", "ready", "working"].includes(node.status);
   const selectedModelRef = draft.modelSelectionMode === "explicit"
     ? draft.modelRef
@@ -72,10 +74,10 @@ export function MediaPromptWorkbench({
   const audioEnabled = typeof draft.parameters.generate_audio === "boolean"
     ? draft.parameters.generate_audio
     : audioDescriptor?.default === true;
-  const audioDisabledReason = modelsLoading ? "正在加载模型能力"
-    : modelsError ? "模型能力加载失败"
-      : !canConfigureProvider || !audioDescriptor ? "当前模型不支持生成音频"
-        : draft.pending ? "正在提交，请稍候" : null;
+  const audioDisabledReason = modelsLoading ? t("Loading model capability")
+    : modelsError ? t("Model capability could not be loaded")
+      : !canConfigureProvider || !audioDescriptor ? t("The current model does not support audio generation")
+        : draft.pending ? t("Submitting, please wait") : null;
   const inlineDescriptors = node.node_type === "video"
     ? VIDEO_TOOLBAR_PARAMETERS.flatMap((name) => parameterDescriptors.filter((descriptor) => descriptor.name === name))
     : [];
@@ -101,7 +103,7 @@ export function MediaPromptWorkbench({
   );
 
   const modelPicker = canConfigureProvider ? (
-    <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label="Generation options">
+    <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label={t("Generation options")}>
       <CanvasModelPicker
         appearance={node.node_type !== "audio" ? "monochrome" : "default"}
         showOptionDetails={node.node_type === "audio"}
@@ -124,10 +126,10 @@ export function MediaPromptWorkbench({
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
         <FourLinePromptEditor
-          ariaLabel="Generation prompt"
+          ariaLabel={t("Generation prompt")}
           value={draft.prompt}
           disabled={draft.pending}
-          placeholder={`Describe the ${node.node_type} you want to create.`}
+          placeholder={t("Describe the {type} you want to create.", { type: node.node_type })}
           preparing={preparingPrompt}
           onChange={(event) => draft.setPrompt(event.currentTarget.value)}
           onBlur={() => void draft.flushPrompt()}
@@ -144,7 +146,7 @@ export function MediaPromptWorkbench({
       ) : <NodeWorkbenchError draft={draft} />}
       {audioIssue ? (
         <p className="agent-node-workbench__field-error">
-          Generate audio: {audioIssue.message}
+          {t("Generate audio")}: {audioIssue.message}
         </p>
       ) : null}
 
@@ -195,11 +197,11 @@ export function MediaPromptWorkbench({
             type="button"
             className="agent-node-workbench__run"
             aria-label={retryingExecution
-              ? `Retry ${node.node_type} node`
+              ? t("Retry {type} node", { type: node.node_type })
               : node.status === "ready" || regenerating
-                ? `Regenerate ${node.node_type} node`
-                : `Run ${node.node_type} node`}
-            title={retryingExecution ? "Retry node" : node.status === "ready" || regenerating ? "Regenerate node" : "Run node"}
+                ? t("Regenerate {type} node", { type: node.node_type })
+                : t("Run {type} node", { type: node.node_type })}
+            title={retryingExecution ? t("Retry node") : node.status === "ready" || regenerating ? t("Regenerate node") : t("Run node")}
             disabled={draft.pending || publishing || !draft.prompt.trim() || node.status === "working" || parametersInvalid}
             onClick={() => void draft.run()}
           >

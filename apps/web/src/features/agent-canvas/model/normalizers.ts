@@ -5212,7 +5212,7 @@ export function normalizeGuidanceAdvancePreconditionV1(
 function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInteractionV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review", "reference_source"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "brand_form", "media_review", "reference_source"]), `${path}.kind`);
   const content = normalizeGuidedInteractionContentV1(record.content, kind, `${path}.content`);
   const allowedActions = expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "use_reference", "skip_reference", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`));
   if (kind === "reference_source" && (
@@ -5270,6 +5270,64 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       ),
       min_asset_count: minAssetCount,
       max_asset_count: maxAssetCount,
+    };
+  }
+  if (contentKind === "brand_form") {
+    forbidUnknownFields(record, ["content_kind", "form_id", "stage", "revision", "response_locale", "context_digest", "title", "instructions", "rows"], path);
+    if (kind !== "brand_form") fail(path, "invalid brand form interaction content");
+    const rows = expectArray(record.rows, `${path}.rows`).map((item, index) => {
+      const rowPath = `${path}.rows[${index}]`;
+      const row = expectRecord(item, rowPath);
+      forbidUnknownFields(row, ["question_id", "slot_id", "prompt", "options", "custom_option_id", "required", "prefill_value"], rowPath);
+      const options = expectArray(row.options, `${rowPath}.options`).map((option, optionIndex) => {
+        const optionPath = `${rowPath}.options[${optionIndex}]`;
+        const optionRecord = expectRecord(option, optionPath);
+        forbidUnknownFields(optionRecord, ["option_id", "label", "why"], optionPath);
+        return {
+          option_id: expectNonEmptyString(optionRecord.option_id, `${optionPath}.option_id`),
+          label: expectNonEmptyString(optionRecord.label, `${optionPath}.label`),
+          why: nullableStringWithDefault(optionRecord.why, `${optionPath}.why`),
+        };
+      });
+      if (options.length < 4 || options.length > 64) fail(`${rowPath}.options`, "expected between four and sixty-four options");
+      if (new Set(options.map((option) => option.option_id)).size !== options.length) {
+        fail(`${rowPath}.options`, "option IDs must be unique");
+      }
+      const customOptionId = expectNonEmptyString(row.custom_option_id, `${rowPath}.custom_option_id`);
+      if (options.filter((option) => option.option_id === customOptionId).length !== 1) {
+        fail(`${rowPath}.custom_option_id`, "custom option ID must identify exactly one option");
+      }
+      if (options.filter((option) => option.option_id !== customOptionId).length < 3) {
+        fail(`${rowPath}.options`, "expected at least three recommended options");
+      }
+      return {
+        question_id: expectNonEmptyString(row.question_id, `${rowPath}.question_id`),
+        slot_id: expectNonEmptyString(row.slot_id, `${rowPath}.slot_id`),
+        prompt: expectNonEmptyString(row.prompt, `${rowPath}.prompt`),
+        options,
+        custom_option_id: customOptionId,
+        required: row.required === undefined ? true : expectBoolean(row.required, `${rowPath}.required`),
+        prefill_value: nullableStringWithDefault(row.prefill_value, `${rowPath}.prefill_value`),
+      };
+    });
+    if (rows.length < 1) fail(`${path}.rows`, "brand form requires at least one row");
+    if (new Set(rows.map((row) => row.question_id)).size !== rows.length) {
+      fail(`${path}.rows`, "question IDs must be unique");
+    }
+    return {
+      content_kind: "brand_form",
+      form_id: expectNonEmptyString(record.form_id, `${path}.form_id`),
+      stage: expectLiteral(record.stage, new Set(["brand-memory", "campaign"] as const), `${path}.stage`),
+      revision: expectPositiveInteger(record.revision, `${path}.revision`),
+      response_locale: expectNonEmptyString(record.response_locale, `${path}.response_locale`),
+      context_digest: (() => {
+        const value = expectNonEmptyString(record.context_digest, `${path}.context_digest`);
+        if (!/^[0-9a-f]{64}$/.test(value)) fail(`${path}.context_digest`, "expected a lowercase SHA-256 digest");
+        return value;
+      })(),
+      title: expectNonEmptyString(record.title, `${path}.title`),
+      instructions: expectNonEmptyString(record.instructions, `${path}.instructions`),
+      rows,
     };
   }
   if (contentKind === "concept_choice") {
@@ -5376,6 +5434,15 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     };
   }
   fail(`${path}.content_kind`, "unknown guided interaction content");
+}
+
+export function normalizeGuidedBrandFormV1(
+  value: unknown,
+  path = "brandForm",
+): Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }> {
+  const content = normalizeGuidedInteractionContentV1(value, "brand_form", path);
+  if (content.content_kind !== "brand_form") fail(path, "expected brand form content");
+  return content;
 }
 
 function normalizeGuidedQuestionV1(value: unknown, path: string) {
@@ -5496,7 +5563,7 @@ export function normalizeGuidedReferenceCandidateListResponseV2(
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["awaiting_id", "workflow_id", "session_id", "checkpoint_id", "kind", "requires_user_action", "resume_policy", "interaction_id", "node_ids", "stage", "stage_revision", "created_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "reference_source", "manual_node_run", "milestone_idle"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "brand_form", "media_review", "reference_source", "manual_node_run", "milestone_idle"]), `${path}.kind`);
   const requiresUserAction = expectBoolean(record.requires_user_action, `${path}.requires_user_action`);
   const resumePolicy = expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`);
   const interactionId = nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`);
@@ -5512,6 +5579,12 @@ function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwai
     && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
   ) {
     fail(path, "invalid reference source awaiting authority");
+  }
+  if (
+    kind === "brand_form"
+    && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
+  ) {
+    fail(path, "invalid brand form awaiting authority");
   }
   return {
     awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`),

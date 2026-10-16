@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { agentModelCallHistoryApi } from "../../api/agentModelCallHistoryApi";
 import type { AgentModelCallDetail, AgentModelCallPage } from "../agent-model-call-history";
+import { useTranslation } from "../../i18n/useTranslation";
 
 export const READ_INTERVAL_MS = 2500;
 const emptyPage: AgentModelCallPage = { workflow_id: "", items: [], next_offset: null };
 
 /** Local read state only. No workspace context, persistence, polling or production actions. */
-export function useCallHistory(workflowId: string) {
+export function useCallHistory(workflowId: string, initialDelayMs = 0) {
+  const t = useTranslation();
   const [page, setPage] = useState(emptyPage);
   const [offsets, setOffsets] = useState([0]);
   const [selected, setSelected] = useState<AgentModelCallDetail | null>(null);
@@ -43,7 +45,7 @@ export function useCallHistory(workflowId: string) {
     } catch (cause) {
       if (!controller.signal.aborted) {
         setPage(emptyPage);
-        setError(cause instanceof Error ? cause.message : "调用记录读取失败，请手动刷新。");
+        setError(cause instanceof Error ? cause.message : t("Call history could not be read. Refresh manually."));
       }
     } finally {
       if (listRequest.current === controller) listRequest.current = null;
@@ -53,7 +55,7 @@ export function useCallHistory(workflowId: string) {
 
   useEffect(() => {
     // Collapse React StrictMode's discarded mount without issuing an extra request.
-    const timer = setTimeout(() => { void load([0], true); }, 0);
+    const timer = setTimeout(() => { void load([0], true); }, initialDelayMs);
     return () => {
       clearTimeout(timer);
       clearTimeout(cooldownTimer.current);
@@ -62,7 +64,7 @@ export function useCallHistory(workflowId: string) {
       listRequest.current = null;
       detailRequest.current = null;
     };
-  }, [load]);
+  }, [load, initialDelayMs]);
 
   async function select(callId: string) {
     if (listRequest.current || detailRequest.current || selected?.call_id === callId) return;
@@ -75,7 +77,7 @@ export function useCallHistory(workflowId: string) {
       const result = await agentModelCallHistoryApi.detail(workflowId, callId, controller.signal);
       if (!controller.signal.aborted) setSelected(result);
     } catch (cause) {
-      if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : "调用详情读取失败，请重新选择记录。");
+      if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : t("Call detail could not be read. Select a record again."));
     } finally {
       if (detailRequest.current === controller) detailRequest.current = null;
       if (!controller.signal.aborted) setDetailLoading(false);

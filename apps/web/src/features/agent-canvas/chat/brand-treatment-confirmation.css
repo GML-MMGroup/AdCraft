@@ -1,4 +1,5 @@
 .brand-treatment-confirmation {
+  position: relative;
   display: grid;
   gap: 10px;
   flex: 0 0 auto;
@@ -8,6 +9,39 @@
   border: 1px solid var(--agent-chat-border);
   border-radius: 10px;
   background: var(--agent-chat-raised);
+}
+
+.brand-treatment-confirmation::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid rgb(231 211 171 / 75%);
+  border-radius: inherit;
+  box-shadow: 0 0 12px rgb(220 190 132 / 20%), inset 0 0 8px rgb(231 211 171 / 7%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms cubic-bezier(.23, 1, .32, 1);
+}
+
+.brand-treatment-confirmation[data-awaiting-review="true"]::after {
+  animation: treatment-review-breathe 3200ms cubic-bezier(.45, 0, .55, 1) infinite;
+}
+
+.brand-treatment-confirmation[data-motion-paused="true"]::after {
+  animation-play-state: paused;
+}
+
+/* Only the glow layer changes opacity; text, border geometry and layout stay still. */
+@keyframes treatment-review-breathe {
+  0%, 100% { opacity: .18; }
+  50% { opacity: .9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-treatment-confirmation[data-awaiting-review="true"]::after {
+    animation: none;
+    opacity: .55;
+  }
 }
 
 .brand-treatment-confirmation > p {

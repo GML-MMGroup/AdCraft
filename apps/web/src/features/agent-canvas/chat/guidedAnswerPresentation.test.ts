@@ -8,7 +8,41 @@ import type {
 import {
   buildGuidedAnswerBubbles,
   parseGuidedAnswerBubbles,
+  projectPendingGuidedQuestions,
 } from "./guidedAnswerPresentation.ts";
+
+describe("pending guided questions", () => {
+  it("restores the current question from an open interaction without an answer", () => {
+    const current = conceptInteraction();
+    expect(projectPendingGuidedQuestions(current, [])).toEqual([expect.objectContaining({
+      interaction_id: current.interaction_id,
+      label: current.title,
+    })]);
+    expect(projectPendingGuidedQuestions(structuredClone(current), [])).toEqual(projectPendingGuidedQuestions(current, []));
+  });
+
+  it("lets optimistic and persisted answers own the question and restores it on rollback", () => {
+    const current = conceptInteraction();
+    const answers = buildGuidedAnswerBubbles(current, {
+      submission_kind: "concept_choice", action: "select", option_id: "direction-quiet",
+      expected_interaction_revision: current.revision, expected_session_revision: current.expected_session_revision,
+    }, 5);
+    expect(projectPendingGuidedQuestions(current, answers)).toEqual([]);
+    expect(projectPendingGuidedQuestions(current, answers.map((answer) => ({ ...answer, submission_id: "saved", bubble_id: "saved-answer" })))).toEqual([]);
+    expect(projectPendingGuidedQuestions(current, [])).toHaveLength(1);
+    expect(projectPendingGuidedQuestions({ ...current, interaction_id: "next-card" }, answers)).toHaveLength(1);
+  });
+
+  it("keeps unanswered questionnaire prompts and ignores closed interactions", () => {
+    const current = interaction();
+    const answers = buildGuidedAnswerBubbles(current, {
+      submission_kind: "questionnaire", expected_interaction_revision: current.revision, expected_session_revision: current.expected_session_revision, answers: [{ question_id: "character_count", answer_kind: "option", option_id: "characters-2" }],
+    }, 2);
+    expect(projectPendingGuidedQuestions(current, answers).map((q) => q.label)).toEqual(["How long should the ad be?"]);
+    expect(projectPendingGuidedQuestions(null, answers)).toEqual([]);
+    expect(projectPendingGuidedQuestions({ ...current, status: "closed" }, answers)).toEqual([]);
+  });
+});
 
 function interaction(): GuidedInteractionV1 {
   return {

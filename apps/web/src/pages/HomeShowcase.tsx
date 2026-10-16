@@ -12,6 +12,7 @@ import { demoProjects, images, imageSrc } from "../data";
 import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
 import { FONT_CATALOG } from "../features/home-typography/fontCatalog";
 import { loadWebFont } from "../features/home-typography/webFontLoader";
+import { useLocale, localeText } from "../i18n/locale.tsx";
 
 const homeProductPoster = "/assets/card1.webp";
 const heroTitleLines = [
@@ -29,6 +30,7 @@ const discoverCards: readonly DiscoverOrbitItem[] = [
   { title: "Portrait Spark", image: imageSrc(images[6]) },
   { title: "Color Script", image: imageSrc(images[7]) },
 ];
+const discoverCardsZh = ["广告流程", "角色研究", "海报动效", "场景延展", "产品光感", "编辑剪辑", "肖像火花", "色彩脚本"];
 
 type RevealState = "pending" | "visible";
 
@@ -228,30 +230,35 @@ function HeroMainTitleLine({ line, direction }: { line: string; direction: HeroQ
 }
 
 function HeroTitle() {
+  const { locale } = useLocale();
+  // Keep the editorial hero lockup in English in both locales; supporting
+  // navigation and product copy still follow the selected UI language.
+  const titleLines = heroTitleLines;
+  const titleAriaLabel = "One Sentence Becomes an Ad film.";
   return (
     <h1
       className="home-product-hero__title"
       id="home-product-title"
-      aria-label="One Sentence Becomes an Ad film."
+      aria-label={titleAriaLabel}
       data-home-typography-region="heroMain"
     >
-      <HeroMainTitleLine line={heroTitleLines[0]} direction="from-left" />
-      <HeroMainTitleLine line={heroTitleLines[1]} direction="from-right" />
+      <HeroMainTitleLine line={titleLines[0]} direction="from-left" />
+      <HeroMainTitleLine line={titleLines[1]} direction="from-right" />
       <span
         className="home-product-hero__title-line home-product-hero__accent"
-        data-accent-text={heroTitleLines[2]}
+        data-accent-text={titleLines[2]}
         data-home-hero-accent-reveal="diagonal"
         data-home-typography-region="heroAccent"
         data-testid="home-hero-accent"
         aria-hidden="true"
       >
-        {heroTitleLines[2]}
+        {titleLines[2]}
       </span>
     </h1>
   );
 }
 
-function CreateProjectButtonContent() {
+function CreateProjectButtonContent({ label }: { label: string }) {
   return (
     <>
       <svg
@@ -261,18 +268,20 @@ function CreateProjectButtonContent() {
       >
         <path d="M220,128a4,4,0,0,1-4,4H132v84a4,4,0,0,1-8,0V132H40a4,4,0,0,1,0-8h84V40a4,4,0,0,1,8,0v84h84A4,4,0,0,1,220,128Z" />
       </svg>
-      <span>Create Your Project</span>
+      <span>{label}</span>
     </>
   );
 }
 
 function StaticRecentCards() {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh.homePage : localeText.en.homePage;
   return (
     <div className="recent-strip" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
       <article className="recent-card featured" data-reveal-item style={motionStyle("--home-reveal-delay", "170ms")}>
         <div className="featured-glass">
-          <h3 data-home-typography-region="cardTitle">New fragrance product reel</h3>
-          <p data-home-typography-region="cardMeta">Continue editing the current workflow canvas.</p>
+          <h3 data-home-typography-region="cardTitle">{locale === "zh-CN" ? "全新香氛产品短片" : "New fragrance product reel"}</h3>
+          <p data-home-typography-region="cardMeta">{labels.continueEditing}</p>
         </div>
       </article>
       {demoProjects.slice(0, 3).map((project, index) => (
@@ -291,11 +300,19 @@ function StaticRecentCards() {
 }
 
 function InteractiveDiscover({ openPreview }: { openPreview: () => void }) {
-  return <DiscoverOrbit items={discoverCards} interactive onSelect={openPreview} />;
+  const { locale } = useLocale();
+  const items = locale === "zh-CN"
+    ? discoverCards.map((card, index) => ({ ...card, title: discoverCardsZh[index] ?? card.title }))
+    : discoverCards;
+  return <DiscoverOrbit items={items} interactive onSelect={openPreview} />;
 }
 
 function StaticDiscover() {
-  return <DiscoverOrbit items={discoverCards} interactive={false} />;
+  const { locale } = useLocale();
+  const items = locale === "zh-CN"
+    ? discoverCards.map((card, index) => ({ ...card, title: discoverCardsZh[index] ?? card.title }))
+    : discoverCards;
+  return <DiscoverOrbit items={items} interactive={false} />;
 }
 
 export function HomeShowcase({
@@ -310,6 +327,8 @@ export function HomeShowcase({
   onProductVideoError,
   previewOpen = false,
 }: HomeShowcaseProps) {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh.homePage : localeText.en.homePage;
   const isInteractive = mode === "interactive";
   const recentState = recentReveal?.revealState ?? "visible";
   const discoverState = discoverReveal?.revealState ?? "visible";
@@ -360,17 +379,15 @@ export function HomeShowcase({
       >
         <div className="home-product-hero__content">
           <HeroTitle />
-          <p className="home-product-hero__description" data-home-typography-region="heroBody">
-            AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
-          </p>
+          <p className="home-product-hero__description" data-home-typography-region="heroBody">{labels.heroDescription}</p>
           <div className="home-product-hero__create-stage">
             {isInteractive && interactions ? (
               <button className="home-product-hero__create" type="button" onClick={interactions.createProject} data-home-typography-region="heroAction">
-                <CreateProjectButtonContent />
+                <CreateProjectButtonContent label={labels.createProject} />
               </button>
             ) : (
               <span className="home-product-hero__create home-product-hero__create--static" data-home-typography-region="heroAction">
-                <CreateProjectButtonContent />
+                <CreateProjectButtonContent label={labels.createProject} />
               </span>
             )}
           </div>
@@ -405,10 +422,10 @@ export function HomeShowcase({
           ref={recentReveal?.sectionRef}
           className="home-reveal-section home-reveal-section--recent"
           data-reveal-state={recentState}
-          aria-label="Recent Projects"
+          aria-label={labels.recentProjects}
         >
           <div data-reveal-item style={motionStyle("--home-reveal-delay", "0ms")}>
-            <SectionTitle title="Recent Projects" />
+            <SectionTitle title={labels.recentProjects} />
           </div>
           {isInteractive ? recentContent : <StaticRecentCards />}
         </section>
@@ -417,10 +434,10 @@ export function HomeShowcase({
           ref={discoverReveal?.sectionRef}
           className="home-reveal-section home-reveal-section--discover"
           data-reveal-state={discoverState}
-          aria-label="Discover"
+          aria-label={labels.discover}
         >
           <div data-reveal-item style={motionStyle("--home-reveal-delay", "0ms")}>
-            <SectionTitle title="Discover" />
+            <SectionTitle title={labels.discover} />
           </div>
           {isInteractive && interactions ? <InteractiveDiscover openPreview={interactions.openPreview} /> : <StaticDiscover />}
         </section>
@@ -431,8 +448,8 @@ export function HomeShowcase({
           <div className="modal-card">
             <div className="modal-preview"><span aria-hidden="true">▶</span></div>
             <div className="composer-footer" style={{ marginTop: 14 }}>
-              <strong>Preview Case</strong>
-              <button className="small-action" type="button" onClick={interactions.closePreview}>Close</button>
+              <strong>{labels.previewCase}</strong>
+              <button className="small-action" type="button" onClick={interactions.closePreview}>{labels.close}</button>
             </div>
           </div>
         </div>

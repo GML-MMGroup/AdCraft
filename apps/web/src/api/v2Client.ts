@@ -8,6 +8,7 @@ import type {
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasGuidedActionApplyRequestV2,
   GuidedInteractionAcceptedV1,
+  GuidedInteractionContentV1,
   GuidedInteractionSubmitRequestV1,
   GuidedReferenceCandidateListResponseV2,
   GuidedReferenceCandidateScopeV2,
@@ -181,6 +182,7 @@ import {
   normalizeDecisionBundleV2,
   normalizeGuidedSessionStateV2,
   normalizeGuidedInteractionAcceptedV1,
+  normalizeGuidedBrandFormV1,
   normalizeGuidedReferenceCandidateListResponseV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
@@ -671,11 +673,14 @@ export const v2Api = {
     );
   },
 
-  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"]> {
+  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"] | Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }>> {
     return requestV2(
       `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
       { method: "POST" },
-      (payload) => payload === null ? null : normalizeBrandOptionCardV1(payload),
+      (payload) => payload === null ? null
+        : typeof payload === "object" && payload !== null && "content_kind" in payload && payload.content_kind === "brand_form"
+          ? normalizeGuidedBrandFormV1(payload)
+          : normalizeBrandOptionCardV1(payload),
     );
   },
 
@@ -994,6 +999,20 @@ export const v2Api = {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/creative-session`,
       { signal: options.signal },
+      normalizeGuidedSessionStateV2,
+    );
+  },
+
+  updateAgentCanvasCreativeSessionLocale(
+    workflowId: string,
+    request: { expected_revision: number; response_locale: string },
+  ): Promise<GuidedSessionStateV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/creative-session/locale`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
       normalizeGuidedSessionStateV2,
     );
   },

@@ -32,6 +32,7 @@ export const agentCanvasApi = {
   saveAgentCanvasImageToLibrary: v2Api.saveAgentCanvasImageToLibrary,
   deleteAgentCanvasAsset: v2Api.deleteAgentCanvasAsset,
   agentCanvasCreativeSession: v2Api.agentCanvasCreativeSession,
+  updateAgentCanvasCreativeSessionLocale: v2Api.updateAgentCanvasCreativeSessionLocale,
   agentCanvasDecisionBundle: v2Api.agentCanvasDecisionBundle,
   actOnAgentCanvasDecisionBundle: v2Api.actOnAgentCanvasDecisionBundle,
   agentCanvasChatTimeline: v2Api.agentCanvasChatTimeline,

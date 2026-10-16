@@ -5,6 +5,7 @@ import type {
   AgentCanvasChatViewTimelineV2,
   AgentCanvasWorkflowV2,
   CanvasRuntimeEventV2,
+  ChatMessageV2,
   GuidedSessionStateV2,
   GuidedInteractionV1,
   GuidanceSessionActionV2,
@@ -285,6 +286,40 @@ function guidedBrandConceptInteraction(): GuidedInteractionV1 {
   };
 }
 
+function guidedBrandFormInteraction(): GuidedInteractionV1 {
+  return {
+    ...guidedBrandConceptInteraction(),
+    kind: "brand_form",
+    title: "Brand Memory",
+    content: {
+      content_kind: "brand_form", form_id: "form-memory", stage: "brand-memory",
+      revision: 1, response_locale: "en-US", context_digest: "a".repeat(64),
+      title: "Brand Memory", instructions: "Explicitly confirm the draft product.",
+      rows: [{
+        question_id: "product", slot_id: "product", prompt: "What product?",
+        prefill_value: "Skateboard", required: true, custom_option_id: "custom",
+        options: [
+          { option_id: "one", label: "One", why: "Reason one" },
+          { option_id: "two", label: "Two", why: "Reason two" },
+          { option_id: "three", label: "Three", why: "Reason three" },
+          { option_id: "custom", label: "Other (custom)", why: null },
+        ],
+      }],
+    },
+  };
+}
+
+function productionMessage(sequence: number, gateReason: string | null = null): ChatMessageV2 {
+  return {
+    item_type: "message", message_kind: "conversation", message_id: `production-${sequence}`,
+    conversation_id: "conversation-1", speaker: "adcraft_video_agent",
+    text: gateReason ? "What product, service, or brand is this advertisement for?" : "Let's plan the skateboard advertisement.",
+    linked_node_ids: [], script_node_id: null, proposal_id: null, capability_id: null,
+    metadata: { turn_id: `production-turn-${sequence}`, intent_mode: "guided_production", production_gate_reason: gateReason },
+    sequence, created_at: "2026-10-14T00:00:00Z",
+  };
+}
+
 function guidedProductInteraction(): GuidedInteractionV1 {
   return {
     interaction_id: "interaction-product-main-1",
@@ -486,6 +521,91 @@ describe("useAgentCanvasChat", () => {
     expect(api.brandNextQuestion).toHaveBeenCalledWith("workflow-1");
   });
 
+  it.each(["missing_promoted_subject", "production_not_authorized", "future_gate_reason"])(
+    "shows only the Agent question and blocks automatic production for gate %s",
+    async (reason) => {
+      const question = productionMessage(2, reason);
+      api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ items: [question] }));
+      const onActionReceipt = vi.fn();
+      const { result } = renderHook(() => useAgentCanvasChat({
+        workflow: workflow(), chatRevision: 0, chatEvents: [], brandMode: true,
+        brandStage: "brand-memory", onActionReceipt,
+      }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+      expect(result.current.state.items).toEqual([question]);
+      expect(result.current.state.guidedInteraction).toBeNull();
+      expect(result.current.state.agentWaitingForModel).toBe(false);
+      await act(async () => { await result.current.actions.retryBrandNextQuestion(); });
+      expect(api.brandNextQuestion).not.toHaveBeenCalled();
+      expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+      expect(api.submitAgentCanvasGuidedInteraction).not.toHaveBeenCalled();
+      expect(onActionReceipt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a newer gate overrides historic production intent and stale forms until the Agent admits the subject", async () => {
+    const interaction = guidedBrandFormInteraction();
+    let timeline = emptyTimeline({
+      items: [productionMessage(1), productionMessage(2, "missing_promoted_subject")],
+      guidanceSession: { ...guidedSession(), interaction, awaiting: null },
+    });
+    api.agentCanvasChatTimeline.mockImplementation(async () => timeline);
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents: [], brandMode: true, brandStage: "brand-memory",
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    expect(result.current.state.guidedInteraction).toBeNull();
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+    const request = {
+      submission_kind: "brand_form" as const, form_id: "form-memory",
+      expected_interaction_revision: interaction.revision,
+      expected_session_revision: interaction.expected_session_revision,
+      confirm: true as const,
+      answers: [{ question_id: "product", selected_option_id: "custom", custom_text: "Skateboard" }],
+    };
+    await act(async () => { expect(await result.current.actions.submitGuidedInteraction(interaction, request)).toBe(false); });
+    expect(api.submitAgentCanvasGuidedInteraction).not.toHaveBeenCalled();
+
+    // A plain reply or a user-supplied metadata field does not lift the gate.
+    timeline = { ...timeline, items: [
+      ...timeline.items,
+      { ...productionMessage(3), metadata: {} },
+      { ...productionMessage(4), speaker: "user" },
+    ] };
+    await act(async () => { await result.current.actions.refresh(); });
+    expect(result.current.state.guidedInteraction).toBeNull();
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+
+    // The same chat endpoint handles the user's clarification, without an
+    // automatic "continue" message or a keyword classifier in the browser.
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1", conversation_id: "conversation-1", message_id: "user-subject",
+      turn_id: "subject-turn", status: "queued", events_cursor: 5,
+    });
+    await act(async () => {
+      expect(await result.current.actions.submit({ text: "做滑板广告", mentionedNodeIds: [], mentionedImageAssetIds: [] })).toBe(true);
+    });
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledOnce();
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith("workflow-1", expect.objectContaining({ text: "做滑板广告" }), expect.any(String));
+
+    timeline = { ...timeline, items: [...timeline.items, productionMessage(5)] };
+    await act(async () => { await result.current.actions.refresh(); });
+    expect(result.current.state.guidedInteraction?.content).toMatchObject({
+      content_kind: "brand_form", rows: [{ prefill_value: "Skateboard" }],
+    });
+    // The available authoritative form is reused without generating a second.
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+  });
+
+  it("blocks generic journey advancement while a gate is present", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue({
+      ...timelineWithGuidanceAdvance(), items: [productionMessage(1, "missing_promoted_subject")],
+    });
+    renderHook(() => useAgentCanvasChat({ workflow: workflow(), chatRevision: 0, chatEvents: [] }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+  });
+
   it("does not request a brand question after the journey reaches production", async () => {
     renderHook(() => useAgentCanvasChat({
       workflow: workflow(),
@@ -651,6 +771,51 @@ describe("useAgentCanvasChat", () => {
     expect(onBrandDecisionsRefresh.mock.invocationCallOrder[1]).toBeGreaterThan(
       api.brandNextQuestion.mock.invocationCallOrder[0],
     );
+  });
+
+  it.each(["closed", "absent"] as const)("keeps the accepted brand form visible when refresh reports it %s, until the next interaction arrives", async (state) => {
+    const interaction = guidedBrandFormInteraction();
+    let session: GuidedSessionStateV2 = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockImplementation(async () => emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockImplementation(async () => session);
+    api.submitAgentCanvasGuidedInteraction.mockImplementation(async () => {
+      session = { ...session, revision: session.revision + 1,
+        interaction: state === "closed" ? { ...interaction, status: "closed" } : null };
+      return { replayed: false };
+    });
+    let publish!: () => void;
+    api.brandNextQuestion.mockImplementation(() => new Promise(resolve => {
+      publish = () => {
+        session = { ...session, revision: session.revision + 1,
+          interaction: { ...interaction, interaction_id: "campaign-form", revision: 2 } };
+        resolve(null);
+      };
+    }));
+    const { result, rerender } = renderHook(({ activeWorkflow }) => useAgentCanvasChat({
+      workflow: activeWorkflow, chatRevision: 0, chatEvents: [], brandMode: true,
+      brandStage: "brand-memory", onBrandDecisionsRefresh: async () => "campaign",
+    }), { initialProps: { activeWorkflow: workflow() } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    await act(async () => {
+      expect(await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "brand_form", form_id: "form-memory",
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+        confirm: true, answers: [{ question_id: "product", selected_option_id: "custom", custom_text: "Skateboard" }],
+      })).toBe(true);
+    });
+    expect(result.current.state.guidedInteraction).toMatchObject({ interaction_id: interaction.interaction_id, status: "submitted" });
+    expect(result.current.state.agentWaitingForModel).toBe(true);
+    await act(async () => { publish(); await Promise.resolve(); });
+    expect(result.current.state.guidedInteraction).toMatchObject({ interaction_id: "campaign-form", status: "open" });
+    expect(result.current.state.agentWaitingForModel).toBe(false);
+    api.agentCanvasChatTimeline.mockImplementation(async () => emptyTimeline());
+    api.agentCanvasCreativeSession.mockResolvedValue(null);
+    rerender({ activeWorkflow: workflow("workflow-new") });
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    expect(result.current.state.guidedInteraction).toBeNull();
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledOnce();
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
   });
 
   it("ignores a previous project's timeline response after the workflow changes", async () => {
@@ -1246,7 +1411,7 @@ describe("useAgentCanvasChat", () => {
           source_entry_ids: ["entry-1"],
           message_key: "planning_progress.next_action",
           message_args: {},
-          response_locale: "zh-CN",
+          response_locale: "en-US",
           item: {
             item_type: "message",
             message_id: "entry-1",
@@ -2471,6 +2636,7 @@ describe("useAgentCanvasChat", () => {
       "workflow-1",
       {
         text: "Use these references.",
+        response_locale: "en-US",
         mentioned_node_ids: ["node-script-1", "node-video-1"],
         mentioned_image_asset_ids: ["asset-image-1"],
         video_skill_run_id: null,
@@ -2508,6 +2674,7 @@ describe("useAgentCanvasChat", () => {
       "workflow-1",
       {
         text: "Use this visual language.",
+        response_locale: "en-US",
         mentioned_node_ids: [],
         mentioned_image_asset_ids: [],
         video_skill_run_id: null,

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n/useTranslation";
 import { useState, type ReactNode } from "react";
 import { jsonText } from "../agent-model-call-history";
 import { fieldLabel, parseRecordedJson, recordedEnumLabel } from "./callPresentation";
@@ -19,21 +20,23 @@ export function CallDisclosure({ title, children, defaultOpen = false, nested = 
 }
 
 export function RecordedValue({ value }: { value: unknown }) {
-  return <pre className="llm-call-history__value">{value == null ? "未提供" : typeof value === "string" ? value : jsonText(value)}</pre>;
+  const t = useTranslation();
+  return <pre className="llm-call-history__value">{value == null ? t("Not provided") : typeof value === "string" ? value : jsonText(value)}</pre>;
 }
 
 /** Plain React text throughout; provider content never becomes HTML or Markdown. */
 export function ReadableCallValue({ value, depth = 0, field }: { value: unknown; depth?: number; field?: string }) {
+  const t = useTranslation();
   const parsed = parseRecordedJson(value);
-  if (parsed == null) return <p className="llm-call-history__muted">未提供</p>;
+  if (parsed == null) return <p className="llm-call-history__muted">{t("Not provided")}</p>;
   if (typeof parsed !== "object") {
-    const text = typeof parsed === "boolean" ? (parsed ? "是（true）" : "否（false）") : String(parsed);
+    const text = typeof parsed === "boolean" ? (parsed ? t("Yes (true)") : t("No (false)")) : String(parsed);
     const label = recordedEnumLabel(field, parsed);
-    return <p className="llm-call-history__prose" title={label ? text : undefined}>{label ?? (text === "" ? "空文本" : text)}</p>;
+    return <p className="llm-call-history__prose" title={label ? text : undefined}>{label ?? (text === "" ? t("Empty text") : text)}</p>;
   }
-  if (depth >= 4) return <CallDisclosure nested title="展开完整嵌套内容"><RecordedValue value={parsed}/></CallDisclosure>;
+  if (depth >= 4) return <CallDisclosure nested title={t("Expand full nested content")}><RecordedValue value={parsed}/></CallDisclosure>;
   if (Array.isArray(parsed)) {
-    if (!parsed.length) return <p className="llm-call-history__muted">空列表（0 项）</p>;
+    if (!parsed.length) return <p className="llm-call-history__muted">{t("Empty list (0 items)")}</p>;
     return <ol className="llm-call-history__readable-list">{parsed.map((item, index) => <li key={index}>
       <ReadableCallValue value={item} depth={depth + 1}/>
     </li>)}</ol>;
@@ -47,7 +50,7 @@ export function ReadableCallValue({ value, depth = 0, field }: { value: unknown;
   const entries = Object.entries(parsed).sort(([left], [right]) => priority(left) - priority(right));
   const technicalKeys = new Set(["card_id", "stage_revision", "target_slot_id", "slot_schema_version", "policy_version", "schema_version", "workflow_id", "workflow_revision", "conversation_id", "request_id", "run_id", "call_id", "context_snapshot_id"]);
   const identifiers = entries.filter(([key]) => technicalKeys.has(key));
-  if (!entries.length) return <p className="llm-call-history__muted">空对象（0 个字段）</p>;
+  if (!entries.length) return <p className="llm-call-history__muted">{t("Empty object (0 fields)")}</p>;
   return <div className="llm-call-history__fields">{entries.filter(([key]) => !technicalKeys.has(key)).map(([key, child]) => {
     const nested = parseRecordedJson(child);
     return <section className="llm-call-history__field" key={key}>

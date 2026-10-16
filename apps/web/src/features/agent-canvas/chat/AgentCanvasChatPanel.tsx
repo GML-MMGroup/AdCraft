@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n/useTranslation";
 import {
   Fragment,
   useEffect,
@@ -56,6 +57,7 @@ import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
 import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
+import type { BrandFormAnswers } from "./BrandFormInteraction.tsx";
 import {
   guidedInteractionContentVersion,
   shouldRenderStandaloneInteraction,
@@ -90,6 +92,7 @@ import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
+import { GuidedQuestionBubble } from "./GuidedQuestionBubble.tsx";
 import type { BrandDecisionPanelV1, BrandStageV2 } from "../brand/brandDecisions.ts";
 import { BrandSkillPicker } from "../brand/BrandSkillPicker.tsx";
 import { failureUserAction } from "./actionableFailure.ts";
@@ -98,6 +101,7 @@ import { FailedTurnBubble } from "./FailedTurnBubble.tsx";
 import { projectFailedMessageTurns } from "./failedTurnPresentation.ts";
 import {
   isPersistedGuidedAnswerMessage,
+  projectPendingGuidedQuestions,
   type GuidedAnswerBubbleV1,
 } from "./guidedAnswerPresentation.ts";
 import "./agent-canvas-chat.css";
@@ -116,6 +120,7 @@ type TimelineRenderOptions = {
 type TimelineEntry =
   | { entry_type: "timeline"; key: string; sequence: number; unit: ReturnType<typeof buildStageThreadTimeline>[number] }
   | { entry_type: "guided_answer"; key: string; sequence: number; answer: GuidedAnswerBubbleV1 }
+  | { entry_type: "guided_question"; key: string; sequence: number; label: string }
   | { entry_type: "failed_turn"; key: string; sequence: number; turn: AgentCanvasChatTurnV2 };
 
 function timelineEntryKey(entry: TimelineEntry) {
@@ -127,10 +132,11 @@ export function TimelineHydrationSkeleton({
 }: {
   itemType: "proposal" | "decision_bundle";
 }) {
+  const t = useTranslation();
   const label = itemType === "proposal" ? "proposal" : "decision bundle";
   return (
     <div className="agent-chat__timeline-hydration" role="status" aria-label={`Loading ${label}`}>
-      <span className="agent-chat__timeline-hydration-kicker">{itemType === "proposal" ? "Decision" : "Guidance"}</span>
+      <span className="agent-chat__timeline-hydration-kicker">{itemType === "proposal" ? t("Decision") : t("Guidance")}</span>
       <span className="agent-chat__timeline-hydration-line agent-chat__timeline-hydration-line--wide" />
       <span className="agent-chat__timeline-hydration-line" />
       <small>Loading {label}…</small>
@@ -193,6 +199,7 @@ export function AgentCanvasChatPanel({
   onCollapsedChange?: (collapsed: boolean) => void;
   onViewNodes?: (nodeIds: string[]) => void;
 }) {
+  const t = useTranslation();
   const chat = useAgentCanvasChat({
     workflow,
     chatRevision,
@@ -220,6 +227,10 @@ export function AgentCanvasChatPanel({
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [optimisticallyDismissedInteractionId, setOptimisticallyDismissedInteractionId] = useState<string | null>(null);
   const [interactionDockCollapsed, setInteractionDockCollapsed] = useState(false);
+  const [brandFormDraft, setBrandFormDraft] = useState<{
+    stage: "brand-memory" | "campaign";
+    answers: BrandFormAnswers;
+  } | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatPanelRef = useRef<HTMLElement>(null);
   const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
@@ -243,6 +254,7 @@ export function AgentCanvasChatPanel({
   ]);
   useEffect(() => {
     setPendingContextFiles([]);
+    setBrandFormDraft(null);
   }, [workflow.workflow_id]);
   const standaloneGuidedInteraction = chat.state.guidedInteraction
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
@@ -422,10 +434,22 @@ export function AgentCanvasChatPanel({
       sequence: answer.sequence,
       answer,
     })),
+    ...projectPendingGuidedQuestions(standaloneGuidedInteraction, chat.state.guidedAnswerBubbles)
+      .map((question, index): TimelineEntry => ({
+        entry_type: "guided_question",
+        key: question.bubble_id,
+        sequence: Math.max(0,
+          ...chat.state.items.map((item) => item.sequence),
+          ...chat.state.guidedAnswerBubbles.map((answer) => answer.sequence),
+        ) + (index + 1) / 100,
+        label: question.label,
+      })),
   ].sort((left, right) => left.sequence - right.sequence), [
     chat.state.guidedAnswerBubbles,
+    chat.state.items,
     failedTurnsByMessageId,
     stageTimeline,
+    standaloneGuidedInteraction,
   ]);
   const roleThreads = useMemo(
     () => stageTimeline.filter((unit) => unit.unit_type === "stage_thread"), [stageTimeline],
@@ -521,7 +545,11 @@ export function AgentCanvasChatPanel({
       (latest, event) => Math.max(latest, event.seq),
       -1,
     );
-    setOptimisticallyDismissedInteractionId(interaction.interaction_id);
+    // Brand forms are a single atomic submission. Keep the table visible while
+    // the 202 response is being processed so the user sees the handoff state.
+    if (interaction.content.content_kind !== "brand_form") {
+      setOptimisticallyDismissedInteractionId(interaction.interaction_id);
+    }
     let accepted = false;
     try {
       accepted = await chat.actions.submitGuidedInteraction(interaction, request);
@@ -626,6 +654,14 @@ export function AgentCanvasChatPanel({
         onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
         onProjectsRefresh={onProjectsRefresh}
         selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
+        brandFormAnswers={standaloneGuidedInteraction.content.content_kind === "brand_form"
+          && brandFormDraft?.stage === standaloneGuidedInteraction.content.stage
+          ? brandFormDraft.answers : {}}
+        onBrandFormAnswersChange={(answers) => {
+          if (standaloneGuidedInteraction.content.content_kind === "brand_form") {
+            setBrandFormDraft({ stage: standaloneGuidedInteraction.content.stage, answers });
+          }
+        }}
         onSelectConceptOption={(optionId) => {
           if (conceptInteraction?.content.content_kind === "concept_choice"
             && conceptInteraction.content.capability_id === "brand_skill-stack" && optionId === "adjust") {
@@ -790,15 +826,15 @@ export function AgentCanvasChatPanel({
       <button
         className="agent-chat__collapsed-trigger"
         type="button"
-        aria-label="Open AdCraft Bot panel"
-        title="Open AdCraft Bot"
+        aria-label={t("Open AdCraft Bot panel")}
+        title={t("Open AdCraft Bot")}
         onClick={() => {
           setInternalCollapsed(false);
           onCollapsedChange?.(false);
         }}
       >
         <img src="/imgs/logo.png" alt="" />
-        <span>AdCraft Bot</span>
+        <span>{t("AdCraft Bot")}</span>
       </button>
     );
   }
@@ -808,12 +844,12 @@ export function AgentCanvasChatPanel({
       ref={chatPanelRef}
       className={`agent-chat${chatPanelResizing ? " is-resizing" : ""}`}
       style={chatPanelWidth === null ? undefined : { width: `${chatPanelWidth}px` }}
-      aria-label="AdCraft Video Agent"
+      aria-label={t("AdCraft Video Agent")}
     >
       <button
         className="agent-chat__resize-handle"
         type="button"
-        aria-label="Resize AdCraft Video Agent panel"
+        aria-label={t("Resize AdCraft Video Agent panel")}
         aria-valuenow={chatPanelWidth ?? undefined}
         onPointerDown={beginChatPanelResize}
         onPointerMove={updateChatPanelResize}
@@ -824,7 +860,7 @@ export function AgentCanvasChatPanel({
       />
       <header className="agent-chat__header">
         <div className="agent-chat__identity">
-          <strong>AdCraft Video Agent</strong>
+          <strong>{t("AdCraft Video Agent")}</strong>
         </div>
         <div className="agent-chat__header-actions">
           <AgentCanvasDocumentBrowser
@@ -835,8 +871,8 @@ export function AgentCanvasChatPanel({
           <button
             className="agent-chat__collapse"
             type="button"
-            aria-label="Collapse AdCraft Bot panel"
-            title="Collapse AdCraft Bot"
+            aria-label={t("Collapse AdCraft Bot panel")}
+            title={t("Collapse AdCraft Bot")}
             onClick={() => {
               setInternalCollapsed(true);
               onCollapsedChange?.(true);
@@ -860,12 +896,12 @@ export function AgentCanvasChatPanel({
         >
           <div className="agent-chat__timeline-content" ref={timelineScroll.timelineContentRef}>
             {chat.state.loading && !chat.state.items.length ? (
-              <div className="agent-chat__empty">Loading conversation...</div>
+              <div className="agent-chat__empty">{t("Loading conversation...")}</div>
             ) : null}
             {!chat.state.loading
-              && !chat.state.items.length
+              && !timelineEntries.length
               && !chat.state.currentSessionActions.length ? (
-              <div className="agent-chat__empty">Describe the ad you want to build.</div>
+              <div className="agent-chat__empty">{t("Describe the ad you want to build.")}</div>
             ) : null}
             {chat.state.continuations
               .filter((continuation) => ["queued", "leased", "retry_wait"].includes(continuation.delivery_status))
@@ -876,6 +912,13 @@ export function AgentCanvasChatPanel({
               items={timelineEntries}
               getKey={timelineEntryKey}
               renderItem={(entry) => {
+                if (entry.entry_type === "guided_question") {
+                  return (
+                    <div className="agent-chat__pending-question">
+                      <GuidedQuestionBubble label={entry.label} />
+                    </div>
+                  );
+                }
                 if (entry.entry_type === "guided_answer") {
                   return <GuidedAnswerBubble answer={entry.answer} />;
                 }
@@ -949,8 +992,8 @@ export function AgentCanvasChatPanel({
           <button
             className="agent-chat__jump-to-latest"
             type="button"
-            aria-label="Jump to latest message"
-            title="Jump to latest message"
+            aria-label={t("Jump to latest message")}
+            title={t("Jump to latest message")}
             onClick={timelineScroll.followLatest}
           >
             <ChevronDownIcon />
@@ -965,21 +1008,22 @@ export function AgentCanvasChatPanel({
             onClick={() => setInteractionDockCollapsed(false)}
           >
             <strong>{standaloneGuidedInteraction.title}</strong>
-            <span>Pending your choice</span>
+            <span>{t("Pending your choice")}</span>
             <ChevronUpIcon />
           </button>
         ) : null}
-        {standaloneGuidedInteraction && !currentInteractionOptimisticallyDismissed
-          && !interactionDockCollapsed ? (
+        {/* Collapsing hides the card instead of unmounting it so drafts and scroll position survive. */}
+        {standaloneGuidedInteraction && !currentInteractionOptimisticallyDismissed ? (
           <div
-            className="agent-chat__current-interaction agent-chat__current-interaction--overlay"
+            hidden={interactionDockCollapsed}
+            className={`agent-chat__current-interaction agent-chat__current-interaction--overlay${standaloneGuidedInteraction.content.content_kind === "brand_form" ? ` agent-chat__current-interaction--brand-form${standaloneGuidedInteraction.content.rows.some(row => row.options.filter(option => option.option_id !== row.custom_option_id).length > 3) ? " agent-chat__current-interaction--brand-form-expanded" : ""}` : ""}`}
             aria-live="polite"
           >
             <button
               className="agent-chat__interaction-collapse"
               type="button"
-              aria-label="Collapse decision card"
-              title="Collapse decision card"
+              aria-label={t("Collapse decision card")}
+              title={t("Collapse decision card")}
               aria-expanded="true"
               onClick={() => setInteractionDockCollapsed(true)}
             >
@@ -1032,7 +1076,7 @@ export function AgentCanvasChatPanel({
       {chat.state.notice ? (
         <div className="agent-chat__notice" role="status">
           <span>{chat.state.notice}</span>
-          <button type="button" aria-label="Dismiss notice" onClick={chat.actions.clearNotice}>
+          <button type="button" aria-label={t("Dismiss notice")} onClick={chat.actions.clearNotice}>
             <CloseIcon />
           </button>
         </div>
@@ -1040,8 +1084,7 @@ export function AgentCanvasChatPanel({
 
       {composerContext.view.uploadState === "uploading" ? (
         <div className="agent-chat__context-uploading" role="status">
-          Uploading context asset…
-        </div>
+          {t("Uploading context asset…")}</div>
       ) : null}
 
       {composerContext.uploadIssue ? (
@@ -1079,8 +1122,8 @@ export function AgentCanvasChatPanel({
           <div className="agent-chat__product-upload-choice" role="status">
             <span>
               {pendingContextFiles.length === 1
-                ? "Use this image as Product Main?"
-                : "Use the first image as Product Main?"}
+                ? t("Use this image as Product Main?")
+                : t("Use the first image as Product Main?")}
             </span>
             <div>
               <button
@@ -1100,8 +1143,7 @@ export function AgentCanvasChatPanel({
                 }}
                 disabled={chat.state.sending || composerContext.view.uploadState === "uploading"}
               >
-                Product Main
-              </button>
+                {t("Product Main")}</button>
               <button
                 type="button"
                 onClick={() => {
@@ -1111,11 +1153,10 @@ export function AgentCanvasChatPanel({
                 }}
                 disabled={chat.state.sending || composerContext.view.uploadState === "uploading"}
               >
-                Keep unclassified
-              </button>
+                {t("Keep unclassified")}</button>
               <button
                 type="button"
-                aria-label="Cancel image upload"
+                aria-label={t("Cancel image upload")}
                 onClick={() => setPendingContextFiles([])}
                 disabled={chat.state.sending}
               >
@@ -1137,12 +1178,12 @@ export function AgentCanvasChatPanel({
               />
             ) : null}
             <span>
-              <strong>Product Main</strong>
+              <strong>{t("Product Main")}</strong>
               <small>{composerContext.productMainHandoff.displayName}</small>
             </span>
             <button
               type="button"
-              aria-label="Clear Product Main handoff"
+              aria-label={t("Clear Product Main handoff")}
               onClick={composerContext.actions.clearProductMainHandoff}
             >
               <CloseIcon />
@@ -1151,8 +1192,7 @@ export function AgentCanvasChatPanel({
         ) : null}
         {conceptInteraction ? (
           <div className="agent-chat__guided-composer-hint" role="status">
-            You can also describe your own direction below.
-          </div>
+            {t("You can also describe your own direction below.")}</div>
         ) : null}
         {!conceptInteraction && selectedSkillTitle ? (
           <div className="agent-chat__selected-skill" role="status" aria-label={`Selected Skill: ${selectedSkillTitle}`}>
@@ -1165,9 +1205,9 @@ export function AgentCanvasChatPanel({
           rows={3}
           value={draft}
           placeholder={conceptInteraction
-            ? "Describe your own direction..."
-            : "Ask AdCraft Video Agent..."}
-          aria-label="Message AdCraft Video Agent"
+            ? t("Describe your own direction...")
+            : t("Ask AdCraft Video Agent...")}
+          aria-label={t("Message AdCraft Video Agent")}
           onChange={(event) => {
             const nextDraft = event.target.value;
             if (conceptInteraction && nextDraft.trim()) setSelectedConceptOptionId(null);
@@ -1186,8 +1226,8 @@ export function AgentCanvasChatPanel({
             <button
               type="button"
               className={mentionOpen ? "is-active" : ""}
-              aria-label="Mention node or image asset"
-              title="Mention node or image asset"
+              aria-label={t("Mention node or image asset")}
+              title={t("Mention node or image asset")}
               disabled={Boolean(conceptInteraction) || chat.state.sending}
               onClick={() => setMentionOpen((current) => !current)}
             >
@@ -1197,8 +1237,8 @@ export function AgentCanvasChatPanel({
               <>
                 <button
                   type="button"
-                  aria-label="Upload context images"
-                  title="Upload context images"
+                  aria-label={t("Upload context images")}
+                  title={t("Upload context images")}
                   disabled={chat.state.sending}
                   onClick={() => uploadInputRef.current?.click()}
                 >
@@ -1222,7 +1262,7 @@ export function AgentCanvasChatPanel({
               </>
               ) : null}
             {brandMode ? (
-              <button type="button" aria-label="选择 Skills / Choose Skills" title="选择 Skills / Choose Skills"
+              <button type="button" aria-label={t("Choose Skills")} title={t("Choose Skills")}
                 disabled={!brandContextReady || chat.state.sending || brandStage !== "skill-stack" || brandDecisions?.open_card?.stage !== "skill-stack"}
                 onClick={onBrandSkillPickerOpen}>
                 <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" width={20} height={20} />
@@ -1237,8 +1277,8 @@ export function AgentCanvasChatPanel({
           <button
             type="button"
             className="agent-chat__send"
-            aria-label={conceptInteraction ? "Submit guided direction" : "Send message"}
-            title={conceptInteraction ? "Submit guided direction" : "Send message"}
+            aria-label={conceptInteraction ? t("Submit guided direction") : t("Send message")}
+            title={conceptInteraction ? t("Submit guided direction") : t("Send message")}
             disabled={conceptInteraction
               ? ((!selectedConceptOptionId && (!draft.trim() || !conceptCustomAllowed))
                 || !conceptSelectionReady
@@ -1252,7 +1292,7 @@ export function AgentCanvasChatPanel({
         {mentionOpen ? (
           <div className="agent-chat__mention-menu">
             <section>
-              <h4>Nodes</h4>
+              <h4>{t("Nodes")}</h4>
               {workflow.nodes.map((node) => (
                 <button
                   type="button"
@@ -1268,7 +1308,7 @@ export function AgentCanvasChatPanel({
               ))}
             </section>
             <section>
-              <h4>Image assets</h4>
+              <h4>{t("Image assets")}</h4>
               {imageAssets.map((asset) => (
                 <button
                   type="button"
@@ -1291,14 +1331,15 @@ export function AgentCanvasChatPanel({
 }
 
 export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?: boolean }) {
-  const label = waitingForModel ? "Waiting for model" : "Working";
+  const t = useTranslation();
+  const label = waitingForModel ? t("Waiting for model") : t("Working");
   return (
     <div
       className="agent-chat__working"
       role="status"
       aria-label={waitingForModel
-        ? "AdCraft Video Agent is waiting for the model"
-        : "AdCraft Video Agent is working"}
+        ? t("AdCraft Video Agent is waiting for the model")
+        : t("AdCraft Video Agent is working")}
     >
       <InlineLoader
         variant="halo"
@@ -1338,11 +1379,12 @@ export function GuidanceAwaitingRow({
 }: {
   awaiting: NonNullable<GuidedSessionStateV2["awaiting"]>;
 }) {
+  const t = useTranslation();
   const label = awaiting.kind === "manual_node_run"
-    ? "Waiting for a draft node to be run"
+    ? t("Waiting for a draft node to be run")
     : awaiting.kind === "milestone_idle"
-      ? "This production milestone is complete"
-      : "Waiting for your guided choice";
+      ? t("This production milestone is complete")
+      : t("Waiting for your guided choice");
   return <div className="agent-chat__activity agent-chat__awaiting" role="status"><i aria-hidden="true" /><span>{label}</span></div>;
 }
 
@@ -1355,15 +1397,16 @@ export function CommandPlanCard({
   pending: boolean;
   onAction: (planId: string, action: "confirm" | "reject") => Promise<void>;
 }) {
+  const t = useTranslation();
   const plan = card.command_plan;
   const canDecide = plan.confirmation_required && plan.status === "pending_confirmation";
   return (
     <article className={`agent-chat__command is-${plan.status}`}>
       <header>
-        <strong>Proposed canvas change</strong>
+        <strong>{t("Proposed canvas change")}</strong>
         <span>{plan.status.replaceAll("_", " ")}</span>
       </header>
-      <p>{plan.target_summary || "Review the proposed canvas changes."}</p>
+      <p>{plan.target_summary || t("Review the proposed canvas changes.")}</p>
       <small>
         {plan.operations.length} canvas {plan.operations.length === 1 ? "change" : "changes"} will be applied.
       </small>
@@ -1372,21 +1415,19 @@ export function CommandPlanCard({
           <button
             type="button"
             className="is-confirm"
-            aria-label="Confirm command"
+            aria-label={t("Confirm command")}
             disabled={pending}
             onClick={() => void onAction(plan.plan_id, "confirm")}
           >
-            Confirm
-          </button>
+            {t("Confirm")}</button>
           <button
             type="button"
             className="is-reject"
-            aria-label="Reject command"
+            aria-label={t("Reject command")}
             disabled={pending}
             onClick={() => void onAction(plan.plan_id, "reject")}
           >
-            Reject
-          </button>
+            {t("Reject")}</button>
         </div>
       ) : null}
     </article>
@@ -1458,6 +1499,7 @@ export function ProposalCard({
   readOnly?: boolean;
   compact?: boolean;
 }) {
+  const t = useTranslation();
   const proposal = card.proposal;
   const materialization = proposal.materialization;
   const appliedOptionId = optimisticSelectedOptionId
@@ -1558,7 +1600,7 @@ export function ProposalCard({
           selectedOptionId={appliedOptionId}
         />
       ) : (
-        <div className="agent-chat__options" aria-label="Creative direction options">
+        <div className="agent-chat__options" aria-label={t("Creative direction options")}>
           {displayOptions.map((option, index) => (
             <ProposalOptionRow
               key={option.option_id}
@@ -1574,7 +1616,7 @@ export function ProposalCard({
         </div>
       )}
       {!readOnly && (acceptedReferences.length || selectAction) ? (
-        <section className="agent-chat__proposal-references" aria-label="Accepted references">
+        <section className="agent-chat__proposal-references" aria-label={t("Accepted references")}>
           <header>
             <strong>References</strong>
             <span>{acceptedReferences.length}</span>
@@ -1627,7 +1669,7 @@ export function ProposalCard({
           {canSelect ? (
             <select
               value=""
-              aria-label="Add proposal reference"
+              aria-label={t("Add proposal reference")}
               disabled={pending}
               onChange={(event) => {
                 const reference = availableReferences.find((candidate) => (
@@ -1732,12 +1774,12 @@ export function ProposalCard({
           <input
             value={revision}
             onChange={(event) => setRevision(event.target.value)}
-            placeholder="Describe the change"
-            aria-label="Proposal revision"
+            placeholder={t("Describe the change")}
+            aria-label={t("Proposal revision")}
           />
           <button
             type="submit"
-            aria-label="Submit proposal revision"
+            aria-label={t("Submit proposal revision")}
             disabled={!revision.trim() || pending}
           >
             <SendIcon />

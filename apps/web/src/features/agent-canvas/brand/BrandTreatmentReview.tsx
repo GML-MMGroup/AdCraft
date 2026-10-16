@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n/useTranslation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { agentCanvasApi } from "../../../api/agentCanvasApi";
@@ -7,9 +8,10 @@ import { TreatmentDocumentView } from "./TreatmentDocumentView";
 import { TreatmentStepEditor } from "./TreatmentStepEditor";
 import "./brand-treatment-review.css";
 
-export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProductionRefresh }: {
-  workflowId: string; onClose: () => void; onConfirmed: () => void | Promise<void>; onProductionRefresh?: () => void | Promise<void>;
+export function BrandTreatmentReview({ workflowId, responseLocale = "en-US", onClose, onConfirmed, onProductionRefresh }: {
+  workflowId: string; responseLocale?: string; onClose: () => void; onConfirmed: () => void | Promise<void>; onProductionRefresh?: () => void | Promise<void>;
 }) {
+  const t = useTranslation(responseLocale);
   const dialog = useRef<HTMLDialogElement>(null);
   const mounted = useRef(false);
   const inFlight = useRef(false);
@@ -25,7 +27,7 @@ export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProdu
     try {
       const next = await agentCanvasApi.brandDecisions(workflowId);
       if (mounted.current) { setPanel(next); setNeedsRefresh(false); setError(""); setEditing(null); }
-    } catch { if (mounted.current) setError("无法加载最终审阅，请重新加载。"); }
+    } catch { if (mounted.current) setError(t("Cannot load the final review. Reload and try again.")); }
     finally { inFlight.current = false; if (mounted.current) setPending(false); }
   }
   useEffect(() => {
@@ -47,42 +49,42 @@ export function BrandTreatmentReview({ workflowId, onClose, onConfirmed, onProdu
       if (!mounted.current) return;
       setLocked(true);
       try { await onConfirmed(); onClose(); }
-      catch { if (mounted.current) setError("方案已锁定，刷新工作区失败。请关闭审阅后刷新页面，不要重新提交方案。"); }
+      catch { if (mounted.current) setError(t("The treatment is locked, but refreshing the workspace failed. Close the review and refresh the page; do not submit again.")); }
     } catch (cause) {
       if (!mounted.current) return;
       const code = cause && typeof cause === "object" && "code" in cause ? String(cause.code) : "";
       if (["brand_context_stale","brand_treatment_review_required","brand_stage_action_mismatch","brand_treatment_incomplete"].includes(code)) {
         setNeedsRefresh(true);
-        setError("内容已改变、未完整或阶段已变化。请重新加载并审阅后再确认。");
+        setError(t("The content changed, is incomplete, or the stage changed. Reload and review it before confirming."));
       } else {
         if (code === "requirement_revision_conflict") {
           try { await onProductionRefresh?.(); } catch { /* Keep the frozen review for a manual retry. */ }
         }
         setError(code === "requirement_revision_conflict"
-          ? "生产状态版本冲突，已尝试刷新。请恢复后重试；当前审阅及 digest 已保留。"
-          : "确认或生产交接暂未完成。当前审阅已保留，可恢复后重试相同版本。");
+          ? t("Production state changed. Refresh was attempted; restore the state and retry. The current review and digest were kept.")
+          : t("Confirmation or production handoff is not complete. The current review is kept; restore the state and retry the same version."));
       }
     } finally { inFlight.current = false; if (mounted.current) setPending(false); }
   }
-  return createPortal(<dialog ref={dialog} className="brand-treatment-review" aria-label="最终创意方案审阅"
+  return createPortal(<dialog ref={dialog} className="brand-treatment-review" aria-label={t("Final treatment review")}
     onCancel={event => { event.preventDefault(); if (!pending && !editing) onClose(); }}>
-    <header><h2>最终创意方案审阅</h2><button type="button" disabled={pending || !!editing} onClick={onClose}>关闭</button></header>
+    <header><h2>{t("Final treatment review")}</h2><button type="button" disabled={pending || !!editing} onClick={onClose}>{t("Close")}</button></header>
     {error && <p role="alert">{error}</p>}
-    <button type="button" disabled={pending || !!editing || locked} onClick={() => void refresh()}>重新加载审阅</button>
-    {!panel ? <p>{pending ? "正在加载…" : "请加载方案后审阅。"}</p> : <>
-      {!document && <p>此历史记录没有完整审阅文档，不能执行新的锁定。</p>}
-      {document && <><p>{document.complete ? "方案内容完整" : "方案尚不完整"}</p>
-        {document.missing_sections.length > 0 && <p>缺失内容：{document.missing_sections.join("、")}</p>}
-        <TreatmentDocumentView document={document}/></>}
-      <section><h3>八项创意步骤</h3>{(document?.treatment_steps ?? panel.treatment_steps).map(step => <article key={step.step_key}>
+    <button type="button" disabled={pending || !!editing || locked} onClick={() => void refresh()}>{t("Reload review")}</button>
+    {!panel ? <p>{pending ? t("Loading…") : t("Load the treatment before reviewing it.")}</p> : <>
+      {!document && <p>{t("This history has no complete review document, so it cannot be locked.")}</p>}
+      {document && <><p>{document.complete ? t("Treatment is complete") : t("Treatment is incomplete")}</p>
+        {document.missing_sections.length > 0 && <p>{t("Missing content: {items}", { items: document.missing_sections.join("、") })}</p>}
+        <TreatmentDocumentView document={document} responseLocale={responseLocale}/></>}
+      <section><h3>{t("Eight creative steps")}</h3>{(document?.treatment_steps ?? panel.treatment_steps).map(step => <article key={step.step_key}>
         <h4>{step.selected_label}</h4>
-        {editing?.step_key === step.step_key ? <TreatmentStepEditor step={editing} panel={panel}
+        {editing?.step_key === step.step_key ? <TreatmentStepEditor step={editing} panel={panel} responseLocale={responseLocale}
           onCancel={() => setEditing(null)} onSaved={next => { setPanel(next); setNeedsRefresh(false); setEditing(null); }}/>
-          : <><TreatmentSections detail={step.structured_detail}/>{!step.structured_detail && <p>{step.detail || "历史步骤没有完整段落，请显式编辑补齐。"}</p>}
-            {!panel.treatment_locked && !locked && <button type="button" disabled={pending || !!editing || needsRefresh} onClick={() => setEditing(step)}>编辑此步骤</button>}</>}
+          : <><TreatmentSections detail={step.structured_detail}/>{!step.structured_detail && <p>{step.detail || t("This historical step has no complete detail. Edit it to fill in the missing content.")}</p>}
+            {!panel.treatment_locked && !locked && <button type="button" disabled={pending || !!editing || needsRefresh} onClick={() => setEditing(step)}>{t("Edit this step")}</button>}</>}
       </article>)}</section>
-      {panel.treatment_locked && <p>此方案已锁定，内容只读。</p>}
-      <button type="button" disabled={!canConfirm || pending} onClick={() => void confirm()}>{pending ? "正在确认…" : "确认并锁定创意方案"}</button>
+      {panel.treatment_locked && <p>{t("Treatment is locked and read-only.")}</p>}
+      <button type="button" disabled={!canConfirm || pending} onClick={() => void confirm()}>{pending ? t("Confirming…") : t("Confirm and lock treatment")}</button>
     </>}
   </dialog>, window.document.body);
 }
