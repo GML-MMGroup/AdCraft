@@ -2179,8 +2179,12 @@ button.agent-chat__node-links--related:hover {
   padding-right: 44px;
 }
 
+/* A zero basis makes the timeline take only the leftover space; with an auto
+   basis its long content would absorb almost none of the shrink and squeeze
+   the card down to its floor. */
 .agent-chat__timeline-shell:has(> .agent-chat__current-interaction--overlay:not([hidden])) > .agent-chat__timeline {
-  min-height: clamp(96px, 20vh, 200px);
+  flex: 1 1 0;
+  min-height: clamp(88px, 16vh, 180px);
 }
 
 .agent-chat__interaction-collapse {
