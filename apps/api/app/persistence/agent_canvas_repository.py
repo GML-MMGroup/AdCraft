@@ -2998,7 +2998,19 @@ def _invalidate_target_prompt_preparation(
         and node.prompt_presentation.source in {"agent_authored", "deterministic_projection"}
         and node.prompt_presentation.text == node.generation_prompt
     )
-    preserve_editor_text = preserve_storyboard_text or node.creative_role == "character"
+    preserve_derivative_text = (
+        node.creative_role == "product"
+        and node.structured_content.get("asset_kind") == "multi_view"
+    ) or (
+        node.creative_role == "scene"
+        and (
+            node.structured_content.get("scene_asset_kind") == "multi_view"
+            or node.parameters.get("scene_asset_kind") == "multi_view"
+        )
+    )
+    preserve_editor_text = (
+        preserve_storyboard_text or node.creative_role == "character" or preserve_derivative_text
+    )
     legacy_character_proof = (
         retain_legacy_character_proof(node, frozen_context_digest) if prepared_projection else {}
     )
@@ -3029,6 +3041,12 @@ def _invalidate_target_prompt_preparation(
         asset_kind = node.structured_content.get("asset_kind")
         if isinstance(asset_kind, str) and asset_kind:
             preserved_discriminator["asset_kind"] = asset_kind
+    elif node.creative_role == "scene":
+        scene_asset_kind = node.structured_content.get("scene_asset_kind") or node.parameters.get(
+            "scene_asset_kind"
+        )
+        if isinstance(scene_asset_kind, str) and scene_asset_kind:
+            preserved_discriminator["scene_asset_kind"] = scene_asset_kind
     queued_node = node.model_copy(
         update={
             "revision": node.revision + 1,

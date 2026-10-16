@@ -53,6 +53,11 @@ from app.services.agent_canvas_character_prompt_reuse import (
     character_prompt_authority_digest,
     character_prompt_reuse_proof,
 )
+from app.services.agent_canvas_derivative_prompt_reuse import (
+    can_reuse_derivative_prompt,
+    derivative_prompt_authority_digest,
+    derivative_prompt_reuse_proof,
+)
 
 
 RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
@@ -169,6 +174,12 @@ class NodePromptPreparationService:
                 if role_context.role_variant == "character_turnaround"
                 else None
             )
+            derivative_authority_digest = derivative_prompt_authority_digest(
+                working,
+                role_context,
+                stage_digest=snapshot_digest,
+                recipe_digest=self._recipes.resolve(role_context.role_variant).recipe_digest,
+            )
             preserve_creative_text = preserve_storyboard_text or (
                 character_authority_digest is not None
                 and (
@@ -182,13 +193,34 @@ class NodePromptPreparationService:
                         ).recipe_digest,
                     )
                 )
+                or (
+                    derivative_authority_digest is not None
+                    and can_reuse_derivative_prompt(
+                        current,
+                        role_context,
+                        authority_digest=derivative_authority_digest,
+                    )
+                )
             )
             if (
                 self._role_brief_author is not None
                 and role_context.user_prompt is None
                 and not preserve_creative_text
             ):
-                brief = self._role_brief_author(role_context, operation_id)
+                try:
+                    brief = self._role_brief_author(role_context, operation_id)
+                except Exception as error:
+                    if (
+                        role_context.role_variant == "scene_board"
+                        and getattr(error, "code", None) == "agent_structured_output_invalid"
+                    ):
+                        # A malformed Scene brief must not block the authoring
+                        # journey.  The deterministic role contract keeps the
+                        # environment-only boundary and creates a retryable,
+                        # provider-neutral prompt without another paid call.
+                        brief = deterministic_role_brief(role_context)
+                    else:
+                        raise
                 compiled_prompt = self._compiler.compile(
                     brief,
                     role_context,
@@ -282,6 +314,18 @@ class NodePromptPreparationService:
                                 ).model_dump(mode="json")
                             }
                             if character_authority_digest is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "prepared_derivative_prompt": derivative_prompt_reuse_proof(
+                                    authority_digest=derivative_authority_digest,
+                                    prompt=prompt,
+                                    content=structured_content,
+                                    brief_digest=compiled_prompt.brief_digest,
+                                ).model_dump(mode="json")
+                            }
+                            if derivative_authority_digest is not None
                             else {}
                         ),
                         **(
@@ -1028,6 +1072,20 @@ def _reference_purpose(
         and source.structured_content.get("character_asset_kind") == "identity_master"
     ):
         return "character_main_identity"
+    if (
+        target.creative_role == "scene"
+        and (
+            target.structured_content.get("scene_asset_kind") == "multi_view"
+            or target.parameters.get("scene_asset_kind") == "multi_view"
+        )
+        and source is not None
+        and source.creative_role == "scene"
+        and (
+            source.structured_content.get("scene_asset_kind") == "main"
+            or source.parameters.get("scene_asset_kind") == "main"
+        )
+    ):
+        return "scene_main_identity"
     if target.creative_role == "storyboard_video" and (
         source is not None and source.creative_role == "storyboard_sequence"
     ):

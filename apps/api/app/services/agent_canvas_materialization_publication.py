@@ -30,7 +30,7 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import ProjectAssetSummaryV2
+from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_ad_media import (
     StoryboardGridContentV2,
     StoryboardPanelV2,
@@ -437,6 +437,40 @@ class CapabilityMaterializationPublicationService:
         return (
             envelope.capability_id == "character_design" and envelope.operation_kind == "parent"
         ) or (envelope.capability_id == "scene_design" and envelope.operation_kind == "standalone")
+
+    def _allows_prompt_successor_recovery(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        node: CanvasNodeV2,
+    ) -> bool:
+        """Allow the exact successor created by an internal Scene Main refresh."""
+
+        if self._requires_reference_source_checkpoint(envelope):
+            return True
+        return (
+            envelope.capability_id == "scene_design"
+            and envelope.operation_kind == "standalone"
+            and node.creative_role == "scene"
+            and (
+                node.structured_content.get("scene_asset_kind") == "multi_view"
+                or node.parameters.get("scene_asset_kind") == "multi_view"
+            )
+        )
+
+    def _allows_internal_scene_multiview_successor(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        node: CanvasNodeV2,
+    ) -> bool:
+        return (
+            envelope.capability_id == "scene_design"
+            and envelope.operation_kind == "standalone"
+            and node.creative_role == "scene"
+            and (
+                node.structured_content.get("scene_asset_kind") == "multi_view"
+                or node.parameters.get("scene_asset_kind") == "multi_view"
+            )
+        )
 
     def _prepare_guided_document_stage(
         self,
@@ -988,7 +1022,10 @@ class CapabilityMaterializationPublicationService:
                 node_id=node_id,
                 committed_operation_id=operation_id,
                 current_operation_id=node.prompt_preparation.operation_id,
-                allow_successor=self._requires_reference_source_checkpoint(envelope),
+                allow_successor=self._allows_prompt_successor_recovery(envelope, node),
+                allow_dependency_successor=self._allows_internal_scene_multiview_successor(
+                    envelope, node
+                ),
             )
             if current_operation_id is None:
                 raise V2PersistenceError(
@@ -1136,6 +1173,7 @@ class CapabilityMaterializationPublicationService:
         committed_operation_id: str,
         current_operation_id: str | None,
         allow_successor: bool,
+        allow_dependency_successor: bool = False,
     ) -> str | None:
         if current_operation_id == committed_operation_id:
             return current_operation_id
@@ -1151,11 +1189,14 @@ class CapabilityMaterializationPublicationService:
             node_id,
             current_operation_id,
         )
+        allowed_reasons = {"guided_reference_source_resolved"}
+        if allow_dependency_successor:
+            allowed_reasons.add("dependency_or_binding_revision_changed")
         if (
             committed is None
             or current is None
             or getattr(committed, "status", None) != "superseded"
-            or getattr(committed, "supersession_reason", None) != "guided_reference_source_resolved"
+            or getattr(committed, "supersession_reason", None) not in allowed_reasons
             or getattr(committed, "superseded_by_dispatch_id", None)
             != getattr(current, "dispatch_id", None)
             or getattr(current, "status", None) not in {"queued", "leased", "completed"}

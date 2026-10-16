@@ -281,7 +281,16 @@ class AgentCanvasRolePromptCompiler:
             saved_prompt = preserved_node.generation_prompt
             if (
                 context.role_variant
-                not in {"storyboard_grid", "video_segment", "character_turnaround"}
+                not in {
+                    "storyboard_grid",
+                    "video_segment",
+                    "character_turnaround",
+                    "product_multiview",
+                }
+                and not (
+                    context.role_variant == "scene_board"
+                    and context.node_parameters.get("scene_asset_kind") == "multi_view"
+                )
                 or presentation is None
                 or presentation.brief_digest is None
                 or presentation.source not in {"agent_authored", "deterministic_projection"}
@@ -300,6 +309,10 @@ class AgentCanvasRolePromptCompiler:
                 if context.role_variant == "storyboard_grid"
                 else CharacterDesignAssetContentV2
                 if context.role_variant == "character_turnaround"
+                else DesignAssetContentV2
+                if context.role_variant == "product_multiview"
+                else SceneDesignBoardContentV2
+                if context.role_variant == "scene_board"
                 else VideoSegmentContentV2
             )
             try:
@@ -314,6 +327,11 @@ class AgentCanvasRolePromptCompiler:
                         "identity_projection_digest",
                     ):
                         saved_content[key] = structured[key]
+                elif context.role_variant == "scene_board":
+                    if context.scene_environment_projection is not None:
+                        saved_content["environment_projection_digest"] = (
+                            context.scene_environment_projection.projection_digest
+                        )
                 structured = saved_content
             except ValidationError as error:
                 raise _error(
@@ -821,6 +839,11 @@ def _structured_content(
             for index, view in enumerate(scene_views or brief.views, start=1)
         )
         return SceneDesignBoardContentV2(
+            scene_asset_kind=(
+                "multi_view"
+                if context.node_parameters.get("scene_asset_kind") == "multi_view"
+                else "main"
+            ),
             scene_identity=environment_identity,
             environment_summary=f"{spatial_logic} {atmosphere}",
             layout="Nine distinct views of one coherent environment.",
