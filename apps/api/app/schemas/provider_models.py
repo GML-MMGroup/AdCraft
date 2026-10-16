@@ -17,6 +17,7 @@ ModelAvailabilityV1 = Literal[
 ]
 ModelDefaultKeyV1 = Literal["agent", "text", "image", "video", "audio"]
 ModelDefaultModeV1 = Literal["automatic", "explicit"]
+ModelThinkingModeV1 = Literal["disabled", "enabled"]
 ProviderTransportKindV1 = Literal[
     "pi_native_openai_compatible",
     "litellm_chat",
@@ -213,6 +214,55 @@ class ProviderModelSummaryV1(BaseModel):
     availability: ModelAvailabilityV1
     unavailable_reason: str | None = None
     catalog_revision: int
+
+
+class ProviderModelVersionRequestV1(BaseModel):
+    """Register an exact provider ID using a server-owned compatibility template."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_model_ref: str = Field(min_length=3, max_length=320)
+    provider_model_id: str = Field(
+        min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/:-]*$"
+    )
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        if not value.strip() or any(ord(char) < 32 for char in value):
+            raise ValueError("Model display name must be nonblank and contain no controls.")
+        return value.strip()
+
+
+class ProviderModelVersionReviewRequestV1(BaseModel):
+    """Explicit operator compatibility attestation, not automatic certification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_ref: str = Field(min_length=3, max_length=320)
+    expected_catalog_revision: int = Field(ge=1)
+    approved: bool
+    evidence_reference: str = Field(
+        min_length=1, max_length=160, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    )
+
+
+class ImageResolutionCapabilitiesV1(BaseModel):
+    """Frontend-ready image dimensions accepted by one exact model profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parameter_modes: tuple[Literal["size", "resolution_with_aspect_ratio"], ...] = Field(
+        default_factory=tuple,
+        max_length=2,
+    )
+    size_options: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    resolution_options: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    aspect_ratio_options: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    sizes_by_aspect_ratio: dict[str, str] = Field(default_factory=dict)
+    pixel_bounds: tuple[int, int] | None = None
+    default_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProviderEndpointMetadataV1(BaseModel):
@@ -438,6 +488,7 @@ class ProviderModelSummaryV2(ProviderModelSummaryV1):
         max_length=64,
     )
     reference_policy: ReferenceInputPolicyV1 | None = None
+    image_resolution_capabilities: ImageResolutionCapabilitiesV1 | None = None
 
 
 ProviderCredentialCapabilityStatusV1.model_rebuild()
@@ -456,6 +507,7 @@ class ProviderModelListResponseV2(BaseModel):
 class ModelDefaultsResponseV1(BaseModel):
     defaults: dict[ModelDefaultKeyV1, str]
     modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1]
+    thinking_modes: dict[ModelDefaultKeyV1, ModelThinkingModeV1]
     revisions: dict[ModelDefaultKeyV1, int]
 
 
@@ -464,10 +516,11 @@ class ModelDefaultsPatchRequestV1(BaseModel):
 
     defaults: dict[ModelDefaultKeyV1, str] = Field(default_factory=dict)
     modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1] = Field(default_factory=dict)
+    thinking_modes: dict[ModelDefaultKeyV1, ModelThinkingModeV1] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_mutation(self) -> "ModelDefaultsPatchRequestV1":
-        if not self.defaults and not self.modes:
+        if not self.defaults and not self.modes and not self.thinking_modes:
             raise ValueError("At least one model default or mode must be supplied.")
         return self
 
@@ -477,3 +530,4 @@ class ProviderModelSyncResponseV1(BaseModel):
     sync_run_id: str
     catalog_revision: int | None = None
     status: Literal["succeeded"] = "succeeded"
+    discovery_mode: Literal["remote", "static_manifest"] = "static_manifest"

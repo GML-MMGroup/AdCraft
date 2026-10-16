@@ -53,6 +53,7 @@ from app.schemas.agent_working_documents import (
     StoryboardVisualAnchorV2,
     StoryboardVisualAnchorV3,
 )
+from app.schemas.brand_production_context import BrandProductionContextV1
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_working_documents import AgentWorkingDocumentService
 
@@ -93,6 +94,38 @@ class _WorkingDocumentReader(Protocol):
 
 class _WorkflowReader(Protocol):
     def get_node(self, workflow_id: str, node_id: str): ...
+
+
+def timing_seed_segments(
+    authority_plan: StoryboardSequenceAuthorityPlanV2,
+) -> tuple[StoryboardNarrativeSegmentV2, ...]:
+    """Build the deterministic, content-free segments used before outline authoring."""
+
+    return tuple(
+        StoryboardNarrativeSegmentV2(
+            sequence_id=f"sequence-{window.order}",
+            order=window.order,
+            start_seconds=window.start_seconds,
+            end_seconds=window.end_seconds,
+            narrative_goal=(
+                f"Sequence {window.order} local narrative direction "
+                f"({window.start_seconds:g}-{window.end_seconds:g}s)."
+            ),
+            start_state=("Opening state" if window.order == 1 else "Continue prior sequence."),
+            end_state=(
+                "Close the authored direction."
+                if window.order == len(authority_plan.windows)
+                else "Hand off to the next sequence."
+            ),
+            continuity_from_previous=(
+                None if window.order == 1 else "Continue from the prior sequence."
+            ),
+            terminal_policy=(
+                "close" if window.order == len(authority_plan.windows) else "continue"
+            ),
+        )
+        for window in authority_plan.windows
+    )
 
 
 class StoryboardSequenceAuthoringService:
@@ -377,7 +410,11 @@ class StoryboardSequenceAuthoringService:
                     or row.panel_index != draft_row.panel_index
                     for row, draft_row in zip(existing_rows, draft.rows)
                 )
-                or (planned_node is not None and existing_node != planned_node)
+                or (
+                    planned_node is not None
+                    and existing_node is not None
+                    and existing_node != planned_node
+                )
             ):
                 raise _storyboard_authority_error(
                     "Storyboard sequence materialization replay does not match authority."
@@ -549,6 +586,8 @@ class StoryboardSequenceAuthoringService:
         *,
         style_excerpt: str | None = None,
         response_locale: str = "und",
+        selected_direction: str | None = None,
+        brand_decisions: BrandProductionContextV1 | None = None,
     ) -> StoryboardSegmentAuthoringContextV2:
         """Build one segment context from validated, not-yet-persisted plan content."""
 
@@ -567,6 +606,11 @@ class StoryboardSequenceAuthoringService:
             )
         )
         prior = content.segments[sequence.order - 2] if sequence.order > 1 else None
+        prior_rows = (
+            tuple(row for row in content.rows if row.sequence_id == prior.sequence_id)
+            if prior is not None
+            else ()
+        )
         anchors = self._resolve_anchors(workflow_id, aliases)
         if not aliases:
             page = self._documents.list_documents(
@@ -582,7 +626,11 @@ class StoryboardSequenceAuthoringService:
             plan_revision=plan_revision,
             plan_content_digest=plan_content_digest,
             sequence=sequence,
+            narrative_context=content.narrative_outline,
+            selected_direction=selected_direction,
+            brand_decisions=brand_decisions,
             prior_end_state=prior.end_state if prior is not None else None,
+            prior_final_panel=(prior_rows[-1] if len(prior_rows) == 9 else None),
             anchors=anchors,
             style_excerpt=style_excerpt,
         )
@@ -1524,33 +1572,29 @@ def _ensure_adjacent_sequence_is_distinct(
     )
     if len(previous_rows) != 9 or previous_materialization.status != "materialized":
         return
-    previous_payload = (
-        _normalize_storyboard_text(previous.narrative_goal),
-        tuple(
-            (
-                row.panel_index,
-                _normalize_storyboard_text(row.content_beat),
-                _normalize_storyboard_text(row.camera_description),
-            )
-            for row in previous_rows
-        ),
-        _normalize_storyboard_text(
-            _prompt_without_continuity_handoff(previous_materialization.generation_prompt or "")
-        ),
+    previous_rows_payload = tuple(
+        (
+            row.panel_index,
+            _normalize_storyboard_text(row.content_beat),
+            _normalize_storyboard_text(row.camera_description),
+        )
+        for row in previous_rows
     )
-    current_payload = (
-        _normalize_storyboard_text(sequence.narrative_goal),
-        tuple(
-            (
-                row.panel_index,
-                _normalize_storyboard_text(row.content_beat),
-                _normalize_storyboard_text(row.camera_description),
-            )
-            for row in draft.rows
-        ),
-        _normalize_storyboard_text(_prompt_without_continuity_handoff(draft.generation_prompt)),
+    current_rows_payload = tuple(
+        (
+            row.panel_index,
+            _normalize_storyboard_text(row.content_beat),
+            _normalize_storyboard_text(row.camera_description),
+        )
+        for row in draft.rows
     )
-    if current_payload == previous_payload:
+    previous_prompt = _normalize_storyboard_text(
+        _prompt_without_continuity_handoff(previous_materialization.generation_prompt or "")
+    )
+    current_prompt = _normalize_storyboard_text(
+        _prompt_without_continuity_handoff(draft.generation_prompt)
+    )
+    if current_rows_payload == previous_rows_payload or current_prompt == previous_prompt:
         raise _storyboard_authority_error(
             "Adjacent Storyboard sequences contain exact duplicate narrative content."
         )

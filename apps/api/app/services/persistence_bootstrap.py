@@ -17,6 +17,10 @@ from app.services.v2_event_import import V2EventImportService
 from app.services.v2_asset_metadata_import import V2AssetMetadataImportService
 from app.services.v2_project_catalog_repair import V2ProjectCatalogRepairService
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
+from app.services.creative_method_skill_catalog import (
+    CreativeMethodSkillCatalogService,
+    creative_method_seed_dir,
+)
 from app.services.agent_working_document_authority_upgrade import (
     AgentWorkingDocumentAuthorityUpgradeService,
 )
@@ -77,6 +81,9 @@ class PersistenceBootstrapService:
                 self._settings,
                 ProviderModelRepository(database),
             ).bootstrap(now=_utc_now())
+            seed_dir = creative_method_seed_dir()
+            if seed_dir.is_dir():
+                CreativeMethodSkillCatalogService(database, seed_dir).import_seeds()
             return PersistenceBootstrapState(
                 database_path=resolve_v2_database_path(self._settings.media_data_dir),
                 schema_revision=schema_revision,

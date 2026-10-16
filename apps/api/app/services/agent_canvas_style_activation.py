@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from sqlalchemy.engine import Connection
+
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
@@ -40,6 +42,7 @@ class StyleSkillActivationService:
         request: VideoSkillRunCreateRequestV2,
         *,
         idempotency_key: str,
+        connection: Connection | None = None,
     ) -> VideoSkillRunV2:
         self._workflows.get_workflow(workflow_id)
         request_fingerprint = _activation_request_fingerprint(workflow_id, request)
@@ -71,6 +74,7 @@ class StyleSkillActivationService:
             public_skill=public_skill,
             request_fingerprint=request_fingerprint,
             idempotency_key=idempotency_key,
+            connection=connection,
         )
 
 

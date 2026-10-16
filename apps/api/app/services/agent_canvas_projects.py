@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
@@ -70,6 +71,7 @@ class AgentCanvasProjectService:
                 project_id=f"proj_{identity}",
                 name=request.name,
                 description=request.description,
+                mode=request.mode,
                 created_at=now,
                 updated_at=now,
             ),
@@ -85,6 +87,11 @@ class AgentCanvasProjectService:
             ),
             idempotency_key=f"create-project:{idempotency_key}",
         )
+        if request.mode == "brand":
+            BrandDecisionRepository(self._projects.database).ensure_brand(
+                project_id=workflow.project_id,
+                name=request.name,
+            )
         active_workflow = self.get_workflow(workflow.workflow_id)
         return ProjectCreateResponseV2.model_validate(
             {
@@ -240,6 +247,7 @@ class AgentCanvasProjectService:
             cover_source=project.cover_source,
             cover_updated_at=project.cover_updated_at,
             project_version=project.project_version,
+            mode=project.mode,
             semantic_revision_no=workflow.revision,
             created_at=project.created_at,
             updated_at=project.updated_at,

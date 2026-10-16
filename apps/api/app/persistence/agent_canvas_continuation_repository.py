@@ -322,6 +322,30 @@ class AgentCanvasContinuationOutboxRepository:
             raise _persistence_error() from error
         return _delivery(row) if row is not None else None
 
+    def get_for_source_turn(self, turn_id: str) -> ContinuationDeliveryV2 | None:
+        """Return the continuation dispatched from one source turn.
+
+        Guided journey actions retain the source ``next_action`` turn as their
+        action owner while the capability work runs in a separate continuation
+        turn.  Failure recovery therefore needs to inspect the source-turn
+        delivery, not only the continuation turn itself.
+        """
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow).where(
+                            AgentCanvasContinuationOutboxRow.source_turn_id == turn_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _delivery(row) if row is not None else None
+
     def list_nonterminal_capability_ids(
         self,
         workflow_id: str,

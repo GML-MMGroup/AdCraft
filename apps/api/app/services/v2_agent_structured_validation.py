@@ -252,6 +252,10 @@ def _semantic_violations(
         return _storyboard_sequence_window_violations(context, value)
     if profile == "proposal_candidate_count_v1":
         return _proposal_candidate_count_violations(context, value)
+    if profile == "brand_form_supplemental_novelty_v1":
+        return _brand_form_supplemental_novelty_violations(context, value)
+    if profile == "brand_form_slots_v1":
+        return _brand_form_slot_violations(context, value)
     if profile == "role_prompt_contract_v1":
         return _role_prompt_contract_violations(context, value)
     if profile != "frozen_fields_v1":
@@ -289,6 +293,170 @@ def _semantic_violations(
     return tuple(violations)
 
 
+def _brand_form_supplemental_novelty_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    """Require each requested supplemental row to add genuinely new options."""
+
+    requested_slot_ids = context.get("requested_slot_ids")
+    previous_options_by_slot = context.get("previous_options_by_slot")
+    minimum_new_options = context.get("minimum_new_options", 2)
+    if (
+        not isinstance(requested_slot_ids, list)
+        or not requested_slot_ids
+        or len(set(requested_slot_ids)) != len(requested_slot_ids)
+        or not all(isinstance(slot_id, str) and slot_id for slot_id in requested_slot_ids)
+        or not isinstance(previous_options_by_slot, dict)
+        or not isinstance(minimum_new_options, int)
+        or isinstance(minimum_new_options, bool)
+        or minimum_new_options < 1
+        or minimum_new_options > 3
+    ):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The supplemental Brand form validation context is incomplete.",
+                field_path="validation_context",
+            ),
+        )
+
+    previous_labels_by_slot: dict[str, set[str]] = {}
+    for slot_id in requested_slot_ids:
+        previous = previous_options_by_slot.get(slot_id)
+        if not isinstance(previous, list) or not previous:
+            return (
+                StructuredViolation(
+                    code="agent_validation_context_invalid",
+                    message="Previous Brand form options are unavailable for a requested slot.",
+                    field_path=f"previous_options_by_slot.{slot_id}",
+                ),
+            )
+        labels: set[str] = set()
+        for option in previous:
+            if not isinstance(option, dict) or not isinstance(option.get("label"), str):
+                return (
+                    StructuredViolation(
+                        code="agent_validation_context_invalid",
+                        message="Previous Brand form options must contain labels.",
+                        field_path=f"previous_options_by_slot.{slot_id}",
+                    ),
+                )
+            labels.add(_normalized_form_option_label(option["label"]))
+        previous_labels_by_slot[slot_id] = labels
+
+    cards = value.get("form_cards")
+    if not isinstance(cards, list):
+        return (
+            StructuredViolation(
+                code="brand_form_supplemental_novelty_missing",
+                message="Supplemental Brand form output must contain form cards.",
+                field_path="form_cards",
+            ),
+        )
+    cards_by_slot = {
+        card.get("target_slot_id"): (index, card)
+        for index, card in enumerate(cards)
+        if isinstance(card, dict) and isinstance(card.get("target_slot_id"), str)
+    }
+    violations: list[StructuredViolation] = []
+    for slot_id in requested_slot_ids:
+        card_entry = cards_by_slot.get(slot_id)
+        if card_entry is None:
+            violations.append(
+                StructuredViolation(
+                    code="brand_form_supplemental_novelty_missing",
+                    message="Supplemental Brand form output is missing a requested slot.",
+                    field_path="form_cards",
+                    expected=slot_id,
+                )
+            )
+            continue
+        card_index, card = card_entry
+        options = card.get("options")
+        labels = (
+            [option.get("label") for option in options if isinstance(option, dict)]
+            if isinstance(options, list)
+            else []
+        )
+        normalized_labels = [
+            _normalized_form_option_label(label)
+            for label in labels
+            if isinstance(label, str) and label.strip()
+        ]
+        novel_count = len(set(normalized_labels) - previous_labels_by_slot[slot_id])
+        if (
+            len(normalized_labels) != len(labels)
+            or len(set(normalized_labels)) != len(normalized_labels)
+            or novel_count < minimum_new_options
+        ):
+            violations.append(
+                StructuredViolation(
+                    code="brand_form_supplemental_novelty_missing",
+                    message=(
+                        "Each requested supplemental Brand form slot must contain "
+                        f"at least {minimum_new_options} new options."
+                    ),
+                    field_path=f"form_cards.{card_index}.options",
+                    expected={"minimum_new_options": minimum_new_options},
+                    actual={"novel_option_count": novel_count},
+                )
+            )
+    return tuple(violations)
+
+
+def _brand_form_slot_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    """Require one generated form card for every authoritative foundation slot."""
+
+    expected_slot_ids = context.get("expected_slot_ids")
+    if (
+        not isinstance(expected_slot_ids, list)
+        or not expected_slot_ids
+        or len(set(expected_slot_ids)) != len(expected_slot_ids)
+        or not all(isinstance(slot_id, str) and slot_id for slot_id in expected_slot_ids)
+    ):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The Brand form slot validation context is incomplete.",
+                field_path="validation_context.expected_slot_ids",
+            ),
+        )
+
+    cards = value.get("form_cards")
+    if not isinstance(cards, list):
+        return (
+            StructuredViolation(
+                code="brand_form_slot_missing",
+                message="Brand foundation form output must contain form cards.",
+                field_path="form_cards",
+                expected=expected_slot_ids,
+            ),
+        )
+    cards_by_slot: dict[str, tuple[int, dict[str, Any]]] = {}
+    for index, card in enumerate(cards):
+        if not isinstance(card, dict) or not isinstance(card.get("target_slot_id"), str):
+            continue
+        cards_by_slot.setdefault(str(card["target_slot_id"]), (index, card))
+    return tuple(
+        StructuredViolation(
+            code="brand_form_slot_missing",
+            message="Brand foundation form output is missing an authoritative slot.",
+            field_path="form_cards",
+            expected=slot_id,
+        )
+        for slot_id in expected_slot_ids
+        if slot_id not in cards_by_slot
+    )
+
+
+def _normalized_form_option_label(label: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", label).split()).casefold()
+
+
 def _role_prompt_contract_violations(
     context: dict[str, Any],
     value: dict[str, Any],
@@ -306,22 +474,32 @@ def _role_prompt_contract_violations(
                 field_path="validation_context",
             ),
         )
-    if role_variant != "scene_board" or prompt_authority == "user_authored":
+    if prompt_authority == "user_authored":
         return ()
-    projection_digest = context.get("scene_projection_digest")
-    if (
-        not isinstance(projection_digest, str)
-        or not projection_digest.startswith("sha256:")
-        or len(projection_digest) != 71
-        or any(character not in "0123456789abcdef" for character in projection_digest[7:])
-    ):
-        return (
-            StructuredViolation(
-                code="agent_validation_context_invalid",
-                message="The frozen Scene projection identity is invalid.",
-                field_path="scene_projection_digest",
-            ),
-        )
+    if role_variant == "scene_board":
+        projection_digest = context.get("scene_projection_digest")
+        projection_required = context.get("scene_projection_required", True)
+        if not isinstance(projection_required, bool):
+            return (
+                StructuredViolation(
+                    code="agent_validation_context_invalid",
+                    message="The Scene projection requirement flag is invalid.",
+                    field_path="scene_projection_required",
+                ),
+            )
+        if projection_required and (
+            not isinstance(projection_digest, str)
+            or not projection_digest.startswith("sha256:")
+            or len(projection_digest) != 71
+            or any(character not in "0123456789abcdef" for character in projection_digest[7:])
+        ):
+            return (
+                StructuredViolation(
+                    code="agent_validation_context_invalid",
+                    message="The frozen Scene projection identity is invalid.",
+                    field_path="scene_projection_digest",
+                ),
+            )
     editable_prompt = value.get("editable_prompt")
     if not isinstance(editable_prompt, str):
         return ()
@@ -332,12 +510,21 @@ def _role_prompt_contract_violations(
     )
     if violation is None:
         return ()
+    if role_variant == "scene_board":
+        message = "The Scene brief conflicts with its environment-only role contract."
+        expected = "environment_only"
+    elif role_variant == "video_segment":
+        message = "The video brief conflicts with its video-only role contract."
+        expected = "video_without_background_music"
+    else:
+        message = "The role brief conflicts with its role contract."
+        expected = "role_specific_content"
     return (
         StructuredViolation(
             code="node_prompt_role_contract_invalid",
-            message="The Scene brief conflicts with its environment-only role contract.",
+            message=message,
             field_path=violation.field_path,
-            expected="environment_only",
+            expected=expected,
             actual=violation.violation_category,
         ),
     )

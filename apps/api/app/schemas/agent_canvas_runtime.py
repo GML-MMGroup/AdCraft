@@ -287,6 +287,7 @@ class ResolvedModelExecutionV2(ResolvedModelExecutionV1):
     adapter_revision: str = Field(min_length=1, max_length=80)
     requested_parameter_fingerprint: str = Field(min_length=8, max_length=128)
     effective_parameter_fingerprint: str = Field(min_length=8, max_length=128)
+    thinking_mode: Literal["disabled", "enabled"] | None = None
 
 
 ProviderReferenceMediaTypeV1 = Literal["text", "image", "video", "audio"]

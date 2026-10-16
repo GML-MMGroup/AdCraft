@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     health,
     providers,
     provider_certifications,
+    provider_model_versions,
     provider_settings,
     video_editing,
     workflow_graph,
@@ -24,6 +25,7 @@ api_router.include_router(canvas_runtime.router)
 api_router.include_router(ad_workflows.router)
 api_router.include_router(provider_certifications.router)
 api_router.include_router(providers.router)
+api_router.include_router(provider_model_versions.router)
 api_router.include_router(provider_settings.router)
 api_router.include_router(video_editing.router)
 api_router.include_router(workflow_graph.router)

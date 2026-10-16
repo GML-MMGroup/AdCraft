@@ -56,7 +56,13 @@
         "bgm_prompt",
         "visual_style_scope_repair",
         "revise_character_asset",
-        "revise_scene_asset"
+        "revise_scene_asset",
+        "brand_slot_question",
+        "brand_slot_form",
+        "brand_hypothesis",
+        "brand_skill_recommendation",
+        "brand_treatment_step",
+        "brand_treatment_review"
       ],
       "model_role": "agent"
     }

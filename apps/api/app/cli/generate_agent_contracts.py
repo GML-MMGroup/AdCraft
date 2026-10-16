@@ -12,6 +12,7 @@ from pydantic import TypeAdapter
 from app.schemas import agent_capabilities
 from app.schemas import agent_runtime
 from app.schemas import agent_model_trace
+from app.schemas import workflow_model_calls
 from app.schemas import agent_canvas_video_parameters
 from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
@@ -45,12 +46,54 @@ from app.schemas import workflow_v2_prompt_contracts
 from app.schemas import v2_agent_conversations
 from app.schemas import v2_quick_media
 from app.schemas import style_skill_consultation
+from app.schemas import brand_professional_mode
+from app.schemas import brand_treatment_detail
+from app.schemas import brand_production_context
 from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
 from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 CONTRACT_MODELS = (
+    brand_production_context.BrandProductionStepV1,
+    brand_production_context.BrandProductionContextV1,
+    brand_treatment_detail.TreatmentSectionV1,
+    brand_treatment_detail.TreatmentDetailV1,
+    brand_professional_mode.TreatmentCandidateV1,
+    brand_professional_mode.TreatmentStepResultV1,
+    brand_professional_mode.BrandBriefSummaryV1,
+    brand_professional_mode.BrandAssetReferenceV1,
+    brand_professional_mode.BrandTreatmentDocumentV1,
+    brand_professional_mode.AdSpecItemV1,
+    brand_professional_mode.AdSpecStateV1,
+    brand_professional_mode.SkillStackEntryV1,
+    brand_professional_mode.SkillStackV1,
+    workflow_model_calls.WorkflowModelCallWriteV1,
+    workflow_model_calls.WorkflowModelCallReceiptV1,
+    brand_professional_mode.BrandSkillRecommendationV1,
+    brand_professional_mode.BrandSlotValueV1,
+    brand_professional_mode.BrandSlotEvidenceV1,
+    brand_professional_mode.BrandShortOptionV1,
+    brand_professional_mode.BrandOptionCardV1,
+    brand_professional_mode.BrandFormOptionV1,
+    brand_professional_mode.BrandFormRowV1,
+    brand_professional_mode.BrandFormV1,
+    brand_professional_mode.BrandFormAnswerV1,
+    brand_professional_mode.BrandFormAnswerIntentV1,
+    brand_professional_mode.BrandFormSubmitV1,
+    brand_professional_mode.CreativeHypothesisCandidateV1,
+    brand_professional_mode.CreativeTreatmentStepOutputV1,
+    brand_professional_mode.BrandSkillRecommendationsV1,
+    brand_professional_mode.BrandStrategyOutputV1,
+    brand_professional_mode.BrandQuestionImpactV1,
+    brand_professional_mode.CreativeStrategyOutputV1,
+    brand_professional_mode.CreativeTreatmentOutputV1,
+    brand_professional_mode.BrandTreatmentSourceV1,
+    brand_professional_mode.BrandProductionElementV1,
+    brand_professional_mode.BrandProductionRequirementsV1,
+    brand_professional_mode.BrandTreatmentFindingV1,
+    brand_professional_mode.BrandTreatmentReviewOutputV1,
+    brand_professional_mode.BrandTreatmentReviewV1,
     style_skill_consultation.StyleSkillConsultationQueryV1,
     style_skill_consultation.StyleSkillPublicFactV1,
     style_skill_consultation.StyleSkillConsultationContextV1,
@@ -189,6 +232,7 @@ CONTRACT_MODELS = (
     provider_models.LiteLLMGatewayProjectionV1,
     provider_models.OpenRouterRoutingPolicyV1,
     provider_models.ModelParameterDescriptorV1,
+    provider_models.ImageResolutionCapabilitiesV1,
     provider_models.ModelParameterMatrixV1,
     provider_models.ReferenceInputModeV1,
     provider_models.ReferenceInputPolicyV1,

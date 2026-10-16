@@ -16,6 +16,7 @@ from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
+from app.schemas.brand_production_context import BrandProductionContextV1
 
 
 RolePromptVariantV2 = Literal[
@@ -102,6 +103,7 @@ class _RoleBriefModel(_RolePromptModel):
     )
 
     editable_prompt: str | None = Field(default=None, max_length=32_768)
+    style_description: str | None = Field(default=None, min_length=1, max_length=4_096)
 
 
 class RoleBindingSnapshotV2(_RolePromptModel):
@@ -310,6 +312,7 @@ class RolePromptViolationV1(_RolePromptModel):
 
 
 class RolePromptPreparationContextV2(_RolePromptModel):
+    brand_decisions: BrandProductionContextV1 | None = None
     workflow_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
     node_revision: int = Field(ge=1)
@@ -320,6 +323,11 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     character_phase: CharacterAuthoringPhaseV1 | None = None
     character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None
     scene_environment_projection: SceneEnvironmentProjectionV1 | None = None
+    # Initial Scene Main authoring is allowed to establish the first typed
+    # environment projection.  Derivative Scene roles must carry an existing
+    # projection so their prompt is validated against frozen environment
+    # authority.
+    scene_projection_required: bool = True
     requirement_facts: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     selected_direction: str | None = Field(default=None, max_length=8_192)

@@ -122,6 +122,21 @@ class AgentCanvasNodeService:
         current = self._repository.get_node(workflow_id, node_id)
         workflow = self._repository.get_workflow(workflow_id)
         changes = request.model_dump(exclude_unset=True)
+        if "generation_prompt" in changes:
+            changes["generation_prompt"] = normalize_manual_generation_prompt(
+                request.generation_prompt
+            )
+            if current.execution_mode == "source_only" and current.generation_prompt == "":
+                changes["generation_prompt"] = changes["generation_prompt"] or ""
+        current_values = current.model_dump(mode="python")
+        changes = {key: value for key, value in changes.items() if value != current_values[key]}
+        if not changes:
+            self._repository.update_node(
+                current,
+                expected_revision=expected_revision,
+                expected_node_revision=current.revision,
+            )
+            return self._repository.get_node(workflow_id, node_id)
         now = datetime.now(timezone.utc)
         if (
             _has_managed_prompt_preparation(current)
@@ -170,6 +185,13 @@ class AgentCanvasNodeService:
                 else None
             )
         if _has_managed_prompt_preparation(current) and _changes_prompt_authority(changes):
+            changes["prompt_context_snapshot_id"] = None
+            changes["metadata"] = {
+                key: value
+                for key, value in current.metadata.items()
+                if not key.startswith("prompt_")
+                and key not in {"prepared_reference_snapshots", "editable_prompt_projection"}
+            }
             visible_prompt = changes.get("generation_prompt", current.generation_prompt)
             if isinstance(visible_prompt, str) and visible_prompt.strip():
                 normalized_visible_prompt = visible_prompt.strip()

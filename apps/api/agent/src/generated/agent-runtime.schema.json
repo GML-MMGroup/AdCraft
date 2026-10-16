@@ -51,6 +51,60 @@
       "title": "ActionableFailureV1",
       "type": "object"
     },
+    "AdSpecItemV1": {
+      "additionalProperties": false,
+      "description": "One AdSpec line with its decision state.",
+      "properties": {
+        "item_key": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Item Key",
+          "type": "string"
+        },
+        "item_text": {
+          "maxLength": 2400,
+          "minLength": 1,
+          "title": "Item Text",
+          "type": "string"
+        },
+        "state": {
+          "default": "open",
+          "enum": [
+            "locked",
+            "open",
+            "variable"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_key",
+        "item_text"
+      ],
+      "title": "AdSpecItemV1",
+      "type": "object"
+    },
+    "AdSpecStateV1": {
+      "additionalProperties": false,
+      "description": "Locked / open / variable view of the confirmed AdSpec.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AdSpecItemV1"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "AdSpecStateV1",
+      "type": "object"
+    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -1591,6 +1645,7 @@
         },
         "reasoning_control": {
           "enum": [
+            "ark_thinking",
             "enable_thinking",
             "none",
             "provider_default",
@@ -5996,6 +6051,7 @@
         },
         "reasoning_control": {
           "enum": [
+            "ark_thinking",
             "enable_thinking",
             "none",
             "provider_default",
@@ -7431,6 +7487,20 @@
           "default": "bgm",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -7443,6 +7513,1321 @@
         "pace"
       ],
       "title": "BgmRoleBriefV2",
+      "type": "object"
+    },
+    "BrandAssetReferenceV1": {
+      "additionalProperties": false,
+      "description": "Review-only metadata; the live target Binding remains input authority.",
+      "properties": {
+        "asset_id": {
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "binding_id": {
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "input_role": {
+          "title": "Input Role",
+          "type": "string"
+        },
+        "target_node_id": {
+          "title": "Target Node Id",
+          "type": "string"
+        },
+        "version_id": {
+          "title": "Version Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "binding_id",
+        "display_name",
+        "input_role",
+        "target_node_id",
+        "version_id",
+        "workflow_id"
+      ],
+      "title": "BrandAssetReferenceV1",
+      "type": "object"
+    },
+    "BrandBriefSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "inherited_values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotValueV1"
+          },
+          "title": "Inherited Values",
+          "type": "array"
+        },
+        "unresolved_fields": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved Fields",
+          "type": "array"
+        },
+        "values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotValueV1"
+          },
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "title": "BrandBriefSummaryV1",
+      "type": "object"
+    },
+    "BrandFormAnswerIntentV1": {
+      "additionalProperties": false,
+      "description": "Structured interpretation of one custom form answer.",
+      "properties": {
+        "intent": {
+          "enum": [
+            "answer",
+            "request_more_options"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent",
+        "question_id"
+      ],
+      "title": "BrandFormAnswerIntentV1",
+      "type": "object"
+    },
+    "BrandFormAnswerV1": {
+      "additionalProperties": false,
+      "description": "One explicit answer from a foundation form row.",
+      "properties": {
+        "custom_text": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Text"
+        },
+        "question_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "selected_option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Selected Option Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id",
+        "selected_option_id"
+      ],
+      "title": "BrandFormAnswerV1",
+      "type": "object"
+    },
+    "BrandFormOptionV1": {
+      "additionalProperties": false,
+      "description": "One recommendation or the explicit custom answer option in a form row.",
+      "properties": {
+        "label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "label",
+        "option_id"
+      ],
+      "title": "BrandFormOptionV1",
+      "type": "object"
+    },
+    "BrandFormRowV1": {
+      "additionalProperties": false,
+      "description": "One single-select Brand Memory or Campaign form row.",
+      "properties": {
+        "custom_option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Custom Option Id",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/BrandFormOptionV1"
+          },
+          "maxItems": 64,
+          "minItems": 4,
+          "title": "Options",
+          "type": "array"
+        },
+        "prompt": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "slot_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "custom_option_id",
+        "options",
+        "prompt",
+        "question_id",
+        "slot_id"
+      ],
+      "title": "BrandFormRowV1",
+      "type": "object"
+    },
+    "BrandFormSubmitV1": {
+      "additionalProperties": false,
+      "description": "Atomic confirmation payload for one foundation form.",
+      "properties": {
+        "answers": {
+          "items": {
+            "$ref": "#/$defs/BrandFormAnswerV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Answers",
+          "type": "array"
+        },
+        "confirm": {
+          "const": true,
+          "default": true,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "form_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Form Id",
+          "type": "string"
+        },
+        "submission_kind": {
+          "const": "brand_form",
+          "default": "brand_form",
+          "title": "Submission Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "answers",
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "form_id"
+      ],
+      "title": "BrandFormSubmitV1",
+      "type": "object"
+    },
+    "BrandFormV1": {
+      "additionalProperties": false,
+      "description": "Complete foundation-stage form projected to the frontend.",
+      "properties": {
+        "content_kind": {
+          "const": "brand_form",
+          "default": "brand_form",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "context_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Context Digest",
+          "type": "string"
+        },
+        "form_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Form Id",
+          "type": "string"
+        },
+        "instructions": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Instructions",
+          "type": "string"
+        },
+        "response_locale": {
+          "maxLength": 35,
+          "minLength": 1,
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/BrandFormRowV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Rows",
+          "type": "array"
+        },
+        "stage": {
+          "enum": [
+            "brand-memory",
+            "campaign"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_digest",
+        "form_id",
+        "instructions",
+        "response_locale",
+        "revision",
+        "rows",
+        "stage",
+        "title"
+      ],
+      "title": "BrandFormV1",
+      "type": "object"
+    },
+    "BrandOptionCardV1": {
+      "additionalProperties": false,
+      "description": "Exactly three short options for one slot question or sub-step.",
+      "properties": {
+        "card_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Card Id",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/BrandShortOptionV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "adspec",
+            "brand-memory",
+            "campaign",
+            "hypothesis",
+            "production",
+            "skill-stack",
+            "treatment"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        },
+        "target_slot_id": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Slot Id"
+        }
+      },
+      "required": [
+        "card_id",
+        "options",
+        "question",
+        "stage",
+        "stage_revision"
+      ],
+      "title": "BrandOptionCardV1",
+      "type": "object"
+    },
+    "BrandProductionContextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adspec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdSpecStateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "authorized_asset_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandAssetReferenceV1"
+          },
+          "title": "Authorized Asset References",
+          "type": "array"
+        },
+        "brand_profile": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "campaign_brief": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "execution_limitations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Execution Limitations",
+          "type": "array"
+        },
+        "missing_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sections",
+          "type": "array"
+        },
+        "omitted_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Omitted Sections",
+          "type": "array"
+        },
+        "projection_version": {
+          "const": "brand_role_v1",
+          "default": "brand_role_v1",
+          "title": "Projection Version",
+          "type": "string"
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandTreatmentReviewV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "role": {
+          "enum": [
+            "bgm",
+            "character",
+            "general",
+            "product",
+            "scene",
+            "script",
+            "storyboard",
+            "video"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "selected_hypothesis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeHypothesisCandidateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "skill_stack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillStackV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_content_digest": {
+          "title": "Source Content Digest",
+          "type": "string"
+        },
+        "treatment_steps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandProductionStepV1"
+          },
+          "maxItems": 8,
+          "title": "Treatment Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "brand_profile",
+        "campaign_brief",
+        "complete",
+        "role",
+        "source_content_digest"
+      ],
+      "title": "BrandProductionContextV1",
+      "type": "object"
+    },
+    "BrandProductionElementV1": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "sources",
+        "summary"
+      ],
+      "title": "BrandProductionElementV1",
+      "type": "object"
+    },
+    "BrandProductionRequirementsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "character_count": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Count"
+        },
+        "character_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "title": "Character Sources",
+          "type": "array"
+        },
+        "characters": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandProductionElementV1"
+          },
+          "maxItems": 32,
+          "title": "Characters",
+          "type": "array"
+        },
+        "prop_presence": {
+          "default": "unspecified",
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Prop Presence",
+          "type": "string"
+        },
+        "prop_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "title": "Prop Sources",
+          "type": "array"
+        },
+        "scene_presence": {
+          "default": "unspecified",
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Scene Presence",
+          "type": "string"
+        },
+        "scene_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "title": "Scene Sources",
+          "type": "array"
+        },
+        "scenes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandProductionElementV1"
+          },
+          "maxItems": 32,
+          "title": "Scenes",
+          "type": "array"
+        }
+      },
+      "title": "BrandProductionRequirementsV1",
+      "type": "object"
+    },
+    "BrandProductionStepV1": {
+      "additionalProperties": false,
+      "properties": {
+        "legacy_detail": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Legacy Detail"
+        },
+        "sections": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TreatmentSectionV1"
+          },
+          "maxItems": 4,
+          "title": "Sections",
+          "type": "array"
+        },
+        "selected_label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Selected Label",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "selected_label",
+        "step_key"
+      ],
+      "title": "BrandProductionStepV1",
+      "type": "object"
+    },
+    "BrandQuestionImpactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_decision": {
+          "enum": [
+            "brand_positioning",
+            "campaign_message",
+            "creative_hypothesis",
+            "delivery",
+            "product_presentation",
+            "visual_execution"
+          ],
+          "title": "Affected Decision",
+          "type": "string"
+        },
+        "basis_slot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Basis Slot Ids",
+          "type": "array"
+        },
+        "reason": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "affected_decision",
+        "basis_slot_ids",
+        "reason"
+      ],
+      "title": "BrandQuestionImpactV1",
+      "type": "object"
+    },
+    "BrandShortOptionV1": {
+      "additionalProperties": false,
+      "description": "One short option label with an optional collapsed explanation.",
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TreatmentDetailV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "label",
+        "option_id"
+      ],
+      "title": "BrandShortOptionV1",
+      "type": "object"
+    },
+    "BrandSkillRecommendationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "skill_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "skill_id",
+        "version"
+      ],
+      "title": "BrandSkillRecommendationV1",
+      "type": "object"
+    },
+    "BrandSkillRecommendationsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "audiovisual_styles": {
+          "items": {
+            "$ref": "#/$defs/BrandSkillRecommendationV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Audiovisual Styles",
+          "type": "array"
+        },
+        "creative_methods": {
+          "items": {
+            "$ref": "#/$defs/BrandSkillRecommendationV1"
+          },
+          "maxItems": 7,
+          "minItems": 1,
+          "title": "Creative Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "audiovisual_styles",
+        "creative_methods"
+      ],
+      "title": "BrandSkillRecommendationsV1",
+      "type": "object"
+    },
+    "BrandSlotEvidenceV1": {
+      "additionalProperties": false,
+      "description": "Private evidence for a semantic slot update or conflict clarification.",
+      "properties": {
+        "slot_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "brand-memory",
+            "campaign"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slot_id",
+        "source_id",
+        "source_quote",
+        "stage"
+      ],
+      "title": "BrandSlotEvidenceV1",
+      "type": "object"
+    },
+    "BrandSlotValueV1": {
+      "additionalProperties": false,
+      "description": "One persisted slot value with decision provenance.",
+      "properties": {
+        "confirmed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed At"
+        },
+        "kind": {
+          "default": "fact",
+          "enum": [
+            "assumption",
+            "constraint",
+            "fact",
+            "preference"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "provenance": {
+          "enum": [
+            "agent_recommended",
+            "user_confirmed"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "slot_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "adspec",
+            "brand-memory",
+            "campaign",
+            "hypothesis",
+            "production",
+            "skill-stack",
+            "treatment"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenance",
+        "slot_id",
+        "stage",
+        "value"
+      ],
+      "title": "BrandSlotValueV1",
+      "type": "object"
+    },
+    "BrandStrategyOutputV1": {
+      "additionalProperties": false,
+      "description": "Structured output of the brand-strategy capability.",
+      "properties": {
+        "clarifications": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotEvidenceV1"
+          },
+          "maxItems": 1,
+          "title": "Clarifications",
+          "type": "array"
+        },
+        "form_answer_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandFormAnswerIntentV1"
+          },
+          "maxItems": 32,
+          "title": "Form Answer Intents",
+          "type": "array"
+        },
+        "form_cards": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandOptionCardV1"
+          },
+          "maxItems": 32,
+          "title": "Form Cards",
+          "type": "array"
+        },
+        "question_card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandOptionCardV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "question_impact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandQuestionImpactV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "slot_evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotEvidenceV1"
+          },
+          "maxItems": 32,
+          "title": "Slot Evidence",
+          "type": "array"
+        },
+        "slot_values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandSlotValueV1"
+          },
+          "maxItems": 32,
+          "title": "Slot Values",
+          "type": "array"
+        }
+      },
+      "title": "BrandStrategyOutputV1",
+      "type": "object"
+    },
+    "BrandTreatmentDocumentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adspec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdSpecStateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "authorized_asset_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandAssetReferenceV1"
+          },
+          "title": "Authorized Asset References",
+          "type": "array"
+        },
+        "brand_profile": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "campaign_brief": {
+          "$ref": "#/$defs/BrandBriefSummaryV1"
+        },
+        "complete": {
+          "default": false,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "content_digest": {
+          "default": "",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "execution_limitations": {
+          "default": [
+            "sound_effects_and_mixing_not_automated"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Execution Limitations",
+          "type": "array"
+        },
+        "missing_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sections",
+          "type": "array"
+        },
+        "product_presentation": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TreatmentSectionV1"
+          },
+          "title": "Product Presentation",
+          "type": "array"
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandTreatmentReviewV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": "2",
+          "default": "2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selected_hypothesis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeHypothesisCandidateV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "skill_stack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillStackV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "treatment_steps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TreatmentStepResultV1"
+          },
+          "title": "Treatment Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "brand_profile",
+        "campaign_brief"
+      ],
+      "title": "BrandTreatmentDocumentV1",
+      "type": "object"
+    },
+    "BrandTreatmentFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "brand_alignment",
+            "continuity",
+            "lighting_consistency",
+            "other",
+            "sound_execution",
+            "timing_consistency"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "severity",
+        "sources"
+      ],
+      "title": "BrandTreatmentFindingV1",
+      "type": "object"
+    },
+    "BrandTreatmentReviewOutputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentFindingV1"
+          },
+          "maxItems": 8,
+          "title": "Findings",
+          "type": "array"
+        },
+        "production_requirements": {
+          "$ref": "#/$defs/BrandProductionRequirementsV1"
+        }
+      },
+      "required": [
+        "production_requirements"
+      ],
+      "title": "BrandTreatmentReviewOutputV1",
+      "type": "object"
+    },
+    "BrandTreatmentReviewV1": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentFindingV1"
+          },
+          "maxItems": 8,
+          "title": "Findings",
+          "type": "array"
+        },
+        "production_requirements": {
+          "$ref": "#/$defs/BrandProductionRequirementsV1"
+        },
+        "source_content_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Content Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "production_requirements",
+        "source_content_digest"
+      ],
+      "title": "BrandTreatmentReviewV1",
+      "type": "object"
+    },
+    "BrandTreatmentSourceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "quote": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "section_key": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Section Key",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "quote",
+        "section_key",
+        "step_key"
+      ],
+      "title": "BrandTreatmentSourceV1",
       "type": "object"
     },
     "CanvasBindingSourceImageAssetV2": {
@@ -8970,6 +10355,17 @@
     "CapabilityMaterializationContextV1": {
       "additionalProperties": false,
       "properties": {
+        "brand_decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandProductionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "capability_facts": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -10741,6 +12137,20 @@
           "title": "Silhouette And Proportions",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "wardrobe": {
           "maxLength": 2048,
           "minLength": 1,
@@ -11064,6 +12474,20 @@
           "minLength": 1,
           "title": "Silhouette And Proportions",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "views": {
           "default": [
@@ -11759,6 +13183,17 @@
           "default": null,
           "title": "Assistant Message"
         },
+        "brief_effect": {
+          "default": "unknown",
+          "description": "Whether this message adds or revises creative facts, constraints, or references.",
+          "enum": [
+            "changed",
+            "none",
+            "unknown"
+          ],
+          "title": "Brief Effect",
+          "type": "string"
+        },
         "explicit_elements": {
           "$ref": "#/$defs/CompactExplicitElementsV3"
         },
@@ -11789,6 +13224,16 @@
             }
           ],
           "default": null
+        },
+        "production_readiness": {
+          "default": "not_ready",
+          "description": "Whether a fresh guided advertising request has enough structured product or service context and an audience or advertising objective to begin production. Use not_ready for a bare advertising mention or a clarification request.",
+          "enum": [
+            "not_ready",
+            "ready"
+          ],
+          "title": "Production Readiness",
+          "type": "string"
         },
         "requested_capability": {
           "anyOf": [
@@ -12756,6 +14201,154 @@
         "summary"
       ],
       "title": "CreativeGoalV2",
+      "type": "object"
+    },
+    "CreativeHypothesisCandidateV1": {
+      "additionalProperties": false,
+      "description": "One candidate creative hypothesis.",
+      "properties": {
+        "candidate_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "hook_mechanism": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Hook Mechanism",
+          "type": "string"
+        },
+        "hypothesis": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "insight": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Insight",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "mechanism": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Mechanism",
+          "type": "string"
+        },
+        "product_role": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Product Role",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "hook_mechanism",
+        "hypothesis",
+        "insight",
+        "label",
+        "mechanism",
+        "product_role"
+      ],
+      "title": "CreativeHypothesisCandidateV1",
+      "type": "object"
+    },
+    "CreativeStrategyOutputV1": {
+      "additionalProperties": false,
+      "description": "Structured output of the creative-strategy capability.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/CreativeHypothesisCandidateV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "CreativeStrategyOutputV1",
+      "type": "object"
+    },
+    "CreativeTreatmentOutputV1": {
+      "additionalProperties": false,
+      "description": "Structured output of the creative-treatment capability.",
+      "properties": {
+        "step": {
+          "$ref": "#/$defs/CreativeTreatmentStepOutputV1"
+        }
+      },
+      "required": [
+        "step"
+      ],
+      "title": "CreativeTreatmentOutputV1",
+      "type": "object"
+    },
+    "CreativeTreatmentStepOutputV1": {
+      "additionalProperties": false,
+      "description": "Three options for one treatment sub-step.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/TreatmentCandidateV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "options",
+        "question",
+        "step_key"
+      ],
+      "title": "CreativeTreatmentStepOutputV1",
       "type": "object"
     },
     "DecisionBundleActionAcceptedV1": {
@@ -14564,6 +16157,20 @@
           ],
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -14856,6 +16463,7 @@
         },
         "kind": {
           "enum": [
+            "brand_form",
             "clarification",
             "concept_selection",
             "manual_node_run",
@@ -15912,7 +17520,7 @@
           "items": {
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
-          "maxItems": 3,
+          "maxItems": 6,
           "minItems": 3,
           "title": "Options",
           "type": "array"
@@ -16897,6 +18505,7 @@
         "request": {
           "discriminator": {
             "mapping": {
+              "brand_form": "#/$defs/BrandFormSubmitV1",
               "concept_choice": "#/$defs/GuidedConceptSubmitV2",
               "media_review": "#/$defs/GuidedMediaReviewSubmitV1",
               "product_source": "#/$defs/GuidedProductSourceSubmitV1",
@@ -16920,6 +18529,9 @@
             },
             {
               "$ref": "#/$defs/GuidedMediaReviewSubmitV1"
+            },
+            {
+              "$ref": "#/$defs/BrandFormSubmitV1"
             }
           ],
           "title": "Request"
@@ -16996,6 +18608,7 @@
         "content": {
           "discriminator": {
             "mapping": {
+              "brand_form": "#/$defs/BrandFormV1",
               "concept_choice": "#/$defs/GuidedConceptChoiceV2",
               "media_review": "#/$defs/GuidedMediaReviewV1",
               "product_source": "#/$defs/GuidedProductSourceQuestionV1",
@@ -17019,6 +18632,9 @@
             },
             {
               "$ref": "#/$defs/GuidedMediaReviewV1"
+            },
+            {
+              "$ref": "#/$defs/BrandFormV1"
             }
           ],
           "title": "Content"
@@ -17047,6 +18663,7 @@
         },
         "kind": {
           "enum": [
+            "brand_form",
             "clarification_questionnaire",
             "concept_choice",
             "media_review",
@@ -18815,6 +20432,84 @@
         "source"
       ],
       "title": "IdentitySafetyDecisionV1",
+      "type": "object"
+    },
+    "ImageResolutionCapabilitiesV1": {
+      "additionalProperties": false,
+      "description": "Frontend-ready image dimensions accepted by one exact model profile.",
+      "properties": {
+        "aspect_ratio_options": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Aspect Ratio Options",
+          "type": "array"
+        },
+        "default_parameters": {
+          "additionalProperties": true,
+          "title": "Default Parameters",
+          "type": "object"
+        },
+        "parameter_modes": {
+          "items": {
+            "enum": [
+              "resolution_with_aspect_ratio",
+              "size"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Parameter Modes",
+          "type": "array"
+        },
+        "pixel_bounds": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pixel Bounds"
+        },
+        "resolution_options": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Resolution Options",
+          "type": "array"
+        },
+        "size_options": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Size Options",
+          "type": "array"
+        },
+        "sizes_by_aspect_ratio": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Sizes By Aspect Ratio",
+          "type": "object"
+        }
+      },
+      "title": "ImageResolutionCapabilitiesV1",
       "type": "object"
     },
     "InitializeAnchorRegistryPatchV2": {
@@ -22926,6 +24621,20 @@
           "default": "product_main",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -23017,6 +24726,20 @@
           "default": "product_multiview",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "views": {
           "items": {
@@ -24164,6 +25887,20 @@
           "default": "prop",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         }
       },
       "required": [
@@ -25349,6 +27086,17 @@
         "display_name": {
           "title": "Display Name",
           "type": "string"
+        },
+        "image_resolution_capabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageResolutionCapabilitiesV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "model_ref": {
           "title": "Model Ref",
@@ -28185,6 +29933,17 @@
           "title": "Bound Text Controls",
           "type": "array"
         },
+        "brand_decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandProductionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "character_identity_projection": {
           "anyOf": [
             {
@@ -28388,6 +30147,11 @@
             }
           ],
           "default": null
+        },
+        "scene_projection_required": {
+          "default": true,
+          "title": "Scene Projection Required",
+          "type": "boolean"
         },
         "selected_direction": {
           "anyOf": [
@@ -28815,6 +30579,20 @@
           "title": "Spatial Logic",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "views": {
           "items": {
             "type": "string"
@@ -29065,6 +30843,15 @@
           "minItems": 9,
           "title": "Panels",
           "type": "array"
+        },
+        "scene_asset_kind": {
+          "default": "main",
+          "enum": [
+            "main",
+            "multi_view"
+          ],
+          "title": "Scene Asset Kind",
+          "type": "string"
         },
         "scene_identity": {
           "maxLength": 4096,
@@ -29547,6 +31334,20 @@
           "default": "script",
           "title": "Role Variant",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "timing": {
           "maxLength": 2048,
@@ -30216,6 +32017,89 @@
       "title": "SetVideoSegmentCountDecisionEffectV1",
       "type": "object"
     },
+    "SkillStackEntryV1": {
+      "additionalProperties": false,
+      "description": "One skill inside the confirmed skill stack.",
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 600,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "selected": {
+          "default": true,
+          "title": "Selected",
+          "type": "boolean"
+        },
+        "skill_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_kind": {
+          "enum": [
+            "audiovisual_style",
+            "creative_method"
+          ],
+          "title": "Skill Kind",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "skill_id",
+        "skill_kind",
+        "title"
+      ],
+      "title": "SkillStackEntryV1",
+      "type": "object"
+    },
+    "SkillStackV1": {
+      "additionalProperties": false,
+      "description": "Confirmed creative method and audiovisual style skills.",
+      "properties": {
+        "entries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkillStackEntryV1"
+          },
+          "maxItems": 64,
+          "title": "Entries",
+          "type": "array"
+        }
+      },
+      "title": "SkillStackV1",
+      "type": "object"
+    },
     "SpecialistDraft": {
       "additionalProperties": false,
       "properties": {
@@ -30875,6 +32759,20 @@
           "minLength": 1,
           "title": "Sequence Summary",
           "type": "string"
+        },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
         },
         "visual_language": {
           "maxLength": 4096,
@@ -31551,6 +33449,30 @@
           "title": "Anchors",
           "type": "array"
         },
+        "brand_decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandProductionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "narrative_context": {
+          "anyOf": [
+            {
+              "maxLength": 65536,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Narrative Context"
+        },
         "plan_content_digest": {
           "pattern": "^sha256:[0-9a-zA-Z_-]+$",
           "title": "Plan Content Digest",
@@ -31580,12 +33502,36 @@
           "default": null,
           "title": "Prior End State"
         },
+        "prior_final_panel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoryboardPlanRowV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "response_locale": {
           "default": "und",
           "maxLength": 64,
           "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
           "title": "Response Locale",
           "type": "string"
+        },
+        "selected_direction": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Direction"
         },
         "sequence": {
           "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
@@ -32507,6 +34453,172 @@
       "title": "StyleSkillPublicFactV1",
       "type": "object"
     },
+    "TreatmentCandidateV1": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "$ref": "#/$defs/TreatmentDetailV1"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why"
+        }
+      },
+      "required": [
+        "detail",
+        "label",
+        "option_id"
+      ],
+      "title": "TreatmentCandidateV1",
+      "type": "object"
+    },
+    "TreatmentDetailV1": {
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/TreatmentSectionV1"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sections"
+      ],
+      "title": "TreatmentDetailV1",
+      "type": "object"
+    },
+    "TreatmentSectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "enum": [
+            "action_sequence",
+            "ambience",
+            "appearance",
+            "boundaries",
+            "color_and_light",
+            "effects",
+            "ending",
+            "identity",
+            "materials",
+            "middle",
+            "music_entry",
+            "opening",
+            "people_camera",
+            "performance",
+            "product_role",
+            "product_shots",
+            "progression",
+            "prohibited_shots",
+            "resolution",
+            "setup",
+            "spaces",
+            "wardrobe"
+          ],
+          "title": "Key",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "text",
+        "title"
+      ],
+      "title": "TreatmentSectionV1",
+      "type": "object"
+    },
+    "TreatmentStepResultV1": {
+      "additionalProperties": false,
+      "description": "One confirmed treatment sub-step.",
+      "properties": {
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "detail": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Detail",
+          "type": "string"
+        },
+        "selected_label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Selected Label",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        },
+        "structured_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TreatmentDetailV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "confirmed_at",
+        "selected_label",
+        "step_key"
+      ],
+      "title": "TreatmentStepResultV1",
+      "type": "object"
+    },
     "TurnIntentContextV2": {
       "additionalProperties": false,
       "properties": {
@@ -32715,6 +34827,16 @@
           "default": null,
           "title": "Assistant Message"
         },
+        "brief_effect": {
+          "default": "unknown",
+          "enum": [
+            "changed",
+            "none",
+            "unknown"
+          ],
+          "title": "Brief Effect",
+          "type": "string"
+        },
         "explicit_elements": {
           "default": [],
           "items": {
@@ -32750,6 +34872,15 @@
             }
           ],
           "default": null
+        },
+        "production_readiness": {
+          "default": "ready",
+          "enum": [
+            "not_ready",
+            "ready"
+          ],
+          "title": "Production Readiness",
+          "type": "string"
         },
         "requested_capability": {
           "anyOf": [
@@ -35172,6 +37303,20 @@
           "title": "Segment Summary",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "target_style": {
           "maxLength": 4096,
           "minLength": 1,
@@ -35842,6 +37987,126 @@
         "revision"
       ],
       "title": "WorkflowDocumentReferenceV1",
+      "type": "object"
+    },
+    "WorkflowModelCallReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "outcome",
+            "request"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "recorded": {
+          "title": "Recorded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "call_id",
+        "phase",
+        "recorded"
+      ],
+      "title": "WorkflowModelCallReceiptV1",
+      "type": "object"
+    },
+    "WorkflowModelCallWriteV1": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary": {
+          "enum": [
+            "pi_assistant_events",
+            "sdk_response",
+            "sdk_stream_chunks"
+          ],
+          "title": "Boundary",
+          "type": "string"
+        },
+        "call_id": {
+          "pattern": "^mcall-[A-Za-z0-9_-]{1,100}$",
+          "title": "Call Id",
+          "type": "string"
+        },
+        "complete": {
+          "default": true,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "failed": {
+          "default": false,
+          "title": "Failed",
+          "type": "boolean"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "phase": {
+          "enum": [
+            "outcome",
+            "request"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,160}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "skill_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Context"
+        },
+        "stage": {
+          "enum": [
+            "capability_fallback",
+            "initial",
+            "structured_repair",
+            "transport_retry"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "boundary",
+        "call_id",
+        "payload",
+        "phase",
+        "recorded_at",
+        "run_id",
+        "stage"
+      ],
+      "title": "WorkflowModelCallWriteV1",
       "type": "object"
     },
     "WorkflowStateCapsuleV1": {
@@ -36639,6 +38904,20 @@
           "title": "Role Variant",
           "type": "string"
         },
+        "style_description": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Description"
+        },
         "visual_continuity": {
           "items": {
             "type": "string"
@@ -36750,7 +39029,12 @@
     "V2ShotCellPromptPlan",
     "V2ShotVideoPromptPlan",
     "V2BgmPromptPlan",
+    "BrandStrategyOutputV1",
+    "CreativeStrategyOutputV1",
+    "CreativeTreatmentOutputV1",
+    "BrandTreatmentReviewOutputV1",
     "GuidedScriptCheckpointDraftV1",
+    "BrandSkillRecommendationsV1",
     "WorldSettingMaterializationResultV1",
     "ProductMaterializationResultV1",
     "PropMaterializationResultV1",
@@ -37204,6 +39488,78 @@
       "max_skill_context_bytes": 8192,
       "operation": "intent_contract_planner",
       "result_contract_name": "V2IntentPlan",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_brand_strategy",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_slot_question",
+      "result_contract_name": "BrandStrategyOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_brand_strategy",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_slot_form",
+      "result_contract_name": "BrandStrategyOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_creative_strategy",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_hypothesis",
+      "result_contract_name": "CreativeStrategyOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_creative_strategy",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_skill_recommendation",
+      "result_contract_name": "BrandSkillRecommendationsV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_creative_treatment",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_treatment_review",
+      "result_contract_name": "BrandTreatmentReviewOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_creative_treatment",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_treatment_step",
+      "result_contract_name": "CreativeTreatmentOutputV1",
       "style_projection_role": null,
       "validation_profile": null
     },

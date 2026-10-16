@@ -95,6 +95,12 @@ class ModelResolutionService:
                     model_ref=selected.model_ref,
                 ) from error
         requested_parameter_fingerprint = _parameter_fingerprint(parameters or {})
+        default_thinking_mode: str | None = None
+        if model_selection_mode == "default" and node_type in {"script", "text"}:
+            default_key = "agent" if node_type == "script" else node_type
+            default_record = self._repository.get_defaults().get(default_key)
+            if default_record is not None:
+                default_thinking_mode = default_record.thinking_mode
         return ResolvedModelExecutionV2(
             model_ref=selected.model_ref,
             provider_id=selected.provider_id,
@@ -112,6 +118,7 @@ class ModelResolutionService:
             adapter_revision=adapter_profile["adapter_revision"],
             requested_parameter_fingerprint=requested_parameter_fingerprint,
             effective_parameter_fingerprint=requested_parameter_fingerprint,
+            thinking_mode=default_thinking_mode,
         )
 
 

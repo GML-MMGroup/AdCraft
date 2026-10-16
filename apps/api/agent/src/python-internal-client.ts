@@ -1,5 +1,6 @@
 import type {
   AgentModelTraceClaimRequestV1,
+  WorkflowModelCallWriteV1,
   AgentModelTraceClaimResponseV1,
   AgentModelTraceRecordRequestV1,
   AgentModelTraceRecordReceiptV1,
@@ -173,6 +174,23 @@ export class PythonInternalClient {
     return payload as unknown as AgentModelTraceRecordReceiptV1;
   }
 
+  async recordWorkflowModelCall(record: WorkflowModelCallWriteV1): Promise<void> {
+    const response = await this.#fetch(`${this.#baseUrl}/internal/v1/agent-model-calls`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.#internalToken}`,
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      },
+      body: JSON.stringify(record),
+      signal: AbortSignal.timeout(2_000),
+    });
+    const payload = await boundedJson(response);
+    if (payload.call_id !== record.call_id || payload.phase !== record.phase || typeof payload.recorded !== "boolean") {
+      throw new Error("agent_model_call_capture_unavailable");
+    }
+  }
+
   async claimModelTraceAttempt(
     request: AgentModelTraceClaimRequestV1,
   ): Promise<AgentModelTraceClaimResponseV1> {
@@ -335,6 +353,7 @@ const THINKING_FORMATS = new Set(["zai", "qwen", "openai", "none"]);
 const REASONING_CONTROLS = new Set([
   "provider_default",
   "enable_thinking",
+  "ark_thinking",
   "reasoning_effort",
   "none",
 ]);
@@ -413,7 +432,11 @@ function isExecutionPolicy(
         (policy.enable_thinking || policy.thinking_budget_tokens !== null)) ||
         (policy.reasoning_mode === "deep" &&
           (!policy.enable_thinking || policy.thinking_budget_tokens === null)))) ||
+    (policy.reasoning_control === "ark_thinking" &&
+      (policy.enable_thinking !== (policy.reasoning_mode === "deep") ||
+        policy.thinking_budget_tokens !== null)) ||
     (policy.reasoning_control !== "enable_thinking" &&
+      policy.reasoning_control !== "ark_thinking" &&
       (policy.enable_thinking || policy.thinking_budget_tokens !== null))
   ) {
     return false;

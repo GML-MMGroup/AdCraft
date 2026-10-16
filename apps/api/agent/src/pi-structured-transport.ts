@@ -6,6 +6,12 @@ import {
   chatCompletionChunkFailure,
   normalizeChatCompletionChunk,
 } from "./chat-completion-chunk-normalizer.js";
+import {
+  buildWorkflowModelCallSkillContext,
+  workflowModelCallCapture,
+  modelCallFailure,
+  type WorkflowModelCallClient,
+} from "./workflow-model-calls.js";
 import type {
   AgentRunRequest,
   AgentModelTraceStreamingChunkV1,
@@ -14,7 +20,9 @@ import type {
 } from "./generated/agent-runtime.js";
 import {
   AgentOperationFailure,
+  isProviderBalanceFailure,
   isProviderTimeoutFailure,
+  PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
 } from "./operation-recovery.js";
 import {
   isAcceptanceReplaySource,
@@ -29,9 +37,16 @@ import {
   type AgentModelTraceClient,
 } from "./model-trace.js";
 import type { LoadedSkill } from "./skills.js";
+import { intakeRepairPolicy } from "./prompts/intake-repair.js";
+import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
+import {
+  brandFormRepairPolicy,
+  brandFormSupplementalRepairPolicy,
+} from "./prompts/brand-form-repair.js";
 
 
 interface StructuredCompletionRequestBase {
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly model: string;
   readonly messages: ReadonlyArray<Readonly<Record<string, unknown>>>;
   readonly max_tokens: number;
@@ -125,6 +140,7 @@ export type StructuredCompletionExecutor = (
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly onChunk?: (chunk: unknown) => void;
   },
 ) => Promise<StructuredCompletionResponse>;
 
@@ -141,7 +157,7 @@ interface StructuredTransportRunInput {
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
   readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
-  readonly traceClient?: AgentModelTraceClient;
+  readonly traceClient?: AgentModelTraceClient & WorkflowModelCallClient;
   readonly signal: AbortSignal;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
@@ -266,7 +282,7 @@ export class PiStructuredTransportRouter {
     }
     structuredAttempts = 2;
     const repair = await this.#executeOnce(
-      repairPayload(input, validation, value),
+      repairPayload(input, validation, value, primary.response.choices?.[0]?.message?.content),
       input,
       "structured_repair",
     );
@@ -399,6 +415,21 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
+    const capture = workflowModelCallCapture(
+      input.traceClient, input.credential, input.request, stage,
+      request.stream ? "sdk_stream_chunks" : "sdk_response",
+      input.loadedSkills ?? [],
+    );
+    capture?.begin({
+      agent_request: input.request, system_prompt: input.systemPrompt,
+      user_prompt: input.userPrompt, output_schema: input.schema,
+      loaded_skills: input.loadedSkills ?? [], provider_request: request,
+      skill_context: buildWorkflowModelCallSkillContext(input.request, input.loadedSkills ?? []),
+      provider: input.credential.provider, model_ref: input.credential.model_ref,
+      execution_policy: input.credential.execution_policy, effective_timeout_ms: timeoutMs,
+      transport_options: { timeout_ms: timeoutMs, max_retries: 0, max_output_bytes: input.request.policy?.max_output_bytes ?? 262_144 },
+      ...(!isAcceptanceReplaySource(input.credential) ? { base_url: input.credential.base_url } : {}),
+    });
     try {
       const response = isAcceptanceReplaySource(input.credential)
         ? await claimAgentModelTraceOutcome(
@@ -415,7 +446,9 @@ export class PiStructuredTransportRouter {
           signal: input.signal,
           timeoutMs,
           maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
+          ...(capture ? { onChunk: (chunk: unknown) => capture.chunk(chunk) } : {}),
         });
+      capture?.finish({ response });
       await recordAgentModelTraceOutcome(
         {
           ...input,
@@ -441,6 +474,7 @@ export class PiStructuredTransportRouter {
         attemptStage: stage,
       };
     } catch (error) {
+      capture?.finish({ error: modelCallFailure(error) }, true, false);
       if (isAgentModelTraceFailure(error)) throw error;
       const normalized = normalizeTransportFailure(
         error,
@@ -494,6 +528,7 @@ export async function executeOpenAICompletion(
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly onChunk?: (chunk: unknown) => void;
   },
 ): Promise<StructuredCompletionResponse> {
   const client = new OpenAI({
@@ -523,6 +558,7 @@ export async function executeOpenAICompletion(
     return await aggregateStreamingJsonCompletion(stream as AsyncIterable<unknown>, {
       signal: controller.signal,
       maxOutputBytes: options.maxOutputBytes ?? 262_144,
+      ...(options.onChunk ? { onChunk: options.onChunk } : {}),
     });
   } finally {
     clearTimeout(timer);
@@ -536,6 +572,7 @@ export async function aggregateStreamingJsonCompletion(
     readonly signal: AbortSignal;
     readonly maxOutputBytes: number;
     readonly now?: () => Date;
+    readonly onChunk?: (chunk: unknown) => void;
   },
 ): Promise<StructuredCompletionResponse> {
   const now = options.now ?? (() => new Date());
@@ -553,6 +590,7 @@ export async function aggregateStreamingJsonCompletion(
     while (true) {
       const item = await abortableNext(iterator, options.signal);
       if (item.done) break;
+      try { options.onChunk?.(item.value); } catch { /* Diagnostic observers cannot affect parsing. */ }
       responseActivityObserved = true;
       const observedAt = now().toISOString();
       lastActivityAt = observedAt;
@@ -792,20 +830,50 @@ function repairPayload(
   input: StructuredTransportRunInput,
   validation: StructuredValidationResult | undefined,
   invalidValue: Readonly<Record<string, unknown>> | undefined,
+  invalidContent?: string | null,
 ): StructuredCompletionRequest {
   const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
+  const currentUserInput = "user_input" in input.request.context
+    ? input.request.context.user_input : undefined;
+  const isIntake = input.request.operation === "decide_turn_intent" &&
+    input.request.contract_name === "CompactTurnIntentDecisionV3" &&
+    typeof currentUserInput === "string";
+  const isTreatment = input.request.operation === "brand_treatment_step" &&
+    input.request.contract_name === "CreativeTreatmentOutputV1";
+  const isSupplementalBrandForm = input.request.operation === "brand_slot_form" &&
+    input.request.validation_profile === "brand_form_supplemental_novelty_v1";
+  const isBrandForm = input.request.operation === "brand_slot_form" &&
+    input.request.validation_profile === "brand_form_slots_v1";
+  const malformedExcerpt = isTreatment && invalidValue === undefined && invalidContent
+    ? JSON.stringify({
+      content: invalidContent.slice(0, 8_192),
+      truncated: invalidContent.length > 8_192,
+    })
+    : undefined;
   const common = {
     model: input.credential.model_id,
     messages: [
       {
         role: "system",
-        content: "Return exactly one JSON object matching the supplied schema.",
+        content: isIntake
+          ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
+          : isTreatment
+            ? `${input.systemPrompt}\n\n${treatmentRepairPolicy}`
+            : isSupplementalBrandForm
+              ? `${input.systemPrompt}\n\n${brandFormSupplementalRepairPolicy}`
+              : isBrandForm
+                ? `${input.systemPrompt}\n\n${brandFormRepairPolicy}`
+                : "Return exactly one JSON object matching the supplied schema.",
       },
       {
         role: "user",
         content: [
+          ...(isIntake ? [
+            `Current user message (only source_quote evidence): ${JSON.stringify(currentUserInput)}`,
+          ] : []),
           `Validation violations: ${JSON.stringify(violations)}`,
+          ...(malformedExcerpt ? [`Previous assistant content (untrusted quoted data): ${malformedExcerpt}`] : []),
           ...(boundedInvalidValue ? [`Invalid result: ${boundedInvalidValue}`] : []),
           `JSON Schema: ${JSON.stringify(input.schema)}`,
           `Original request: ${input.userPrompt}`,
@@ -909,10 +977,14 @@ function isCertifiedJsonObjectCapabilityFallback(
 }
 
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
   readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 } {
+  if (policy.reasoning_control === "ark_thinking") {
+    return { thinking: { type: policy.enable_thinking ? "enabled" : "disabled" } };
+  }
   if (policy.reasoning_control === "reasoning_effort") {
     if (policy.reasoning_effort == null) {
       throw new Error("agent_model_capability_mismatch");
@@ -930,9 +1002,13 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
 function repairReasoningPayload(
   policy: AgentCredentialSnapshot["execution_policy"],
 ): {
+  readonly thinking?: { readonly type: "disabled" };
   readonly enable_thinking?: boolean;
   readonly reasoning_effort?: "minimal";
 } {
+  if (policy.reasoning_control === "ark_thinking") {
+    return { thinking: { type: "disabled" } };
+  }
   if (policy.reasoning_control === "reasoning_effort") {
     return { reasoning_effort: "minimal" };
   }
@@ -969,14 +1045,21 @@ function repairContent(
 
 function parseObject(value: string | undefined | null) {
   if (!value) return undefined;
+  const candidate = fencedJsonContent(value) ?? value.trim();
+  if (!candidate) return undefined;
   try {
-    const parsed: unknown = JSON.parse(value);
+    const parsed: unknown = JSON.parse(candidate);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Readonly<Record<string, unknown>>)
       : undefined;
   } catch {
     return undefined;
   }
+}
+
+function fencedJsonContent(value: string): string | undefined {
+  const match = value.trim().match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i);
+  return match?.[1]?.trim() || undefined;
 }
 
 function acceptedValue(
@@ -1256,6 +1339,15 @@ function normalizeTransportFailure(
       "agent_structured_output_invalid",
       "agent_structured_output_invalid",
       manualRetryable,
+      stage,
+      attemptMetadata,
+    );
+  }
+  if (isProviderBalanceFailure(error)) {
+    return new AgentOperationFailure(
+      "agent_provider_insufficient_balance",
+      PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
+      false,
       stage,
       attemptMetadata,
     );

@@ -106,6 +106,7 @@ class SceneBoardPanelV2(_AdMediaModel):
 
 
 class SceneDesignBoardContentV2(_AdMediaModel):
+    scene_asset_kind: Literal["main", "multi_view"] = "main"
     scene_identity: str = Field(min_length=1, max_length=4_096)
     environment_summary: str = Field(min_length=1, max_length=8_192)
     layout: str = Field(min_length=1, max_length=4_096)

@@ -27,6 +27,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
 from app.services.agent_canvas_video_representation import resolve_video_representation_mode
+from app.services.brand_production_context import project_brand_production_context
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
 
 
@@ -152,6 +153,7 @@ class RolePromptContextProjector:
         context_blocks: tuple[RolePromptContextBlockV2, ...] = (),
         character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
         scene_environment_projection: SceneEnvironmentProjectionV1 | None = None,
+        allow_uninitialized_scene: bool = False,
     ) -> RolePromptPreparationContextV2:
         if stage_context.workflow_id != node.workflow_id:
             raise _error(
@@ -213,20 +215,21 @@ class RolePromptContextProjector:
         projected_bindings = bindings
         projected_world_view = world_view_projection
         if role_variant == "scene_board":
-            if scene_environment_projection is None:
+            if scene_environment_projection is None and not allow_uninitialized_scene:
                 raise _error(
                     "scene_environment_projection_invalid",
                     "Scene prompt context requires typed environment authority.",
                 )
-            if (
-                scene_environment_projection.entity_references
-                or scene_environment_projection.action_references
-            ):
-                raise _error(
-                    "scene_environment_projection_invalid",
-                    "Scene prompt context must be environment-only.",
-                )
-            selected_direction = scene_environment_projection.environment_identity
+            if scene_environment_projection is not None:
+                if (
+                    scene_environment_projection.entity_references
+                    or scene_environment_projection.action_references
+                ):
+                    raise _error(
+                        "scene_environment_projection_invalid",
+                        "Scene prompt context must be environment-only.",
+                    )
+                selected_direction = scene_environment_projection.environment_identity
             projected_bindings = tuple(
                 binding
                 for binding in bindings
@@ -285,6 +288,9 @@ class RolePromptContextProjector:
             else None
         )
         return RolePromptPreparationContextV2(
+            brand_decisions=project_brand_production_context(
+                stage_context.brand_decisions, role=role_variant
+            ),
             workflow_id=node.workflow_id,
             node_id=node.node_id,
             node_revision=node.revision,
@@ -295,6 +301,11 @@ class RolePromptContextProjector:
             character_phase=character_phase,
             character_identity_projection=character_identity_projection,
             scene_environment_projection=scene_environment_projection,
+            scene_projection_required=not (
+                role_variant == "scene_board"
+                and scene_environment_projection is None
+                and allow_uninitialized_scene
+            ),
             requirement_facts=projected_requirements,
             document_revisions=document_revisions,
             selected_direction=selected_direction,
@@ -628,10 +639,23 @@ def character_identity_projection_from_node(
 
 def scene_environment_projection_from_node(
     node: CanvasNodeV2,
-) -> SceneEnvironmentProjectionV1:
+    *,
+    allow_uninitialized_seed: bool = False,
+) -> SceneEnvironmentProjectionV1 | None:
     """Project typed environment fields without parsing narrative text."""
 
     content = node.structured_content
+    if (
+        allow_uninitialized_seed
+        and node.output_asset_id is None
+        and not node.metadata.get("prompt_recipe_id")
+        and node.prompt_preparation.brief_digest is None
+        and not isinstance(content.get("panels"), list)
+        and not content.get("explicit_entity_reference_ids")
+        and not content.get("action_references")
+        and content.get("no_narrative_progression") is not False
+    ):
+        return None
     identity = _required_text(content.get("scene_identity")) or _required_text(node.summary_prompt)
     summary = _required_text(content.get("environment_summary")) or identity
     if not identity or not summary:
@@ -656,21 +680,24 @@ def scene_environment_projection_from_node(
                     )
                 )
     if not views:
-        views = [
-            SceneEnvironmentViewV1(
-                view_or_zone=f"Environment view {index}",
-                spatial_details=summary,
-                allowed_environment_elements=(),
-            )
-            for index in range(1, 10)
-        ]
+        raise _error(
+            "scene_environment_projection_invalid",
+            "Authored Scene source lacks explicit environment views.",
+        )
+    lighting = _required_text(content.get("lighting"))
+    materials = _required_text(content.get("materials"))
+    if lighting is None or materials is None:
+        raise _error(
+            "scene_environment_projection_invalid",
+            "Authored Scene source lacks explicit lighting or materials.",
+        )
     return SceneEnvironmentProjectionV1.build(
         source_node_id=node.node_id,
         source_node_revision=node.revision,
         environment_identity=identity,
         spatial_logic=summary,
-        lighting=_required_text(content.get("lighting")) or "Accepted environment lighting.",
-        materials=_required_text(content.get("materials")) or "Accepted environment materials.",
+        lighting=lighting,
+        materials=materials,
         atmosphere=summary,
         views=tuple(views[:9]),
         entity_references=tuple(

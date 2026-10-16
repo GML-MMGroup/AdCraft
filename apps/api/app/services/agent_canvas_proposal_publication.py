@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_materialization import (
@@ -11,6 +12,9 @@ from app.schemas.agent_canvas_materialization import (
     ProposalPublicationEnvelopeV1,
 )
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ProposalPublicationRunner:
@@ -45,6 +49,14 @@ class ProposalPublicationRunner:
         except (PiAgentRuntimeError, V2PersistenceError):
             raise
         except Exception as error:  # noqa: BLE001 - transaction boundary normalization.
+            _LOGGER.exception(
+                "Proposal publication failed unexpectedly: materialization_id=%s "
+                "workflow_id=%s capability_id=%s error_type=%s",
+                envelope.materialization_id,
+                envelope.workflow_id,
+                envelope.capability_id,
+                type(error).__name__,
+            )
             raise _error(
                 "proposal_publication_failed",
                 "Proposal publication failed.",

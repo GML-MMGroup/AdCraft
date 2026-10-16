@@ -61,6 +61,7 @@ from app.services.agent_canvas_proposal_cardinality import (
 )
 from app.services.agent_canvas_public_concept_projection import (
     AgentCanvasPublicConceptProjector,
+    PublicConceptProjectionV1,
     public_option_metadata,
 )
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
@@ -133,6 +134,28 @@ class AgentCanvasCapabilityProposalRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
+                if envelope.source_proposal_id is not None:
+                    source_option_rows = tuple(
+                        connection.execute(
+                            select(
+                                AgentCanvasConceptOptionRow.option_id,
+                                AgentCanvasConceptOptionRow.title,
+                                AgentCanvasConceptOptionRow.description,
+                            )
+                            .where(
+                                AgentCanvasConceptOptionRow.proposal_id
+                                == envelope.source_proposal_id
+                            )
+                            .order_by(AgentCanvasConceptOptionRow.display_order)
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    public_projection = _merge_revision_projection(
+                        source_option_rows,
+                        public_projection,
+                        proposal_id,
+                    )
                 existing = (
                     connection.execute(
                         select(
@@ -278,6 +301,7 @@ class AgentCanvasCapabilityProposalRepository:
                 proposed_references = _project_references(envelope)
                 creative_direction_snapshot_id = _style_snapshot_id(envelope.style_projection)
                 source_proposal_id = envelope.source_proposal_id
+                proposal_revision = 1
                 if source_proposal_id is not None:
                     source_proposal = (
                         connection.execute(
@@ -301,6 +325,7 @@ class AgentCanvasCapabilityProposalRepository:
                             stage="capability_publication",
                         )
                     topic_id = str(source_proposal["topic_id"])
+                    proposal_revision = int(source_proposal["proposal_revision"]) + 1
                     connection.execute(
                         update(AgentCanvasConceptProposalRow)
                         .where(AgentCanvasConceptProposalRow.proposal_id == source_proposal_id)
@@ -405,7 +430,7 @@ class AgentCanvasCapabilityProposalRepository:
                         requirement_revision_id=envelope.requirement_revision_id,
                         requirement_revision_no=envelope.requirement_revision_no,
                         requirement_digest=envelope.requirement_digest,
-                        proposal_revision=1,
+                        proposal_revision=proposal_revision,
                         proposal_card_schema_version=3,
                         proposed_references_json=json.dumps(
                             [
@@ -449,7 +474,7 @@ class AgentCanvasCapabilityProposalRepository:
                     )
                 )
                 for order, option in enumerate(public_projection.options):
-                    option_id = option_ids[order]
+                    option_id = option.option_id
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -538,7 +563,9 @@ class AgentCanvasCapabilityProposalRepository:
                     actor_kind="agent",
                     idempotency_key=envelope.envelope_id,
                     status="applied",
-                    summary="Published three guided Proposal choices.",
+                    summary=(
+                        f"Published {len(public_projection.options)} guided Proposal choices."
+                    ),
                     workflow_revision=workflow_revision,
                     before_workflow_revision=workflow_revision,
                     continuation_turn_id=envelope.capability_turn_id,
@@ -617,11 +644,11 @@ class AgentCanvasCapabilityProposalRepository:
                         sequence_no=sequence_no,
                         entry_type="concept_proposal",
                         speaker="adcraft_video_agent",
-                        content=f"Review {len(options)} option(s).",
+                        content=f"Review {len(public_projection.options)} option(s).",
                         metadata_json=json.dumps(
                             build_presentation_metadata(
                                 message_key="concept_proposal.review",
-                                message_args={"option_count": len(options)},
+                                message_args={"option_count": len(public_projection.options)},
                                 response_locale=response_locale,
                                 presentation_key=f"proposal:{proposal_id}",
                                 base={
@@ -630,7 +657,7 @@ class AgentCanvasCapabilityProposalRepository:
                                     "capability_display_name": CAPABILITY_DISPLAY_NAMES[
                                         envelope.capability_id
                                     ],
-                                    "proposal_revision": 1,
+                                    "proposal_revision": proposal_revision,
                                     **_character_scope_payload(envelope),
                                     "options": [
                                         public_option_metadata(option)
@@ -650,7 +677,7 @@ class AgentCanvasCapabilityProposalRepository:
                         {
                             "proposal_id": proposal_id,
                             "capability_id": envelope.capability_id,
-                            "option_count": len(options),
+                            "option_count": len(public_projection.options),
                             "source_action": envelope.source_action,
                             "source_proposal_id": source_proposal_id,
                             "reference_count": len(proposed_references),
@@ -875,10 +902,10 @@ def _concept_interaction(
     now: datetime,
 ) -> tuple[GuidedInteractionV1, GuidanceAwaitingV2, GuidedProductionJourneyV2]:
     journey = parse_production_journey(str(session["journey_state_json"]))
-    if len(public_options) != 3:
+    if not 3 <= len(public_options) <= 6:
         raise V2PersistenceError(
             "proposal_candidate_count_mismatch",
-            "A normal Guided Proposal requires exactly three public options.",
+            "A normal Guided Proposal requires between three and six public options.",
             stage="capability_publication",
         )
     if journey.active_action is None:
@@ -941,7 +968,7 @@ def _concept_interaction(
         context=_bounded_text(envelope.objective, limit=1_024),
         content=content,
         allowed_actions=(
-            ("select", "custom", "defer")
+            ("select", "custom", "revise", "defer")
             + (("exclude",) if FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional else ())
             + ("delegate",)
         ),
@@ -970,6 +997,65 @@ def _concept_interaction(
 def _bounded_text(value: object, *, limit: int) -> str:
     text = str(value).strip()
     return (text or "Option")[:limit]
+
+
+def _merge_revision_projection(
+    source_rows: tuple[Mapping[str, object], ...],
+    fresh_projection: PublicConceptProjectionV1,
+    proposal_id: str,
+) -> PublicConceptProjectionV1:
+    """Keep the prior card choices beside the three newly authored choices."""
+
+    if not source_rows:
+        raise V2PersistenceError(
+            "proposal_revision_source_invalid",
+            "A Proposal revision requires persisted source choices.",
+            stage="capability_publication",
+        )
+    previous = tuple(
+        GuidedChoiceOptionV1(
+            # Option IDs are globally keyed in the current persistence schema.  A
+            # copied choice therefore receives a stable, revision-scoped ID while
+            # retaining its source proposal lineage and displayed content.
+            option_id=f"option_{_digest(proposal_id, 'source', str(row['option_id']))[:32]}",
+            title=str(row["title"]),
+            summary=str(row["description"]),
+            recommended=False,
+        )
+        for row in source_rows
+    )
+    previous_identities = {
+        (option.title.casefold(), option.summary.casefold()) for option in previous
+    }
+    fresh = tuple(
+        option.model_copy(update={"recommended": index == 0})
+        for index, option in enumerate(
+            option
+            for option in fresh_projection.options
+            if (option.title.casefold(), option.summary.casefold()) not in previous_identities
+        )
+    )
+    combined = previous + fresh
+    if len(combined) > 6:
+        raise V2PersistenceError(
+            "proposal_revision_option_limit",
+            "A Proposal revision cannot display more than six choices at once.",
+            stage="capability_publication",
+            details={"source_option_count": len(previous), "new_option_count": len(fresh)},
+        )
+    option_ids = [option.option_id for option in combined]
+    if len(set(option_ids)) != len(option_ids):
+        raise V2PersistenceError(
+            "proposal_revision_source_invalid",
+            "A Proposal revision contains duplicate option IDs.",
+            stage="capability_publication",
+        )
+    if not fresh:
+        combined = (previous[0].model_copy(update={"recommended": True}),) + previous[1:]
+    return PublicConceptProjectionV1(
+        options=combined,
+        response_locale=fresh_projection.response_locale,
+    )
 
 
 def _project_references(

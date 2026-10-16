@@ -498,6 +498,59 @@ class AgentCanvasGuidedInteractionRepository:
             row = current_guided_interaction_row(connection, workflow_id)
             return project_guided_interaction(connection, row) if row is not None else None
 
+    def has_product_source_submission(
+        self,
+        workflow_id: str,
+        *,
+        input_kind: Literal["main", "multiview"],
+    ) -> bool:
+        """Return whether this workflow already closed a Product source choice.
+
+        A failed Product capability may leave the Journey ready while its
+        source interaction is already closed.  Reopening that source would
+        reuse the deterministic interaction identity and collide with the
+        immutable interaction history.  Submission history is the durable
+        authority that the source checkpoint has already been completed.
+        """
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasGuidedInteractionSubmissionRow.request_json)
+                        .join(
+                            AgentCanvasGuidedInteractionRow,
+                            AgentCanvasGuidedInteractionRow.interaction_id
+                            == AgentCanvasGuidedInteractionSubmissionRow.interaction_id,
+                        )
+                        .where(
+                            AgentCanvasGuidedInteractionSubmissionRow.workflow_id == workflow_id,
+                            AgentCanvasGuidedInteractionRow.interaction_id.in_(
+                                select(AgentCanvasGuidedInteractionRow.interaction_id).where(
+                                    AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                    AgentCanvasGuidedInteractionRow.kind == "product_source",
+                                )
+                            ),
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "guided_interaction_persistence_unavailable",
+                "Guided interaction storage failed.",
+            ) from error
+        for request_json in rows:
+            try:
+                request = json.loads(str(request_json))
+            except (TypeError, ValueError):
+                continue
+            action = request.get("action")
+            if isinstance(action, dict) and action.get("input_kind") == input_kind:
+                return True
+        return False
+
     def get_awaiting(
         self, workflow_id: str, *, node_id: str | None = None, interaction_id: str | None = None
     ) -> GuidanceAwaitingV2 | None:
@@ -947,6 +1000,50 @@ class AgentCanvasGuidedInteractionRepository:
             ),
             created_at=str(row["created_at"]),
         )
+
+    def record_external_submission(
+        self,
+        *,
+        workflow_id: str,
+        interaction_id: str,
+        idempotency_key: str,
+        request: GuidedInteractionSubmitRequestV1,
+        result: GuidedInteractionAcceptedV1,
+    ) -> None:
+        """Persist a result produced by a specialized interaction authority."""
+
+        request_json = request.model_dump_json()
+        request_digest = sha256(request_json.encode("utf-8")).hexdigest()
+        with self._database.engine.begin() as connection:
+            existing = (
+                connection.execute(
+                    select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                        AgentCanvasGuidedInteractionSubmissionRow.submission_id
+                        == result.submission_id
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None:
+                if str(existing["request_digest"]) != request_digest:
+                    raise _error(
+                        "guided_interaction_submission_conflict",
+                        "Submission identity was reused with different content.",
+                    )
+                return
+            connection.execute(
+                insert(AgentCanvasGuidedInteractionSubmissionRow).values(
+                    submission_id=result.submission_id,
+                    workflow_id=workflow_id,
+                    interaction_id=interaction_id,
+                    idempotency_key=idempotency_key,
+                    request_digest=request_digest,
+                    request_json=request_json,
+                    result_json=result.model_dump_json(),
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
 
     def ensure_media_resume_delivery(
         self,
@@ -2653,6 +2750,7 @@ class AgentCanvasGuidedInteractionRepository:
             "product_source": "product_source",
             "reference_source": "reference_source",
             "media_review": "media_review",
+            "brand_form": "brand_form",
         }[interaction.kind]
         if awaiting.kind != expected_awaiting_kind:
             raise _error(

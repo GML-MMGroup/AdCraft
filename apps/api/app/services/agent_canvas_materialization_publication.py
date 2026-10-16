@@ -30,7 +30,7 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import ProjectAssetSummaryV2
+from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_ad_media import (
     StoryboardGridContentV2,
     StoryboardPanelV2,
@@ -39,6 +39,9 @@ from app.schemas.agent_canvas_ad_media import (
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
+    StoryboardSequenceAuthorityPlanV2,
+    StoryboardSequenceWindowV2,
+    StoryboardSequenceRowDraftV2,
 )
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
@@ -63,7 +66,6 @@ from app.schemas.agent_working_documents import (
     AnchorAcceptanceEvidenceV1,
     AnchorRegistryContentV3,
     StoryboardPlannedNodeV3,
-    StoryboardNarrativeSegmentV2,
     StoryboardPlanGlobalParametersV2,
     StoryboardProductionPlanContentV3,
     StoryboardSegmentMaterializationV3,
@@ -96,6 +98,7 @@ from app.services.agent_canvas_production_journey_reducer import (
 )
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
+    timing_seed_segments,
 )
 from app.services.agent_canvas_capability_draft_bundle import (
     stage_definitions,
@@ -116,6 +119,7 @@ from app.services.agent_canvas_stage_authoring_context import (
     stage_authoring_context_from_materialization,
     combined_style_guidance,
 )
+from app.services.brand_production_context import project_brand_production_context
 from app.services.agent_working_documents import AgentWorkingDocumentService
 
 
@@ -140,6 +144,9 @@ class CapabilityMaterializationPublicationService:
         ) = None,
         reference_source_opener: Callable[..., object] | None = None,
         on_storyboard_authored: Callable[[MaterializationOutcomeV1], None] | None = None,
+        on_guided_materialization_completed: (
+            Callable[[ProposalApplicationEnvelopeV1, MaterializationOutcomeV1], object] | None
+        ) = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -183,6 +190,7 @@ class CapabilityMaterializationPublicationService:
         self._prompt_ready_activation = prompt_ready_activation
         self._reference_source_opener = reference_source_opener
         self._on_storyboard_authored = on_storyboard_authored
+        self._on_guided_materialization_completed = on_guided_materialization_completed
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
                 workflows,
@@ -283,6 +291,32 @@ class CapabilityMaterializationPublicationService:
             ),
             references=envelope.reference_plan.references,
         )
+        if envelope.capability_id == "storyboard_design":
+            # The role projector will apply the same role boundary again when
+            # the Node prompt is prepared.  Freeze the storyboard projection
+            # here as well so the durable Stage snapshot does not carry every
+            # product/character/scene section alongside the sequence excerpt.
+            storyboard_brand = project_brand_production_context(
+                frozen_prompt_context.brand_decisions,
+                role="storyboard",
+            )
+            if storyboard_brand is not None and storyboard_brand.review is not None:
+                # Findings are QA commentary already represented by the
+                # reviewed digest; production requirements remain in the
+                # snapshot.  Excluding repeated finding prose keeps the
+                # durable Stage payload within its ASCII-encoded bound.
+                storyboard_brand = storyboard_brand.model_copy(
+                    update={"review": storyboard_brand.review.model_copy(update={"findings": ()})}
+                )
+            frozen_prompt_context = frozen_prompt_context.model_copy(
+                update={
+                    "brand_decisions": storyboard_brand,
+                    # Storyboard consumes the plain style projection.  The
+                    # typed StyleGuidance object is only read by Scene prompt
+                    # projection and would duplicate the same guidance here.
+                    "style_guidance": None,
+                }
+            )
         if envelope.capability_id == "storyboard_design" and preview_bundle.nodes:
             first_node = preview_bundle.nodes[0]
             document_id = first_node.metadata.get("source_agent_document_id")
@@ -309,7 +343,7 @@ class CapabilityMaterializationPublicationService:
                 frozen_prompt_context = frozen_prompt_context.model_copy(
                     update={
                         "working_document_excerpts": (
-                            AgentWorkingDocumentService.bounded_context_from_document(
+                            AgentWorkingDocumentService.compact_storyboard_sequence_context_from_document(
                                 candidate, f"sequence:{sequence_id}"
                             ),
                         ),
@@ -375,7 +409,13 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         if promotion is not None and self._on_storyboard_authored is not None:
-            self._on_storyboard_authored(outcome)
+            created = self._on_storyboard_authored(outcome)
+            self._prepare_progressive_storyboard_nodes(
+                envelope,
+                outcome,
+                created,
+                lease_guard=lease_guard,
+            )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent" and not reference_wait_opened:
             self._parent_derived.reconcile_after_parent(
@@ -428,6 +468,40 @@ class CapabilityMaterializationPublicationService:
             envelope.capability_id == "character_design" and envelope.operation_kind == "parent"
         ) or (envelope.capability_id == "scene_design" and envelope.operation_kind == "standalone")
 
+    def _allows_prompt_successor_recovery(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        node: CanvasNodeV2,
+    ) -> bool:
+        """Allow the exact successor created by an internal Scene Main refresh."""
+
+        if self._requires_reference_source_checkpoint(envelope):
+            return True
+        return (
+            envelope.capability_id == "scene_design"
+            and envelope.operation_kind == "standalone"
+            and node.creative_role == "scene"
+            and (
+                node.structured_content.get("scene_asset_kind") == "multi_view"
+                or node.parameters.get("scene_asset_kind") == "multi_view"
+            )
+        )
+
+    def _allows_internal_scene_multiview_successor(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        node: CanvasNodeV2,
+    ) -> bool:
+        return (
+            envelope.capability_id == "scene_design"
+            and envelope.operation_kind == "standalone"
+            and node.creative_role == "scene"
+            and (
+                node.structured_content.get("scene_asset_kind") == "multi_view"
+                or node.parameters.get("scene_asset_kind") == "multi_view"
+            )
+        )
+
     def _prepare_guided_document_stage(
         self,
         envelope: ProposalApplicationEnvelopeV1,
@@ -465,33 +539,7 @@ class CapabilityMaterializationPublicationService:
                     "storyboard_sequence_count"
                 ),
             )
-            segments = tuple(
-                StoryboardNarrativeSegmentV2(
-                    sequence_id=f"sequence-{window.order}",
-                    order=window.order,
-                    start_seconds=window.start_seconds,
-                    end_seconds=window.end_seconds,
-                    narrative_goal=(
-                        f"Sequence {window.order} local narrative direction "
-                        f"({window.start_seconds:g}-{window.end_seconds:g}s)."
-                    ),
-                    start_state=(
-                        "Opening state" if window.order == 1 else "Continue prior sequence."
-                    ),
-                    end_state=(
-                        "Close the authored direction."
-                        if window.order == len(authority_plan.windows)
-                        else "Hand off to the next sequence."
-                    ),
-                    continuity_from_previous=(
-                        None if window.order == 1 else "Continue from the prior sequence."
-                    ),
-                    terminal_policy=(
-                        "close" if window.order == len(authority_plan.windows) else "continue"
-                    ),
-                )
-                for window in authority_plan.windows
-            )
+            segments = timing_seed_segments(authority_plan)
             try:
                 content = StoryboardProductionPlanContentV3(
                     creative_direction_snapshot_id=context.style_projection.get(
@@ -1004,7 +1052,10 @@ class CapabilityMaterializationPublicationService:
                 node_id=node_id,
                 committed_operation_id=operation_id,
                 current_operation_id=node.prompt_preparation.operation_id,
-                allow_successor=self._requires_reference_source_checkpoint(envelope),
+                allow_successor=self._allows_prompt_successor_recovery(envelope, node),
+                allow_dependency_successor=self._allows_internal_scene_multiview_successor(
+                    envelope, node
+                ),
             )
             if current_operation_id is None:
                 raise V2PersistenceError(
@@ -1078,7 +1129,13 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         if promotion is not None and self._on_storyboard_authored is not None:
-            self._on_storyboard_authored(outcome)
+            created = self._on_storyboard_authored(outcome)
+            self._prepare_progressive_storyboard_nodes(
+                envelope,
+                outcome,
+                created,
+                lease_guard=lease_guard,
+            )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
             parent = self._refreshed_parent_reconciliation_envelope(envelope, outcome)
@@ -1093,7 +1150,61 @@ class CapabilityMaterializationPublicationService:
                     lease_guard=lease_guard,
                     source_turn_id=continuation_source_turn_id,
                 )
+        # Parent-derived identity work advances the Journey only when the
+        # derivative commit is published.  Its materialization continuation
+        # intentionally owns prompt preparation, so there is no ordinary
+        # Next Action continuation in the derivative plan.  Dispatch the next
+        # guided action after all prompts are ready, otherwise the Journey
+        # remains in the successor stage with no proposal or awaiting card.
+        if (
+            envelope.operation_kind == "derivative"
+            and self._on_guided_materialization_completed is not None
+        ):
+            self._on_guided_materialization_completed(envelope, outcome)
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _prepare_progressive_storyboard_nodes(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome: MaterializationOutcomeV1,
+        created: object,
+        *,
+        lease_guard: Callable[[], None],
+    ) -> None:
+        """Attach the same durable wait to the next single storyboard Draft."""
+
+        if not isinstance(created, tuple) or not created:
+            return
+        pairs: list[tuple[str, str]] = []
+        contexts: dict[str, StageAuthoringContextV1] = {}
+        for node_id in created:
+            node = self._workflows.get_node(envelope.workflow_id, node_id)
+            operation_id = node.prompt_preparation.operation_id
+            if not isinstance(operation_id, str) or not operation_id:
+                raise V2PersistenceError(
+                    "storyboard_prompt_dispatch_missing",
+                    "Progressive Storyboard Draft has no durable prompt operation.",
+                    stage="capability_materialization_publication",
+                )
+            pairs.append((node_id, operation_id))
+            contexts[node_id] = self._load_persisted_prompt_context(
+                workflow_id=envelope.workflow_id,
+                node_id=node_id,
+                operation_id=operation_id,
+            )
+        session = self._conversations.get_guidance_session(envelope.workflow_id)
+        self._prepare_prompts(
+            envelope,
+            next(iter(contexts.values())),
+            session_id=session.session_id,
+            session_revision=outcome.session_revision,
+            stage=outcome.journey_stage,
+            occurrence_id=None,
+            node_ids=tuple(node_id for node_id, _ in pairs),
+            operation_ids=tuple(operation_id for _, operation_id in pairs),
+            lease_guard=lease_guard,
+            context_by_node=contexts,
+        )
 
     def _resolve_reference_prompt_successor(
         self,
@@ -1103,6 +1214,7 @@ class CapabilityMaterializationPublicationService:
         committed_operation_id: str,
         current_operation_id: str | None,
         allow_successor: bool,
+        allow_dependency_successor: bool = False,
     ) -> str | None:
         if current_operation_id == committed_operation_id:
             return current_operation_id
@@ -1118,11 +1230,14 @@ class CapabilityMaterializationPublicationService:
             node_id,
             current_operation_id,
         )
+        allowed_reasons = {"guided_reference_source_resolved"}
+        if allow_dependency_successor:
+            allowed_reasons.add("dependency_or_binding_revision_changed")
         if (
             committed is None
             or current is None
             or getattr(committed, "status", None) != "superseded"
-            or getattr(committed, "supersession_reason", None) != "guided_reference_source_resolved"
+            or getattr(committed, "supersession_reason", None) not in allowed_reasons
             or getattr(committed, "superseded_by_dispatch_id", None)
             != getattr(current, "dispatch_id", None)
             or getattr(current, "status", None) not in {"queued", "leased", "completed"}
@@ -1381,6 +1496,35 @@ class CapabilityMaterializationPublicationService:
                 )
             content = current.content
             self._duration_authority.validate_plan(requirement, content)
+            if _requires_storyboard_outline(content):
+                authority_plan = self._duration_authority.plan_sequences(
+                    requirement,
+                    aspect_ratio=content.global_parameters.aspect_ratio,
+                    explicit_sequence_count=content.global_parameters.segment_count,
+                )
+                outline_context = context.model_copy(
+                    update={
+                        "capability_facts": {
+                            **context.capability_facts,
+                            "approved_narrative": content.narrative_outline,
+                            "storyboard_sequence_plan": authority_plan.model_dump(mode="json"),
+                        },
+                    }
+                )
+                outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
+                    outline_context,
+                    request_identity=f"{envelope.materialization_id}:outline",
+                )
+                outlined = self._storyboard_authoring.build_outline_content(
+                    outline,
+                    authority_plan,
+                )
+                content = content.model_copy(
+                    update={
+                        "global_parameters": outlined.global_parameters,
+                        "segments": outlined.segments,
+                    }
+                )
             document_id = current.document_id
             document_revision = current.revision
         else:
@@ -1433,8 +1577,18 @@ class CapabilityMaterializationPublicationService:
             document_revision = 1
         node_id = "node_" + _digest(envelope.materialization_id)[:32]
         segment_drafts: dict[str, StoryboardSegmentMaterializationDraftV2] = {}
+        pending_sequence_ids = tuple(
+            sequence.sequence_id
+            for sequence in content.segments
+            if _existing_segment_draft(content, sequence.sequence_id) is None
+        )
+        target_sequence_id = pending_sequence_ids[0] if pending_sequence_ids else None
         for sequence in content.segments:
             sequence_id = sequence.sequence_id
+            existing_draft = _existing_segment_draft(content, sequence_id)
+            if existing_draft is not None:
+                segment_drafts[sequence_id] = existing_draft
+                continue
             segment_context = self._storyboard_authoring.build_segment_context_from_content(
                 envelope.workflow_id,
                 document_id,
@@ -1444,6 +1598,11 @@ class CapabilityMaterializationPublicationService:
                 sequence_id,
                 style_excerpt=combined_style_guidance(context.style_projection),
                 response_locale=context.response_locale,
+                selected_direction=_selected_direction_text(envelope.selected_option),
+                brand_decisions=project_brand_production_context(
+                    context.brand_decisions,
+                    role="storyboard",
+                ),
             )
             segment_draft = self._storyboard_gateway.materialize_storyboard_segment(
                 segment_context,
@@ -1462,7 +1621,7 @@ class CapabilityMaterializationPublicationService:
                         node_revision=1,
                         materialization_id=envelope.materialization_id,
                     )
-                    if sequence.order == 1
+                    if sequence_id == target_sequence_id
                     else None
                 ),
                 materialization_id=_sequence_materialization_id(
@@ -1470,7 +1629,16 @@ class CapabilityMaterializationPublicationService:
                     sequence_id,
                 ),
             )
-        first_sequence = _first_storyboard_sequence(content)
+        target_sequence = next(
+            (
+                sequence
+                for sequence in content.segments
+                if sequence.sequence_id == target_sequence_id
+            ),
+            None,
+        )
+        if target_sequence is None:
+            target_sequence = _first_storyboard_sequence(content)
         if current is None:
             document_write = MaterializationDocumentWriteV1(
                 document_type="agent_working_document",
@@ -1492,7 +1660,7 @@ class CapabilityMaterializationPublicationService:
                 ).model_dump(mode="json"),
                 relation_metadata={
                     "node_id": node_id,
-                    "sequence_id": first_sequence.sequence_id,
+                    "sequence_id": target_sequence.sequence_id,
                 },
             )
         else:
@@ -1517,11 +1685,11 @@ class CapabilityMaterializationPublicationService:
                 ),
                 relation_metadata={
                     "node_id": node_id,
-                    "sequence_id": first_sequence.sequence_id,
+                    "sequence_id": target_sequence.sequence_id,
                 },
             )
         original = StoryboardMaterializationResultV1.model_validate(normalization.result)
-        sequence = first_sequence
+        sequence = target_sequence
         sequence_id = sequence.sequence_id
         segment = segment_drafts[sequence_id]
         result = original.model_copy(
@@ -1982,6 +2150,68 @@ def _first_storyboard_sequence(content: StoryboardProductionPlanContentV3):
             stage="capability_materialization_publication",
         )
     return sequence
+
+
+def _requires_storyboard_outline(content: StoryboardProductionPlanContentV3) -> bool:
+    """Recognize only the bounded engine seed, never user-authored narrative."""
+
+    if content.rows or any(item.status != "pending" for item in content.segment_materializations):
+        return False
+    expected = timing_seed_segments(
+        StoryboardSequenceAuthorityPlanV2(
+            aspect_ratio=content.global_parameters.aspect_ratio,
+            total_duration_seconds=content.global_parameters.total_duration_seconds,
+            windows=tuple(
+                StoryboardSequenceWindowV2(
+                    order=segment.order,
+                    start_seconds=segment.start_seconds,
+                    end_seconds=segment.end_seconds,
+                )
+                for segment in content.segments
+            ),
+        )
+    )
+    return content.segments == expected
+
+
+def _existing_segment_draft(
+    content: StoryboardProductionPlanContentV3,
+    sequence_id: str,
+) -> StoryboardSegmentMaterializationDraftV2 | None:
+    record = next(
+        (
+            item
+            for item in content.segment_materializations
+            if item.sequence_id == sequence_id and item.status == "materialized"
+        ),
+        None,
+    )
+    rows = tuple(row for row in content.rows if row.sequence_id == sequence_id)
+    if record is None or record.generation_prompt is None or len(rows) != 9:
+        return None
+    return StoryboardSegmentMaterializationDraftV2(
+        generation_prompt=record.generation_prompt,
+        rows=tuple(
+            StoryboardSequenceRowDraftV2(
+                panel_index=row.panel_index,
+                content_beat=row.content_beat,
+                anchor_aliases=row.anchor_aliases,
+                camera_description=row.camera_description,
+            )
+            for row in rows
+        ),
+    )
+
+
+def _selected_direction_text(option: object) -> str:
+    values = [
+        getattr(option, "title", None),
+        getattr(option, "public_summary", None),
+        *tuple(getattr(option, "key_decisions", ()) or ()),
+    ]
+    return "\n".join(value.strip() for value in values if isinstance(value, str) and value.strip())[
+        :8_192
+    ]
 
 
 def _sequence_materialization_id(parent_materialization_id: str, sequence_id: str) -> str:

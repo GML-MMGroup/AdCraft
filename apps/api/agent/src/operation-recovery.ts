@@ -1,7 +1,7 @@
 import type { AgentTransportAttemptMetadataV1 } from "./generated/agent-runtime.js";
 
 export interface AgentTransportClassification {
-  readonly code: "agent_provider_transport_failed";
+  readonly code: "agent_provider_transport_failed" | "agent_provider_insufficient_balance";
   readonly retryable: boolean;
   readonly retryAfterMs: number;
 }
@@ -17,6 +17,30 @@ interface TransportFailureShape {
     readonly headers?: { readonly get?: (name: string) => string | null };
   };
   readonly cause?: unknown;
+  readonly error?: { readonly code?: unknown; readonly type?: unknown };
+}
+
+export const PROVIDER_INSUFFICIENT_BALANCE_MESSAGE =
+  "The Agent provider has insufficient balance or credits. Please top up your account or switch to another model provider.";
+
+const BILLING_ERROR_CODES = new Set([
+  "insufficient_balance",
+  "insufficient_quota",
+  "credit_balance_too_low",
+  "billing_hard_limit_reached",
+]);
+
+export function isProviderBalanceFailure(candidate: unknown): boolean {
+  let current = candidate;
+  for (let depth = 0; depth < 4 && current; depth += 1) {
+    const error = asFailureShape(current);
+    if (numberValue(error.status ?? error.statusCode ?? error.response?.status) === 402) return true;
+    if ([error.code, error.error?.code, error.error?.type].some(
+      (code) => typeof code === "string" && BILLING_ERROR_CODES.has(code.toLowerCase()),
+    )) return true;
+    current = error.cause;
+  }
+  return false;
 }
 
 const RETRYABLE_CODES = new Set([
@@ -58,6 +82,9 @@ export class AgentOperationFailure extends Error {
 export function classifyAgentTransportFailure(
   candidate: unknown,
 ): AgentTransportClassification {
+  if (isProviderBalanceFailure(candidate)) {
+    return { code: "agent_provider_insufficient_balance", retryable: false, retryAfterMs: 0 };
+  }
   const error = asFailureShape(candidate);
   const cause = asFailureShape(error.cause);
   const code = String(error.code ?? cause.code ?? "").toUpperCase();
@@ -139,6 +166,8 @@ export async function runWithOneTransportRetry<T>(
           providerTimeout ? "agent_provider_timeout" : classification.code,
           providerTimeout
             ? "Agent provider request timed out."
+            : classification.code === "agent_provider_insufficient_balance"
+            ? PROVIDER_INSUFFICIENT_BALANCE_MESSAGE
             : "Agent model transport failed.",
           false,
           retryStage,

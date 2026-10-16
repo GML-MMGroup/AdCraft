@@ -31,6 +31,8 @@ from app.services.agent_canvas_materialization_normalizer import (
 from app.services.agent_canvas_references import canonical_node_reference_facts
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
+from app.services.brand_production_handoff import BrandProductionHandoffService
+from app.services.brand_production_context import project_brand_production_context
 
 
 _MAX_CONTEXT_BYTES = 64 * 1024
@@ -77,6 +79,7 @@ class CapabilityMaterializationContextAssembler:
     ) -> CapabilityMaterializationContextV1:
         raw = dict(self._proposal_context(envelope.proposal_id))
         payload = {
+            "brand_decisions": raw.get("brand_decisions"),
             "workflow_id": envelope.workflow_id,
             "conversation_id": envelope.conversation_id,
             "capability_id": envelope.capability_id,
@@ -97,8 +100,11 @@ class CapabilityMaterializationContextAssembler:
         }
         _reject_unsafe(payload)
         try:
+            payload["brand_decisions"] = project_brand_production_context(
+                raw.get("brand_decisions"), role=envelope.capability_id
+            )
             context = CapabilityMaterializationContextV1.model_validate(payload)
-        except ValidationError as error:
+        except ValueError as error:
             raise _context_error() from error
         if len(context.model_dump_json().encode("utf-8")) > _MAX_CONTEXT_BYTES:
             raise _context_error()
@@ -373,6 +379,16 @@ def materialization_context_from_state(
         }
     return CapabilityMaterializationContextAssembler(
         proposal_context=lambda _: {
+            "brand_decisions": (
+                document.model_dump(mode="json")
+                if (
+                    document := BrandProductionHandoffService(
+                        workflows.database
+                    ).production_context(envelope.workflow_id)
+                )
+                is not None
+                else None
+            ),
             "creative_goal": proposal.proposal_purpose or session.goal.summary,
             "explicit_constraints": requirement_controls,
             "shared_summary": "",

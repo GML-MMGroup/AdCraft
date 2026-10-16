@@ -79,6 +79,7 @@ from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
+from app.services.agent_canvas_character_prompt_reuse import retain_legacy_character_proof
 
 
 class AgentCanvasWorkflowRepository:
@@ -564,10 +565,17 @@ class AgentCanvasWorkflowRepository:
         bindings: tuple[CanvasBindingV2, ...],
         *,
         expected_revision: int,
+        prompt_context: Mapping[str, object] | None = None,
     ) -> int:
         """Insert one node and its inputs inside a caller-owned transaction."""
 
-        node = normalize_queued_node(node, bindings=bindings)
+        node = normalize_queued_node(
+            node,
+            bindings=bindings,
+            context_digest=(
+                _context_digest(prompt_context) if prompt_context is not None else None
+            ),
+        )
         current_revision = _require_workflow_revision(
             connection,
             node.workflow_id,
@@ -584,6 +592,7 @@ class AgentCanvasWorkflowRepository:
             connection,
             node,
             bindings=bindings,
+            context=prompt_context,
             now=node.updated_at,
         )
         _advance_workflow_revision(
@@ -828,12 +837,26 @@ class AgentCanvasWorkflowRepository:
                             "The editable prompt projection does not match the Node revision.",
                             stage="agent_canvas_workflow_repository",
                         )
-                    requested_manual_prompt = (
-                        node.prompt_preparation.status == "ready"
-                        and not _has_managed_prompt_preparation(node)
-                    )
+                    if _node_values(current_node) == _node_values(node):
+                        connection.commit()
+                        return self.get_workflow(node.workflow_id)
+                    requested_manual_prompt = node.prompt_preparation.status in {
+                        "ready",
+                        "waiting_user",
+                    } and not _has_managed_prompt_preparation(node)
                     current_preparation_status = current_node.prompt_preparation.status
                     current_preparation_managed = _has_managed_prompt_preparation(current_node)
+                    user_prompt_edit = (
+                        current_node.generation_prompt != node.generation_prompt
+                        and current_node.summary_prompt == node.summary_prompt
+                        and current_node.structured_content == node.structured_content
+                        and current_node.model_selection_mode == node.model_selection_mode
+                        and current_node.model_ref == node.model_ref
+                        and current_node.parameters == node.parameters
+                        and node.node_type in {"image", "video", "audio"}
+                        and requested_manual_prompt
+                        and current_preparation_managed
+                    )
                     if (
                         node.execution_mode == "generative"
                         and _prompt_input_changed(current_node, node)
@@ -924,14 +947,15 @@ class AgentCanvasWorkflowRepository:
                             bindings=bindings_for_node,
                             now=node.updated_at,
                         )
-                    _invalidate_prompt_preparations_for_source(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=node.workflow_id,
-                        source_node_id=node.node_id,
-                        updated_at=now,
-                    )
+                    if not user_prompt_edit:
+                        _invalidate_prompt_preparations_for_source(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=node.workflow_id,
+                            source_node_id=node.node_id,
+                            updated_at=now,
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -2974,10 +2998,26 @@ def _invalidate_target_prompt_preparation(
         and node.prompt_presentation.source in {"agent_authored", "deterministic_projection"}
         and node.prompt_presentation.text == node.generation_prompt
     )
-    clear_creative_content = prepared_projection and not preserve_storyboard_text
+    preserve_derivative_text = (
+        node.creative_role == "product"
+        and node.structured_content.get("asset_kind") == "multi_view"
+    ) or (
+        node.creative_role == "scene"
+        and (
+            node.structured_content.get("scene_asset_kind") == "multi_view"
+            or node.parameters.get("scene_asset_kind") == "multi_view"
+        )
+    )
+    preserve_editor_text = (
+        preserve_storyboard_text or node.creative_role == "character" or preserve_derivative_text
+    )
+    legacy_character_proof = (
+        retain_legacy_character_proof(node, frozen_context_digest) if prepared_projection else {}
+    )
+    clear_creative_content = prepared_projection and not preserve_editor_text
     preserved_presentation = (
         node.prompt_presentation.model_copy(update={"revision": node.revision + 1})
-        if preserve_storyboard_text
+        if preserve_editor_text and node.prompt_presentation is not None
         else node.prompt_presentation
     )
     queued = NodePromptPreparationV1(
@@ -3001,6 +3041,12 @@ def _invalidate_target_prompt_preparation(
         asset_kind = node.structured_content.get("asset_kind")
         if isinstance(asset_kind, str) and asset_kind:
             preserved_discriminator["asset_kind"] = asset_kind
+    elif node.creative_role == "scene":
+        scene_asset_kind = node.structured_content.get("scene_asset_kind") or node.parameters.get(
+            "scene_asset_kind"
+        )
+        if isinstance(scene_asset_kind, str) and scene_asset_kind:
+            preserved_discriminator["scene_asset_kind"] = scene_asset_kind
     queued_node = node.model_copy(
         update={
             "revision": node.revision + 1,
@@ -3016,6 +3062,7 @@ def _invalidate_target_prompt_preparation(
             ),
             "prompt_context_snapshot_id": None,
             "metadata": {
+                **legacy_character_proof,
                 **{
                     key: value
                     for key, value in node.metadata.items()
@@ -3023,7 +3070,7 @@ def _invalidate_target_prompt_preparation(
                 },
                 **(
                     {"editable_prompt_projection": preserved_presentation.model_dump(mode="json")}
-                    if preserve_storyboard_text
+                    if preserve_editor_text and preserved_presentation is not None
                     else {}
                 ),
             },
@@ -3664,6 +3711,11 @@ def _workflow_not_found_error() -> V2PersistenceError:
         "Workflow was not found.",
         stage="agent_canvas_workflow_repository",
     )
+
+
+def _context_digest(context: Mapping[str, object]) -> str:
+    _payload, digest = detached_context_payload(context)
+    return digest
 
 
 def _node_not_found_error() -> V2PersistenceError:

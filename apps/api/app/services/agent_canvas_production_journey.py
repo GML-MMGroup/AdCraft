@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from pydantic import ValidationError
 
@@ -23,6 +24,29 @@ from app.schemas.agent_canvas_requirements import (
     CharacterAuthoringPhaseV1,
     CharacterOccurrenceV1,
 )
+
+
+# Every newly created guided session opts into this policy.  It makes Proposal
+# Submit the only user-facing authoring decision: planned topology materializes
+# and provider results publish without media Accept/Retry/Replace gates.
+# Collaboration mode still decides whether created Nodes run automatically.
+CURRENT_GUIDED_JOURNEY_POLICY_ID: Literal["proposal_submit_auto_result_v1"] = (
+    "proposal_submit_auto_result_v1"
+)
+CURRENT_GUIDED_JOURNEY_POLICY_REVISION = 1
+
+
+def apply_current_guided_journey_policy(
+    journey: GuidedProductionJourneyV2,
+) -> GuidedProductionJourneyV2:
+    """Record the current guided-authoring policy on a new session journey."""
+
+    return journey.model_copy(
+        update={
+            "journey_policy_id": CURRENT_GUIDED_JOURNEY_POLICY_ID,
+            "journey_policy_revision": CURRENT_GUIDED_JOURNEY_POLICY_REVISION,
+        }
+    )
 
 
 @dataclass(frozen=True, slots=True)

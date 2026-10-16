@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import logging
 from typing import Any
 
 from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
@@ -30,6 +31,9 @@ from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import 
 from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
 from app.schemas.agent_working_documents import StoryboardProductionPlanContentV3
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CapabilityMaterializationPlanCompiler:
@@ -68,7 +72,22 @@ class CapabilityMaterializationPlanCompiler:
             # same detached context that the transaction persists.  Keeping
             # the bundle's pre-context identity here would make the Node row,
             # dispatch row, and immutable plan disagree during commit.
-            _, frozen_context_digest = detached_context_payload(prompt_context)
+            try:
+                _, frozen_context_digest = detached_context_payload(prompt_context)
+            except ValueError as error:
+                context_payload = prompt_context.model_dump(mode="json")
+                _LOGGER.error(
+                    "Prompt preparation context exceeded its bound: workflow_id=%s "
+                    "capability_id=%s total_bytes=%s field_bytes=%s",
+                    envelope.workflow_id,
+                    envelope.capability_id,
+                    len(prompt_context.model_dump_json().encode("utf-8")),
+                    {
+                        key: len(str(value).encode("utf-8"))
+                        for key, value in context_payload.items()
+                    },
+                )
+                raise error
             normalized_nodes: list[CanvasNodeV2] = []
             preparation_by_node = {item.node_id: item for item in preparations}
             normalized_preparations: list[NodePromptPreparationIntentV1] = []

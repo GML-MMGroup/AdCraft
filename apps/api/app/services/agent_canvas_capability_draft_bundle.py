@@ -147,6 +147,8 @@ class CapabilityDraftBundleBuilder:
             nodes=nodes,
             character_pair_id=character_pair_id,
         )
+        if envelope.capability_id == "scene_design":
+            internal = _scene_pair_binding(envelope, nodes=nodes)
         derivative_intent = _derivative_intent(
             envelope,
             nodes=nodes,
@@ -291,11 +293,18 @@ def stage_definitions(
         },
         "scene_design": (
             (
-                "scene-reference-board",
+                "scene-main",
                 "image",
                 "scene",
-                "Reference Board",
-                {"scene_asset_kind": "reference_board"},
+                "Main",
+                {"scene_asset_kind": "main"},
+            ),
+            (
+                "scene-multi-view",
+                "image",
+                "scene",
+                "Multi-view",
+                {"scene_asset_kind": "multi_view"},
             ),
         ),
         "script_authoring": (("script", "script", "script", "Script", {}),),
@@ -732,6 +741,45 @@ def _pair_binding(
     )
 
 
+def _scene_pair_binding(
+    envelope: ProposalApplicationEnvelopeV1,
+    *,
+    nodes: tuple[CanvasNodeV2, ...],
+) -> tuple[CanvasBindingV2, ...]:
+    """Bind Scene Multi-view to the same Scene Main environment authority."""
+
+    if len(nodes) != 2:
+        raise ValueError("scene_materialization_shape_invalid")
+    main, multi_view = nodes
+    if (
+        main.creative_role != "scene"
+        or multi_view.creative_role != "scene"
+        or main.structured_content.get("scene_asset_kind") != "main"
+        or multi_view.structured_content.get("scene_asset_kind") != "multi_view"
+    ):
+        raise ValueError("scene_materialization_role_invalid")
+    return (
+        CanvasBindingV2(
+            binding_id=f"binding_{_digest(f'{envelope.materialization_id}:scene-main-to-multi-view')[:32]}",
+            workflow_id=envelope.workflow_id,
+            source=CanvasBindingSourceNodeV2(source_node_id=main.node_id),
+            target_node_id=multi_view.node_id,
+            input_role="image_reference",
+            enabled=True,
+            order=0,
+            label="Required Scene Main reference",
+            metadata={
+                "semantic_reference_role": "environment_reference",
+                "reference_purpose": "scene_main_identity",
+                "scene_pair": True,
+                "source_node_revision": main.revision,
+            },
+            created_at=envelope.created_at,
+            updated_at=envelope.created_at,
+        ),
+    )
+
+
 def _derivative_intent(
     envelope: ProposalApplicationEnvelopeV1,
     *,
@@ -884,6 +932,8 @@ def _stage_parameters(
     elif capability_id == "bgm_direction":
         duration = context.capability_facts.get("duration_seconds", 30)
         parameters["duration_seconds"] = max(1, round(float(duration)))
+    elif capability_id == "scene_design":
+        parameters["scene_asset_kind"] = "multi_view" if draft_key == "scene-multi-view" else "main"
     return parameters
 
 

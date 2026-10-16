@@ -46,6 +46,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
     safe_provider_prompt_assertion_metadata,
 )
 from app.schemas.agent_canvas_video_parameters import (
+    CanvasParameterProvenanceV2,
     CompiledVideoParametersV2,
     VideoParameterCompilationSnapshotV2,
 )
@@ -2326,8 +2327,34 @@ def _parameter_compilation_revision_is_current(
         )
     return (
         current.parameters == compiled.authoring_parameters
-        and current.parameter_provenance == compiled.parameter_provenance
+        and _manual_authority_provenance(current) == compiled.parameter_provenance
     )
+
+
+def _manual_authority_provenance(
+    node: CanvasNodeV2,
+) -> dict[str, CanvasParameterProvenanceV2]:
+    """Read Node provenance with the resolver's manual-authority default.
+
+    Deterministic parameters can be authored without a provenance entry, and
+    the parameter resolver treats every such value as manual authority.  The
+    compiler's own derived write preserves those values without inventing an
+    entry, so the two projections must be compared through the same rule.
+    """
+
+    provenance: dict[str, CanvasParameterProvenanceV2] = {}
+    for field, value in node.parameters.items():
+        entry = node.parameter_provenance.get(field)
+        if entry is None:
+            if not isinstance(value, (str, int, float, bool)):
+                continue
+            entry = CanvasParameterProvenanceV2(
+                origin="manual",
+                requested_value=value,
+                effective_value=value,
+            )
+        provenance[field] = entry
+    return provenance
 
 
 def _parameter_snapshot_prompt_authority(
@@ -2354,7 +2381,7 @@ def _parameter_snapshot_prompt_authority(
         and snapshot.node_id == node.node_id
         and snapshot.node_revision == node.revision
         and snapshot.requested_parameters == node.parameters
-        and snapshot.parameter_provenance == node.parameter_provenance
+        and snapshot.parameter_provenance == _manual_authority_provenance(node)
     ):
         return node
     return node.model_copy(update={"revision": projection.revision})

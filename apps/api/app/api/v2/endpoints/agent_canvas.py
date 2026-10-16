@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -101,6 +102,7 @@ from app.persistence.agent_working_document_repository import (
     AgentWorkingDocumentRepository,
 )
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -386,6 +388,7 @@ from app.services.agent_canvas_materialization_prompt_barrier import (
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
 )
+from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.services.agent_canvas_materialization_runtime import (
     QuickMediaMaterializationRunner,
     materialization_context_from_state,
@@ -400,6 +403,7 @@ from app.services.agent_canvas_production_journey_orchestration import (
 from app.services.agent_canvas_guided_editing import GuidedEditingPreparationService
 from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
+from app.services.agent_canvas_next_action_dispatch import NextActionDispatchService
 from app.services.agent_canvas_execution_settings import (
     AgentCanvasExecutionSettingsService,
 )
@@ -421,11 +425,22 @@ from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.agent_model_trace_sessions import isolated_agent_model_replay_enabled
 from app.services.durable_pi_run import DurablePiRunService
+from app.services.brand_production_handoff import (
+    BrandProductionHandoffService,
+    check_locked_elements,
+)
+from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
+from app.services.brand_guided_interaction_submit import BrandGuidedInteractionSubmitter
+from app.schemas.brand_professional_mode import BrandFormSubmitV1
+from app.services.brand_capability_invocation import BrandCapabilityInvocationService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
 
 
+_BRAND_LOCKED_ELEMENT_ROLES = frozenset({"script", "storyboard_sequence", "storyboard_video"})
+
 router = APIRouter(tags=["v2-agent-canvas"])
+logger = logging.getLogger(__name__)
 
 
 def _validate_reference_only_run(
@@ -553,6 +568,8 @@ def _resume_prompt_preparation_barrier(
     materialization_barrier: (AgentCanvasMaterializationPromptPreparationBarrier | None) = None,
     prompt_ready_activation: Callable[..., object] | None = None,
     notified_dispatch_ids: set[str] | None = None,
+    progressive_storyboard_advance: Callable[[str, str], object] | None = None,
+    materialization_owned_nodes: dict[str, set[str]] | None = None,
 ) -> None:
     """Wake the existing scheduler after a committed prompt terminal result.
 
@@ -568,6 +585,10 @@ def _resume_prompt_preparation_barrier(
     materialization_owned = False
     if materialization_barrier is not None:
         materialization_owned = materialization_barrier.owns_dispatch(dispatch)
+        if materialization_owned and materialization_owned_nodes is not None:
+            materialization_owned_nodes.setdefault(dispatch.workflow_id, set()).add(
+                dispatch.node_id
+            )
         materialization_barrier.reconcile_terminal_dispatch(dispatch)
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
@@ -585,7 +606,12 @@ def _resume_prompt_preparation_barrier(
                 (dispatch.node_id,),
                 source_id=operation_id,
             )
-
+    if (
+        dispatch.status == "completed"
+        and not materialization_owned
+        and progressive_storyboard_advance is not None
+    ):
+        progressive_storyboard_advance(dispatch.workflow_id, dispatch.node_id)
     active = runtime_repository.get_active_execution(dispatch.workflow_id)
     if active is None:
         activation_succeeded = bool(
@@ -822,6 +848,19 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+    brand_decisions = BrandDecisionRepository(database)
+
+    def enforce_brand_locked_elements(workflow_id: str, node, prompt: str) -> None:
+        if node.creative_role not in _BRAND_LOCKED_ELEMENT_ROLES:
+            return
+        project_id = brand_decisions.project_id_for_workflow(workflow_id)
+        if project_id is None:
+            return
+        brand_id = brand_decisions.get_brand_id_by_project(project_id)
+        if brand_id is None:
+            return
+        check_locked_elements(prompt, brand_decisions.locked_prohibited_elements(brand_id))
+
     prompt_preparation_service = NodePromptPreparationService(
         workflow_repository,
         role_brief_author=lambda role_context, request_identity: (
@@ -832,6 +871,7 @@ def create_agent_canvas_runtime(
         ),
         asset_resolver=asset_service.resolve_asset,
         presentation_publisher=presentation_publisher,
+        locked_element_guard=enforce_brand_locked_elements,
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()
@@ -1060,6 +1100,7 @@ def create_agent_canvas_runtime(
 
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
+        conversations=conversation_repository,
         authoring=storyboard_authoring,
         gateway=video_agent_gateway,
         receipts=production_closure_receipts,
@@ -1067,8 +1108,8 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
-        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: _advance_after_storyboard_pipeline(
-            workflow_id, plan_document_id
+        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
+            _advance_after_storyboard_pipeline(workflow_id, plan_document_id)
         ),
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
@@ -1338,6 +1379,7 @@ def create_agent_canvas_runtime(
         event_repository,
     )
     fanout_activation = StoryboardFanoutActivationService(
+        brand_context_loader=BrandProductionHandoffService(database).production_context,
         workflows=workflow_repository,
         conversations=conversation_repository,
         requirements=requirement_service,
@@ -1480,6 +1522,44 @@ def create_agent_canvas_runtime(
         ),
         run_service=run_service,
     )
+
+    def resume_brand_interaction(workflow_id: str, response_locale: str) -> None:
+        """Publish the first Brand interaction after the production gate."""
+
+        del response_locale
+        from app.api.v2.endpoints.brand_mode import post_next_question
+
+        try:
+            post_next_question(workflow_id, database)
+        except Exception:  # noqa: BLE001 - the gate remains durable and retryable.
+            logger.exception(
+                "Brand guided interaction projection failed.",
+                extra={"workflow_id": workflow_id},
+            )
+
+    def resume_storyboard_progression(workflow_id: str) -> tuple[str, ...]:
+        """Recover prompt-ready Storyboard fan-out after a backend restart.
+
+        Prompt dispatch completion normally calls the progression callback in
+        the same process.  A restart can occur after the prompt is durably
+        ready but before that process-local callback runs; re-scan the
+        persisted ready Drafts when the user explicitly continues instead of
+        requiring a second prompt preparation or media result.
+        """
+
+        workflow = workflow_repository.get_workflow(workflow_id)
+        progressed: list[str] = []
+        for node in workflow.nodes:
+            if (
+                node.creative_role not in {"storyboard_sequence", "storyboard_video"}
+                or node.prompt_preparation.status != "ready"
+            ):
+                continue
+            progressed.extend(
+                storyboard_progression.advance_after_prompt_ready(workflow_id, node.node_id)
+            )
+        return tuple(progressed)
+
     conversation_service = AgentConversationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1504,6 +1584,8 @@ def create_agent_canvas_runtime(
         model_selection=model_selection,
         requirements=requirement_service,
         production_journey=production_journey,
+        brand_interaction_resumer=resume_brand_interaction,
+        progressive_storyboard_advance=resume_storyboard_progression,
     )
 
     capability_execution = CapabilityExecutionService(
@@ -1542,6 +1624,7 @@ def create_agent_canvas_runtime(
         decision_bundles=decision_bundles,
         editing_preparer=prepare_current_editing,
     )
+    next_action_dispatch = NextActionDispatchService(database, event_repository)
     materialization_repository = AgentCanvasMaterializationRepository(
         database,
         event_repository,
@@ -1563,6 +1646,30 @@ def create_agent_canvas_runtime(
         assets=asset_service,
         workflows=workflow_repository,
     )
+
+    def dispatch_guided_materialization_continuation(
+        envelope: ProposalPublicationEnvelopeV1,
+        outcome: MaterializationOutcomeV1,
+    ) -> object | None:
+        """Resume the fixed Journey after parent-derived prompt preparation.
+
+        The derivative materialization is the authoritative stage transition,
+        while its capability-materialization continuation owns prompt
+        preparation.  Queueing the next action here keeps the two durable
+        boundaries ordered and idempotent.
+        """
+
+        del outcome
+        session = conversation_repository.get_guidance_session(envelope.workflow_id)
+        if session.status != "active" or session.journey.suspended_action is not None:
+            return None
+        source_turn = conversation_repository.get_turn(envelope.action_turn_id)
+        return next_action_dispatch.dispatch(
+            source_turn,
+            session_id=session.session_id,
+            expected_session_revision=session.revision,
+            objective=session.goal.summary,
+        )
 
     def guided_reference_snapshot(
         workflow_id: str,
@@ -1600,6 +1707,11 @@ def create_agent_canvas_runtime(
     )
     guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
     guided_interactions.set_reference_submitter(guided_reference_sources.submit_interaction)
+    brand_bridge = BrandGuidedInteractionBridge(database)
+    brand_service = BrandCapabilityInvocationService(database)
+    brand_submitter = BrandGuidedInteractionSubmitter(database, brand_service, brand_bridge)
+    guided_interactions.set_brand_submitter(brand_submitter.submit_interaction)
+
     materialization_prompt_barrier = AgentCanvasMaterializationPromptPreparationBarrier(
         dispatches=prompt_dispatches,
         continuations=continuation_outbox,
@@ -1620,6 +1732,7 @@ def create_agent_canvas_runtime(
         ),
         prompt_dispatch=prompt_dispatches,
         prompt_preparation_barrier=materialization_prompt_barrier,
+        on_guided_materialization_completed=dispatch_guided_materialization_continuation,
     )
 
     def resume_reference_materialization(
@@ -1684,6 +1797,17 @@ def create_agent_canvas_runtime(
             error_message=message,
         ):
             return conversation_repository.get_turn(turn_id)
+        # Storyboard materialization is immutable once committed.  A later
+        # derived prompt-preparation failure must therefore be projected as a
+        # separate Journey/timeline failure rather than mutating the completed
+        # parent Turn (which ``fail_turn`` intentionally ignores).
+        if conversation_repository.record_post_commit_storyboard_failure(
+            turn_id,
+            error_code=code,
+            error_message=message,
+            retryable=explicit_retryable,
+        ):
+            return conversation_repository.get_turn(turn_id)
         if explicit_retryable:
             try:
                 ContinuationTurnRetrySnapshotV1.model_validate(
@@ -1697,6 +1821,15 @@ def create_agent_canvas_runtime(
             message=message,
             retryable=explicit_retryable,
         )
+
+    materialization_owned_nodes: dict[str, set[str]] = {}
+
+    def advance_completed_storyboard_prompts(delivery):
+        for node_id in tuple(materialization_owned_nodes.pop(delivery.workflow_id, set())):
+            storyboard_progression.advance_after_prompt_ready(
+                delivery.workflow_id,
+                node_id,
+            )
 
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
@@ -1721,6 +1854,7 @@ def create_agent_canvas_runtime(
                 materialization_id=materialization_id,
             )
         ),
+        on_completed=advance_completed_storyboard_prompts,
     )
 
     def activate_prompt_ready_nodes(
@@ -1783,6 +1917,8 @@ def create_agent_canvas_runtime(
             materialization_barrier=materialization_prompt_barrier,
             prompt_ready_activation=activate_prompt_ready_nodes,
             notified_dispatch_ids=notified_prompt_dispatch_ids,
+            progressive_storyboard_advance=storyboard_progression.advance_after_prompt_ready,
+            materialization_owned_nodes=materialization_owned_nodes,
         ),
     )
     guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(
@@ -2847,6 +2983,7 @@ def submit_chat_message(
             mentioned_node_ids=request.mentioned_node_ids,
             mentioned_image_asset_ids=request.mentioned_image_asset_ids,
             video_skill_run_id=request.video_skill_run_id,
+            response_locale=request.response_locale,
             idempotency_key=idempotency_key,
         )
     except V2PersistenceError as error:
@@ -3087,6 +3224,17 @@ def submit_guided_interaction(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        submitted_interaction = (
+            runtime.guided_interactions.get_interaction(workflow_id, interaction_id)
+            if isinstance(request, GuidedConceptSubmitV2)
+            else None
+        )
+        is_brand_concept_selection = (
+            isinstance(request, GuidedConceptSubmitV2)
+            and submitted_interaction is not None
+            and isinstance(submitted_interaction.content, GuidedConceptChoiceV2)
+            and submitted_interaction.content.capability_id.startswith("brand_")
+        )
         accepted = runtime.guided_interactions.submit_interaction(
             workflow_id,
             interaction_id,
@@ -3113,6 +3261,26 @@ def submit_guided_interaction(
                 callback=runtime.guided_media_resume_worker.run_one,
                 args=(delivery.delivery_id,),
             ),
+        )
+    elif isinstance(request, BrandFormSubmitV1) and not accepted.replayed:
+        # The foundation-form authority commits Brand facts and the journey
+        # stage atomically.  Publish the next Brand interaction as bounded
+        # background work; it must not wait for another chat message and it is
+        # intentionally independent of the Agent continuation outbox.
+        background_tasks.add_task(
+            _publish_next_brand_interaction_after_form_submit,
+            runtime,
+            workflow_id,
+        )
+    elif is_brand_concept_selection and not accepted.replayed:
+        # Brand Professional cards own a separate deterministic journey.  The
+        # generic continuation worker intentionally stays on the intake
+        # journey, so selecting a Brand hypothesis, AdSpec, skill, or
+        # Treatment option must publish the next Brand card directly.
+        background_tasks.add_task(
+            _publish_next_brand_interaction_after_form_submit,
+            runtime,
+            workflow_id,
         )
     elif not accepted.replayed:
         background_tasks.add_task(
@@ -3819,6 +3987,32 @@ def _process_agent_turn_and_resume(
         runtime.scheduler.resume(active.execution_id)
 
 
+def _publish_next_brand_interaction_after_form_submit(
+    runtime: AgentCanvasRuntime,
+    workflow_id: str,
+) -> None:
+    """Continue the Brand journey after an atomic foundation-form commit.
+
+    Foundation forms are submitted through the generic interaction endpoint.  A
+    form commit must not depend on a second user message or on the generic
+    continuation outbox (which is reserved for Agent turns).  The Brand
+    endpoint owns the deterministic next-stage projection and is idempotent:
+    if the client refreshes or requests it concurrently, the existing open
+    interaction is reused.
+    """
+
+    from app.api.v2.endpoints.brand_mode import post_next_question
+
+    try:
+        post_next_question(workflow_id, runtime.database)
+    except Exception:  # noqa: BLE001 - the committed form remains recoverable via next-question.
+        logger.exception(
+            "Brand foundation form committed but next interaction publication failed "
+            "workflow_id=%s",
+            workflow_id,
+        )
+
+
 def _persisted_assistant_result(
     runtime: AgentCanvasRuntime,
     workflow_id: str,
@@ -3919,6 +4113,11 @@ def _agent_settings_expected_revision(value: str | None) -> int:
 
 def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
     status_code = {
+        "brand_skill_selection_required": 409,
+        "brand_skill_selection_invalid": 422,
+        "brand_stage_action_mismatch": 409,
+        "brand_context_stale": 409,
+        "brand_handoff_conflict": 409,
         "project_not_found": 404,
         "project_not_trashed": 409,
         "project_state_conflict": 412,

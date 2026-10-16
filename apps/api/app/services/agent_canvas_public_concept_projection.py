@@ -13,6 +13,8 @@ from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 _TITLE_LIMIT = 64
 _SUMMARY_LIMIT = 240
+_MIN_PUBLIC_OPTIONS = 3
+_MAX_PUBLIC_OPTIONS = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +37,12 @@ class AgentCanvasPublicConceptProjector:
         response_locale: str,
         recommended_option_id: str,
     ) -> PublicConceptProjectionV1:
-        if len(options) != 3 or len(option_ids) != 3 or len(set(option_ids)) != 3:
-            raise _error("A public concept requires exactly three unique options.")
+        if not (
+            _MIN_PUBLIC_OPTIONS <= len(options) <= _MAX_PUBLIC_OPTIONS
+            and len(option_ids) == len(options)
+            and len(set(option_ids)) == len(option_ids)
+        ):
+            raise _error("A public concept requires between three and six unique options.")
         if recommended_option_id not in option_ids:
             raise _error("The recommended public concept option is unavailable.")
 
@@ -50,7 +56,7 @@ class AgentCanvasPublicConceptProjector:
             for option_id, option in zip(option_ids, options, strict=True)
         )
         identities = {(item.title.casefold(), item.summary.casefold()) for item in projected}
-        if len(identities) != 3:
+        if len(identities) != len(projected):
             raise _error("Public concept options must remain meaningfully distinct.")
         return PublicConceptProjectionV1(
             options=projected,
