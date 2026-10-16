@@ -323,6 +323,11 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     character_phase: CharacterAuthoringPhaseV1 | None = None
     character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None
     scene_environment_projection: SceneEnvironmentProjectionV1 | None = None
+    # Initial Scene Main authoring is allowed to establish the first typed
+    # environment projection.  Derivative Scene roles must carry an existing
+    # projection so their prompt is validated against frozen environment
+    # authority.
+    scene_projection_required: bool = True
     requirement_facts: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     selected_direction: str | None = Field(default=None, max_length=8_192)

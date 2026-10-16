@@ -24,6 +24,9 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_working_document_repository import (
     AgentWorkingDocumentRepository,
 )
@@ -870,6 +873,7 @@ class PiVideoAgentGateway:
                     if context.scene_environment_projection is not None
                     else None
                 ),
+                "scene_projection_required": context.scene_projection_required,
             }
         elif validation_profile == "proposal_candidate_count_v1":
             validation_context = {
@@ -1385,6 +1389,7 @@ class AgentConversationService:
         requirements: AgentCanvasRequirementService | None = None,
         production_journey: GuidedProductionJourneyService | None = None,
         brand_interaction_resumer: Callable[[str, str], object] | None = None,
+        progressive_storyboard_advance: Callable[[str], object] | None = None,
     ) -> None:
         self._workflows = workflows
         self._brand_decisions = BrandDecisionRepository(workflows.database)
@@ -1404,12 +1409,17 @@ class AgentConversationService:
         self._run_nodes = run_nodes
         self._asset_resolver = asset_resolver
         self._brand_interaction_resumer = brand_interaction_resumer
+        self._progressive_storyboard_advance = progressive_storyboard_advance
         self._session_actions = GuidanceSessionActionService()
         self._continuation_outbox = continuation_outbox or (
             AgentCanvasContinuationOutboxRepository(
                 workflows.database,
                 EventRepository(workflows.database),
             )
+        )
+        self._prompt_preparation_dispatches = AgentCanvasPromptPreparationDispatchRepository(
+            workflows.database,
+            EventRepository(workflows.database),
         )
         submission_kwargs = {
             "reference_snapshot": lambda workflow_id, reference: (
@@ -1930,7 +1940,16 @@ class AgentConversationService:
                         journey=brand_journey,
                     ),
                 )
-                if existing_session is None and self._brand_interaction_resumer is not None:
+                # The generic guided session is intentionally kept at its
+                # intake stage while Brand Professional Mode owns its own
+                # authoritative journey.  After a Brand form is submitted,
+                # that generic session still exists but has no open
+                # interaction.  Resume the Brand journey in that state too;
+                # otherwise a subsequent "continue" only repeats the gate
+                # message and never publishes the next form/card.
+                if self._brand_interaction_resumer is not None and (
+                    existing_session is None or existing_session.interaction is None
+                ):
                     try:
                         self._brand_interaction_resumer(
                             turn.workflow_id,
@@ -2137,7 +2156,31 @@ class AgentConversationService:
                 "Please complete the current guided interaction before continuing production.",
             )
         journey_capability = None
+        journey_internal_checkpoint = False
         if intent.mode == "guided_production":
+            active_capabilities = tuple(
+                dict.fromkeys(
+                    (
+                        *self._continuation_outbox.list_nonterminal_capability_ids(
+                            turn.workflow_id
+                        ),
+                        *self._conversations.list_active_materialization_capability_ids(
+                            turn.workflow_id
+                        ),
+                    )
+                )
+            )
+            if active_capabilities:
+                return complete_message(
+                    "The current creative step is still processing and will continue automatically."
+                )
+            if session.journey.stage_status == "failed" and self._recover_failed_prompt_preparation(
+                turn.workflow_id,
+                stage=session.journey.stage,
+            ):
+                return complete_message(
+                    "Retrying prompt preparation for the current Draft. The existing Storyboard content will be preserved."
+                )
             if session.journey.stage == "intake":
                 session = self._journey.apply_evidence(
                     turn.workflow_id,
@@ -2160,6 +2203,15 @@ class AgentConversationService:
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
                     if session.awaiting is None:
+                        if (
+                            session.journey.stage == "storyboard_grids"
+                            and self._progressive_storyboard_advance is not None
+                        ):
+                            progressed = self._progressive_storyboard_advance(turn.workflow_id)
+                            if progressed:
+                                return complete_message(
+                                    "Storyboard progression resumed; the next Draft is being prepared."
+                                )
                         if session.journey.stage == "character":
                             admitted = self._journey.ensure_character_decision_authority(
                                 turn.workflow_id,
@@ -2169,6 +2221,18 @@ class AgentConversationService:
                             )
                             if admitted is not None:
                                 return admitted
+                        if session.creative_authority is None:
+                            # Asynchronous materialisation or prompt progress
+                            # can advance the Guidance session revision after
+                            # the authority-choice actions were projected. Do
+                            # not strand the user behind a stale action (or
+                            # expose guidance_orphaned_stall); republish the
+                            # typed authority choice against the current
+                            # session revision. complete_message() also
+                            # supersedes the stale pending actions atomically.
+                            return complete_message(
+                                "Choose who supplies the next creative direction."
+                            )
                         raise V2PersistenceError(
                             "guidance_orphaned_stall",
                             "Guidance cannot wait without current typed awaiting authority.",
@@ -2196,12 +2260,16 @@ class AgentConversationService:
                 return complete_message(
                     "Guided production is complete.",
                 )
-            if journey_action.action != "invoke_capability":
+            if journey_action.action not in {
+                "invoke_capability",
+                "invoke_internal_checkpoint",
+            }:
                 raise V2PersistenceError(
                     "journey_transition_invalid",
                     "The current journey action cannot be dispatched.",
                     stage="agent_conversation_service",
                 )
+            journey_internal_checkpoint = journey_action.action == "invoke_internal_checkpoint"
             journey_capability = journey_action.capability_id
 
         open_proposals = self._conversations.list_open_proposals(turn.workflow_id)
@@ -2257,6 +2325,12 @@ class AgentConversationService:
                 ),
                 policy,
             )
+            if journey_internal_checkpoint:
+                command = command.model_copy(
+                    update={
+                        "definition": self._capability_policy.internal_script_checkpoint_definition()
+                    }
+                )
         if command.command.action in {"ask_user", "reply"}:
             return complete_message(
                 command.command.message or "Please provide more direction.",
@@ -2317,7 +2391,11 @@ class AgentConversationService:
                 action=session.journey.active_action,
                 capability_id=command.command.capability_id,
                 publication_kind=(
-                    "proposal" if intent.mode == "guided_production" else "internal_document"
+                    "internal_document"
+                    if journey_internal_checkpoint
+                    else "proposal"
+                    if intent.mode == "guided_production"
+                    else "internal_document"
                 ),
                 requirement_revision=requirements,
             ),
@@ -2348,8 +2426,46 @@ class AgentConversationService:
                 if intent.assistant_message is not None
                 else None
             ),
+            publication_kind=("internal_document" if journey_internal_checkpoint else "proposal"),
+            journey_stage=(session.journey.stage if journey_internal_checkpoint else None),
         )
         return self._conversations.get_turn(turn_id)
+
+    def _recover_failed_prompt_preparation(self, workflow_id: str, *, stage: str) -> bool:
+        """Requeue one exhausted transient Draft prompt after an explicit Continue."""
+
+        if stage != "storyboard_grids":
+            return False
+        recovered = False
+        now = datetime.now(timezone.utc)
+        for dispatch in self._prompt_preparation_dispatches.list_for_workflow(workflow_id):
+            if dispatch.status != "failed" or dispatch.last_error_code not in {
+                "agent_runtime_unavailable",
+                "agent_provider_transport_failed",
+                "agent_provider_timeout",
+                "prompt_preparation_failed",
+            }:
+                continue
+            try:
+                node = self._workflows.get_node(workflow_id, dispatch.node_id)
+            except V2PersistenceError:
+                continue
+            if (
+                node.creative_role != "storyboard_sequence"
+                or node.prompt_preparation.operation_id != dispatch.operation_id
+            ):
+                continue
+            self._prompt_preparation_dispatches.requeue_failed_for_recovery(
+                dispatch.dispatch_id,
+                next_attempt_at=now,
+                now=now,
+                node_revision=dispatch.node_revision,
+                operation_id=dispatch.operation_id,
+                context_digest=dispatch.context_digest,
+                source_snapshot=dispatch.source_snapshot or None,
+            )
+            recovered = True
+        return recovered
 
     def _brand_journey_for_workflow(self, workflow_id: str) -> BrandJourneyStateV1 | None:
         project_id = self._brand_decisions.project_id_for_workflow(workflow_id)

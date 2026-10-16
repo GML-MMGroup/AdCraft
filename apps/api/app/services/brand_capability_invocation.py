@@ -464,7 +464,9 @@ class BrandCapabilityInvocationService:
                     output_model=BrandStrategyOutputV1,
                     trace_metadata={"workflow_id": product_context.workflow_id},
                     validation_profile=(
-                        "brand_form_supplemental_novelty_v1" if supplemental else None
+                        "brand_form_supplemental_novelty_v1"
+                        if supplemental
+                        else "brand_form_slots_v1"
                     ),
                     validation_context=(
                         {
@@ -476,7 +478,9 @@ class BrandCapabilityInvocationService:
                             "minimum_new_options": 2,
                         }
                         if supplemental
-                        else {}
+                        else {
+                            "expected_slot_ids": [slot.slot_id for slot in expected_slots],
+                        }
                     ),
                 )
 
@@ -498,6 +502,8 @@ class BrandCapabilityInvocationService:
                 stage="brand_capability_invocation",
             ) from error
         locale = self._workflow_response_locale(brand_id)
+        is_zh = locale.lower().startswith("zh")
+        custom_option_label = "其他（自定义）" if is_zh else "Other (custom)"
         try:
             rows = tuple(
                 BrandFormRowV1(
@@ -516,7 +522,7 @@ class BrandCapabilityInvocationService:
                         ),
                         (previous_options_by_slot or {}).get(slot.slot_id, ()),
                     )
-                    + (BrandFormOptionV1(option_id="custom", label="Other (custom)"),),
+                    + (BrandFormOptionV1(option_id="custom", label=custom_option_label),),
                     custom_option_id="custom",
                     required=True,
                 )
@@ -532,6 +538,18 @@ class BrandCapabilityInvocationService:
         if requested_slot_ids is not None:
             identity = round_id or ",".join(slot.slot_id for slot in expected_slots)
             suffix = f"more_{sha256(identity.encode()).hexdigest()[:16]}"
+        if is_zh:
+            instructions = (
+                "每个问题请选择一个选项。选择“其他（自定义）”可填写自己的答案。"
+                if requested_slot_ids is None
+                else "请对比已有和新增方案，为每个问题选择一个选项。选择“其他（自定义）”可要求更多方案或填写自己的答案。"
+            )
+        else:
+            instructions = (
+                "Choose one option for every row. Select Other (custom) to enter your own answer."
+                if requested_slot_ids is None
+                else "Compare the existing and new options, then choose one option for every row. Select Other (custom) to request more options or enter your own answer."
+            )
         return BrandFormV1(
             form_id=f"brand_form_{brand_id}_{stage}_{journey.stage_revision}_{suffix}",
             stage=stage,
@@ -539,11 +557,7 @@ class BrandCapabilityInvocationService:
             response_locale=locale,
             context_digest=product_context.digest,
             title="Brand Memory" if stage == "brand-memory" else "Campaign",
-            instructions=(
-                "Choose one option for every row. Select Other (custom) to enter your own answer."
-                if requested_slot_ids is None
-                else "Compare the existing and new options, then choose one option for every row. Select Other (custom) to request more options or enter your own answer."
-            ),
+            instructions=instructions,
             rows=rows,
         )
 
@@ -973,7 +987,14 @@ class BrandCapabilityInvocationService:
         journey = self._repository.get_journey(brand_id)
         if journey is None or journey.stage != "hypothesis":
             raise _stage_mismatch()
-        candidates = self.run_hypotheses(brand_id, model_id=model_id, output=output)
+        self.run_hypotheses(brand_id, model_id=model_id, output=output)
+        # ``run_hypotheses`` persists the model candidates before returning.
+        # The repository is the authority for the IDs shown to the user: a
+        # provider may emit IDs that are normalized or namespaced during the
+        # durable write.  Re-read the persisted rows so the card option IDs
+        # are exactly the IDs accepted by ``select-hypothesis``.
+        with self._database.engine.connect() as connection:
+            candidates = self._repository.get_hypotheses_in_transaction(connection, brand_id)
         card = BrandOptionCardV1(
             card_id=f"hypothesis_candidates_{journey.stage_revision}",
             stage="hypothesis",
@@ -990,6 +1011,11 @@ class BrandCapabilityInvocationService:
             ),
         )
         _validate_card(card, "hypothesis")
+        # Keep the generated hypothesis card in the same authoritative card
+        # store as the later Brand stages.  This makes refreshes and concurrent
+        # next-question requests reuse the exact persisted option IDs.
+        with self._database.engine.begin() as connection:
+            self._repository.save_option_card_in_transaction(connection, brand_id, card)
         return card
 
     def _hypothesis_question(self, brand_id: str) -> str:

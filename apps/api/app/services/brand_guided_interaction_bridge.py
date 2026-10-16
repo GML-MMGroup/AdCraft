@@ -60,6 +60,16 @@ class BrandFormGenerationClaim:
     form_json: str | None = None
 
 
+@dataclass(frozen=True)
+class BrandCardGenerationClaim:
+    """Durable single-flight claim for a non-form Brand option card."""
+
+    generation_key: str
+    role: Literal["owner", "wait", "ready"]
+    lease_token: str | None = None
+    card_json: str | None = None
+
+
 class BrandGuidedInteractionBridge:
     """Write durable guided interactions so brand cards render in the chat."""
 
@@ -278,6 +288,162 @@ class BrandGuidedInteractionBridge:
             time.sleep(0.05)
         return None
 
+    @staticmethod
+    def _card_generation_key(workflow_id: str, stage: str, stage_revision: int) -> str:
+        return f"{workflow_id}:card:{stage}:{stage_revision}"
+
+    def claim_card_generation(
+        self,
+        workflow_id: str,
+        stage: Literal["hypothesis", "adspec", "skill-stack", "treatment"],
+        stage_revision: int,
+        *,
+        lease_seconds: int = 300,
+    ) -> BrandCardGenerationClaim:
+        """Claim one non-form card generation so concurrent callers share it."""
+
+        generation_key = self._card_generation_key(workflow_id, stage, stage_revision)
+        now = int(time.time())
+        now_iso = _now_iso()
+        lease_token = uuid4().hex
+        with self._database.engine.begin() as connection:
+            existing = (
+                connection.execute(
+                    select(BrandFormGenerationLeaseRow).where(
+                        BrandFormGenerationLeaseRow.generation_key == generation_key
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is None:
+                connection.execute(
+                    sqlite_insert(BrandFormGenerationLeaseRow)
+                    .values(
+                        generation_key=generation_key,
+                        workflow_id=workflow_id,
+                        stage=stage,
+                        stage_revision=stage_revision,
+                        status="generating",
+                        form_json=None,
+                        lease_token=lease_token,
+                        lease_until=now + lease_seconds,
+                        created_at=now_iso,
+                        updated_at=now_iso,
+                    )
+                    .on_conflict_do_nothing(index_elements=["generation_key"])
+                )
+                inserted = connection.execute(
+                    select(BrandFormGenerationLeaseRow.lease_token).where(
+                        BrandFormGenerationLeaseRow.generation_key == generation_key
+                    )
+                ).scalar_one()
+                if str(inserted) == lease_token:
+                    return BrandCardGenerationClaim(generation_key, "owner", lease_token)
+                existing = (
+                    connection.execute(
+                        select(BrandFormGenerationLeaseRow).where(
+                            BrandFormGenerationLeaseRow.generation_key == generation_key
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+            if str(existing["status"]) == "published":
+                return BrandCardGenerationClaim(
+                    generation_key,
+                    "ready",
+                    card_json=str(existing["form_json"] or ""),
+                )
+            if int(existing["lease_until"]) <= now:
+                replaced = connection.execute(
+                    update(BrandFormGenerationLeaseRow)
+                    .where(
+                        BrandFormGenerationLeaseRow.generation_key == generation_key,
+                        BrandFormGenerationLeaseRow.status == "generating",
+                        BrandFormGenerationLeaseRow.lease_until <= now,
+                    )
+                    .values(
+                        lease_token=lease_token,
+                        lease_until=now + lease_seconds,
+                        updated_at=now_iso,
+                    )
+                )
+                if replaced.rowcount == 1:
+                    return BrandCardGenerationClaim(generation_key, "owner", lease_token)
+            return BrandCardGenerationClaim(generation_key, "wait")
+
+    def publish_card_generation(
+        self,
+        claim: BrandCardGenerationClaim,
+        card: BrandOptionCardV1,
+    ) -> None:
+        """Publish one generated card only for the current lease owner."""
+
+        if claim.role != "owner" or claim.lease_token is None:
+            raise ValueError("Only the generation owner can publish a card.")
+        with self._database.engine.begin() as connection:
+            connection.execute(
+                update(BrandFormGenerationLeaseRow)
+                .where(
+                    BrandFormGenerationLeaseRow.generation_key == claim.generation_key,
+                    BrandFormGenerationLeaseRow.status == "generating",
+                    BrandFormGenerationLeaseRow.lease_token == claim.lease_token,
+                )
+                .values(
+                    status="published",
+                    form_json=card.model_dump_json(),
+                    lease_until=0,
+                    updated_at=_now_iso(),
+                )
+            )
+
+    def release_card_generation(self, claim: BrandCardGenerationClaim) -> None:
+        """Release a failed card generation for a subsequent retry."""
+
+        if claim.role != "owner" or claim.lease_token is None:
+            return
+        with self._database.engine.begin() as connection:
+            connection.execute(
+                delete(BrandFormGenerationLeaseRow).where(
+                    BrandFormGenerationLeaseRow.generation_key == claim.generation_key,
+                    BrandFormGenerationLeaseRow.status == "generating",
+                    BrandFormGenerationLeaseRow.lease_token == claim.lease_token,
+                )
+            )
+
+    def wait_for_card_generation(
+        self,
+        claim: BrandCardGenerationClaim,
+        *,
+        timeout_seconds: float = 300.0,
+    ) -> BrandOptionCardV1 | None:
+        """Wait for a card published by another generation owner."""
+
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(
+                            BrandFormGenerationLeaseRow.status,
+                            BrandFormGenerationLeaseRow.form_json,
+                            BrandFormGenerationLeaseRow.lease_until,
+                        ).where(BrandFormGenerationLeaseRow.generation_key == claim.generation_key)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            if row is None or int(row["lease_until"]) <= int(time.time()):
+                return None
+            if str(row["status"]) == "published" and row["form_json"]:
+                try:
+                    return BrandOptionCardV1.model_validate_json(str(row["form_json"]))
+                except ValueError:
+                    return None
+            time.sleep(0.05)
+        return None
+
     def ensure_session(self, workflow_id: str, response_locale: str) -> str:
         """Create or return the brand guidance session for one workflow."""
 
@@ -314,7 +480,8 @@ class BrandGuidedInteractionBridge:
                 return str(existing)
             session_id = f"guidance_{uuid4().hex}"
             connection.execute(
-                AgentCanvasGuidanceSessionRow.__table__.insert().values(
+                sqlite_insert(AgentCanvasGuidanceSessionRow)
+                .values(
                     session_id=session_id,
                     workflow_id=workflow_id,
                     status="active",
@@ -333,8 +500,14 @@ class BrandGuidedInteractionBridge:
                     created_at=now,
                     updated_at=now,
                 )
+                .on_conflict_do_nothing(index_elements=["workflow_id"])
             )
-            return session_id
+            persisted_session_id = connection.execute(
+                select(AgentCanvasGuidanceSessionRow.session_id).where(
+                    AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                )
+            ).scalar_one()
+            return str(persisted_session_id)
 
     def publish_card_interaction(
         self,
@@ -455,24 +628,35 @@ class BrandGuidedInteractionBridge:
                     )
                 )
             else:
-                connection.execute(
-                    AgentCanvasGuidedInteractionRow.__table__.update()
-                    .where(
-                        AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
-                        AgentCanvasGuidedInteractionRow.status == "open",
-                    )
-                    .values(status="superseded", updated_at=now_iso)
-                )
-                connection.execute(
-                    AgentCanvasGuidedInteractionRow.__table__.insert().values(
+                inserted = connection.execute(
+                    sqlite_insert(AgentCanvasGuidedInteractionRow)
+                    .values(
                         interaction_id=interaction_id,
                         **interaction_values,
                         revision=1,
                         created_at=now_iso,
                     )
+                    .on_conflict_do_nothing(index_elements=["interaction_id"])
                 )
+                # Insert the deterministic interaction before superseding any
+                # prior card.  A concurrent publisher may have observed no
+                # row before this transaction committed; only the publisher
+                # that actually inserted the row may supersede the previous
+                # open card, otherwise it could supersede the winner and then
+                # lose its own insert to the conflict, leaving no open card.
+                if inserted.rowcount == 1:
+                    connection.execute(
+                        AgentCanvasGuidedInteractionRow.__table__.update()
+                        .where(
+                            AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                            AgentCanvasGuidedInteractionRow.status == "open",
+                            AgentCanvasGuidedInteractionRow.interaction_id != interaction_id,
+                        )
+                        .values(status="superseded", updated_at=now_iso)
+                    )
             connection.execute(
-                AgentCanvasGuidanceAwaitingRow.__table__.insert().values(
+                sqlite_insert(AgentCanvasGuidanceAwaitingRow)
+                .values(
                     awaiting_id=awaiting.awaiting_id,
                     workflow_id=awaiting.workflow_id,
                     session_id=awaiting.session_id,
@@ -486,6 +670,7 @@ class BrandGuidedInteractionBridge:
                     stage_revision=awaiting.stage_revision,
                     created_at=awaiting.created_at.isoformat(),
                 )
+                .on_conflict_do_nothing(index_elements=["awaiting_id"])
             )
 
     def publish_form_interaction(

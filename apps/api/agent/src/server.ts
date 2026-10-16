@@ -64,6 +64,9 @@ const safeAdapterErrorCodes = new Set([
   "agent_model_policy_mismatch",
   "agent_model_unavailable",
   "agent_operation_not_allowed",
+  "agent_optional_skill_not_allowed",
+  "agent_prompt_contract_mismatch",
+  "agent_prompt_not_found",
   "agent_structured_output_invalid",
   "agent_contract_validation_failed",
   "agent_provider_timeout",
@@ -72,6 +75,9 @@ const safeAdapterErrorCodes = new Set([
   "agent_run_budget_exceeded",
   "agent_tool_not_allowed",
   "agent_target_revision_conflict",
+  "agent_protocol_mismatch",
+  "agent_required_skill_missing",
+  "agent_skill_context_budget_exceeded",
   "provider_credentials_invalid",
   "provider_credentials_missing",
 ]);
@@ -82,9 +88,15 @@ const preSubmissionFailureCodes = new Set([
   "agent_model_policy_mismatch",
   "agent_model_unavailable",
   "agent_operation_not_allowed",
+  "agent_optional_skill_not_allowed",
+  "agent_prompt_contract_mismatch",
+  "agent_prompt_not_found",
   "agent_prompt_input_registry_invalid",
+  "agent_protocol_mismatch",
   "provider_credentials_invalid",
   "provider_credentials_missing",
+  "agent_required_skill_missing",
+  "agent_skill_context_budget_exceeded",
 ]);
 const structuredFailureCodes = new Set([
   "agent_contract_validation_failed",
@@ -104,7 +116,13 @@ const safeFailureMessages: Readonly<Record<string, string>> = {
   agent_model_policy_mismatch: "Agent model policy rejected this operation.",
   agent_model_unavailable: "Agent model is unavailable.",
   agent_operation_not_allowed: "Agent operation is not allowed.",
+  agent_optional_skill_not_allowed: "Agent optional Skill selection is not allowed.",
+  agent_prompt_contract_mismatch: "Agent prompt contract does not match the operation.",
+  agent_prompt_not_found: "Agent prompt is unavailable for this operation.",
   agent_prompt_input_registry_invalid: "Agent Prompt input registry is invalid.",
+  agent_protocol_mismatch: "Agent runtime protocol is incompatible.",
+  agent_required_skill_missing: "Agent required Skill is unavailable.",
+  agent_skill_context_budget_exceeded: "Agent Skill context exceeds its safe budget.",
   agent_provider_timeout: "Agent provider request timed out.",
   agent_provider_transport_failed: "Agent provider transport failed.",
   agent_provider_insufficient_balance: PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
@@ -308,6 +326,7 @@ async function handleRun(
       logStructuredRejectionDiagnostic(request, failure);
       logTerminalProviderDiagnostic(request, failure);
       logPromptProjectionDiagnostic(request, failure);
+      logRuntimeFailureDiagnostic(request, error, failure);
       const terminal = terminalForFailure(active.abortCause, failure);
       await emit(
         event(request, 0, terminal.eventType, {
@@ -627,6 +646,25 @@ function logPromptProjectionDiagnostic(
       stable_error_code: failure.code,
       attempt_stage: failure.attemptStage,
       retryable: false,
+    }),
+  );
+}
+
+function logRuntimeFailureDiagnostic(
+  request: AgentRunRequest,
+  error: unknown,
+  failure: RuntimeFailure | undefined,
+): void {
+  if (failure !== undefined) return;
+  const candidate = error instanceof Error ? error : undefined;
+  console.error(
+    JSON.stringify({
+      event: "agent_runtime_unclassified_failure",
+      run_id: request.run_id,
+      agent_name: request.agent_name,
+      operation: request.operation,
+      safe_exception_class: candidate?.constructor.name ?? "UnknownError",
+      safe_error_code: candidate?.message?.slice(0, 120) ?? "unknown_error",
     }),
   );
 }

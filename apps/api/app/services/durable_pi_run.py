@@ -425,16 +425,23 @@ class DurablePiRunService:
                 )
             raise safe_error from error
         except Exception as error:
+            internal_details: dict[str, Any] = {
+                "attempt_stage": "runtime_processing",
+                "failure_boundary": "runtime_internal",
+            }
+            exception_class = type(error).__name__
+            if exception_class:
+                internal_details["safe_exception_class"] = exception_class[:160]
+            error_code = getattr(error, "code", None)
+            if isinstance(error_code, str) and error_code:
+                internal_details["safe_error_code"] = error_code[:120]
             safe_error = _normalized_runtime_error(
                 request,
                 PiAgentRuntimeError(
                     "agent_runtime_unavailable",
                     _safe_error_message_for_code("agent_runtime_unavailable"),
                     retryable=True,
-                    details={
-                        "attempt_stage": "runtime_processing",
-                        "failure_boundary": "runtime_internal",
-                    },
+                    details=internal_details,
                 ),
             )
             if owns_lease:

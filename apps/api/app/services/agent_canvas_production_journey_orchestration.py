@@ -8,6 +8,9 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_guided_interaction_repository import (
     AgentCanvasGuidedInteractionRepository,
 )
+from app.persistence.agent_canvas_continuation_repository import (
+    AgentCanvasContinuationOutboxRepository,
+)
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -54,6 +57,10 @@ class GuidedProductionJourneyService:
         self._policy = policy or GuidedProductionJourneyPolicyService()
         self._awaiting = awaiting
         self._requirements = AgentCanvasRequirementRepository(conversations.database)
+        self._continuations = AgentCanvasContinuationOutboxRepository(
+            conversations.database,
+            conversations.events,
+        )
         self._duration_authority = GuidedDurationAuthorityPolicy()
         self._character_authority = GuidedCharacterAuthorityPolicy()
 
@@ -171,6 +178,52 @@ class GuidedProductionJourneyService:
                 details={"retryable": False, "user_action": "none"},
             )
         active_action = session.journey.active_action
+        released_failed_action = False
+        if (
+            active_action is not None
+            and active_action.status == "reserved"
+            and active_action.turn_id is not None
+        ):
+            prior_turn = None
+            try:
+                prior_turn = self._conversations.get_turn(active_action.turn_id)
+            except V2PersistenceError as error:
+                # A reserved editing action can predate its typed source turn
+                # (for example after a process crash).  In that case the
+                # action is still replayable; only a persisted failed source
+                # turn should release it.
+                if error.code != "chat_turn_not_found":
+                    raise
+            continuation = self._continuations.get_for_source_turn(active_action.turn_id)
+            capability_failed = continuation is not None and continuation.status == "failed"
+            if (prior_turn is not None and prior_turn.status == "failed") or capability_failed:
+                session = self._conversations.replace_guidance_journey(
+                    session.session_id,
+                    journey=session.journey.model_copy(
+                        update={
+                            # A failed capability has already passed the
+                            # Product source checkpoint.  Keep the stage
+                            # working so a subsequent continuation retries the
+                            # capability instead of reopening the closed
+                            # source interaction.  A failed source/next-action
+                            # turn still returns to ready and may be replayed.
+                            "stage_status": "working" if capability_failed else "ready",
+                            "active_action": None,
+                        }
+                    ),
+                    expected_session_revision=expected_session_revision,
+                    idempotency_key=f"{idempotency_key}:release-failed-action",
+                    event_type="journey_action_released",
+                    event_payload={
+                        "action_id": active_action.action_id,
+                        "turn_id": active_action.turn_id,
+                        "reason": "source_turn_failed",
+                        "continuation_status": continuation.status if continuation else None,
+                    },
+                )
+                expected_session_revision = session.revision
+                active_action = None
+                released_failed_action = True
         if (
             session.journey.stage == "editing"
             and active_action is not None
@@ -182,7 +235,7 @@ class GuidedProductionJourneyService:
                 expected_stage_revision=active_action.stage_revision,
                 requires_model_call=False,
             )
-        if session.journey.stage == "product":
+        if session.journey.stage == "product" and not released_failed_action:
             entered = self._ensure_product_source_stage_entry(
                 session,
                 turn_id=turn_id,
@@ -304,6 +357,10 @@ class GuidedProductionJourneyService:
             self._conversations.database,
             self._conversations.events,
         )
+        if interactions.has_product_source_submission(session.workflow_id, input_kind="main"):
+            # The source choice is immutable and has already been applied.
+            # Capability recovery must resume Product authoring directly.
+            return None
         interactions.open_product_source_with_journey(
             session.workflow_id,
             source_turn_id=turn_id,

@@ -111,6 +111,12 @@ _ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
         "plot progression",
         "active character",
     ),
+    "video_segment": (
+        "background music",
+        "bgm",
+        "soundtrack",
+        "music",
+    ),
 }
 _SCENE_CONFLICT_CATEGORIES = {
     "character": "positive_character",

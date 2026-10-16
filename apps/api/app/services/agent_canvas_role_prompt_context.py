@@ -301,6 +301,11 @@ class RolePromptContextProjector:
             character_phase=character_phase,
             character_identity_projection=character_identity_projection,
             scene_environment_projection=scene_environment_projection,
+            scene_projection_required=not (
+                role_variant == "scene_board"
+                and scene_environment_projection is None
+                and allow_uninitialized_scene
+            ),
             requirement_facts=projected_requirements,
             document_revisions=document_revisions,
             selected_direction=selected_direction,

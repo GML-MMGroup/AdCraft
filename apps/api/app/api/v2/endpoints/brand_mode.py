@@ -258,30 +258,79 @@ def post_next_question(
             bridge.close_current_interaction(workflow_id, status="superseded")
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         existing_card = BrandQuestionState(database).current_card(brand_id)
-        if existing_card is not None and existing_card.stage == journey.stage:
-            card = existing_card
-        elif journey.stage == "hypothesis":
-            card = service.run_hypothesis_question(brand_id)
-        elif journey.stage == "treatment":
-            service.run_treatment_step(brand_id)
-            # ``run_treatment_step`` persists the authoritative option card
-            # (including its collision-safe ID). Reuse that card for the
-            # guided interaction so submitting the interaction resolves the
-            # same card instead of a transient projection ID.
-            card = service._repository.get_open_card(brand_id)
-            if card is None:
-                raise V2PersistenceError(
-                    "brand_option_card_invalid",
-                    "Treatment step did not persist an option card.",
-                )
-        elif journey.stage == "adspec":
-            card = service.run_adspec_question(brand_id)
-        elif journey.stage == "skill-stack":
-            card = service.run_skill_stack_question(brand_id)
-        else:
-            raise V2PersistenceError(
-                "brand_stage_action_mismatch", "No question is available for this stage."
+        card = (
+            existing_card
+            if existing_card is not None and existing_card.stage == journey.stage
+            else None
+        )
+        card_claim = None
+        if card is None and journey.stage in {"hypothesis", "adspec", "skill-stack", "treatment"}:
+            card_claim = bridge.claim_card_generation(
+                workflow_id,
+                journey.stage,
+                journey.stage_revision,
             )
+            if card_claim.role == "ready":
+                try:
+                    card = BrandOptionCardV1.model_validate_json(card_claim.card_json or "")
+                except ValueError as error:
+                    raise V2PersistenceError(
+                        "brand_option_card_invalid",
+                        "Published Brand option card could not be read.",
+                    ) from error
+            elif card_claim.role == "wait":
+                card = bridge.wait_for_card_generation(card_claim)
+                if card is None:
+                    # The previous owner failed or its lease expired. Reclaim
+                    # before considering another model call.
+                    card_claim = bridge.claim_card_generation(
+                        workflow_id,
+                        journey.stage,
+                        journey.stage_revision,
+                    )
+                    if card_claim.role == "ready":
+                        try:
+                            card = BrandOptionCardV1.model_validate_json(card_claim.card_json or "")
+                        except ValueError as error:
+                            raise V2PersistenceError(
+                                "brand_option_card_invalid",
+                                "Published Brand option card could not be read.",
+                            ) from error
+                    elif card_claim.role != "owner":
+                        raise V2PersistenceError(
+                            "brand_form_generation_in_progress",
+                            "Brand option card generation is still in progress.",
+                        )
+        if card is None:
+            try:
+                if journey.stage == "hypothesis":
+                    card = service.run_hypothesis_question(brand_id)
+                elif journey.stage == "treatment":
+                    service.run_treatment_step(brand_id)
+                    # ``run_treatment_step`` persists the authoritative option card
+                    # (including its collision-safe ID). Reuse that card for the
+                    # guided interaction so submitting the interaction resolves
+                    # the same card instead of a transient projection ID.
+                    card = service._repository.get_open_card(brand_id)
+                    if card is None:
+                        raise V2PersistenceError(
+                            "brand_option_card_invalid",
+                            "Treatment step did not persist an option card.",
+                        )
+                elif journey.stage == "adspec":
+                    card = service.run_adspec_question(brand_id)
+                elif journey.stage == "skill-stack":
+                    card = service.run_skill_stack_question(brand_id)
+                else:
+                    raise V2PersistenceError(
+                        "brand_stage_action_mismatch", "No question is available for this stage."
+                    )
+                if card_claim is not None and card_claim.role == "owner":
+                    bridge.publish_card_generation(card_claim, card)
+            except Exception:
+                if card_claim is not None and card_claim.role == "owner":
+                    bridge.release_card_generation(card_claim)
+                raise
         bridge.publish_card_interaction(workflow_id, card, locale)
         return card
     except StructuredGenerationRuntimeError as error:

@@ -41,6 +41,11 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
 }
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
 _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
+# A hypothesis batch contains three rich candidates.  Keeping this operation
+# on the routing deadline is appropriate for its bounded decision step, but
+# the generic routing output ceiling truncates the required candidate fields
+# before the structured validator can inspect them.
+_BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
 _ROUTING_OPERATIONS = {
     "brand_hypothesis",
     "brand_slot_form",
@@ -185,6 +190,8 @@ class AgentOperationPolicyRegistryV2:
         budget = (
             _BRAND_FORM_BUDGET
             if operation == "brand_slot_form"
+            else _BRAND_HYPOTHESIS_BUDGET
+            if operation == "brand_hypothesis"
             else _BRAND_SLOT_BUDGET
             if operation == "brand_slot_question"
             else self._budgets[policy_class]

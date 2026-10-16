@@ -116,6 +116,7 @@ class PiAgentRuntimeClient:
         terminal: AgentRuntimeEvent | None = None
         runtime_response_received = False
         runtime_stream_accepted = False
+        runtime_error_body: bytes | None = None
         try:
             timeout_seconds = self._request_timeout_seconds(request)
             with self._client.stream(
@@ -130,6 +131,15 @@ class PiAgentRuntimeClient:
                 timeout=timeout_seconds,
             ) as response:
                 runtime_response_received = True
+                if response.is_error:
+                    # A streamed error response is closed by HTTPX when the
+                    # status exception is raised. Read its bounded body first
+                    # so the safe error code remains available to the audit.
+                    try:
+                        response.read()
+                        runtime_error_body = response.content[:4_096]
+                    except httpx.HTTPError:
+                        pass
                 response.raise_for_status()
                 runtime_stream_accepted = True
                 for line in response.iter_lines():
@@ -168,6 +178,25 @@ class PiAgentRuntimeClient:
                             on_presentation(presentation)
         except PiAgentRuntimeError:
             raise
+        except httpx.HTTPStatusError as error:
+            if terminal_count == 1 and terminal is not None:
+                return PiAgentRunOutcome(terminal_event=terminal, last_seq=last_seq)
+            raise PiAgentRuntimeError(
+                "agent_runtime_unavailable",
+                "Agent runtime is unavailable.",
+                retryable=True,
+                details=_runtime_unavailable_details(
+                    request,
+                    response_received=runtime_response_received,
+                    stream_accepted=runtime_stream_accepted,
+                    last_event_seq=last_seq,
+                    http_status=error.response.status_code,
+                    response_code=_safe_runtime_response_code(
+                        error.response,
+                        body=runtime_error_body,
+                    ),
+                ),
+            ) from error
         except (httpx.HTTPError, OSError) as error:
             if terminal_count == 1 and terminal is not None:
                 return PiAgentRunOutcome(terminal_event=terminal, last_seq=last_seq)
@@ -239,6 +268,8 @@ def _runtime_unavailable_details(
     response_received: bool,
     stream_accepted: bool,
     last_event_seq: int,
+    http_status: int | None = None,
+    response_code: str | None = None,
 ) -> dict[str, Any]:
     if not response_received:
         failure_boundary = "runtime_process"
@@ -260,4 +291,32 @@ def _runtime_unavailable_details(
                 "response_activity_observed": False,
             }
         )
+    if http_status is not None:
+        details["http_status"] = http_status
+    if response_code is not None:
+        details["response_code"] = response_code
     return details
+
+
+def _safe_runtime_response_code(
+    response: httpx.Response,
+    *,
+    body: bytes | None = None,
+) -> str | None:
+    """Return only a bounded, non-sensitive runtime error code."""
+
+    try:
+        if body is not None:
+            payload = json.loads(body.decode("utf-8"))
+        else:
+            if not response.is_stream_consumed and not response.is_closed:
+                response.read()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    code = payload.get("code")
+    if not isinstance(code, str) or not code:
+        return None
+    return code[:120]

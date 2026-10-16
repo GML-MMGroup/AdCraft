@@ -109,7 +109,10 @@ from app.schemas.agent_canvas_capabilities import (
 from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
+from app.schemas.agent_canvas_production_journey import (
+    GuidedProductionJourneyV2,
+    JourneyEvidenceV2,
+)
 from app.schemas.agent_canvas_guidance import (
     ContinuationTurnRetrySnapshotV1,
     GuidanceAdvanceAuthorityPlanV1,
@@ -133,6 +136,7 @@ from app.services.agent_canvas_user_presentation import build_presentation_metad
 from app.services.agent_canvas_production_journey import (
     CURRENT_GUIDED_JOURNEY_POLICY_REVISION,
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
+    GuidedProductionJourneyPolicyService,
     initial_production_journey,
     parse_production_journey,
 )
@@ -188,6 +192,160 @@ class AgentCanvasConversationRepository:
                 ).scalar_one_or_none()
                 is not None
             )
+
+    def record_post_commit_storyboard_failure(
+        self,
+        turn_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+        retryable: bool,
+    ) -> bool:
+        """Expose a failure that occurs after immutable Storyboard publication.
+
+        Storyboard materialization commits are intentionally terminal: the parent
+        selection Turn and accepted Proposal must remain completed even when a
+        derived prompt-preparation dispatch fails afterwards.  That terminal
+        rule used to make the failure invisible because ``fail_turn`` correctly
+        ignored the already-committed Turn.  Persist a separate Journey failure
+        and assistant timeline message so the user can see and retry the current
+        stage without rewriting the committed Draft or its provenance.
+        """
+
+        now = _now()
+        bounded_code = error_code[:160]
+        bounded_message = error_message[:2_048]
+        with self._database.engine.begin() as connection:
+            committed = (
+                connection.execute(
+                    select(
+                        AgentCanvasMaterializationCommitRow.materialization_id,
+                        AgentCanvasMaterializationCommitRow.workflow_id,
+                        AgentCanvasMaterializationCommitRow.proposal_id,
+                        AgentCanvasChatTurnRow.conversation_id,
+                        AgentCanvasGuidanceSessionRow.session_id,
+                        AgentCanvasGuidanceSessionRow.revision,
+                        AgentCanvasGuidanceSessionRow.journey_state_json,
+                    )
+                    .join(
+                        AgentCanvasConceptProposalRow,
+                        AgentCanvasConceptProposalRow.proposal_id
+                        == AgentCanvasMaterializationCommitRow.proposal_id,
+                    )
+                    .join(
+                        AgentCanvasChatTurnRow,
+                        AgentCanvasChatTurnRow.turn_id
+                        == AgentCanvasMaterializationCommitRow.action_turn_id,
+                    )
+                    .join(
+                        AgentCanvasGuidanceSessionRow,
+                        AgentCanvasGuidanceSessionRow.workflow_id
+                        == AgentCanvasMaterializationCommitRow.workflow_id,
+                    )
+                    .where(
+                        AgentCanvasMaterializationCommitRow.action_turn_id == turn_id,
+                        AgentCanvasConceptProposalRow.proposal_kind == "storyboard",
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if committed is None:
+                return False
+
+            journey = parse_production_journey(str(committed["journey_state_json"]))
+            evidence_id = f"post-commit-storyboard-failure:{turn_id}:{bounded_code}"
+            if any(item.evidence_id == evidence_id for item in journey.transition_evidence):
+                return True
+            evidence = JourneyEvidenceV2(
+                evidence_id=evidence_id,
+                evidence_kind="stage_failed",
+                source_id=str(committed["materialization_id"]),
+                stage=journey.stage,
+                stage_revision=journey.stage_revision,
+                actor="system",
+            )
+            next_journey = GuidedProductionJourneyPolicyService().apply_evidence(
+                journey,
+                evidence,
+                recorded_at=datetime.fromisoformat(now.replace("Z", "+00:00")),
+            )
+            updated = connection.execute(
+                update(AgentCanvasGuidanceSessionRow)
+                .where(
+                    AgentCanvasGuidanceSessionRow.session_id == committed["session_id"],
+                    AgentCanvasGuidanceSessionRow.revision == int(committed["revision"]),
+                )
+                .values(
+                    journey_state_json=next_journey.model_dump_json(),
+                    revision=AgentCanvasGuidanceSessionRow.revision + 1,
+                    updated_at=now,
+                )
+            )
+            if updated.rowcount != 1:
+                raise _error(
+                    "guidance_revision_conflict",
+                    "Guidance session changed while recording a Storyboard failure.",
+                )
+
+            turn = (
+                connection.execute(
+                    select(AgentCanvasChatTurnRow).where(AgentCanvasChatTurnRow.turn_id == turn_id)
+                )
+                .mappings()
+                .one()
+            )
+            actionable_failure = ActionableFailureV1(
+                failure_class="transient" if retryable else "deterministic",
+                retry_scope="turn" if retryable else "none",
+                user_action="retry" if retryable else "none",
+            )
+            assistant_message = (
+                "The committed Storyboard Draft is ready, but prompt preparation failed. "
+                "Retry the current stage after the Agent runtime is available."
+                if retryable
+                else "The committed Storyboard Draft is ready, but prompt preparation failed. "
+                "Review the failure details before continuing."
+            )
+            _publish_assistant_message_in_transaction(
+                connection,
+                events=self._events,
+                turn=turn,
+                assistant_message=assistant_message,
+                entry_id=f"msg_post_commit_storyboard_failure_{turn_id}",
+                metadata={
+                    "status": "failed",
+                    "error_code": bounded_code,
+                    "error_message": bounded_message,
+                    "retryable": retryable,
+                    "operation_stage": "prompt_preparation",
+                    "actionable_failure": actionable_failure.model_dump(mode="json"),
+                },
+                now=now,
+                publication_key=f"conversation:{turn_id}:post_commit_storyboard_failure",
+            )
+            self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=str(committed["workflow_id"]),
+                    conversation_id=str(committed["conversation_id"]),
+                    turn_id=turn_id,
+                    action_id=turn_id,
+                    event_type="journey_stage_failed",
+                    transition_key=evidence_id,
+                    created_at=now,
+                    payload={
+                        "materialization_id": str(committed["materialization_id"]),
+                        "proposal_id": str(committed["proposal_id"]),
+                        "stage": journey.stage,
+                        "stage_revision": journey.stage_revision,
+                        "error_code": bounded_code,
+                        "retryable": retryable,
+                        "evidence_id": evidence_id,
+                    },
+                ),
+            )
+        return True
 
     def get_guidance_session(self, workflow_id: str) -> GuidedSessionStateV2:
         session = self.get_guidance_session_or_none(workflow_id)
@@ -3534,6 +3692,97 @@ class AgentCanvasConversationRepository:
                         max_attempts=5,
                         now=timestamp,
                     )
+                    # Typed capability retries are created directly by the retry
+                    # repository rather than passing through CapabilityDispatchService.
+                    # Create the retry's expert activity in the same transaction so the
+                    # capability worker can publish a terminal result by turn_id.  A
+                    # missing activity here used to make a successful LLM retry fail
+                    # later with ``expert_activity_not_found``.
+                    if operation == "capability_command":
+                        source_activity = (
+                            connection.execute(
+                                select(AgentCanvasExpertActivityRow)
+                                .where(AgentCanvasExpertActivityRow.turn_id == source.turn_id)
+                                .order_by(AgentCanvasExpertActivityRow.created_at.asc())
+                            )
+                            .mappings()
+                            .first()
+                        )
+                        if source_activity is None:
+                            raise _error(
+                                "expert_activity_not_found",
+                                "Expert activity was not found.",
+                            )
+                        activity_id = _expert_activity_id(
+                            turn_id,
+                            str(source_activity["capability_id"]),
+                            str(source_activity["operation"]),
+                        )
+                        connection.execute(
+                            insert(AgentCanvasExpertActivityRow).values(
+                                activity_id=activity_id,
+                                turn_id=turn_id,
+                                workflow_id=source.workflow_id,
+                                capability_id=str(source_activity["capability_id"]),
+                                operation=str(source_activity["operation"]),
+                                status="working",
+                                display_name=str(source_activity["display_name"]),
+                                error_code=None,
+                                error_message=None,
+                                created_at=now,
+                                updated_at=now,
+                            )
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=source.workflow_id,
+                                conversation_id=source.conversation_id,
+                                turn_id=turn_id,
+                                event_type="expert_activity_started",
+                                transition_key=f"conversation:{turn_id}:expert_activity_started",
+                                created_at=now,
+                                payload={
+                                    "activity_id": activity_id,
+                                    "workflow_id": source.workflow_id,
+                                    "turn_id": turn_id,
+                                    "capability_id": str(source_activity["capability_id"]),
+                                    "operation": str(source_activity["operation"]),
+                                    "capability_display_name": str(source_activity["display_name"]),
+                                    "status": "working",
+                                    "conversation_id": source.conversation_id,
+                                    "created_at": now,
+                                    "retry_of_turn_id": source.turn_id,
+                                },
+                            ),
+                        )
+                        _append_timeline_entry(
+                            connection,
+                            conversation_id=source.conversation_id,
+                            workflow_id=source.workflow_id,
+                            entry_type="expert_activity",
+                            content=str(source_activity["display_name"]),
+                            metadata=build_presentation_metadata(
+                                message_key="expert_activity.working",
+                                message_args={
+                                    "capability_display_name": str(source_activity["display_name"])
+                                },
+                                response_locale=_guidance_response_locale(
+                                    connection, source.workflow_id
+                                ),
+                                presentation_key=f"activity:{activity_id}",
+                                base={
+                                    "activity_id": activity_id,
+                                    "turn_id": turn_id,
+                                    "capability_id": str(source_activity["capability_id"]),
+                                    "operation": str(source_activity["operation"]),
+                                    "capability_display_name": str(source_activity["display_name"]),
+                                    "status": "working",
+                                    "retry_of_turn_id": source.turn_id,
+                                },
+                            ),
+                            created_at=now,
+                        )
                     connection.commit()
                     return ChatTurnAcceptedV2(
                         workflow_id=source.workflow_id,

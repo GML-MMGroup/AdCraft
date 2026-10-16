@@ -144,6 +144,9 @@ class CapabilityMaterializationPublicationService:
         ) = None,
         reference_source_opener: Callable[..., object] | None = None,
         on_storyboard_authored: Callable[[MaterializationOutcomeV1], None] | None = None,
+        on_guided_materialization_completed: (
+            Callable[[ProposalApplicationEnvelopeV1, MaterializationOutcomeV1], object] | None
+        ) = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -187,6 +190,7 @@ class CapabilityMaterializationPublicationService:
         self._prompt_ready_activation = prompt_ready_activation
         self._reference_source_opener = reference_source_opener
         self._on_storyboard_authored = on_storyboard_authored
+        self._on_guided_materialization_completed = on_guided_materialization_completed
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
                 workflows,
@@ -287,6 +291,32 @@ class CapabilityMaterializationPublicationService:
             ),
             references=envelope.reference_plan.references,
         )
+        if envelope.capability_id == "storyboard_design":
+            # The role projector will apply the same role boundary again when
+            # the Node prompt is prepared.  Freeze the storyboard projection
+            # here as well so the durable Stage snapshot does not carry every
+            # product/character/scene section alongside the sequence excerpt.
+            storyboard_brand = project_brand_production_context(
+                frozen_prompt_context.brand_decisions,
+                role="storyboard",
+            )
+            if storyboard_brand is not None and storyboard_brand.review is not None:
+                # Findings are QA commentary already represented by the
+                # reviewed digest; production requirements remain in the
+                # snapshot.  Excluding repeated finding prose keeps the
+                # durable Stage payload within its ASCII-encoded bound.
+                storyboard_brand = storyboard_brand.model_copy(
+                    update={"review": storyboard_brand.review.model_copy(update={"findings": ()})}
+                )
+            frozen_prompt_context = frozen_prompt_context.model_copy(
+                update={
+                    "brand_decisions": storyboard_brand,
+                    # Storyboard consumes the plain style projection.  The
+                    # typed StyleGuidance object is only read by Scene prompt
+                    # projection and would duplicate the same guidance here.
+                    "style_guidance": None,
+                }
+            )
         if envelope.capability_id == "storyboard_design" and preview_bundle.nodes:
             first_node = preview_bundle.nodes[0]
             document_id = first_node.metadata.get("source_agent_document_id")
@@ -313,7 +343,7 @@ class CapabilityMaterializationPublicationService:
                 frozen_prompt_context = frozen_prompt_context.model_copy(
                     update={
                         "working_document_excerpts": (
-                            AgentWorkingDocumentService.bounded_context_from_document(
+                            AgentWorkingDocumentService.compact_storyboard_sequence_context_from_document(
                                 candidate, f"sequence:{sequence_id}"
                             ),
                         ),
@@ -1120,6 +1150,17 @@ class CapabilityMaterializationPublicationService:
                     lease_guard=lease_guard,
                     source_turn_id=continuation_source_turn_id,
                 )
+        # Parent-derived identity work advances the Journey only when the
+        # derivative commit is published.  Its materialization continuation
+        # intentionally owns prompt preparation, so there is no ordinary
+        # Next Action continuation in the derivative plan.  Dispatch the next
+        # guided action after all prompts are ready, otherwise the Journey
+        # remains in the successor stage with no proposal or awaiting card.
+        if (
+            envelope.operation_kind == "derivative"
+            and self._on_guided_materialization_completed is not None
+        ):
+            self._on_guided_materialization_completed(envelope, outcome)
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _prepare_progressive_storyboard_nodes(

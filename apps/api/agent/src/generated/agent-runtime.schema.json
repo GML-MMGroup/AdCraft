@@ -30148,6 +30148,11 @@
           ],
           "default": null
         },
+        "scene_projection_required": {
+          "default": true,
+          "title": "Scene Projection Required",
+          "type": "boolean"
+        },
         "selected_direction": {
           "anyOf": [
             {
@@ -30838,6 +30843,15 @@
           "minItems": 9,
           "title": "Panels",
           "type": "array"
+        },
+        "scene_asset_kind": {
+          "default": "main",
+          "enum": [
+            "main",
+            "multi_view"
+          ],
+          "title": "Scene Asset Kind",
+          "type": "string"
         },
         "scene_identity": {
           "maxLength": 4096,

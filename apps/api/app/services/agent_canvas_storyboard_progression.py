@@ -1410,13 +1410,10 @@ class ProgressiveStoryboardReadyService:
             created_at=now,
             updated_at=now,
         )
-        element_bindings = tuple(
-            binding
-            for binding in workflow.bindings
-            if binding.target_node_id == grid.node_id
-            and binding.metadata.get("storyboard_reference_purpose") != "sequence_visual_anchor"
-            and _grid_source_role(binding, {node.node_id: node for node in workflow.nodes})
-            in {"character_turnaround", "scene_board"}
+        element_bindings = _canonical_grid_reference_bindings(
+            workflow=workflow,
+            grid_node_id=grid.node_id,
+            exclude_visual_anchor=True,
         )
         bound_source_ids = {
             binding.source.source_node_id
@@ -1533,16 +1530,17 @@ def _later_grid_bindings(
 ) -> tuple[CanvasBindingV2, ...]:
     now = target.created_at
     nodes = {node.node_id: node for node in workflow.nodes}
-    copied: list[CanvasBindingV2] = []
-    source_roles: list[str] = []
+    candidates: list[tuple[int, CanvasBindingV2, str]] = []
     for binding in workflow.bindings:
         if binding.target_node_id != grid_one.node_id:
             continue
         source_role = _grid_source_role(binding, nodes)
         if source_role not in {"character_turnaround", "scene_board"}:
             continue
-        copied.append(binding)
-        source_roles.append(source_role)
+        candidates.append((len(candidates), binding, source_role))
+    copied = list(_select_canonical_singleton_bindings(candidates, nodes))
+    source_roles = [_grid_source_role(binding, nodes) for binding in copied]
+    source_roles = [role for role in source_roles if role is not None]
     self_policy = AgentCanvasRoleReferencePolicyService()
     self_policy.require(
         "storyboard_grid_n",
@@ -1579,6 +1577,99 @@ def _later_grid_bindings(
     return tuple(bindings)
 
 
+def _canonical_grid_reference_bindings(
+    *,
+    workflow,
+    grid_node_id: str,
+    exclude_visual_anchor: bool,
+) -> tuple[CanvasBindingV2, ...]:
+    """Return one authoritative binding for each singleton Grid reference role.
+
+    Older/real authoring paths can bind both a Scene Main node and its Scene
+    Multi-view derivative to Grid 1.  Both nodes are semantically
+    ``scene_board`` references, but the closed role policy permits one.  Keep
+    all character occurrences while selecting the preferred derivative for
+    singleton roles such as the scene board.
+    """
+
+    nodes = {node.node_id: node for node in workflow.nodes}
+    candidates: list[tuple[int, CanvasBindingV2, str]] = []
+    for index, binding in enumerate(workflow.bindings):
+        if binding.target_node_id != grid_node_id:
+            continue
+        if (
+            exclude_visual_anchor
+            and binding.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor"
+        ):
+            continue
+        source_role = _grid_source_role(binding, nodes)
+        if source_role in {"character_turnaround", "scene_board"}:
+            candidates.append((index, binding, source_role))
+    selected = _select_canonical_singleton_bindings(candidates, nodes)
+    return tuple(
+        binding
+        for binding in selected
+        if _grid_source_role(binding, nodes) in {"character_turnaround", "scene_board"}
+    )
+
+
+def _select_canonical_singleton_bindings(
+    candidates: list[tuple[int, CanvasBindingV2, str]],
+    nodes: dict[str, CanvasNodeV2],
+) -> tuple[CanvasBindingV2, ...]:
+    """Select singleton reference roles without dropping character occurrences."""
+
+    selected: list[tuple[int, CanvasBindingV2, str]] = []
+    seen_singletons: set[str] = set()
+    singleton_roles = {"scene_board"}
+    for index, binding, source_role in candidates:
+        if source_role not in singleton_roles:
+            selected.append((index, binding, source_role))
+            continue
+        existing_index = next(
+            (
+                position
+                for position, (_existing_index, _existing_binding, existing_role) in enumerate(
+                    selected
+                )
+                if existing_role == source_role
+            ),
+            None,
+        )
+        if existing_index is None:
+            selected.append((index, binding, source_role))
+            seen_singletons.add(source_role)
+            continue
+        _existing_index, existing_binding, _ = selected[existing_index]
+        existing_node = nodes.get(_binding_source_node_id(existing_binding))
+        candidate_node = nodes.get(_binding_source_node_id(binding))
+        if _is_preferred_reference_node(candidate_node) and not _is_preferred_reference_node(
+            existing_node
+        ):
+            selected[existing_index] = (index, binding, source_role)
+    selected.sort(key=lambda item: item[0])
+    return tuple(binding for _index, binding, _role in selected)
+
+
+def _binding_source_node_id(binding: CanvasBindingV2) -> str:
+    return (
+        binding.source.source_node_id
+        if binding.source.kind == "node_output"
+        else str(binding.source.node_id)
+    )
+
+
+def _is_preferred_reference_node(node: CanvasNodeV2 | None) -> bool:
+    if node is None:
+        return False
+    structured = node.structured_content
+    return bool(
+        structured.get("scene_asset_kind") == "multi_view"
+        or structured.get("asset_kind") == "multi_view"
+        or node.metadata.get("prepared_derivative_prompt") is not None
+    )
+
+
 def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) -> str | None:
     """Resolve only the role identity allowed to cross the guided Grid boundary."""
 
@@ -1607,6 +1698,7 @@ def _video_identity_nodes(workflow) -> tuple[tuple[str, object], ...]:
     """Return the canonical guided identity set in provider order."""
 
     selected: list[tuple[str, object]] = []
+    singleton_candidates: dict[str, tuple[int, object]] = {}
     for node in workflow.nodes:
         role = None
         if node.creative_role == "product" and (
@@ -1624,8 +1716,31 @@ def _video_identity_nodes(workflow) -> tuple[tuple[str, object], ...]:
         elif node.creative_role == "scene":
             role = "scene_board"
         if role is not None:
-            selected.append((role, node))
+            if role in {"product_multiview", "scene_board"}:
+                existing = singleton_candidates.get(role)
+                if existing is None or (
+                    _is_preferred_reference_node(node)
+                    and not _is_preferred_reference_node(existing[1])
+                ):
+                    singleton_candidates[role] = (len(selected), node)
+            else:
+                selected.append((role, node))
+    for role, (_position, node) in singleton_candidates.items():
+        selected.append((role, node))
+    selected.sort(key=lambda item: _video_identity_order(item[0], item[1], workflow))
     return tuple(selected)
+
+
+def _video_identity_order(role: str, node: object, workflow) -> tuple[int, str]:
+    """Keep provider reference order stable after singleton deduplication."""
+
+    order = {
+        "product_multiview": 0,
+        "prop": 1,
+        "character_turnaround": 2,
+        "scene_board": 3,
+    }
+    return (order.get(role, 99), getattr(node, "node_id", ""))
 
 
 def _video_semantic_reference_role(source_role: str) -> str:
