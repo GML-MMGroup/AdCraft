@@ -12,6 +12,8 @@ import {
   V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
   type V2AuthoringConflictResolution,
 } from "../api/v2AuthoringConflictEvents.ts";
+import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
+import { useLocale, localeText } from "../i18n/locale.tsx";
 
 const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; icon: ReactNode }> = [
   { route: "home", label: "Home", icon: <HomeIcon /> },
@@ -23,9 +25,12 @@ const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; i
 interface LayoutProps {
   children: ReactNode;
   workflowControls?: ReactNode;
+  workflowId?: string | null;
 }
 
-export function Layout({ children, workflowControls }: LayoutProps) {
+export function Layout({ children, workflowControls, workflowId }: LayoutProps) {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh : localeText.en;
   const [accountOpen, setAccountOpen] = useState(false);
   const [authoringConflict, setAuthoringConflict] = useState<V2AuthoringConflict | null>(() => v2AuthoringConflictStore.current());
   const [resolvingConflict, setResolvingConflict] = useState(false);
@@ -49,14 +54,14 @@ export function Layout({ children, workflowControls }: LayoutProps) {
             ? "partial"
             : "unconfigured";
   const badgeLabel = badgeState === "offline"
-    ? "Demo mode"
+    ? (locale === "zh-CN" ? "演示模式" : "Demo mode")
     : badgeState === "checking"
-      ? "Checking"
+      ? (locale === "zh-CN" ? "检查中" : "Checking")
       : badgeState === "online"
-        ? "API ready"
+        ? (locale === "zh-CN" ? "API 就绪" : "API ready")
         : badgeState === "partial"
-          ? `API config ${apiConfig?.configured.length ?? 0}/${(apiConfig?.configured.length ?? 0) + (apiConfig?.coreMissing.length ?? 0)}`
-          : "API not configured";
+          ? `${locale === "zh-CN" ? "API 配置" : "API config"} ${apiConfig?.configured.length ?? 0}/${(apiConfig?.configured.length ?? 0) + (apiConfig?.coreMissing.length ?? 0)}`
+          : (locale === "zh-CN" ? "API 未配置" : "API not configured");
   const badgeTitle = apiOnline === false || apiConfig === null
     ? apiMessage
     : [
@@ -96,20 +101,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
 
   return (
     <>
-      <nav className={`floating-rail${usesClearGlassRail ? " floating-rail--clear-glass" : ""}`} aria-label="Primary navigation">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.route}
-            className={({ isActive }) => `rail-item${usesClearGlassRail ? " clear-glass-control" : ""} ${isActive ? "is-active" : ""}`}
-            to={routePath(item.route)}
-            aria-label={item.label}
-            end={item.route === "home"}
-          >
-            <span className="rail-icon">{item.icon}</span>
-            <span className="tooltip">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <PrimaryNavigation clearGlass={usesClearGlassRail} />
 
       <div
         className={`app-shell${isWorkflowRoute ? " app-shell--workflow" : " app-shell--cosmic"}`}
@@ -139,23 +131,24 @@ export function Layout({ children, workflowControls }: LayoutProps) {
           ) : null}
           <div className="top-actions">
             {workflowControls}
+            <LanguageSwitcher workflowId={workflowId} />
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
-              <span>Tutorial</span>
+              <span>{labels.tutorial}</span>
             </Link>
             <button
               className="avatar-btn"
-              aria-label="Account menu"
+              aria-label={labels.account.menu}
               aria-expanded={accountOpen}
               onClick={() => setAccountOpen((value) => !value)}
             >
               A
             </button>
             <div className={`account-menu ${accountOpen ? "is-open" : ""}`}>
-              <Link to="/projects" onClick={closeAccountMenu}>All Projects</Link>
-              <Link to="/assets" onClick={closeAccountMenu}>My Assets</Link>
-              <Link to="/api-space" onClick={closeAccountMenu}>API Space</Link>
-              <button type="button" onClick={signOutDemo}>Sign Out</button>
+              <Link to="/projects" onClick={closeAccountMenu}>{labels.account.allProjects}</Link>
+              <Link to="/assets" onClick={closeAccountMenu}>{labels.account.myAssets}</Link>
+              <Link to="/api-space" onClick={closeAccountMenu}>{labels.account.apiSpace}</Link>
+              <button type="button" onClick={signOutDemo}>{labels.account.signOut}</button>
             </div>
           </div>
         </header>
@@ -176,11 +169,11 @@ export function LayoutRoute() {
   );
 }
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
+export function PageHeader({ title, subtitle, editorial = false }: { title: string; subtitle?: string; editorial?: boolean }) {
   return (
     <header className="page-header">
-      <h1 className="page-title">{title}</h1>
-      <p className="page-subtitle">{subtitle}</p>
+      <h1 className={`page-title${editorial ? " page-title--editorial" : ""}`}>{title}</h1>
+      {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
     </header>
   );
 }
@@ -199,4 +192,39 @@ export function EmptyState({ text }: { text: string }) {
 function routePath(route: Exclude<RouteName, "api-space">) {
   if (route === "home") return "/";
   return `/${route}`;
+}
+
+
+export function PrimaryNavigation({ clearGlass = true, placement = "global" }: {
+  clearGlass?: boolean;
+  placement?: "global" | "brand";
+}) {
+  const { locale } = useLocale();
+  const labels = locale === "zh-CN" ? localeText.zh : localeText.en;
+  const navLabels: Record<string, string> = {
+    home: labels.home,
+    projects: labels.projects,
+    assets: labels.assets,
+    trash: labels.trash,
+  };
+  const localizedItems = navItems.map((item) => ({
+    ...item,
+    label: navLabels[item.route] ?? item.label,
+  }));
+  return (
+<nav className={`floating-rail${placement === "brand" ? " floating-rail--brand" : " floating-rail--global"}${clearGlass ? " floating-rail--clear-glass" : ""}`} aria-label="Primary navigation">
+        {localizedItems.map((item) => (
+          <NavLink
+            key={item.route}
+            className={({ isActive }) => `rail-item${clearGlass ? " clear-glass-control" : ""} ${isActive ? "is-active" : ""}`}
+            to={routePath(item.route)}
+            aria-label={item.label}
+            end={item.route === "home"}
+          >
+            <span className="rail-icon">{item.icon}</span>
+            <span className="tooltip">{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+  );
 }

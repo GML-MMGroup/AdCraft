@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { PlusIcon, TrashIcon } from "../../../icons.tsx";
+import { PlusIcon, TrashIcon, UploadIcon } from "../../../icons.tsx";
 import type { CanvasPositionV2 } from "../../../types-v2.ts";
 import type { AgentCanvasVisibleNodeTypeV2 } from "../model/nodeDefaults.ts";
 import { AgentCanvasNodePicker } from "./AgentCanvasNodePicker.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 interface AgentCanvasContextMenuBaseProps {
   menuPosition: CanvasPositionV2;
@@ -15,11 +16,15 @@ type AgentCanvasContextMenuProps = AgentCanvasContextMenuBaseProps & (
   | {
     canvasPosition: CanvasPositionV2;
     onCreateNode: (nodeType: AgentCanvasVisibleNodeTypeV2, position: CanvasPositionV2) => void;
+    onUploadMedia?: (position: CanvasPositionV2) => void;
+    uploading?: boolean;
     onDeleteNode?: never;
   }
   | {
     canvasPosition?: never;
     onCreateNode?: never;
+    onUploadMedia?: never;
+    uploading?: never;
     onDeleteNode: () => void;
   }
 );
@@ -41,11 +46,14 @@ export function AgentCanvasContextMenu({
   canvasPosition,
   onCreateNode,
   onDeleteNode,
+  onUploadMedia,
+  uploading = false,
   onClose,
   onRelocate,
 }: AgentCanvasContextMenuProps) {
+  const t = useTranslation("en-US");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const menuHeight = pickerOpen ? NODE_PICKER_MENU_HEIGHT : ACTION_MENU_HEIGHT;
+  const menuHeight = pickerOpen ? NODE_PICKER_MENU_HEIGHT : ACTION_MENU_HEIGHT + (onUploadMedia ? 42 : 0);
   const boundedPosition = useMemo(
     () => boundedMenuPosition(menuPosition, menuHeight),
     [menuHeight, menuPosition],
@@ -64,7 +72,7 @@ export function AgentCanvasContextMenu({
       <button
         type="button"
         className="agent-canvas-context-menu__backdrop"
-        aria-label="Close canvas menu"
+        aria-label={t("Close canvas menu")}
         onClick={onClose}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -75,7 +83,7 @@ export function AgentCanvasContextMenu({
       <div
         className="agent-canvas-context-menu"
         role="menu"
-        aria-label="Canvas actions"
+        aria-label={t("Canvas actions")}
         style={{ left: boundedPosition.x, top: boundedPosition.y }}
         onContextMenu={(event) => event.preventDefault()}
       >
@@ -88,15 +96,16 @@ export function AgentCanvasContextMenu({
             onClick={onDeleteNode}
           >
             <TrashIcon />
-            <span>Delete node</span>
+            <span>{t("Delete node")}</span>
           </button>
         ) : pickerOpen && canvasPosition && onCreateNode ? (
           <AgentCanvasNodePicker
             className="agent-canvas-node-picker agent-canvas-context-menu__node-picker"
-            menuLabel="Add node types"
+            menuLabel={t("Add node types")}
             onSelect={(nodeType) => onCreateNode(nodeType, canvasPosition)}
           />
         ) : (
+          <>
           <button
             type="button"
             className="agent-canvas-context-menu__action"
@@ -105,8 +114,21 @@ export function AgentCanvasContextMenu({
             onClick={() => setPickerOpen(true)}
           >
             <PlusIcon />
-            <span>Add node</span>
+            <span>{t("Add node")}</span>
           </button>
+          {onUploadMedia && canvasPosition ? (
+            <button
+              type="button"
+              className="agent-canvas-context-menu__action"
+              role="menuitem"
+              disabled={uploading}
+              onClick={() => onUploadMedia(canvasPosition)}
+            >
+              <UploadIcon />
+              <span>{uploading ? t("Uploading…") : t("Upload image or video")}</span>
+            </button>
+          ) : null}
+          </>
         )}
       </div>
     </>

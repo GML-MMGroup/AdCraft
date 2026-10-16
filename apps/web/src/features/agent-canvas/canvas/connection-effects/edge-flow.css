@@ -1,0 +1,35 @@
+.canvas-edge-flow {
+  opacity: 0;
+  stroke-dasharray: 0 50;
+  transition: opacity 150ms cubic-bezier(.23, 1, .32, 1);
+  pointer-events: none;
+}
+.react-flow__edge:is(.is-node-related, .selected) .canvas-edge-flow { opacity: 1; }
+.canvas-edge-flow path {
+  fill: none;
+  stroke: var(--connection-color);
+  /* Zero-length separators align the layers' leading ends. Butt caps keep
+     those separators invisible instead of creating stray glowing dots. */
+  stroke-linecap: butt;
+}
+.canvas-edge-flow__aura { stroke-width: calc(12px / var(--edge-flow-zoom, 1)); stroke-opacity: .035; }
+.canvas-edge-flow__halo { stroke-width: calc(6px / var(--edge-flow-zoom, 1)); stroke-opacity: .1; }
+.canvas-edge-flow__trail--0 { stroke-width: calc(.7px / var(--edge-flow-zoom, 1)); stroke-opacity: .13; }
+.canvas-edge-flow__trail--1 { stroke-width: calc(.9px / var(--edge-flow-zoom, 1)); stroke-opacity: .16; }
+.canvas-edge-flow__trail--2 { stroke-width: calc(1.1px / var(--edge-flow-zoom, 1)); stroke-opacity: .2; }
+.canvas-edge-flow__trail--3 { stroke-width: calc(1.35px / var(--edge-flow-zoom, 1)); stroke-opacity: .25; }
+.canvas-edge-flow__trail--4 { stroke-width: calc(1.6px / var(--edge-flow-zoom, 1)); stroke-opacity: .34; }
+.canvas-edge-flow__trail--5 { stroke-width: calc(1.85px / var(--edge-flow-zoom, 1)); stroke-opacity: .55; }
+.canvas-edge-flow .canvas-edge-flow__core {
+  stroke: color-mix(in srgb, var(--connection-color) 45%, #fff);
+  stroke-width: calc(1.1px / var(--edge-flow-zoom, 1));
+  stroke-opacity: .85;
+}
+.canvas-edge-flow .canvas-edge-flow__highlight {
+  stroke: #fffaf2;
+  stroke-width: calc(1.9px / var(--edge-flow-zoom, 1));
+  stroke-opacity: .95;
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge:is(.is-node-related, .selected) .canvas-edge-flow { opacity: 0; transition: none; }
+}

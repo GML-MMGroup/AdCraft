@@ -4,6 +4,7 @@ import { agentCanvasApi } from "../../src/api/agentCanvasApi.ts";
 import { AgentCanvasChatPanel } from "../../src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx";
 import { projectRoleLifecycles } from "../../src/features/agent-canvas/chat/agent-role-animation/roleLifecycleProjection.ts";
 import { buildStageThreadTimeline } from "../../src/features/agent-canvas/chat/stageThreadProjection.ts";
+import { normalizeAgentCanvasChatTimelineV2 } from "../../src/features/agent-canvas/model/normalizers.ts";
 import type { AgentCanvasChatTurnV2, AgentCanvasChatViewTimelineV2, AgentCanvasWorkflowV2, CanvasNodeV2,
   CanvasRuntimeSnapshotV2, ChatProposalCardV2, ChatTimelineItemV2, GuidedSessionStateV2 } from "../../src/types-v2.ts";
 import "../../src/features/agent-canvas/chat/agent-canvas-chat.css";
@@ -84,16 +85,34 @@ function session(selected: Selection): GuidedSessionStateV2 {
 
 let timelineSession = session(selections[0]!);
 let fixtureTurns: Record<string, AgentCanvasChatTurnV2> = {};
-const items: ChatTimelineItemV2[] = selections.map(proposal);
+let items: ChatTimelineItemV2[] = [];
+const liveDetailRefresh = new URLSearchParams(location.search).has("live-detail-refresh");
 Object.assign(agentCanvasApi, Object.fromEntries(Object.keys(agentCanvasApi).map(key => [key,
   async () => { throw new Error(`API disabled in lifecycle fixture: ${key}`); }])));
 Object.assign(agentCanvasApi, {
   agentCanvasExecutionSettings: async () => ({ value: { workflow_id: "fixture-lifecycle", media_execution_mode: "manual",
     revision: 1, created_at: now, updated_at: now }, etag: '"fixture"' }),
   agentCanvasCreativeSession: async () => { throw new Error("No creative session in lifecycle fixture"); },
-  agentCanvasChatTimeline: async (): Promise<AgentCanvasChatViewTimelineV2> => ({ workflow_id: "fixture-lifecycle",
-    conversation_id: "fixture-conversation", guidanceSession: structuredClone(timelineSession), guidanceAdvancePrecondition: null,
-    continuations: [], current_session_actions: [], items: structuredClone(items), presentationItems: null, next_cursor: items.length }),
+  agentCanvasChatTimeline: async (): Promise<AgentCanvasChatViewTimelineV2> => {
+    const wireItems: ChatTimelineItemV2[] = liveDetailRefresh
+      ? items.filter(item => item.item_type !== "expert_activity").map((item, index) => item.item_type === "proposal"
+        ? { item_type: "proposal_pointer", proposal_id: item.proposal.proposal_id, sequence: index + 1, created_at: now }
+        : { ...structuredClone(item), sequence: index + 1 })
+      : structuredClone(items);
+    return { workflow_id: "fixture-lifecycle", conversation_id: "fixture-conversation",
+      guidanceSession: liveDetailRefresh ? null : structuredClone(timelineSession), guidanceAdvancePrecondition: null,
+      continuations: [], current_session_actions: [], items: wireItems,
+      // Deliberately immutable presentation identity, while detail changes live.
+      presentationItems: liveDetailRefresh ? wireItems.map((item, index) => ({
+        presentation_key: `live-detail-${index}`, presentation_revision: 1, source_entry_ids: [`entry-${index}`],
+        message_key: null, message_args: {}, response_locale: "en-US", item,
+      })) : null, next_cursor: wireItems.length };
+  },
+  agentCanvasProposal: async (_workflowId: string, proposalId: string) => {
+    const card = items.find(item => item.item_type === "proposal" && item.proposal.proposal_id === proposalId);
+    if (card?.item_type !== "proposal") throw new Error("Unknown fixture proposal");
+    return structuredClone(card.proposal);
+  },
   agentCanvasChatTurn: async (_workflowId: string, turnId: string) => structuredClone(fixtureTurns[turnId]!),
 } satisfies Partial<typeof agentCanvasApi>);
 
@@ -122,10 +141,47 @@ function LifecycleFixture() {
   timelineSession = session(selected);
   fixtureTurns = Object.fromEntries(selections.map(item => { const itemKey = `${item.occurrence}:${item.phase}`;
     return [`${item.occurrence}-${item.phase}-turn-1`, turn(`${item.occurrence}-${item.phase}-turn-1`, "completed", item, attempts[itemKey])]; }));
+  // Node/Prompt phases no longer drive role artwork. This fixture explicitly
+  // supplies the current role operation and its terminal evidence instead.
+  const currentProposal = proposal(selected, revision);
+  const materialization = currentProposal.proposal.materialization!;
+  materialization.attempt_no = attempts[key]!;
+  materialization.turn_id = `${selected.occurrence}-${selected.phase}-turn-${attempts[key]}`;
+  materialization.status = state === "succeeded" ? "completed" : state === "failed" ? "failed"
+    : state === "draft-waiting" ? "queued" : "working";
+  currentProposal.proposal.availability = state === "superseded" ? "superseded" : "applied";
+  fixtureTurns[materialization.turn_id] = {
+    ...turn(materialization.turn_id, state === "succeeded" ? "completed" : state === "failed" ? "failed"
+      : state === "superseded" ? "superseded" : "running", selected, attempts[key]),
+    operation_stage: state === "cancelled" ? "cancelled" : "running",
+  };
+  currentProposal.sequence = revision * 2 + 1;
+  items = [{
+    item_type: "expert_activity", activity_id: `activity-${materialization.turn_id}`,
+    turn_id: materialization.turn_id, capability_id: "character_design",
+    capability_display_name: "Character Designer", sequence: revision * 2,
+    status: state === "succeeded" ? "completed" : state === "failed" ? "failed"
+      : state === "superseded" ? "superseded" : "working",
+    started_at: now, finished_at: null, message: null, error_code: null, elapsed_ms: null,
+    attempt_stage: null, retryable: false, validation_paths: [], suggested_actions: [],
+    completion_mode: null, warning_code: null,
+  }, currentProposal];
+  if (liveDetailRefresh || new URLSearchParams(location.search).has("planning-progress")) {
+    // Same wire shape as the stale queued hint following a completed Proposal.
+    const planning = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: workflow.workflow_id, conversation_id: "fixture-conversation", next_cursor: revision * 2 + 2,
+      items: [{ entry_id: `planning-${materialization.materialization_id}`, workflow_id: workflow.workflow_id,
+        conversation_id: "fixture-conversation", sequence_no: revision * 2 + 2, entry_type: "planning_progress",
+        speaker: null, content: "Preparing the selected direction.", created_at: now,
+        metadata: { capability_id: "character_design", proposal_id: currentProposal.proposal.proposal_id,
+          materialization_id: materialization.materialization_id, status: "queued" } }],
+    });
+    items.push(...planning.items);
+  }
   const lifecycle = useMemo(() => {
     const threads = buildStageThreadTimeline(items).filter(unit => unit.unit_type === "stage_thread");
-    return projectRoleLifecycles({ threads, workflow, runtime, session: timelineSession, turnsById: fixtureTurns }).values().next().value!;
-  }, [workflow, runtime]);
+    return projectRoleLifecycles({ threads, workflowId: workflow.workflow_id, turnsById: fixtureTurns }).values().next().value!;
+  }, [workflow]);
   const update = (next: FixtureState) => { setStates(current => ({ ...current, [key]: next })); setRevision(value => value + 1); };
   const choose = (next: Selection) => { setSelected(next); setRevision(value => value + 1); };
   return <main><section className="controls"><h1>Lifecycle authority fixture</h1>
@@ -133,8 +189,8 @@ function LifecycleFixture() {
     <button onClick={() => update("succeeded")}>Media success</button>{(["failed", "cancelled", "superseded"] as const).map(value => <button key={value} onClick={() => update(value)}>{value}</button>)}
     <button onClick={() => { setAttempts(current => ({ ...current, [key]: current[key]! + 1 })); update("prompt-working"); }}>Retry task</button>
     {selections.map(value => <button key={`${value.occurrence}-${value.phase}`} onClick={() => choose(value)}>Occurrence {value.occurrence.replace("character-", "")} {value.phase === "main" ? "Main" : "Turnaround"}</button>)}
-    <output data-testid="lifecycle-occurrence">{lifecycle.identity.occurrenceId}</output><output data-testid="lifecycle-character-phase">{lifecycle.identity.characterPhase}</output>
-    <output data-testid="lifecycle-phase">{lifecycle.phase}</output><output data-testid="lifecycle-evidence">{lifecycle.evidence.source}</output><output data-testid="lifecycle-attempt">{lifecycle.identity.attemptKey}</output>
+    <output data-testid="lifecycle-occurrence">{selected.occurrence}</output><output data-testid="lifecycle-character-phase">{selected.phase}</output>
+    <output data-testid="lifecycle-phase">{lifecycle.terminal ?? "working"}</output><output data-testid="lifecycle-evidence">timeline</output><output data-testid="lifecycle-attempt">{lifecycle.attemptKey}</output>
   </section><AgentCanvasChatPanel workflow={workflow} runtime={runtime} chatRevision={revision} chatEvents={[]} onFocusNode={() => undefined} /></main>;
 }
 

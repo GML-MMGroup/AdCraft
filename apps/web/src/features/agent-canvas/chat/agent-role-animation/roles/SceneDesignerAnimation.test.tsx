@@ -14,8 +14,11 @@ vi.mock("../useAgentRoleMotion.ts", () => ({
   useAgentRoleMotion: vi.fn(),
 }));
 
-function trackFor(part: string): AgentRoleMotionTrack {
-  const track = SCENE_DESIGNER_MOTION_PROGRAM.working
+function trackFor(part: string, phase: "workingIntro" | "working" = "workingIntro"): AgentRoleMotionTrack {
+  const tracks = phase === "workingIntro"
+    ? SCENE_DESIGNER_MOTION_PROGRAM.workingIntro ?? []
+    : SCENE_DESIGNER_MOTION_PROGRAM.working;
+  const track = tracks
     .find((candidate) => candidate.part === part);
   expect(track).toBeDefined();
   return track!;
@@ -139,14 +142,15 @@ describe("SceneDesignerAnimation", () => {
     expect(container.querySelector('[data-scene-element="arch"] [stroke="#FFCA62"]')).toBeNull();
   });
 
-  it("locks the reveal boundary and scan line through one top-to-bottom pass", () => {
-    expect(SCENE_DESIGNER_MOTION_PROGRAM.working.map(({ part }) => part))
+  it("plays one construction pass, then a closed working scan loop", () => {
+    expect(SCENE_DESIGNER_MOTION_PROGRAM.workingIntro?.map(({ part }) => part))
       .toEqual([
         "scene-reveal",
         "construction-hide",
         "scene-scan",
-        "scene-accent",
       ]);
+    expect(SCENE_DESIGNER_MOTION_PROGRAM.working.map(({ part }) => part))
+      .toEqual(["scene-reveal", "construction-hide", "scene-scan", "scene-accent"]);
     expect(SCENE_DESIGNER_MOTION_PROGRAM.workingTransitionDurationMs).toBe(120);
 
     const reveal = trackFor("scene-reveal");
@@ -171,7 +175,30 @@ describe("SceneDesignerAnimation", () => {
     expect(construction.keyframes.at(-1)?.transform).toBe("translateY(392px)");
     expect(scan.keyframes.at(-1)?.transform).toBe("translateY(368px)");
 
-    const sceneAccent = trackFor("scene-accent");
+    const loop = trackFor("scene-scan", "working");
+    expect(loop.options).toEqual(expect.objectContaining({
+      duration: 2_600,
+      iterations: Infinity,
+      fill: "both",
+    }));
+    expect(loop.keyframes[0]).toMatchObject({ transform: "translateY(0px)", opacity: 0 });
+    expect(loop.keyframes.at(-1)).toMatchObject({ transform: "translateY(0px)", opacity: 0 });
+    expect(loop.keyframes.some(({ transform, opacity }) => (
+      transform === "translateY(368px)" && opacity === 1
+    ))).toBe(true);
+
+    for (const part of ["scene-reveal", "construction-hide"] as const) {
+      const mask = trackFor(part, "working");
+      expect(mask.options.iterations).toBe(Infinity);
+      expect(mask.keyframes[0]).toMatchObject({ transform: "translateY(0px)", opacity: 1 });
+      expect(mask.keyframes.at(-1)).toMatchObject({ transform: "translateY(0px)", opacity: 1 });
+      expect(mask.keyframes.map(({ offset }) => offset))
+        .toEqual(loop.keyframes.map(({ offset }) => offset));
+      expect(mask.keyframes.map(({ transform }) => transform))
+        .toEqual(expect.arrayContaining(["translateY(368px)", "translateY(392px)"]));
+    }
+
+    const sceneAccent = trackFor("scene-accent", "working");
     expect(sceneAccent.keyframes.map(({ opacity }) => opacity))
       .toEqual([0.78, 1, 0.78]);
     expect(sceneAccent.options).toEqual(expect.objectContaining({

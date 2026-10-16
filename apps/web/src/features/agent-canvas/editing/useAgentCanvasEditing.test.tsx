@@ -124,6 +124,40 @@ const workflow: AgentCanvasWorkflowV2 = {
 };
 
 describe("useAgentCanvasEditing", () => {
+  it("preserves nullable automatic fields when saving an unrelated video edit", async () => {
+    const base = editingNode([videoEntry()]);
+    const current: CanvasNodeV2 = {
+      ...base,
+      structured_content: {
+        ...base.structured_content,
+        manifest: {
+          ...(base.structured_content!.manifest as Record<string, unknown>),
+          timeline_duration_seconds: null,
+          video_entries: [{ ...videoEntry(), timeline_start_seconds: null }],
+        },
+        preview: {
+          ...(base.structured_content!.preview as Record<string, unknown>),
+          bgm_availability: null,
+        },
+      },
+    };
+    const patchNode = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAgentCanvasEditing(workflow, current, patchNode));
+    expect(result.current.content).not.toBeNull();
+    expect(patchNode).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.updateVideo("binding-video", { volume: 0.5 });
+    });
+    expect(patchNode).toHaveBeenCalledTimes(1);
+    expect(patchNode.mock.calls[0]?.[1]).toMatchObject({
+      structured_content: {
+        timeline_duration_seconds: null,
+        video_entries: [{ timeline_start_seconds: null, volume: 0.5 }],
+      },
+    });
+    expect(patchNode.mock.calls[0]?.[1].structured_content).not.toHaveProperty("preview");
+  });
+
   it("stages a video change locally until it is committed", async () => {
     const patchNode = vi.fn(() => Promise.resolve());
     const { result } = renderHook(() => (

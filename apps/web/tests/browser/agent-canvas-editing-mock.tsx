@@ -216,8 +216,43 @@ const initialWorkflow: AgentCanvasWorkflowV2 = {
 
 v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:8"');
 
+function workflowForScenario(): AgentCanvasWorkflowV2 {
+  const scenario = new URLSearchParams(window.location.search).get("manifest");
+  if (scenario !== "nullable" && scenario !== "invalid") return initialWorkflow;
+  const videoEntry = editing.structured_content.manifest.video_entries[0]!;
+  const nullableNode: CanvasNodeV2 = {
+    ...editing,
+    structured_content: {
+      ...editing.structured_content,
+      manifest: {
+        ...editing.structured_content.manifest,
+        timeline_duration_seconds: scenario === "invalid" ? "30" : null,
+        video_entries: [
+          { ...videoEntry, timeline_start_seconds: null, trim_end_seconds: null },
+          { ...videoEntry, binding_id: null, asset_id: "asset-video-second", timeline_start_seconds: null, trim_end_seconds: null },
+        ],
+      },
+      preview: {
+        ...editing.structured_content.preview,
+        bgm_availability: null,
+        estimated_duration_seconds: 30.083334,
+      },
+    },
+  };
+  return {
+    ...initialWorkflow,
+    nodes: initialWorkflow.nodes.map(candidate => candidate.node_id === editing.node_id ? nullableNode : candidate),
+    assets: [
+      ...initialWorkflow.assets.map(candidate => candidate.media_type === "video"
+        ? { ...candidate, duration_seconds: 15.041667 }
+        : candidate),
+      { ...asset("asset-video-second", "video", "Second input video"), duration_seconds: 15.041667 },
+    ],
+  };
+}
+
 function AcceptanceHarness() {
-  const [workflow, setWorkflow] = useState(initialWorkflow);
+  const [workflow, setWorkflow] = useState(workflowForScenario);
   const [editingPanelOpen, setEditingPanelOpen] = useState(true);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [issue, setIssue] = useState<string | null>(null);

@@ -942,7 +942,7 @@ describe("AgentCanvasNodeCard", () => {
       expect(waypointRule).toContain(`\n    -webkit-mask-position: ${maskPosition};`);
     }
     expect(nodeCss).toMatch(
-      /@keyframes agent-canvas-node-dots-breathe\s*\{[\s\S]*?0%, 100%\s*\{ opacity: 0\.62; \}[\s\S]*?50%\s*\{ opacity: 0\.88; \}/,
+      /@keyframes agent-canvas-node-dots-breathe\s*\{[\s\S]*?0%, 100%\s*\{ opacity: 0\.76; \}[\s\S]*?50%\s*\{ opacity: 1; \}/,
     );
     expect(nodeCss).toMatch(
       /\.agent-canvas-node__media--awaiting-generation-reveal\s*\{[\s\S]*?opacity: 0;/,
@@ -959,7 +959,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(nodeCss).not.toContain("generative-loaders");
     expect(nodeCss).not.toContain("agent-canvas-node__generation-loader");
     expect(nodeCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-dots--dynamic[\s\S]*?animation: none;[\s\S]*?opacity: 0\.7/,
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-dots--dynamic[\s\S]*?animation: none;[\s\S]*?opacity: 0\.86/,
     );
     expect(nodeCss).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__media--generation-revealed[\s\S]*?animation: none;[\s\S]*?\.agent-canvas-node__media--generation-revealed\s*\{[\s\S]*?opacity: 1;/,

@@ -1,3 +1,6 @@
+import { useTranslation } from "../../i18n/useTranslation";
+import { translateUi } from "../../i18n/uiMessages";
+import { useLocale } from "../../i18n/locale";
 import { useMemo, useState } from "react";
 
 import { api } from "../../api/client.ts";
@@ -30,6 +33,9 @@ export function ProviderCredentialCard({
   onProviderUpdated: (provider: ProviderConnectionStatusV1) => void;
   onModelsUpdated: (providerId: string, models: ProviderModelSummaryV1[]) => void;
 }) {
+  const t = useTranslation();
+  const { locale } = useLocale();
+  const label = (capability: ProviderCapability) => t(capabilityLabel(capability));
   const [draft, setDraft] = useState(() => emptyProviderCredentialDraft(provider.capabilities));
   const [baseUrlDraft, setBaseUrlDraft] = useState(() => emptyProviderCredentialDraft(provider.capabilities));
   const [pending, setPending] = useState<"save" | "sync" | ProviderCapability | null>(null);
@@ -63,7 +69,7 @@ export function ProviderCredentialCard({
       setDraft(emptyProviderCredentialDraft(provider.capabilities));
       setBaseUrlDraft(emptyProviderCredentialDraft(provider.capabilities));
       setTestNotices({});
-      setNotice({ kind: "success", message: `${provider.display_name} credentials saved.` });
+      setNotice({ kind: "success", message: t("{name} credentials saved.", { name: provider.display_name }) });
     } catch (error) {
       setNotice({ kind: "error", message: providerRegistryErrorMessage(error, "save") });
     } finally {
@@ -98,8 +104,8 @@ export function ProviderCredentialCard({
       setNotice({
         kind: "success",
         message: hasSharedCredential
-          ? "OpenRouter credential cleared for Text and Image."
-          : `${capabilityLabel(capability)} credential cleared.`,
+          ? t("OpenRouter credential cleared for Text and Image.")
+          : t("{capability} credential cleared.", { capability: label(capability) }),
       });
     } catch (error) {
       setNotice({ kind: "error", message: providerRegistryErrorMessage(error, "save") });
@@ -121,7 +127,7 @@ export function ProviderCredentialCard({
       });
       setTestNotices((current) => ({
         ...current,
-        [capability]: { kind: "success", message: `${capabilityLabel(capability)} credential accepted.` },
+        [capability]: { kind: "success", message: t("{capability} credential accepted.", { capability: label(capability) }) },
       }));
     } catch (error) {
       setTestNotices((current) => ({
@@ -144,7 +150,7 @@ export function ProviderCredentialCard({
         include_unavailable: true,
       });
       onModelsUpdated(provider.provider_id, nextModels.items);
-      setNotice({ kind: "success", message: "Models synchronized." });
+      setNotice({ kind: "success", message: t("Models synchronized.") });
     } catch (error) {
       setNotice({ kind: "error", message: providerRegistryErrorMessage(error, "sync") });
     } finally {
@@ -153,34 +159,34 @@ export function ProviderCredentialCard({
   };
 
   return (
-    <section className="api-space-provider-surface" aria-label={`${provider.display_name} provider settings`}>
+    <section className="api-space-provider-surface" aria-label={t("{name} provider settings", { name: provider.display_name })}>
       <header className="api-space-provider-header">
         <div>
-          <span className="api-space-eyebrow">{provider.connection_state === "configured" ? "Configured provider" : "Provider"}</span>
+          <span className="api-space-eyebrow">{t(provider.connection_state === "configured" ? "Configured provider" : "Provider")}</span>
           <h2>{provider.display_name}</h2>
         </div>
-        <span className="api-space-local-badge">Local settings</span>
+        <span className="api-space-local-badge">{t("Local settings")}</span>
       </header>
 
       <p className="api-space-intro">
-        Keys stay in the local backend. This browser receives configuration status only and never reads a saved key back.
+        {t("Keys stay in the local backend. This browser receives configuration status only and never reads a saved key back.")}
       </p>
 
       <div className="api-space-credential-list">
         {hasSharedCredential ? (
           <section className="api-space-credential-row api-space-credential-row--shared">
             <div className="api-space-credential-copy">
-              <h3>OpenRouter API Key</h3>
-              <p>One key authorizes both Text and Image. Each capability keeps its own endpoint and readiness status.</p>
+              <h3>{t("OpenRouter API Key")}</h3>
+              <p>{t("One key authorizes both Text and Image. Each capability keeps its own endpoint and readiness status.")}</p>
             </div>
             <div className="api-space-credential-control">
-              <label className="sr-only" htmlFor={`${provider.provider_id}-shared-api-key`}>OpenRouter API Key</label>
+              <label className="sr-only" htmlFor={`${provider.provider_id}-shared-api-key`}>{t("OpenRouter API Key")}</label>
               <input
                 id={`${provider.provider_id}-shared-api-key`}
                 name={`${provider.provider_id}-shared-api-key`}
                 type="password"
                 value={draft.text ?? ""}
-                placeholder="Paste a new OpenRouter API key"
+                placeholder={t("Paste a new OpenRouter API key")}
                 autoComplete="new-password"
                 disabled={Boolean(pending)}
                 onChange={(event) => updateDraft("text", event.currentTarget.value)}
@@ -189,15 +195,15 @@ export function ProviderCredentialCard({
                 <div className="api-space-credential-actions">
                   {pendingClear === "text" ? (
                     <span className="api-space-clear-confirmation">
-                      Clear the Text and Image credential?
+                      {t("Clear the Text and Image credential?")}
                       <button className="small-action" type="button" disabled={Boolean(pending)} onClick={() => void clearCapability("text")}>
-                        {pending === "text" ? "Clearing..." : "Confirm clear"}
+                        {t(pending === "text" ? "Clearing..." : "Confirm clear")}
                       </button>
-                      <button className="small-action" type="button" disabled={Boolean(pending)} onClick={() => setPendingClear(null)}>Cancel</button>
+                      <button className="small-action" type="button" disabled={Boolean(pending)} onClick={() => setPendingClear(null)}>{t("Cancel")}</button>
                     </span>
                   ) : (
                     <button className="small-action" type="button" disabled={Boolean(pending)} onClick={() => setPendingClear("text")}>
-                      Clear OpenRouter key
+                      {t("Clear OpenRouter key")}
                     </button>
                   )}
                 </div>
@@ -213,8 +219,8 @@ export function ProviderCredentialCard({
           return (
             <section className="api-space-credential-row" key={capability}>
               <div className="api-space-credential-copy">
-                <h3>{capabilityLabel(capability)}{hasSharedCredential ? " status" : " API Key"}</h3>
-                <p>{capabilityDescription(capability)}</p>
+                <h3>{t(hasSharedCredential ? "{capability} status" : "{capability} API Key", { capability: label(capability) })}</h3>
+                <p>{translateUi(locale, capabilityDescription(capability))}</p>
                 <CredentialStatus configured={status?.configured ?? false} fingerprint={status?.fingerprint ?? null} />
                 {status?.endpoint ? <EndpointStatus capability={capability} endpoint={status.endpoint} /> : null}
               </div>
@@ -229,7 +235,7 @@ export function ProviderCredentialCard({
                       name={`${provider.provider_id}-${capability}-api-key`}
                       type="password"
                       value={draft[capability] ?? ""}
-                      placeholder="Paste a new API key"
+                      placeholder={t("Paste a new API key")}
                       autoComplete="new-password"
                       disabled={isBusy}
                       onChange={(event) => updateDraft(capability, event.currentTarget.value)}
@@ -244,7 +250,7 @@ export function ProviderCredentialCard({
                   name={`${provider.provider_id}-${capability}-base-url`}
                   type="text"
                   value={baseUrlDraft[capability] ?? ""}
-                  placeholder={baseUrlPlaceholder(status)}
+                  placeholder={baseUrlPlaceholder(status, locale)}
                   autoComplete="off"
                   spellCheck={false}
                   disabled={isBusy}
@@ -258,21 +264,21 @@ export function ProviderCredentialCard({
                       disabled={isBusy}
                       onClick={() => void testCredential(capability)}
                     >
-                      {isTesting ? "Testing..." : `Test ${capabilityLabel(capability)} key`}
+                      {isTesting ? t("Testing...") : t("Test {capability} key", { capability: label(capability) })}
                     </button>
-                  ) : <span className="api-space-test-unavailable">Test unavailable</span>}
+                  ) : <span className="api-space-test-unavailable">{t("Test unavailable")}</span>}
                   {status?.configured && !hasSharedCredential ? (
                     pendingClear === capability ? (
                       <span className="api-space-clear-confirmation">
-                        Clear this saved key?
+                        {t("Clear this saved key?")}
                         <button className="small-action" type="button" disabled={isBusy} onClick={() => void clearCapability(capability)}>
-                          {isClearing ? "Clearing..." : "Confirm clear"}
+                          {t(isClearing ? "Clearing..." : "Confirm clear")}
                         </button>
-                        <button className="small-action" type="button" disabled={isBusy} onClick={() => setPendingClear(null)}>Cancel</button>
+                        <button className="small-action" type="button" disabled={isBusy} onClick={() => setPendingClear(null)}>{t("Cancel")}</button>
                       </span>
                     ) : (
                       <button className="small-action" type="button" disabled={isBusy} onClick={() => setPendingClear(capability)}>
-                        Clear saved key
+                        {t("Clear saved key")}
                       </button>
                     )
                   ) : null}
@@ -286,14 +292,14 @@ export function ProviderCredentialCard({
 
       <footer className="api-space-save-bar">
         <span className="api-space-model-count">
-          {availableModelCount} available / {models.length} discovered models
+          {t("{available} available / {total} discovered models", { available: availableModelCount, total: models.length })}
         </span>
         <div className="api-space-save-actions">
           <button className="small-action" type="button" disabled={Boolean(pending)} onClick={() => void syncModels()}>
-            {pending === "sync" ? "Syncing models..." : "Sync models"}
+            {t(pending === "sync" ? "Syncing models..." : "Sync models")}
           </button>
           <button className="send-btn" type="button" disabled={!updateRequest || Boolean(pending)} onClick={() => void save()}>
-            {pending === "save" ? "Saving..." : `Save ${provider.display_name} credentials`}
+            {pending === "save" ? t("Saving...") : t("Save {name} credentials", { name: provider.display_name })}
           </button>
         </div>
         {notice ? <InlineNotice notice={notice} /> : null}
@@ -303,9 +309,10 @@ export function ProviderCredentialCard({
 }
 
 function CredentialStatus({ configured, fingerprint }: { configured: boolean; fingerprint: string | null }) {
+  const t = useTranslation();
   return configured
-    ? <span className="api-space-credential-status is-configured">Configured{fingerprint ? ` · ${fingerprint}` : ""}</span>
-    : <span className="api-space-credential-status is-not-configured">Not configured</span>;
+    ? <span className="api-space-credential-status is-configured">{t("Configured")}{fingerprint ? ` · ${fingerprint}` : ""}</span>
+    : <span className="api-space-credential-status is-not-configured">{t("Not configured")}</span>;
 }
 
 function EndpointStatus({
@@ -315,10 +322,11 @@ function EndpointStatus({
   capability: ProviderCapability;
   endpoint: NonNullable<ProviderConnectionStatusV1["credentials"][ProviderCapability]>["endpoint"];
 }) {
+  const t = useTranslation();
   if (!endpoint) return null;
   return (
     <span className="api-space-credential-endpoint">
-      {capabilityLabel(capability)} endpoint · {endpoint.scheme}://{endpoint.host}{endpoint.path}
+      {t("{capability} endpoint", { capability: t(capabilityLabel(capability)) })} · {endpoint.scheme}://{endpoint.host}{endpoint.path}
     </span>
   );
 }
@@ -327,21 +335,22 @@ function InlineNotice({ notice }: { notice: Exclude<ApiSpaceNotice, null> }) {
   return <span className={`api-space-inline-notice is-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.message}</span>;
 }
 
-function capabilityLabel(capability: ProviderCapability): string {
-  return capability.charAt(0).toUpperCase() + capability.slice(1);
+function capabilityLabel(capability: ProviderCapability): "Text" | "Image" | "Video" | "Audio" {
+  return ({ text: "Text", image: "Image", video: "Video", audio: "Audio" } as const)[capability];
 }
 
 function baseUrlPlaceholder(
   status: ProviderConnectionStatusV1["credentials"][ProviderCapability] | undefined,
+  locale: string,
 ): string {
   const endpoint = status?.endpoint;
   if (endpoint) {
-    return `Current: ${endpoint.scheme}://${endpoint.host}${endpoint.path}`;
+    return translateUi(locale, "Current: {url}", { url: `${endpoint.scheme}://${endpoint.host}${endpoint.path}` });
   }
-  return "Base URL (leave empty to keep the provider default)";
+  return translateUi(locale, "Base URL (leave empty to keep the provider default)");
 }
 
-function capabilityDescription(capability: ProviderCapability): string {
+function capabilityDescription(capability: ProviderCapability) {
   if (capability === "text") return "Used for planning, scripts, text nodes, and Agent work.";
   if (capability === "image") return "Used by image generation nodes.";
   if (capability === "video") return "Used by video generation nodes.";

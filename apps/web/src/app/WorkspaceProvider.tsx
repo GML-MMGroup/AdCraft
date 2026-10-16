@@ -281,7 +281,7 @@ export function WorkspaceProvider({
     );
   }, [routeProjectId]);
 
-  const startNewProject = useCallback(() => {
+  const startNewProject = useCallback((mode?: "creation" | "brand") => {
     if (newProjectRequestRef.current) return newProjectRequestRef.current;
     const request = (async () => {
       invalidateWorkspaceRestoreRequests();
@@ -289,7 +289,11 @@ export function WorkspaceProvider({
       try {
         const { v2Api } = await import("../api/v2Client");
         const created = await v2Api.createAgentCanvasProject(
-          { name: "Untitled Project", description: "" },
+          {
+            name: "Untitled Project",
+            description: "",
+            ...(mode === "brand" ? { mode: "brand" as const } : {}),
+          },
           createOperationKey("project"),
         );
         const nextWorkflow = created.value;

@@ -6,6 +6,7 @@ import type {
   AgentCapabilityIdV2, ChatCapabilityActivityV2, ChatMessageV2,
 } from "../../src/types-v2.ts";
 import { AgentCanvasChatPanel } from "../../src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx";
+import { agentRoleAnimationRegistry } from "../../src/features/agent-canvas/chat/agent-role-animation/agentRoleAnimationRegistry.ts";
 import "../../src/features/agent-canvas/chat/agent-canvas-chat.css";
 
 const workflow: AgentCanvasWorkflowV2 = {
@@ -21,6 +22,19 @@ const roleNames = {
   bgm_direction: "BGM Director", quick_media: "Quick Media",
 } satisfies Record<AgentCapabilityIdV2, string>;
 const timestamp = "2026-09-06T00:00:00Z";
+// Deterministic loading/failure gate, only inside this isolated test entry.
+const holdArtwork = new URLSearchParams(location.search).has("hold-artwork");
+let releaseArtwork = () => {};
+let failArtwork = () => {};
+if (holdArtwork) {
+  const original = agentRoleAnimationRegistry.scene_design.load;
+  const gate = new Promise<void>((resolve, reject) => {
+    releaseArtwork = resolve;
+    failArtwork = () => reject(new Error("Fixture artwork failure"));
+  });
+  void gate.catch(() => undefined);
+  agentRoleAnimationRegistry.scene_design.load = async () => { await gate; return original(); };
+}
 let attempt = 1;
 let revision = 1;
 let activities: ChatCapabilityActivityV2[] = [];
@@ -124,6 +138,10 @@ function RuntimePanelFixture() {
     <main className="runtime-panel-fixture">
       <section className="runtime-panel-fixture__controls">
         <h1>Agent Role · 真实面板接入验收</h1>
+        {holdArtwork ? <>
+          <button onClick={() => releaseArtwork()}>Release artwork</button>
+          <button onClick={() => failArtwork()}>Fail artwork</button>
+        </> : null}
         <p>使用正式对话面板、状态投影和动画组件。数据为确定性测试夹具，不连接真实项目。</p>
         <p>右侧 32px 角色图标由各自的活动和 Turn 驱动。全局 Workflow 状态不用于播放判断。</p>
         <button onClick={() => refresh(() => begin())}>New parallel attempt</button>
