@@ -2147,7 +2147,9 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__current-interaction--overlay {
   position: relative;
   z-index: 1;
-  flex: 0 0 auto;
+  /* Shrink before the timeline drops below its floor so the conversation stays readable. */
+  flex: 0 1 auto;
+  min-height: 140px;
   max-height: min(50vh, 480px);
   padding: 10px 12px 0;
   background: var(--agent-chat-panel);
@@ -2163,10 +2165,28 @@ button.agent-chat__node-links--related:hover {
   max-height: min(50vh, 480px);
 }
 
+.agent-chat__current-interaction--overlay[hidden] {
+  display: none;
+}
+
+/* The overlay owns the height cap; the dock stretches to it so its body scrolls
+   and the footer stays visible when the overlay shrinks. */
+.agent-chat__current-interaction--overlay > .agent-chat__decision-dock {
+  max-height: none;
+}
+
+.agent-chat__current-interaction--overlay .agent-chat__decision-dock-header {
+  padding-right: 44px;
+}
+
+.agent-chat__timeline-shell:has(> .agent-chat__current-interaction--overlay:not([hidden])) > .agent-chat__timeline {
+  min-height: clamp(96px, 20vh, 200px);
+}
+
 .agent-chat__interaction-collapse {
   position: absolute;
-  top: 14px;
-  right: 18px;
+  top: 19px;
+  right: 21px;
   z-index: 1;
   display: grid;
   width: 24px;
@@ -3395,6 +3415,10 @@ button.agent-chat__node-links--related:hover {
   border-bottom: 0;
 }
 
+.agent-chat__brand-form-row.is-answered .agent-chat__brand-form-row-number {
+  color: var(--agent-chat-primary);
+}
+
 .agent-chat__brand-form-prompt {
   display: grid;
   min-width: 0;
@@ -3431,6 +3455,9 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__brand-form-option {
+  /* Anchors the visually hidden radio; otherwise it is positioned against the
+     overlay, overflows it, and focusing it scrolls the whole card away. */
+  position: relative;
   display: grid;
   min-width: 0;
   grid-template-columns: 15px minmax(0, 1fr);
@@ -3538,9 +3565,27 @@ button.agent-chat__node-links--related:hover {
   border-color: var(--agent-chat-strong-line);
 }
 
+.agent-chat__brand-form-custom-hint {
+  color: var(--agent-chat-secondary);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 .agent-chat__brand-form-custom-input input:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.agent-chat__brand-form-jump {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--agent-chat-primary);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .agent-chat__brand-form-status {

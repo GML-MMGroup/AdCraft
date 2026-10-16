@@ -1,5 +1,5 @@
 import { useTranslation } from "../../../i18n/useTranslation";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 import type {
   GuidedInteractionSubmitRequestV1,
@@ -56,12 +56,26 @@ export function BrandFormInteraction({
   const [submitted, setSubmitted] = useState(false);
   const submittedState = submitted || interaction.status === "submitted";
   const fieldIdBase = useId();
+  const rowRefs = useRef(new Map<string, HTMLElement>());
 
   const answeredCount = useMemo(
     () => content?.rows.filter((row) => answerIsComplete(row, answers[row.question_id])).length ?? 0,
     [answers, content],
   );
   if (!content) return null;
+
+  const firstUnansweredIndex = content.rows.findIndex((row) => !answerIsComplete(row, answers[row.question_id]));
+  const firstUnanswered = firstUnansweredIndex >= 0 ? content.rows[firstUnansweredIndex]! : null;
+
+  // Scroll only the dock body; scrollIntoView would also scroll the clipped
+  // overlay and panel ancestors and shift the whole card out of place.
+  const jumpToRow = (questionId: string) => {
+    const row = rowRefs.current.get(questionId);
+    const body = row?.closest(".agent-chat__decision-dock-body");
+    if (!row || !body) return;
+    body.scrollBy?.({ top: row.getBoundingClientRect().top - body.getBoundingClientRect().top, behavior: "smooth" });
+    row.querySelector<HTMLInputElement>("input[type=radio]:not(:disabled)")?.focus({ preventScroll: true });
+  };
 
   const complete = content.rows.length > 0 && content.rows.every((row) => answerIsComplete(row, answers[row.question_id]));
   const canSubmit = complete
@@ -125,7 +139,20 @@ export function BrandFormInteraction({
       context={content.instructions}
       pending={pending || submittedState || disabled}
       issue={issue}
-      footerSummary={t("{count} of {total} answered", { count: answeredCount, total: content.rows.length })}
+      footerSummary={(
+        <>
+          {t("{count} of {total} answered", { count: answeredCount, total: content.rows.length })}
+          {firstUnanswered && !submittedState ? (
+            <button
+              type="button"
+              className="agent-chat__brand-form-jump"
+              onClick={() => jumpToRow(firstUnanswered.question_id)}
+            >
+              {t("Go to question {number}", { number: String(firstUnansweredIndex + 1).padStart(2, "0") })}
+            </button>
+          ) : null}
+        </>
+      )}
       submitLabel={t("Confirm entire form")}
       submitDisabled={!canSubmit}
       onSubmit={() => void submit()}
@@ -139,8 +166,21 @@ export function BrandFormInteraction({
             const answer = answers[row.question_id];
             const rowIssue = issue?.fieldId === row.question_id ? issue : null;
             const errorId = `${fieldIdBase}-${row.question_id}-error`;
+            const customSelected = answer?.selectedOptionId === row.custom_option_id;
+            const customLabel = row.options.find((option) => option.option_id === row.custom_option_id)?.label || t("Custom");
+            // Unselected prefills stay visible as editable drafts; otherwise the
+            // field only appears once Custom is chosen.
+            const showCustomInput = customSelected || row.prefill_value != null || Boolean(rowIssue);
             return (
-              <section className="agent-chat__brand-form-row" key={row.question_id} role="row">
+              <section
+                className={`agent-chat__brand-form-row${answerIsComplete(row, answer) ? " is-answered" : ""}`}
+                key={row.question_id}
+                role="row"
+                ref={(element) => {
+                  if (element) rowRefs.current.set(row.question_id, element);
+                  else rowRefs.current.delete(row.question_id);
+                }}
+              >
                 <div className="agent-chat__brand-form-prompt" role="rowheader">
                   <span className="agent-chat__brand-form-row-number">{String(rowIndex + 1).padStart(2, "0")}</span>
                   <strong>{row.prompt}</strong>
@@ -170,25 +210,23 @@ export function BrandFormInteraction({
                       </label>
                     );
                   })}
-                  <label
-                    className={`agent-chat__brand-form-option is-custom${answer?.selectedOptionId === row.custom_option_id ? " is-selected" : ""}`}
-                  >
+                  <label className={`agent-chat__brand-form-option is-custom${customSelected ? " is-selected" : ""}`}>
                     <input
                       type="radio"
                       name={`${interaction.interaction_id}-${row.question_id}`}
                       value={row.custom_option_id}
-                      checked={answer?.selectedOptionId === row.custom_option_id}
+                      checked={customSelected}
                       disabled={pending || submittedState || disabled}
                       onChange={() => updateAnswer(row.question_id, row.custom_option_id)}
                     />
                     <span className="agent-chat__brand-form-option-mark" aria-hidden="true">✓</span>
                     <span className="agent-chat__brand-form-option-copy">
-                      <strong>{t("Custom")}</strong>
+                      <strong>{customLabel}</strong>
                       <small>{t("Describe the direction you want to keep.")}</small>
                     </span>
                   </label>
                 </div>
-                <label className="agent-chat__brand-form-custom-input">
+                {showCustomInput ? <label className="agent-chat__brand-form-custom-input">
                   <span>{t("Custom content")}</span>
                   <input
                     aria-label={t("Custom content: {prompt}", { prompt: row.prompt })}
@@ -197,11 +235,16 @@ export function BrandFormInteraction({
                     type="text"
                     value={answer?.customText ?? ""}
                     placeholder={t("Submitted only when Custom is selected")}
-                    disabled={pending || submittedState || disabled || (row.prefill_value == null && answer?.selectedOptionId !== row.custom_option_id)}
+                    disabled={pending || submittedState || disabled || (row.prefill_value == null && !customSelected)}
                     onChange={(event) => updateCustomText(row.question_id, event.target.value)}
                   />
+                  {!customSelected && answer?.customText.trim() ? (
+                    <small className="agent-chat__brand-form-custom-hint">
+                      {t("Select “{option}” to submit this text.", { option: customLabel })}
+                    </small>
+                  ) : null}
                   {rowIssue ? <small id={errorId} className="agent-chat__decision-dock-field-error">{rowIssue.summary}</small> : null}
-                </label>
+                </label> : null}
               </section>
             );
           })}

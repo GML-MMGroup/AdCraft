@@ -84,7 +84,7 @@ describe("BrandFormInteraction", () => {
     expect(draft.value).toBe("Skateboard");
     expect(draft.disabled).toBe(false);
     expect(screen.getAllByRole("radio").every(input => !(input as HTMLInputElement).checked)).toBe(true);
-    expect((screen.getByRole("textbox", { name: "Custom content: Who is this for?" }) as HTMLInputElement).value).toBe("");
+    expect(screen.queryByRole("textbox", { name: "Custom content: Who is this for?" })).toBeNull();
     expect(screen.getByText("The product is a draft. Explicitly choose an answer in every row.")).toBeTruthy();
     expect(screen.queryByText("Choose one direction per row. Select Custom before entering your own answer.")).toBeNull();
     fireEvent.change(draft, { target: { value: "  Custom skateboard  " } });
@@ -93,7 +93,7 @@ describe("BrandFormInteraction", () => {
     expect(screen.getByText("0 of 2 answered")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Confirm entire form" }).hasAttribute("disabled")).toBe(true);
     expect(submit).not.toHaveBeenCalled();
-    fireEvent.click(screen.getAllByRole("radio", { name: /Custom/ })[0]!);
+    fireEvent.click(screen.getAllByRole("radio", { name: /custom/i })[0]!);
     expect(screen.getByText("1 of 2 answered")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Confirm entire form" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("radio", { name: /Teams/ }));
@@ -119,7 +119,7 @@ describe("BrandFormInteraction", () => {
     fireEvent.change(draft, { target: { value: "Edited skateboard" } });
     fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
     expect(draft.value).toBe("Edited skateboard");
-    fireEvent.click(screen.getAllByRole("radio", { name: /Custom/ })[0]!);
+    fireEvent.click(screen.getAllByRole("radio", { name: /custom/i })[0]!);
     expect(draft.value).toBe("Edited skateboard");
     view.unmount();
     render(<BrandFormInteraction {...props} />);
@@ -153,7 +153,7 @@ describe("BrandFormInteraction", () => {
     expect(confirm.hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
-    fireEvent.click(screen.getAllByRole("radio", { name: /Custom/ })[1]!);
+    fireEvent.click(screen.getAllByRole("radio", { name: /custom/i })[1]!);
     fireEvent.change(screen.getByRole("textbox", { name: "Custom content: Who is this for?" }), { target: { value: "Independent artists" } });
     expect(screen.getByText("2 of 2 answered")).toBeTruthy();
 
@@ -204,12 +204,41 @@ describe("BrandFormInteraction", () => {
     })));
   });
 
+  it("shows the custom field only once Custom is chosen and labels it with the backend option label", () => {
+    render(<BrandFormInteraction interaction={interaction} pending={false} issue={null} onSubmit={vi.fn()} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getAllByRole("radio", { name: /Other \(custom\)/ })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("radio", { name: /custom/i })[1]!);
+    expect(screen.getByRole("textbox", { name: "Custom content: Who is this for?" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Custom content: What tone should lead?" })).toBeNull();
+  });
+
+  it("warns when an unselected prefill draft would not be submitted", () => {
+    render(<BrandFormInteraction interaction={prefilledInteraction()} pending={false} issue={null} onSubmit={vi.fn()} />);
+    const hint = "Select “Other (custom)” to submit this text.";
+    expect(screen.getByText(hint)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("radio", { name: /custom/i })[0]!);
+    expect(screen.queryByText(hint)).toBeNull();
+  });
+
+  it("points to the first unanswered question until the form is complete", () => {
+    render(<BrandFormInteraction interaction={interaction} pending={false} issue={null} onSubmit={vi.fn()} />);
+    const firstRadio = screen.getByRole("radio", { name: /Warm/ });
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 01" }));
+    expect(document.activeElement).toBe(firstRadio);
+    fireEvent.click(firstRadio);
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 02" }));
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: /Makers/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Teams/ }));
+    expect(screen.queryByRole("button", { name: /Go to question/ })).toBeNull();
+  });
+
   it("submits custom text only for the selected custom option and locks during submission", async () => {
     let finish!: (accepted: boolean) => void;
     const submit = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
     const { rerender } = render(<BrandFormInteraction interaction={interaction} pending={false} issue={null} onSubmit={submit} />);
     fireEvent.click(screen.getByRole("radio", { name: /Warm/ }));
-    fireEvent.click(screen.getAllByRole("radio", { name: /Custom/ })[1]!);
+    fireEvent.click(screen.getAllByRole("radio", { name: /custom/i })[1]!);
     fireEvent.change(screen.getByRole("textbox", { name: "Custom content: Who is this for?" }), { target: { value: "  Independent artists  " } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm entire form" }));
 

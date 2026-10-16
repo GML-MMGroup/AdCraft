@@ -360,6 +360,8 @@ export const uiMessages = {
   "Custom content": "自定义内容",
   "Custom content: {prompt}": "自定义内容：{prompt}",
   "Submitted only when Custom is selected": "仅在选择自定义后提交",
+  "Go to question {number}": "跳到第 {number} 题",
+  "Select “{option}” to submit this text.": "选中“{option}”后才会提交这段内容。",
   "Confirmed. Preparing the next stage.": "已确认，正在准备下一阶段。",
   "Copy": "复制",
   "Copied": "已复制",

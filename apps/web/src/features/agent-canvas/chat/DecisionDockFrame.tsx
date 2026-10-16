@@ -9,7 +9,7 @@ export interface DecisionDockFrameProps {
   context?: string;
   pending: boolean;
   issue: DecisionDockIssue | null;
-  footerSummary?: string;
+  footerSummary?: ReactNode;
   submitLabel?: string;
   submitDisabled?: boolean;
   onSubmit?: () => void;

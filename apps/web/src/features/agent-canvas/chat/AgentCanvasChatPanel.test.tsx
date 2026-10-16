@@ -2188,7 +2188,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     const { chat } = renderPanelWithInteraction(interaction);
     expect(screen.getByRole("article", { name: "Agent question" }).textContent).toContain(interaction.title);
     fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
     expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
     expect(screen.getByRole("article", { name: "Agent question" }).textContent).toContain(interaction.title);
   });
@@ -2226,21 +2226,21 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
 
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
     const chip = screen.getByRole("button", { name: /Choose duration/ });
     expect(chip.querySelector(".agent-chat__interaction-chip") ?? chip).toBeTruthy();
     expect(chip.parentElement?.classList.contains("agent-chat__timeline-shell")).toBe(true);
 
     fireEvent.click(chip);
 
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).not.toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(false);
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
   });
 
   it("auto-expands a new interaction even if the previous one was collapsed", () => {
     const { rerender } = renderPanelWithInteraction();
     fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
 
     const chat = mockChatResult();
     chat.state.guidedInteraction = {
@@ -2259,7 +2259,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
       />,
     );
 
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).not.toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(false);
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
   });
 });

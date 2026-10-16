@@ -1012,9 +1012,10 @@ export function AgentCanvasChatPanel({
             <ChevronUpIcon />
           </button>
         ) : null}
-        {standaloneGuidedInteraction && !currentInteractionOptimisticallyDismissed
-          && !interactionDockCollapsed ? (
+        {/* Collapsing hides the card instead of unmounting it so drafts and scroll position survive. */}
+        {standaloneGuidedInteraction && !currentInteractionOptimisticallyDismissed ? (
           <div
+            hidden={interactionDockCollapsed}
             className={`agent-chat__current-interaction agent-chat__current-interaction--overlay${standaloneGuidedInteraction.content.content_kind === "brand_form" ? ` agent-chat__current-interaction--brand-form${standaloneGuidedInteraction.content.rows.some(row => row.options.filter(option => option.option_id !== row.custom_option_id).length > 3) ? " agent-chat__current-interaction--brand-form-expanded" : ""}` : ""}`}
             aria-live="polite"
           >
