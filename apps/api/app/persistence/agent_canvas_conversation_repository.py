@@ -6255,7 +6255,7 @@ def _proposal(
             expected_session_revision=int(row["guidance_session_revision"]),
             proposal_kind=str(row["proposal_kind"]),
         )
-        if availability == "open" and (len(options) == 3 or require_submit)
+        if availability == "open" and (3 <= len(options) <= 6 or require_submit)
         else (
             _historical_proposal_action_descriptors(
                 proposal_id=str(row["proposal_id"]),

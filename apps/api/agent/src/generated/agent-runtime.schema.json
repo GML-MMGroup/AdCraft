@@ -17520,7 +17520,7 @@
           "items": {
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
-          "maxItems": 3,
+          "maxItems": 6,
           "minItems": 3,
           "title": "Options",
           "type": "array"

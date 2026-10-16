@@ -138,7 +138,7 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     occurrence_count: int | None = Field(default=None, ge=1, le=32)
     character_phase: Literal["main"] | None = None
     capability_id: str = Field(min_length=1, max_length=80)
-    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=6)
     allow_custom: Literal[True] = True
     allow_exclusion: bool
 

@@ -269,7 +269,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
     ]
     capability_id: CapabilityIdV1
     proposal_card_schema_version: int = Field(default=1, ge=1, exclude=True)
-    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=3)
+    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=6)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),
         max_length=64,
