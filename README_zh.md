@@ -28,6 +28,7 @@
 
 ## 📰 最新动态
 
+- **[2026-10-16]** 🎬 品牌专业模式已上线！
 - **[2026-09-16]** ⚙️ 优化了部署方案以及创作链路的稳定性。
 - **[2026-08-28]** ✨ 新增风格 Skill 能力以及 Agent 对话生成节点优化。
 - **[2026-08-19]** 🚀 强化并稳定了 Agent 引导式创作流程，同时完成 AdCraft 前端首页的视觉升级。
@@ -73,6 +74,10 @@ AdCraft 是一个**面向广告创作的 AI 生产平台**。你无需提前设�
 
 <div align="center">
   <img src="./assets/home-page.png" alt="AdCraft 首页" width="95%" />
+  <br/><br/>
+  <img src="./assets/brand-mode-selection.png" alt="AdCraft 创作模式选择页" width="95%" />
+  <br/><br/>
+  <img src="./assets/brand-professional-workflow.png" alt="AdCraft 品牌专业模式工作流" width="95%" />
   <br/><br/>
   <img src="./assets/demo.png" alt="AdCraft Agent Canvas 工作流" width="95%" />
 </div>
