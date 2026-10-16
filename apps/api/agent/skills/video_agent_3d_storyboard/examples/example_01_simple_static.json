@@ -1,0 +1,50 @@
+{
+  "title": "Simple static two-character dialogue",
+  "user_input": "A small room with a round table. Two people sit across from each other at the table, talking. Start with a medium shot of both people.",
+  "expected_scene_script": {
+    "scene": {
+      "name": "simple-dialogue",
+      "environment": "indoor",
+      "lighting": "warm",
+      "duration": 4.0,
+      "frame_rate": 30
+    },
+    "characters": [
+      {
+        "id": "char1",
+        "type": "lowpoly_human",
+        "appearance": {"color": "#8B4513", "height": 1.7, "scale": 1.0},
+        "keyframes": [
+          {"frame": 0, "position": [0.9, -0.9, 0], "rotation_y": -30, "action": "talk"}
+        ]
+      },
+      {
+        "id": "char2",
+        "type": "lowpoly_human",
+        "appearance": {"color": "#4A90D9", "height": 1.65, "scale": 1.0},
+        "keyframes": [
+          {"frame": 0, "position": [-1.0, -2.6, 0], "rotation_y": 150, "action": "sit"}
+        ]
+      }
+    ],
+    "props": [
+      {"id": "table1", "type": "round_table", "position": [0, -1.6, 0], "scale": 1.0, "rotation_y": 0.0}
+    ],
+    "environment": [
+      {"id": "wall1", "type": "wall", "position": [0, -7, 2.5], "scale": 1.0, "rotation_y": 0.0}
+    ],
+    "cameras": [
+      {
+        "id": "cam1",
+        "shot_type": "medium",
+        "keyframes": [
+          {"frame": 0, "position": [6.5, -7, 2.6], "look_at": [0, -1.6, 1.5]}
+        ]
+      }
+    ],
+    "shots": [
+      {"id": "shot1", "camera": "cam1", "start_frame": 0, "end_frame": 120, "description": "medium shot of two people at table"}
+    ],
+    "speech_bindings": []
+  }
+}

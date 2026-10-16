@@ -1,6 +1,16 @@
 {
   "skills": [
     {
+      "path": "video_agent_3d_storyboard/SKILL.md",
+      "sha256": "1d95e0323328e9e7d44fb644ed21892f39fde7b2b066dcc3f0508976bd3c0caa",
+      "skill_id": "video_agent_3d_storyboard"
+    },
+    {
+      "path": "video_agent_3d_white_model/SKILL.md",
+      "sha256": "c0942de07df43e225f8a0b92958e5725419f6903d65f93fffea2eab12c7776a5",
+      "skill_id": "video_agent_3d_white_model"
+    },
+    {
       "path": "video_agent_bgm_direction/SKILL.md",
       "sha256": "3100e5e08ddf9462f814770c861df5f8ef0e28b02b14685da20956f25e4a26c8",
       "skill_id": "video_agent_bgm_direction"

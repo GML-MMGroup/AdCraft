@@ -1,0 +1,74 @@
+{
+  "title": "Dynamic scene with character walking in and camera push-in",
+  "user_input": "A teahouse interior. Two people sit at a round table. A third person walks in from the doorway at the back and approaches the table. Start with a wide shot of the whole teahouse, then push in to a close-up of the first person as they speak.",
+  "expected_scene_script": {
+    "scene": {
+      "name": "teahouse-walkin",
+      "environment": "indoor",
+      "lighting": "warm",
+      "duration": 4.0,
+      "frame_rate": 30
+    },
+    "characters": [
+      {
+        "id": "char1",
+        "type": "lowpoly_human",
+        "appearance": {"color": "#8B4513", "height": 1.7, "scale": 1.0},
+        "keyframes": [
+          {"frame": 0, "position": [0.9, -0.9, 0], "rotation_y": 150, "action": "stand"},
+          {"frame": 60, "position": [0.9, -0.9, 0], "rotation_y": -30, "action": "talk"}
+        ]
+      },
+      {
+        "id": "char2",
+        "type": "lowpoly_human",
+        "appearance": {"color": "#4A90D9", "height": 1.65, "scale": 1.0},
+        "keyframes": [
+          {"frame": 0, "position": [-1.0, -2.6, 0], "rotation_y": -30, "action": "sit"}
+        ]
+      },
+      {
+        "id": "char3",
+        "type": "lowpoly_human",
+        "appearance": {"color": "#2ECC71", "height": 1.75, "scale": 1.0},
+        "keyframes": [
+          {"frame": 0, "position": [2.2, -5.4, 0], "rotation_y": 160, "action": "walk"},
+          {"frame": 60, "position": [1.8, -3.0, 0], "rotation_y": 160, "action": "stand"}
+        ]
+      }
+    ],
+    "props": [
+      {"id": "table1", "type": "round_table", "position": [0, -1.6, 0], "scale": 1.0, "rotation_y": 0.0}
+    ],
+    "environment": [
+      {"id": "wall1", "type": "wall", "position": [0, -7, 2.5], "scale": 1.0, "rotation_y": 0.0},
+      {"id": "pillar1", "type": "pillar", "position": [-3.5, -6.7, 2.1], "scale": 1.0, "rotation_y": 0.0},
+      {"id": "door1", "type": "door", "position": [2.2, -6.0, 1.5], "scale": 1.0, "rotation_y": 0.0}
+    ],
+    "cameras": [
+      {
+        "id": "cam1",
+        "shot_type": "wide",
+        "keyframes": [
+          {"frame": 0, "position": [12, -14, 8], "look_at": [0, -1.5, 1.3]},
+          {"frame": 59, "position": [8.5, -10, 6], "look_at": [0, -1.5, 1.3]}
+        ]
+      },
+      {
+        "id": "cam2",
+        "shot_type": "closeup",
+        "keyframes": [
+          {"frame": 60, "position": [2.5, -4.0, 1.7], "look_at": [0.9, -0.9, 1.5]},
+          {"frame": 119, "position": [1.8, -3.0, 1.6], "look_at": [0.9, -0.9, 1.5]}
+        ]
+      }
+    ],
+    "shots": [
+      {"id": "shot1", "camera": "cam1", "start_frame": 0, "end_frame": 60, "description": "wide establishing shot, character walks in"},
+      {"id": "shot2", "camera": "cam2", "start_frame": 60, "end_frame": 120, "description": "close-up push-in on char1 speaking"}
+    ],
+    "speech_bindings": [
+      {"character": "char1", "speech_asset": "speech_audio:line1", "mode": "bound"}
+    ]
+  }
+}
