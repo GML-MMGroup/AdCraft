@@ -3990,6 +3990,7 @@ def _process_agent_turn_and_resume(
 def _publish_next_brand_interaction_after_form_submit(
     runtime: AgentCanvasRuntime,
     workflow_id: str,
+    submission_id: str | None = None,
 ) -> None:
     """Continue the Brand journey after an atomic foundation-form commit.
 
@@ -3998,18 +3999,28 @@ def _publish_next_brand_interaction_after_form_submit(
     continuation outbox (which is reserved for Agent turns).  The Brand
     endpoint owns the deterministic next-stage projection and is idempotent:
     if the client refreshes or requests it concurrently, the existing open
-    interaction is reused.
+    interaction is reused.  A publication error is recorded in the chat
+    timeline so the committed Brand action remains visibly retryable.
     """
 
     from app.api.v2.endpoints.brand_mode import post_next_question
 
     try:
         post_next_question(workflow_id, runtime.database)
-    except Exception:  # noqa: BLE001 - the committed form remains recoverable via next-question.
+    except Exception as error:  # noqa: BLE001 - the committed form remains recoverable via next-question.
         logger.exception(
             "Brand foundation form committed but next interaction publication failed "
             "workflow_id=%s",
             workflow_id,
+        )
+        failure_code = getattr(error, "code", None)
+        if not isinstance(failure_code, str) or not failure_code:
+            failure_code = "brand_interaction_publication_failed"
+        runtime.conversations.record_brand_interaction_publication_failure(
+            workflow_id,
+            failure_id=submission_id or f"workflow:{workflow_id}",
+            error_code=failure_code,
+            retryable=True,
         )
 
 
