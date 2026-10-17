@@ -264,7 +264,13 @@ class CapabilityMaterializationPublicationService:
             materialization_context,
             session.session_id,
         )
-        preview_bundle = self._plan_compiler.compile_draft_bundle(envelope, normalization)
+        workflow = self._workflows.get_workflow(envelope.workflow_id)
+        reference_nodes = {node.node_id: node for node in workflow.nodes}
+        preview_bundle = self._plan_compiler.compile_draft_bundle(
+            envelope,
+            normalization,
+            reference_nodes=reference_nodes,
+        )
         authority_documents += self._prepare_bgm_plan(
             envelope,
             session.session_id,
@@ -275,7 +281,6 @@ class CapabilityMaterializationPublicationService:
             session.session_id,
             preview_bundle.nodes,
         )
-        workflow = self._workflows.get_workflow(envelope.workflow_id)
         frozen_prompt_context = stage_authoring_context_from_materialization(
             materialization_context,
             session_id=session.session_id,
@@ -362,6 +367,7 @@ class CapabilityMaterializationPublicationService:
             storyboard_documents=authority_documents,
             prompt_context=frozen_prompt_context,
             reference_source_admission=self._requires_reference_source_checkpoint(envelope),
+            reference_nodes=reference_nodes,
         )
         lease_guard()
         try:
