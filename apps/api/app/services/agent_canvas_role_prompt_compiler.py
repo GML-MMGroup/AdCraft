@@ -1010,12 +1010,24 @@ def role_prompt_text_violation(
     """Return a safe deterministic violation without exposing matched text."""
 
     normalized = text.casefold()
-    for phrase in _ROLE_PROMPT_CONFLICTS.get(role_variant, ()):
+    negated_match_ranges: list[tuple[int, int]] = []
+    phrases = sorted(
+        _ROLE_PROMPT_CONFLICTS.get(role_variant, ()),
+        key=len,
+        reverse=True,
+    )
+    for phrase in phrases:
         pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])")
-        if any(
-            not _is_explicitly_negated(normalized, match.start())
-            for match in pattern.finditer(normalized)
-        ):
+        for match in pattern.finditer(normalized):
+            match_range = (match.start(), match.end())
+            if _is_explicitly_negated(normalized, match.start()):
+                negated_match_ranges.append(match_range)
+                continue
+            if any(
+                negated_start <= match_range[0] and match_range[1] <= negated_end
+                for negated_start, negated_end in negated_match_ranges
+            ):
+                continue
             return RolePromptViolationV1(
                 role_variant=role_variant,
                 violation_category=_SCENE_CONFLICT_CATEGORIES.get(
