@@ -42,6 +42,7 @@ import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
 import {
   brandFormRepairPolicy,
   brandFormSupplementalRepairPolicy,
+  brandTreatmentReviewRepairPolicy,
 } from "./prompts/brand-form-repair.js";
 
 
@@ -832,7 +833,6 @@ function repairPayload(
   invalidValue: Readonly<Record<string, unknown>> | undefined,
   invalidContent?: string | null,
 ): StructuredCompletionRequest {
-  const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
   const currentUserInput = "user_input" in input.request.context
     ? input.request.context.user_input : undefined;
@@ -841,10 +841,16 @@ function repairPayload(
     typeof currentUserInput === "string";
   const isTreatment = input.request.operation === "brand_treatment_step" &&
     input.request.contract_name === "CreativeTreatmentOutputV1";
+  const isBrandTreatmentReview = input.request.operation === "brand_treatment_review" &&
+    input.request.validation_profile === "brand_treatment_review_sources_v1";
   const isSupplementalBrandForm = input.request.operation === "brand_slot_form" &&
     input.request.validation_profile === "brand_form_supplemental_novelty_v1";
   const isBrandForm = input.request.operation === "brand_slot_form" &&
     input.request.validation_profile === "brand_form_slots_v1";
+  const violations = boundedViolations(
+    validation?.result,
+    isBrandTreatmentReview ? 32 : 8,
+  );
   const malformedExcerpt = isTreatment && invalidValue === undefined && invalidContent
     ? JSON.stringify({
       content: invalidContent.slice(0, 8_192),
@@ -858,6 +864,8 @@ function repairPayload(
         role: "system",
         content: isIntake
           ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
+          : isBrandTreatmentReview
+            ? `${input.systemPrompt}\n\n${brandTreatmentReviewRepairPolicy}`
           : isTreatment
             ? `${input.systemPrompt}\n\n${treatmentRepairPolicy}`
             : isSupplementalBrandForm
@@ -1232,10 +1240,13 @@ function roleViolationCategory(
     : undefined;
 }
 
-function boundedViolations(result: Readonly<Record<string, unknown>> | undefined) {
+function boundedViolations(
+  result: Readonly<Record<string, unknown>> | undefined,
+  maxViolations = 8,
+) {
   const candidate = result?.violations;
   if (!Array.isArray(candidate)) return [];
-  return candidate.slice(0, 8).flatMap((item) => {
+  return candidate.slice(0, maxViolations).flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const violation = item as Readonly<Record<string, unknown>>;
     const code = boundedViolationText(violation.code, 160);

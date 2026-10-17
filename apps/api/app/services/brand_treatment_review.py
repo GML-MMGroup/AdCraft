@@ -19,6 +19,7 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationSpec,
 )
+from app.services.v2_agent_structured_validation import normalize_confirmed_quote
 
 
 class BrandTreatmentReviewService:
@@ -57,6 +58,19 @@ class BrandTreatmentReviewService:
                 },
                 output_model=BrandTreatmentReviewOutputV1,
                 trace_metadata={"workflow_id": workflow_id},
+                validation_profile="brand_treatment_review_sources_v1",
+                validation_context={
+                    "confirmed_sections": [
+                        {
+                            "step_key": step.step_key,
+                            "section_key": section.key,
+                            "text": section.text,
+                        }
+                        for step in document.treatment_steps
+                        if step.structured_detail is not None
+                        for section in step.structured_detail.sections
+                    ]
+                },
             )
         ).output
         validate_review_sources(document, output)
@@ -115,7 +129,8 @@ def validate_review_sources(
     )
     if any(
         not source.quote.strip()
-        or source.quote not in sections.get((source.step_key, source.section_key), "")
+        or normalize_confirmed_quote(source.quote)
+        not in normalize_confirmed_quote(sections.get((source.step_key, source.section_key), ""))
         for source in references
     ):
         raise V2PersistenceError(

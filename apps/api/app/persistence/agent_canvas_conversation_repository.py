@@ -347,6 +347,65 @@ class AgentCanvasConversationRepository:
             )
         return True
 
+    def record_brand_interaction_publication_failure(
+        self,
+        workflow_id: str,
+        *,
+        failure_id: str,
+        error_code: str,
+        retryable: bool = True,
+    ) -> bool:
+        """Persist a visible, retryable failure for a committed Brand action."""
+
+        now = _now()
+        bounded_code = error_code[:160]
+        entry_id = f"msg_brand_interaction_failure_{failure_id[:120]}"
+        with self._database.engine.begin() as connection:
+            conversation_id = _ensure_conversation(connection, workflow_id, now)
+            if (
+                connection.execute(
+                    select(AgentCanvasChatEntryRow.entry_id).where(
+                        AgentCanvasChatEntryRow.entry_id == entry_id
+                    )
+                ).first()
+                is not None
+            ):
+                return True
+            locale = _guidance_response_locale(connection, workflow_id)
+            message = (
+                "品牌创意步骤暂时无法继续。已确认的内容已保留；请重试当前品牌步骤。"
+                if locale.lower().startswith("zh")
+                else "The Brand creative step could not continue. Confirmed choices are preserved; retry the current Brand step."
+            )
+            actionable_failure = ActionableFailureV1(
+                failure_class="transient" if retryable else "deterministic",
+                retry_scope="turn" if retryable else "none",
+                user_action="retry" if retryable else "none",
+            )
+            synthetic_turn = {
+                "turn_id": f"brand_interaction_{failure_id}",
+                "workflow_id": workflow_id,
+                "conversation_id": conversation_id,
+            }
+            _publish_assistant_message_in_transaction(
+                connection,
+                events=self._events,
+                turn=synthetic_turn,
+                assistant_message=message,
+                entry_id=entry_id,
+                metadata={
+                    "status": "failed",
+                    "error_code": bounded_code,
+                    "retryable": retryable,
+                    "operation_stage": "brand_interaction_publication",
+                    "retry_path": "brand_next_question",
+                    "actionable_failure": actionable_failure.model_dump(mode="json"),
+                },
+                now=now,
+                publication_key=f"conversation:{workflow_id}:brand_interaction_failure:{failure_id}",
+            )
+        return True
+
     def get_guidance_session(self, workflow_id: str) -> GuidedSessionStateV2:
         session = self.get_guidance_session_or_none(workflow_id)
         if session is None:

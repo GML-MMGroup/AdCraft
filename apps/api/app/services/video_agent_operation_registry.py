@@ -274,6 +274,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
         "AgentRunContext",
         "BrandTreatmentReviewOutputV1",
         internal_skill_id="brand_agent_creative_treatment",
+        validation_profile="brand_treatment_review_sources_v1",
     ),
     _definition(
         "brand_treatment_step",
