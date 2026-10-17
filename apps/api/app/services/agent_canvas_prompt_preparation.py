@@ -119,6 +119,7 @@ class NodePromptPreparationService:
             and current.prompt_preparation.operation_id == operation_id
         ):
             return current
+        self._defer_scene_multiview_until_main_ready(current)
         snapshot_digest = context_digest(context)
         preserve_storyboard_text = (
             current.creative_role in {"storyboard_sequence", "storyboard_video"}
@@ -343,6 +344,11 @@ class NodePromptPreparationService:
                         ),
                         "prompt_scene_environment_projection_digest": (
                             compiled_prompt.assertion_evidence.scene_environment_projection_digest
+                        ),
+                        **_scene_environment_projection_metadata(
+                            working,
+                            structured_content,
+                            role_context,
                         ),
                         "role_reference_policy_version": (
                             compiled_prompt.role_reference_policy_version
@@ -574,6 +580,35 @@ class NodePromptPreparationService:
             operation_id=operation_id,
         )
 
+    def _defer_scene_multiview_until_main_ready(self, node: CanvasNodeV2) -> None:
+        if not _is_scene_multiview(node):
+            return
+        bindings = self._binding_snapshots(node)
+        workflow = self._workflows.get_workflow(node.workflow_id)
+        nodes = {item.node_id: item for item in workflow.nodes}
+        parents = tuple(
+            item
+            for item in bindings
+            if item.reference_purpose == "scene_main_identity"
+            and item.source_node_id is not None
+            and item.source_role == "scene"
+        )
+        if len(parents) != 1:
+            return
+        source = nodes.get(parents[0].source_node_id)
+        if source is None or source.prompt_preparation.status == "ready":
+            return
+        raise V2PersistenceError(
+            "prompt_preparation_pending",
+            "Scene Multi-view prompt preparation waits for Scene Main.",
+            stage="node_prompt_preparation",
+            details={
+                "retryable": True,
+                "source_node_ids": [source.node_id] if source is not None else [],
+                "reason": "scene_main_prompt_preparation_pending",
+            },
+        )
+
     def refresh_dependency_evidence(
         self,
         workflow_id: str,
@@ -760,10 +795,58 @@ class NodePromptPreparationService:
                 allow_uninitialized_main=True,
             )
         elif node.creative_role == "scene":
-            scene_projection = scene_environment_projection_from_node(
-                node,
-                allow_uninitialized_seed=True,
-            )
+            if _is_scene_multiview(node):
+                workflow = self._workflows.get_workflow(node.workflow_id)
+                nodes = {item.node_id: item for item in workflow.nodes}
+                parents = tuple(
+                    item
+                    for item in bindings
+                    if item.reference_purpose == "scene_main_identity"
+                    and item.source_node_id is not None
+                    and item.source_role == "scene"
+                )
+                if len(parents) != 1:
+                    raise V2PersistenceError(
+                        "scene_parent_environment_projection_invalid",
+                        "Scene Multi-view requires one exact Scene Main authority.",
+                        stage="node_prompt_preparation",
+                    )
+                parent = parents[0]
+                source = nodes.get(parent.source_node_id)
+                if source is None:
+                    raise V2PersistenceError(
+                        "scene_parent_environment_projection_invalid",
+                        "Scene Main authority is unavailable.",
+                        stage="node_prompt_preparation",
+                    )
+                if source.prompt_preparation.status != "ready":
+                    raise V2PersistenceError(
+                        "prompt_preparation_pending",
+                        "Scene Multi-view prompt preparation waits for Scene Main.",
+                        stage="node_prompt_preparation",
+                        details={
+                            "retryable": True,
+                            "source_node_ids": [source.node_id],
+                            "reason": "scene_main_prompt_preparation_pending",
+                        },
+                    )
+                scene_projection = scene_environment_projection_from_node(
+                    source,
+                    prefer_persisted=True,
+                )
+                expected_digest = source.prompt_preparation.scene_environment_projection_digest
+                if expected_digest is not None and scene_projection is not None:
+                    if scene_projection.projection_digest != expected_digest:
+                        raise V2PersistenceError(
+                            "scene_parent_environment_projection_invalid",
+                            "Scene Main projection digest does not match its prepared authority.",
+                            stage="node_prompt_preparation",
+                        )
+            else:
+                scene_projection = scene_environment_projection_from_node(
+                    node,
+                    allow_uninitialized_seed=True,
+                )
         controls = {
             key: value
             for key, value in context.requirement_facts.items()
@@ -1028,6 +1111,28 @@ def _prompt_preparation_error_details(
 
 def context_digest(context: StageAuthoringContextV1) -> str:
     return sha256(canonical_context_bytes(context)).hexdigest()
+
+
+def _is_scene_multiview(node: CanvasNodeV2) -> bool:
+    return node.creative_role == "scene" and (
+        node.structured_content.get("scene_asset_kind") == "multi_view"
+        or node.parameters.get("scene_asset_kind") == "multi_view"
+    )
+
+
+def _scene_environment_projection_metadata(
+    node: CanvasNodeV2,
+    structured_content: dict[str, object],
+    context: RolePromptPreparationContextV2,
+) -> dict[str, object]:
+    if context.role_variant != "scene_board" or _is_scene_multiview(node):
+        return {}
+    projected = scene_environment_projection_from_node(
+        node.model_copy(update={"structured_content": structured_content}),
+    )
+    if projected is None:
+        return {}
+    return {"scene_environment_projection": projected.model_dump(mode="json")}
 
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:

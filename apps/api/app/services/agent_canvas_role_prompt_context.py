@@ -651,8 +651,26 @@ def scene_environment_projection_from_node(
     node: CanvasNodeV2,
     *,
     allow_uninitialized_seed: bool = False,
+    prefer_persisted: bool = False,
 ) -> SceneEnvironmentProjectionV1 | None:
     """Project typed environment fields without parsing narrative text."""
+
+    if prefer_persisted:
+        persisted = node.metadata.get("scene_environment_projection")
+        if isinstance(persisted, dict):
+            try:
+                projection = SceneEnvironmentProjectionV1.model_validate(persisted)
+            except ValidationError as error:
+                raise _error(
+                    "scene_environment_projection_invalid",
+                    "Scene Main persisted environment authority is invalid.",
+                ) from error
+            if projection.source_node_id != node.node_id:
+                raise _error(
+                    "scene_environment_projection_invalid",
+                    "Scene Main persisted environment authority has the wrong source.",
+                )
+            return projection
 
     content = node.structured_content
     if (
@@ -701,14 +719,22 @@ def scene_environment_projection_from_node(
             "scene_environment_projection_invalid",
             "Authored Scene source lacks explicit lighting or materials.",
         )
+    spatial_logic = summary
+    first_view = views[0]
+    suffix = f" View: {first_view.view_or_zone}."
+    if first_view.spatial_details.endswith(suffix):
+        spatial_logic = first_view.spatial_details[: -len(suffix)].rstrip()
+    atmosphere = summary
+    if spatial_logic and summary.startswith(spatial_logic):
+        atmosphere = summary[len(spatial_logic) :].strip() or spatial_logic
     return SceneEnvironmentProjectionV1.build(
         source_node_id=node.node_id,
         source_node_revision=node.revision,
         environment_identity=identity,
-        spatial_logic=summary,
+        spatial_logic=spatial_logic,
         lighting=lighting,
         materials=materials,
-        atmosphere=summary,
+        atmosphere=atmosphere,
         views=tuple(views[:9]),
         entity_references=tuple(
             str(item) for item in content.get("explicit_entity_reference_ids", ())
