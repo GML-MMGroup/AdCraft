@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from math import ceil
+import re
+import unicodedata
 
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.engine import Connection
@@ -143,7 +145,10 @@ class BrandProductionHandoffService:
         values = self._repository.get_slot_values(brand_id)
         by_slot = {(value.stage, value.slot_id): value.value for value in values}
         duration_text = by_slot.get(("campaign", "campaign_duration"), "30 seconds")
-        aspect = by_slot.get(("campaign", "campaign_aspect_ratio"), "9:16")
+        aspect_text = by_slot.get(("campaign", "campaign_aspect_ratio"), "")
+        current_controls = self._current_hard_controls(
+            self._repository.workflow_id_for_brand(brand_id)
+        )
         platform = by_slot.get(("campaign", "campaign_platform"), "")
         goal = by_slot.get(("campaign", "campaign_goal"), "")
         audience = by_slot.get(("brand-memory", "brand_audience"), "")
@@ -172,18 +177,27 @@ class BrandProductionHandoffService:
             *treatment_lines,
         ]
         prompt = "\n".join(part for part in prompt_parts if part).strip()
-        duration = _duration_seconds(duration_text)
-        request = WorkflowV2PlanFromPromptRequest(
-            prompt=prompt[:4000],
-            product_name=brand_name or None,
-            duration_seconds=duration,
-            aspect_ratio=_aspect_ratio(aspect),
-            metadata={
+        extracted_duration = _extract_duration_seconds(duration_text)
+        duration = (
+            extracted_duration
+            if extracted_duration is not None
+            else int(current_controls.get("duration_seconds", 30))
+        )
+        extracted_aspect = _extract_aspect_ratio(aspect_text)
+        aspect = extracted_aspect or current_controls.get("aspect_ratio")
+        request_kwargs: dict[str, object] = {
+            "prompt": prompt[:4000],
+            "product_name": brand_name or None,
+            "duration_seconds": duration,
+            "metadata": {
                 "brand_mode": True,
                 "brand_id": brand_id,
                 "brand_product_context": product_context.payload,
             },
-        )
+        }
+        if aspect is not None:
+            request_kwargs["aspect_ratio"] = aspect
+        request = WorkflowV2PlanFromPromptRequest(**request_kwargs)
         workflow = self._workflows.plan_from_prompt(request)
         if isinstance(workflow, object) and hasattr(workflow, "workflow_id"):
             return BrandHandoffResult(workflow_id=workflow.workflow_id)
@@ -233,7 +247,7 @@ class BrandProductionHandoffService:
         values = self._repository.get_slot_values(brand_id)
         by_slot = {(value.stage, value.slot_id): value.value for value in values}
         duration_text = by_slot.get(("campaign", "campaign_duration"), "30 seconds")
-        aspect_text = by_slot.get(("campaign", "campaign_aspect_ratio"), "9:16")
+        aspect_text = by_slot.get(("campaign", "campaign_aspect_ratio"), "")
         positioning = by_slot.get(("brand-memory", "brand_positioning"), "")
         audience = by_slot.get(("brand-memory", "brand_audience"), "")
         treatment_summary = "; ".join(self._treatment_lines(brand_id))
@@ -276,24 +290,47 @@ class BrandProductionHandoffService:
             f"Locked Brand treatment: {brand_context_text}."
             f"\n{product_source_text}"
         )
-        duration_value = _duration_seconds(duration_text)
+        current_controls = {item.control: item.value for item in current.ledger.hard_controls}
+        extracted_duration = _extract_duration_seconds(duration_text)
+        duration_value = (
+            extracted_duration
+            if extracted_duration is not None
+            else int(current_controls.get("duration_seconds", 30))
+        )
+        extracted_aspect = _extract_aspect_ratio(aspect_text)
         # Brand Professional Mode never declares a Storyboard sequence or video
         # segment count, so the handoff projects the platform duration policy
         # instead of freezing a count the duration authority would reject.
         segment_count = _media_segment_count(duration_value)
-        patch = RequirementPatchV1(
-            controls_to_set=(
-                DurationSecondsControlPatchV1(value=duration_value, source_quote=duration_text),
-                AspectRatioControlPatchV1(
-                    value=_aspect_ratio(aspect_text), source_quote=aspect_text
-                ),
-                AudioModeControlPatchV1(value="bgm_only", source_quote="BGM audio"),
-                ProductCountControlPatchV1(value=1, source_quote="one product"),
-                StoryboardSequenceCountControlPatchV1(
-                    value=segment_count, source_quote=duration_text
-                ),
-                VideoSegmentCountControlPatchV1(value=segment_count, source_quote=duration_text),
+        controls_to_set = [
+            AudioModeControlPatchV1(value="bgm_only", source_quote="BGM audio"),
+            ProductCountControlPatchV1(value=1, source_quote="one product"),
+            StoryboardSequenceCountControlPatchV1(
+                value=segment_count, source_quote=duration_text or "30 seconds"
             ),
+        ]
+        if extracted_duration is not None and extracted_duration != current_controls.get(
+            "duration_seconds"
+        ):
+            controls_to_set.insert(
+                0,
+                DurationSecondsControlPatchV1(value=extracted_duration, source_quote=duration_text),
+            )
+        if extracted_aspect is not None and extracted_aspect != current_controls.get(
+            "aspect_ratio"
+        ):
+            controls_to_set.insert(
+                1,
+                AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
+            )
+        if current_controls.get("video_segment_count") != segment_count:
+            controls_to_set.append(
+                VideoSegmentCountControlPatchV1(
+                    value=segment_count, source_quote=duration_text or "30 seconds"
+                )
+            )
+        patch = RequirementPatchV1(
+            controls_to_set=tuple(controls_to_set),
             directives_to_add=(
                 RequirementDirectivePatchV1(
                     source_quote="Locked Brand treatment",
@@ -467,9 +504,15 @@ class BrandProductionHandoffService:
         }
         duration_text = slots["campaign_duration"]
         aspect_text = slots["campaign_aspect_ratio"]
-        duration = _duration_seconds(duration_text)
-        segments = _media_segment_count(duration)
         controls = {control.control: control.value for control in current.ledger.hard_controls}
+        extracted_duration = _extract_duration_seconds(duration_text)
+        duration = (
+            extracted_duration
+            if extracted_duration is not None
+            else int(controls.get("duration_seconds", 30))
+        )
+        extracted_aspect = _extract_aspect_ratio(aspect_text)
+        segments = _media_segment_count(duration)
         audio_mode = controls.get("audio_mode", "bgm_only")
         product_count = controls.get("product_count", 1)
         source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
@@ -480,6 +523,29 @@ class BrandProductionHandoffService:
             if step.structured_detail
             for section in step.structured_detail.sections
         )
+        controls_to_set = [
+            AudioModeControlPatchV1(value=audio_mode, source_quote=f"audio {audio_mode}"),
+            ProductCountControlPatchV1(
+                value=product_count, source_quote=f"product count {product_count}"
+            ),
+            StoryboardSequenceCountControlPatchV1(value=segments, source_quote=duration_text),
+        ]
+        if extracted_duration is not None and extracted_duration != controls.get(
+            "duration_seconds"
+        ):
+            controls_to_set.insert(
+                0,
+                DurationSecondsControlPatchV1(value=extracted_duration, source_quote=duration_text),
+            )
+        if extracted_aspect is not None and extracted_aspect != controls.get("aspect_ratio"):
+            controls_to_set.insert(
+                1,
+                AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
+            )
+        if controls.get("video_segment_count") != segments:
+            controls_to_set.append(
+                VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text)
+            )
         requirements.apply_user_turn_patch_in_transaction(
             connection,
             workflow_id,
@@ -487,21 +553,7 @@ class BrandProductionHandoffService:
             source_turn_id=identity,
             user_input=source,
             patch=RequirementPatchV1(
-                controls_to_set=(
-                    DurationSecondsControlPatchV1(value=duration, source_quote=duration_text),
-                    AspectRatioControlPatchV1(
-                        value=_aspect_ratio(aspect_text), source_quote=aspect_text
-                    ),
-                    AudioModeControlPatchV1(value=audio_mode, source_quote=f"audio {audio_mode}"),
-                    ProductCountControlPatchV1(
-                        value=product_count, source_quote=f"product count {product_count}"
-                    ),
-                    StoryboardSequenceCountControlPatchV1(
-                        value=segments, source_quote=duration_text
-                    ),
-                    VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text),
-                    *inventory_patch.controls_to_set,
-                ),
+                controls_to_set=tuple((*controls_to_set, *inventory_patch.controls_to_set)),
                 directives_to_add=(
                     RequirementDirectivePatchV1(
                         source_quote=f"Reviewed Brand document {document.content_digest}",
@@ -551,6 +603,22 @@ class BrandProductionHandoffService:
     def locked_prohibited_elements(self, brand_id: str) -> tuple[str, ...]:
         return self._repository.locked_prohibited_elements(brand_id)
 
+    def _current_hard_controls(self, workflow_id: str | None) -> dict[str, object]:
+        if workflow_id is None:
+            return {}
+        requirements = AgentCanvasRequirementService(
+            self._database,
+            AgentCanvasRequirementRepository(self._database),
+            EventRepository(self._database),
+        )
+        try:
+            revision = requirements.get_current_revision(workflow_id)
+        except V2PersistenceError as error:
+            if error.code == "requirement_ledger_not_found":
+                return {}
+            raise
+        return {control.control: control.value for control in revision.ledger.hard_controls}
+
     def _treatment_lines(self, brand_id: str) -> list[str]:
         try:
             with self._database.engine.connect() as connection:
@@ -586,10 +654,12 @@ class BrandProductionHandoffService:
         return str(row[0]) if row else ""
 
 
-def _duration_seconds(text: str) -> int:
-    digits = "".join(ch for ch in text if ch.isdigit())
-    value = int(digits) if digits else 30
-    return max(1, min(value, 300))
+def _extract_duration_seconds(text: str) -> int | None:
+    normalized = unicodedata.normalize("NFKC", text)
+    values = {int(value) for value in re.findall(r"\d+", normalized)}
+    if len(values) != 1:
+        return None
+    return max(1, min(values.pop(), 300))
 
 
 def _media_segment_count(duration_seconds: int) -> int:
@@ -601,10 +671,15 @@ def _media_segment_count(duration_seconds: int) -> int:
     )
 
 
-def _aspect_ratio(value: str) -> str:
-    if value in {"16:9", "9:16", "1:1", "4:3", "3:4"}:
-        return value
-    return "9:16"
+def _extract_aspect_ratio(value: str) -> str | None:
+    normalized = unicodedata.normalize("NFKC", value)
+    allowed = {"16:9", "9:16", "1:1", "4:3", "3:4"}
+    values = {
+        f"{int(match.group(1))}:{int(match.group(2))}"
+        for match in re.finditer(r"(\d{1,2})\s*[:：xX×/]\s*(\d{1,2})", normalized)
+    }
+    allowed_values = values.intersection(allowed)
+    return next(iter(allowed_values)) if len(allowed_values) == 1 else None
 
 
 def check_locked_elements(text: str, prohibited: tuple[str, ...]) -> None:
