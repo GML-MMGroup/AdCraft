@@ -16,6 +16,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_canvas_guided_interaction_rebase import (
+    rebase_open_guided_interactions_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -196,6 +199,7 @@ class AgentCanvasRequirementService:
                             workflow_id,
                             revision.ledger,
                             now,
+                            events=self._events,
                         )
                         _supersede_stale_proposals(
                             connection,
@@ -329,6 +333,7 @@ class AgentCanvasRequirementService:
                 workflow_id,
                 revision.ledger,
                 now,
+                events=self._events,
             )
             _supersede_stale_proposals(connection, workflow_id, revision.revision_id, now)
             self._append_update_event(
@@ -894,6 +899,7 @@ def update_requirement_compatibility_projection_in_transaction(
     updated_at: str,
     *,
     advance_session_revision: bool = True,
+    events: EventRepository | None = None,
 ) -> None:
     session = (
         connection.execute(
@@ -941,6 +947,25 @@ def update_requirement_compatibility_projection_in_transaction(
             .where(AgentCanvasGuidanceSessionRow.session_id == session["session_id"])
             .values(**values)
         )
+        if advance_session_revision and events is not None:
+            previous_revision = int(session["revision"])
+            next_revision = previous_revision + 1
+            checkpoint_json = (
+                str(session["current_checkpoint_json"])
+                if session["current_checkpoint_json"] is not None
+                else None
+            )
+            rebase_open_guided_interactions_in_transaction(
+                connection,
+                events,
+                workflow_id=workflow_id,
+                session_id=str(session["session_id"]),
+                previous_session_revision=previous_revision,
+                next_session_revision=next_revision,
+                previous_checkpoint_json=checkpoint_json,
+                next_checkpoint_json=checkpoint_json,
+                updated_at=updated_at,
+            )
     duration = controls.get("duration_seconds")
     memory_values = {
         "duration_format": str(duration) if duration is not None else "",
