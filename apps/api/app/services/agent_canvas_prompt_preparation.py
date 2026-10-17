@@ -339,14 +339,10 @@ class NodePromptPreparationService:
                         "prompt_recipe_digest": recipe.recipe_digest,
                         "prompt_reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
                         "prompt_character_identity_projection_digest": (
-                            role_context.character_identity_projection.projection_digest
-                            if role_context.character_identity_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.character_identity_projection_digest
                         ),
                         "prompt_scene_environment_projection_digest": (
-                            role_context.scene_environment_projection.projection_digest
-                            if role_context.scene_environment_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.scene_environment_projection_digest
                         ),
                         "role_reference_policy_version": (
                             compiled_prompt.role_reference_policy_version
@@ -424,14 +420,10 @@ class NodePromptPreparationService:
                         document_revisions=role_context.document_revisions,
                         binding_digest=compiled_prompt.reference_bundle_digest,
                         character_identity_projection_digest=(
-                            role_context.character_identity_projection.projection_digest
-                            if role_context.character_identity_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.character_identity_projection_digest
                         ),
                         scene_environment_projection_digest=(
-                            role_context.scene_environment_projection.projection_digest
-                            if role_context.scene_environment_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.scene_environment_projection_digest
                         ),
                         style_projection_digest=compiled_prompt.style_projection_digest,
                         brief_digest=compiled_prompt.brief_digest,
