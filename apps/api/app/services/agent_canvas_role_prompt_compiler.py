@@ -185,7 +185,7 @@ class AgentCanvasRolePromptCompiler:
             else concrete_brief.editable_prompt
         )
         engine_owned_product_views = (
-            isinstance(concrete_brief, ProductMultiviewRoleBriefV2)
+            isinstance(concrete_brief, (ProductMainRoleBriefV2, PropRoleBriefV2))
             and editable_prompt_override is None
         )
         if editable_prompt is not None and not engine_owned_product_views:
