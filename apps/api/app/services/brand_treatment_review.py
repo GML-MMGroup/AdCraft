@@ -1,6 +1,7 @@
 """Persist content-bound, advisory Treatment assessments without editing choices."""
 
 from datetime import datetime, timezone
+import unicodedata
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -11,6 +12,7 @@ from app.schemas.brand_professional_mode import (
     BrandDecisionLogEntryV1,
     BrandTreatmentDocumentV1,
     BrandTreatmentReviewOutputV1,
+    BrandTreatmentSourceV1,
     BrandTreatmentReviewV1,
 )
 from app.services.brand_decision_document import BrandDecisionDocumentService
@@ -74,6 +76,7 @@ class BrandTreatmentReviewService:
             )
         ).output
         validate_review_sources(document, output)
+        output = canonicalize_review_sources(document, output)
         review = BrandTreatmentReviewV1(
             **output.model_dump(),
             source_content_digest=document.content_digest,
@@ -109,12 +112,7 @@ class BrandTreatmentReviewService:
 def validate_review_sources(
     document: BrandTreatmentDocumentV1, output: BrandTreatmentReviewOutputV1
 ) -> None:
-    sections = {
-        (step.step_key, section.key): section.text
-        for step in document.treatment_steps
-        if step.structured_detail is not None
-        for section in step.structured_detail.sections
-    }
+    sections = _confirmed_sections(document)
     inventory = output.production_requirements
     references = (
         *inventory.character_sources,
@@ -137,3 +135,112 @@ def validate_review_sources(
             "brand_review_invalid",
             "Treatment review references must quote confirmed sections exactly.",
         )
+
+
+def canonical_confirmed_quote(section_text: str, quote: str) -> str | None:
+    normalized_section, source_indexes = _normalize_with_indexes(section_text)
+    normalized_quote = normalize_confirmed_quote(quote)
+    if not normalized_quote:
+        return None
+    start = normalized_section.find(normalized_quote)
+    if start < 0:
+        return None
+    end = start + len(normalized_quote)
+    raw_start = source_indexes[start]
+    raw_end = source_indexes[end - 1] + 1
+    candidate = _trim_quote_edges(section_text[raw_start:raw_end])
+    if normalize_confirmed_quote(candidate) != normalized_quote:
+        return None
+    return candidate or None
+
+
+def canonicalize_review_sources(
+    document: BrandTreatmentDocumentV1, output: BrandTreatmentReviewOutputV1
+) -> BrandTreatmentReviewOutputV1:
+    sections = _confirmed_sections(document)
+
+    def canonical_source(source: BrandTreatmentSourceV1) -> BrandTreatmentSourceV1:
+        canonical = canonical_confirmed_quote(
+            sections.get((source.step_key, source.section_key), ""), source.quote
+        )
+        if canonical is None:
+            raise V2PersistenceError(
+                "brand_review_invalid",
+                "Treatment review references must quote confirmed sections exactly.",
+            )
+        return source.model_copy(update={"quote": canonical})
+
+    def canonical_sources(
+        sources: tuple[BrandTreatmentSourceV1, ...],
+    ) -> tuple[BrandTreatmentSourceV1, ...]:
+        return tuple(canonical_source(source) for source in sources)
+
+    inventory = output.production_requirements
+    canonical_inventory = inventory.model_copy(
+        update={
+            "character_sources": canonical_sources(inventory.character_sources),
+            "prop_sources": canonical_sources(inventory.prop_sources),
+            "scene_sources": canonical_sources(inventory.scene_sources),
+            "characters": tuple(
+                element.model_copy(update={"sources": canonical_sources(element.sources)})
+                for element in inventory.characters
+            ),
+            "scenes": tuple(
+                element.model_copy(update={"sources": canonical_sources(element.sources)})
+                for element in inventory.scenes
+            ),
+        }
+    )
+    return output.model_copy(
+        update={
+            "production_requirements": canonical_inventory,
+            "findings": tuple(
+                finding.model_copy(update={"sources": canonical_sources(finding.sources)})
+                for finding in output.findings
+            ),
+        }
+    )
+
+
+def _confirmed_sections(document: BrandTreatmentDocumentV1) -> dict[tuple[str, str], str]:
+    return {
+        (step.step_key, section.key): section.text
+        for step in document.treatment_steps
+        if step.structured_detail is not None
+        for section in step.structured_detail.sections
+    }
+
+
+def _normalize_with_indexes(value: str) -> tuple[str, list[int]]:
+    normalized: list[str] = []
+    source_indexes: list[int] = []
+    whitespace_pending = False
+    whitespace_index = 0
+    for source_index, character in enumerate(value):
+        for normalized_character in unicodedata.normalize("NFKC", character):
+            if normalized_character.isspace():
+                if not whitespace_pending:
+                    whitespace_pending = True
+                    whitespace_index = source_index
+                continue
+            if whitespace_pending:
+                normalized.append(" ")
+                source_indexes.append(whitespace_index)
+                whitespace_pending = False
+            normalized.append(normalized_character)
+            source_indexes.append(source_index)
+    return "".join(normalized), source_indexes
+
+
+def _trim_quote_edges(value: str) -> str:
+    start = 0
+    end = len(value)
+    while start < end and (
+        value[start].isspace() or unicodedata.category(value[start]).startswith("P")
+    ):
+        start += 1
+    while end > start and (
+        value[end - 1].isspace() or unicodedata.category(value[end - 1]).startswith("P")
+    ):
+        end -= 1
+    return value[start:end]
