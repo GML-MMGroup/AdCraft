@@ -39549,7 +39549,7 @@
       "operation": "brand_treatment_review",
       "result_contract_name": "BrandTreatmentReviewOutputV1",
       "style_projection_role": null,
-      "validation_profile": "brand_treatment_review_sources_v1"
+      "validation_profile": null
     },
     {
       "capability_id": null,
