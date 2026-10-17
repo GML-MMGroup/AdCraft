@@ -547,12 +547,15 @@ def _semantic_projections(
                 "Scene preparation requires an environment-only projection.",
             )
         if context.node_parameters.get("scene_asset_kind") == "multi_view":
-            if len(context.bindings) != 1:
+            parent_bindings = tuple(
+                item for item in context.bindings if item.reference_purpose == "scene_main_identity"
+            )
+            if len(parent_bindings) != 1:
                 raise _error(
                     "scene_parent_environment_projection_invalid",
                     "Scene Multi-view requires one exact Scene Main authority.",
                 )
-            parent = context.bindings[0]
+            parent = parent_bindings[0]
             if (
                 parent.source_role != "scene"
                 or parent.reference_purpose != "scene_main_identity"

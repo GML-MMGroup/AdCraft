@@ -119,7 +119,12 @@ class NodePromptPreparationService:
             and current.prompt_preparation.operation_id == operation_id
         ):
             return current
-        self._defer_scene_multiview_until_main_ready(current)
+        if _is_scene_multiview(current):
+            _ensure_scene_main_projection_available(
+                current,
+                self._workflows,
+                self._binding_snapshots(current),
+            )
         snapshot_digest = context_digest(context)
         preserve_storyboard_text = (
             current.creative_role in {"storyboard_sequence", "storyboard_video"}
@@ -580,35 +585,6 @@ class NodePromptPreparationService:
             operation_id=operation_id,
         )
 
-    def _defer_scene_multiview_until_main_ready(self, node: CanvasNodeV2) -> None:
-        if not _is_scene_multiview(node):
-            return
-        bindings = self._binding_snapshots(node)
-        workflow = self._workflows.get_workflow(node.workflow_id)
-        nodes = {item.node_id: item for item in workflow.nodes}
-        parents = tuple(
-            item
-            for item in bindings
-            if item.reference_purpose == "scene_main_identity"
-            and item.source_node_id is not None
-            and item.source_role == "scene"
-        )
-        if len(parents) != 1:
-            return
-        source = nodes.get(parents[0].source_node_id)
-        if source is None or source.prompt_preparation.status == "ready":
-            return
-        raise V2PersistenceError(
-            "prompt_preparation_pending",
-            "Scene Multi-view prompt preparation waits for Scene Main.",
-            stage="node_prompt_preparation",
-            details={
-                "retryable": True,
-                "source_node_ids": [source.node_id] if source is not None else [],
-                "reason": "scene_main_prompt_preparation_pending",
-            },
-        )
-
     def refresh_dependency_evidence(
         self,
         workflow_id: str,
@@ -819,21 +795,20 @@ class NodePromptPreparationService:
                         "Scene Main authority is unavailable.",
                         stage="node_prompt_preparation",
                     )
-                if source.prompt_preparation.status != "ready":
-                    raise V2PersistenceError(
-                        "prompt_preparation_pending",
-                        "Scene Multi-view prompt preparation waits for Scene Main.",
-                        stage="node_prompt_preparation",
-                        details={
-                            "retryable": True,
-                            "source_node_ids": [source.node_id],
-                            "reason": "scene_main_prompt_preparation_pending",
-                        },
-                    )
                 scene_projection = scene_environment_projection_from_node(
                     source,
                     prefer_persisted=True,
                 )
+                if scene_projection is not None:
+                    bindings = tuple(
+                        item.model_copy(
+                            update={"source_node_revision": scene_projection.source_node_revision}
+                        )
+                        if item.reference_purpose == "scene_main_identity"
+                        and item.source_node_id == source.node_id
+                        else item
+                        for item in bindings
+                    )
                 expected_digest = source.prompt_preparation.scene_environment_projection_digest
                 if expected_digest is not None and scene_projection is not None:
                     if scene_projection.projection_digest != expected_digest:
@@ -1118,6 +1093,48 @@ def _is_scene_multiview(node: CanvasNodeV2) -> bool:
         node.structured_content.get("scene_asset_kind") == "multi_view"
         or node.parameters.get("scene_asset_kind") == "multi_view"
     )
+
+
+def _ensure_scene_main_projection_available(
+    node: CanvasNodeV2,
+    workflows: AgentCanvasWorkflowRepository,
+    bindings: tuple[RoleBindingSnapshotV2, ...],
+) -> None:
+    """Keep Scene Multi-view queued until an incomplete Main authority is usable."""
+
+    parents = tuple(
+        item
+        for item in bindings
+        if item.reference_purpose == "scene_main_identity" and item.source_node_id is not None
+    )
+    if len(parents) != 1:
+        return
+    source_id = parents[0].source_node_id
+    source = next(
+        (
+            item
+            for item in workflows.get_workflow(node.workflow_id).nodes
+            if item.node_id == source_id
+        ),
+        None,
+    )
+    if source is None or source.prompt_preparation.status == "ready":
+        return
+    try:
+        scene_environment_projection_from_node(source)
+    except V2PersistenceError as error:
+        if error.code == "scene_environment_projection_invalid":
+            raise V2PersistenceError(
+                "prompt_preparation_pending",
+                "Scene Multi-view prompt preparation waits for Scene Main.",
+                stage="node_prompt_preparation",
+                details={
+                    "retryable": True,
+                    "source_node_ids": [source.node_id],
+                    "reason": "scene_main_prompt_preparation_pending",
+                },
+            ) from error
+        raise
 
 
 def _scene_environment_projection_metadata(

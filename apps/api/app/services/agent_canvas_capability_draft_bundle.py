@@ -766,7 +766,7 @@ def _scene_pair_binding(
             target_node_id=multi_view.node_id,
             input_role="image_reference",
             enabled=True,
-            order=0,
+            order=1,
             label="Required Scene Main reference",
             metadata={
                 "semantic_reference_role": "environment_reference",
