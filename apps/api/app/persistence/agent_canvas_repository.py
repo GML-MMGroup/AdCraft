@@ -1777,6 +1777,7 @@ class AgentCanvasWorkflowRepository:
                             workflow_id,
                             requirement_revision.ledger,
                             now,
+                            events=self._events,
                         )
                         self._events.append_in_transaction(
                             connection,
