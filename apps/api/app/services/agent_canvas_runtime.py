@@ -186,6 +186,14 @@ class AgentCanvasRunService:
         accepted: list[str] = []
         skipped: list[CanvasRunSkippedNodeV2] = []
         for node in requested:
+            if request.source_action == "agent_auto_generate":
+                waiting_parent = _parent_reference_waiting_reason(self._workflows, node)
+                if waiting_parent is not None:
+                    raise _run_error(
+                        "upstream_inputs_not_ready",
+                        waiting_parent,
+                        details={"node_id": node.node_id},
+                    )
             reason = _skip_reason(node, request)
             if reason == "node_prompt_empty" and self._blank_prompt_eligibility_validator:
                 try:
@@ -2111,6 +2119,52 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
     if not _prompt_recipe_is_current(node):
         return "node_prompt_assertion_contract_invalid"
     return None
+
+
+def _parent_reference_waiting_reason(
+    workflows: AgentCanvasWorkflowRepository,
+    node: CanvasNodeV2,
+) -> str | None:
+    """Keep automatic parent-derived Runs deferred until their source is Ready."""
+
+    workflow = workflows.get_workflow(node.workflow_id)
+    for binding in workflow.bindings:
+        if binding.target_node_id != node.node_id or not binding.enabled:
+            continue
+        source_node_id = getattr(binding.source, "node_id", None)
+        if source_node_id is None:
+            continue
+        source = next((item for item in workflow.nodes if item.node_id == source_node_id), None)
+        if source is None or not _is_parent_derived_reference(binding.metadata, source, node):
+            continue
+        if source is None or source.status != "ready" or source.output_asset_id is None:
+            return "Automatic Run is waiting for its parent reference to become Ready."
+    return None
+
+
+def _is_parent_derived_reference(
+    metadata: dict[str, object],
+    source: CanvasNodeV2,
+    target: CanvasNodeV2,
+) -> bool:
+    return bool(
+        metadata.get("scene_pair")
+        or metadata.get("character_pair_id")
+        or metadata.get("product_pair")
+        or metadata.get("parent_derived")
+        or metadata.get("reference_purpose")
+        in {"identity_master", "product_main_identity", "scene_main_identity"}
+        or (
+            metadata.get("semantic_reference_role") == "subject_reference"
+            and source.structured_content.get("asset_kind") == "main"
+            and target.structured_content.get("asset_kind") == "multi_view"
+        )
+        or (
+            metadata.get("semantic_reference_role") == "subject_reference"
+            and source.structured_content.get("character_asset_kind") == "identity_master"
+            and target.structured_content.get("character_asset_kind") == "turnaround"
+        )
+    )
 
 
 def _skip_message(reason: str) -> str:

@@ -1127,6 +1127,10 @@ def create_agent_canvas_runtime(
         asset_service,
         publication_intents=publication_intents,
     )
+    automatic_run_repository = AgentCanvasAutomaticRunRepository(
+        database,
+        event_repository,
+    )
     result_commit_repository = AgentCanvasResultCommitRepository(
         database,
         asset_repository,
@@ -1146,6 +1150,50 @@ def create_agent_canvas_runtime(
         result_committer,
         owner_id=f"agent-canvas-result-publication:{uuid4().hex}",
     )
+
+    def queue_scene_parent_derived_auto_run(node) -> tuple[str, ...]:
+        if (
+            node.status != "ready"
+            or execution_settings.get_or_create(node.workflow_id).media_execution_mode
+            != "automatic"
+        ):
+            return ()
+        workflow = workflow_repository.get_workflow(node.workflow_id)
+        parent_command = next(
+            (
+                command
+                for command in automatic_run_repository.list_for_workflow(node.workflow_id)
+                if command.node_id == node.node_id
+            ),
+            None,
+        )
+        source_action_id = (
+            parent_command.source_action_id
+            if parent_command is not None
+            else f"scene-parent-ready:{node.node_id}"
+        )
+        for binding in workflow.bindings:
+            if (
+                (binding.source.node_id if hasattr(binding.source, "node_id") else None)
+                != node.node_id
+                or not binding.enabled
+                or not binding.metadata.get("scene_pair")
+            ):
+                continue
+            target = next(
+                (item for item in workflow.nodes if item.node_id == binding.target_node_id),
+                None,
+            )
+            if target is None or target.status in {"ready", "working"}:
+                continue
+            automatic_run_repository.enqueue(
+                workflow_id=node.workflow_id,
+                source_action_id=source_action_id,
+                node_id=target.node_id,
+                now=datetime.now(timezone.utc),
+            )
+        return ()
+
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -1374,10 +1422,6 @@ def create_agent_canvas_runtime(
             capabilities=provider_capabilities,
         ),
     )
-    automatic_run_repository = AgentCanvasAutomaticRunRepository(
-        database,
-        event_repository,
-    )
     fanout_activation = StoryboardFanoutActivationService(
         brand_context_loader=BrandProductionHandoffService(database).production_context,
         workflows=workflow_repository,
@@ -1445,6 +1489,9 @@ def create_agent_canvas_runtime(
         )
 
     def handle_storyboard_progression(effect) -> CanvasPostReadyEffectDispositionV1:
+        queue_scene_parent_derived_auto_run(
+            workflow_repository.get_node(effect.workflow_id, effect.node_id)
+        )
         return guided_media_reviews.publish_from_effect(effect)
 
     post_ready_effects = AgentCanvasPostReadyEffectWorker(
@@ -1464,6 +1511,22 @@ def create_agent_canvas_runtime(
         start_or_extend=run_service.start_or_extend,
         resume_execution=scheduler.resume,
         worker_id=f"agent-canvas-auto-run:{uuid4().hex}",
+        terminal_failure_publisher=lambda workflow_id, node_id, error, command_id: (
+            workflow_repository.set_node_runtime_state(
+                workflow_id,
+                node_id,
+                status="failed",
+                updated_at=datetime.now(timezone.utc),
+                error=error,
+                execution_id=f"automatic-run:{command_id}",
+                event_type="node_failed",
+                event_payload={
+                    "code": error.code,
+                    "retryable": error.retryable,
+                    "automatic_run_command_id": command_id,
+                },
+            )
+        ),
     )
     command_repository = AgentCanvasCommandRepository(
         database,

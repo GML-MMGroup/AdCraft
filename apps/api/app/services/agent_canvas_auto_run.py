@@ -21,6 +21,7 @@ class _AcceptedRun(Protocol):
 
 
 StartOrExtend = Callable[..., _AcceptedRun]
+TerminalFailurePublisher = Callable[[str, str, CanvasNodeErrorV2, str], object]
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class AgentCanvasAutoRunDispatcher:
         lease_duration: timedelta = timedelta(seconds=90),
         base_backoff: timedelta = timedelta(seconds=5),
         maximum_backoff: timedelta = timedelta(minutes=5),
+        terminal_failure_publisher: TerminalFailurePublisher | None = None,
     ) -> None:
         self._commands = commands
         self._start_or_extend = start_or_extend
@@ -56,6 +58,7 @@ class AgentCanvasAutoRunDispatcher:
         self._lease_duration = lease_duration
         self._base_backoff = base_backoff
         self._maximum_backoff = maximum_backoff
+        self._terminal_failure_publisher = terminal_failure_publisher
 
     def run_once(self) -> AutoRunDispatcherCycle:
         claimed = self._commands.claim_due(
@@ -110,6 +113,13 @@ class AgentCanvasAutoRunDispatcher:
                 retry_at=self._clock() + delay,
                 now=self._clock(),
             )
+            if updated.state == "failed" and self._terminal_failure_publisher is not None:
+                self._terminal_failure_publisher(
+                    command.workflow_id,
+                    command.node_id,
+                    error,
+                    command.command_id,
+                )
             return "retried" if updated.state == "pending" else "failed"
         self._commands.mark_submitted(
             command.command_id,
