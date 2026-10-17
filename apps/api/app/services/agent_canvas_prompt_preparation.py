@@ -799,16 +799,6 @@ class NodePromptPreparationService:
                     source,
                     prefer_persisted=True,
                 )
-                if scene_projection is not None:
-                    bindings = tuple(
-                        item.model_copy(
-                            update={"source_node_revision": scene_projection.source_node_revision}
-                        )
-                        if item.reference_purpose == "scene_main_identity"
-                        and item.source_node_id == source.node_id
-                        else item
-                        for item in bindings
-                    )
                 expected_digest = source.prompt_preparation.scene_environment_projection_digest
                 if expected_digest is not None and scene_projection is not None:
                     if scene_projection.projection_digest != expected_digest:
