@@ -37,6 +37,7 @@ from app.services.agent_canvas_role_prompt_context import (
     RolePromptContextProjector,
     RolePromptParameterResolver,
     character_identity_projection_from_node,
+    product_identity_projection_from_node,
     scene_environment_projection_from_node,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
@@ -725,6 +726,7 @@ class NodePromptPreparationService:
         bindings = self._binding_snapshots(node)
         character_projection = None
         scene_projection = None
+        product_projection = None
         if (
             node.creative_role == "character"
             and node.metadata.get("character_phase") == "turnaround"
@@ -812,6 +814,20 @@ class NodePromptPreparationService:
                     node,
                     allow_uninitialized_seed=True,
                 )
+        elif node.creative_role == "product" and _is_product_multiview(node):
+            workflow = self._workflows.get_workflow(node.workflow_id)
+            nodes = {item.node_id: item for item in workflow.nodes}
+            parents = tuple(
+                item
+                for item in bindings
+                if item.reference_purpose == "product_main_identity"
+                and item.source_node_id is not None
+                and item.source_role == "product"
+            )
+            if len(parents) == 1:
+                source = nodes.get(parents[0].source_node_id)
+                if source is not None:
+                    product_projection = product_identity_projection_from_node(source)
         controls = {
             key: value
             for key, value in context.requirement_facts.items()
@@ -849,6 +865,7 @@ class NodePromptPreparationService:
             world_view_projection=self._world_view_projection(node),
             character_identity_projection=character_projection,
             scene_environment_projection=scene_projection,
+            product_identity_projection=product_projection,
             allow_uninitialized_scene=(node.creative_role == "scene" and scene_projection is None),
         )
 
@@ -1082,6 +1099,13 @@ def _is_scene_multiview(node: CanvasNodeV2) -> bool:
     return node.creative_role == "scene" and (
         node.structured_content.get("scene_asset_kind") == "multi_view"
         or node.parameters.get("scene_asset_kind") == "multi_view"
+    )
+
+
+def _is_product_multiview(node: CanvasNodeV2) -> bool:
+    return node.creative_role == "product" and (
+        node.structured_content.get("asset_kind") == "multi_view"
+        or node.parameters.get("asset_kind") == "multi_view"
     )
 
 

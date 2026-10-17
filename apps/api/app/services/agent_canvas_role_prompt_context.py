@@ -15,6 +15,7 @@ from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_role_prompt_preparation import (
     CharacterIdentityAuthorityProjectionV1,
+    ProductIdentityAuthorityProjectionV1,
     ResolvedNodeParameterV2,
     RoleBoundTextControlV2,
     RoleBindingSnapshotV2,
@@ -156,6 +157,7 @@ class RolePromptContextProjector:
         context_blocks: tuple[RolePromptContextBlockV2, ...] = (),
         character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
         scene_environment_projection: SceneEnvironmentProjectionV1 | None = None,
+        product_identity_projection: ProductIdentityAuthorityProjectionV1 | None = None,
         allow_uninitialized_scene: bool = False,
     ) -> RolePromptPreparationContextV2:
         if stage_context.workflow_id != node.workflow_id:
@@ -311,6 +313,7 @@ class RolePromptContextProjector:
             character_phase=character_phase,
             character_identity_projection=character_identity_projection,
             scene_environment_projection=scene_environment_projection,
+            product_identity_projection=product_identity_projection,
             scene_projection_required=not (
                 role_variant == "scene_board"
                 and scene_environment_projection is None
@@ -741,6 +744,23 @@ def scene_environment_projection_from_node(
         ),
         action_references=tuple(str(item) for item in content.get("action_references", ())),
         environment_only=content.get("no_narrative_progression") is not False,
+    )
+
+
+def product_identity_projection_from_node(
+    node: CanvasNodeV2,
+) -> ProductIdentityAuthorityProjectionV1 | None:
+    """Project only explicit structured Product Main identity authority."""
+
+    subject_identity = _required_text(node.structured_content.get("subject_identity"))
+    design_summary = _required_text(node.structured_content.get("design_summary"))
+    if subject_identity is None or design_summary is None:
+        return None
+    return ProductIdentityAuthorityProjectionV1.build(
+        source_node_id=node.node_id,
+        source_node_revision=node.revision,
+        subject_identity=subject_identity,
+        design_summary=design_summary,
     )
 
 

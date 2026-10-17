@@ -34,6 +34,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     FreeMediaRoleBriefV2,
     ProductMainRoleBriefV2,
     ProductMultiviewRoleBriefV2,
+    ProductIdentityAuthorityProjectionV1,
     PropRoleBriefV2,
     RolePromptCompactionDecisionV2,
     ResolvedNodeParameterV2,
@@ -170,7 +171,7 @@ class AgentCanvasRolePromptCompiler:
             recipe,
             brief_digest=brief_digest,
         )
-        character_projection, scene_projection = _semantic_projections(
+        character_projection, scene_projection, product_projection = _semantic_projections(
             concrete_brief,
             context,
         )
@@ -178,6 +179,7 @@ class AgentCanvasRolePromptCompiler:
             concrete_brief,
             character_projection=character_projection,
             scene_projection=scene_projection,
+            product_projection=product_projection,
         )
         editable_prompt = (
             editable_prompt_override
@@ -271,7 +273,12 @@ class AgentCanvasRolePromptCompiler:
         policy_negative = " ".join(policy.negative_clauses)
         if policy_negative and policy_negative not in negative:
             negative = f"{negative} {policy_negative}".strip()
-        structured = _structured_content(concrete_brief, context, scene_projection=scene_projection)
+        structured = _structured_content(
+            concrete_brief,
+            context,
+            scene_projection=scene_projection,
+            product_projection=product_projection,
+        )
         if conditioning_plan is not None and isinstance(structured.get("style"), dict):
             structured = {
                 **structured,
@@ -468,7 +475,11 @@ class AgentCanvasRolePromptCompiler:
 def _semantic_projections(
     brief: RoleCreativeBriefMemberV2,
     context: RolePromptPreparationContextV2,
-) -> tuple[CharacterIdentityAuthorityProjectionV1 | None, SceneEnvironmentProjectionV1 | None]:
+) -> tuple[
+    CharacterIdentityAuthorityProjectionV1 | None,
+    SceneEnvironmentProjectionV1 | None,
+    ProductIdentityAuthorityProjectionV1 | None,
+]:
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         projection = context.character_identity_projection
         if projection is not None:
@@ -506,8 +517,8 @@ def _semantic_projections(
                         "character_turnaround_identity_conflict",
                         "Turnaround identity differs from the bound Character Main authority.",
                     )
-            return projection, None
-        return None, None
+            return projection, None, None
+        return None, None, None
     if isinstance(brief, CharacterMainRoleBriefV2):
         projection = context.character_identity_projection
         if projection is not None and projection.occurrence_id != context.occurrence_id:
@@ -515,7 +526,7 @@ def _semantic_projections(
                 "character_parent_identity_projection_invalid",
                 "Character Main projection occurrence is stale.",
             )
-        return projection, None
+        return projection, None, None
     if isinstance(brief, SceneBoardRoleBriefV2):
         projection = context.scene_environment_projection
         if projection is None:
@@ -573,8 +584,32 @@ def _semantic_projections(
                 "node_prompt_context_stale",
                 "Scene environment projection revision is stale.",
             )
-        return None, projection
-    return None, None
+        return None, projection, None
+    if isinstance(brief, ProductMultiviewRoleBriefV2):
+        projection = context.product_identity_projection
+        if projection is not None:
+            parent_bindings = tuple(
+                item
+                for item in context.bindings
+                if item.reference_purpose == "product_main_identity"
+            )
+            if len(parent_bindings) != 1:
+                raise _error(
+                    "product_parent_identity_projection_invalid",
+                    "Product Multi-view projection requires one exact Product Main authority.",
+                )
+            parent = parent_bindings[0]
+            if (
+                parent.source_role != "product"
+                or parent.source_node_id != projection.source_node_id
+                or parent.source_node_revision != projection.source_node_revision
+            ):
+                raise _error(
+                    "product_parent_identity_projection_invalid",
+                    "Product Main projection is stale or not the exact bound authority.",
+                )
+        return None, None, projection
+    return None, None, None
 
 
 def _render(
@@ -582,6 +617,7 @@ def _render(
     *,
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
+    product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> tuple[str, str]:
     if isinstance(brief, WorldViewRoleBriefV2):
         return (
@@ -591,10 +627,15 @@ def _render(
             "No complete script, shot list, provider syntax, or hidden topology.",
         )
     if isinstance(brief, ProductMultiviewRoleBriefV2):
+        identity = product_projection.subject_identity if product_projection else brief.identity
+        design_summary = (
+            product_projection.design_summary
+            if product_projection
+            else "; ".join((brief.geometry, brief.materials, brief.marks, brief.palette))
+        )
         return (
-            f"Use the exact bound Product Main as identity authority. Preserve {brief.identity}; "
-            f"geometry: {brief.geometry}; materials: {brief.materials}; marks: {brief.marks}; "
-            f"palette: {brief.palette}. Render {', '.join(PRODUCT_MULTIVIEW_VIEWS)} on a clean neutral "
+            f"Use the exact bound Product Main as identity authority. Preserve {identity}; "
+            f"{design_summary}. Render {', '.join(PRODUCT_MULTIVIEW_VIEWS)} on a clean neutral "
             "studio background.",
             "No people, hands, active use, application scene, unrelated prop, labels, captions, "
             "storyboard layout, or Product Main prompt reuse.",
@@ -723,6 +764,7 @@ def _structured_content(
     context: RolePromptPreparationContextV2,
     *,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
+    product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
     if (
@@ -758,8 +800,14 @@ def _structured_content(
     if isinstance(brief, ProductMultiviewRoleBriefV2):
         return DesignAssetContentV2(
             asset_kind="multi_view",
-            subject_identity=brief.identity,
-            design_summary="; ".join((brief.geometry, brief.materials, brief.marks, brief.palette)),
+            subject_identity=(
+                product_projection.subject_identity if product_projection else brief.identity
+            ),
+            design_summary=(
+                product_projection.design_summary
+                if product_projection
+                else "; ".join((brief.geometry, brief.materials, brief.marks, brief.palette))
+            ),
             style=style,
             explicit_inclusions=brief.views,
             negative_constraints=("application scene", "main prompt reuse", "text"),

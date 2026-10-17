@@ -24577,6 +24577,49 @@
       "title": "ProductExpertAgentContext",
       "type": "object"
     },
+    "ProductIdentityAuthorityProjectionV1": {
+      "additionalProperties": false,
+      "description": "Frozen identity authority projected from one Product Main node.",
+      "properties": {
+        "design_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Design Summary",
+          "type": "string"
+        },
+        "projection_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "subject_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Subject Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "design_summary",
+        "projection_digest",
+        "source_node_id",
+        "source_node_revision",
+        "subject_identity"
+      ],
+      "title": "ProductIdentityAuthorityProjectionV1",
+      "type": "object"
+    },
     "ProductMainRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
@@ -30089,6 +30132,17 @@
           ],
           "default": null,
           "title": "Occurrence Id"
+        },
+        "product_identity_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProductIdentityAuthorityProjectionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "requirement_facts": {
           "additionalProperties": {

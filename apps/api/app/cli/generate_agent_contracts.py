@@ -169,6 +169,7 @@ CONTRACT_MODELS = (
     agent_canvas_role_prompt_preparation.CharacterIdentityAuthorityProjectionV1,
     agent_canvas_role_prompt_preparation.SceneEnvironmentViewV1,
     agent_canvas_role_prompt_preparation.SceneEnvironmentProjectionV1,
+    agent_canvas_role_prompt_preparation.ProductIdentityAuthorityProjectionV1,
     agent_canvas_role_prompt_preparation.RoleBindingSnapshotV2,
     agent_canvas_role_prompt_preparation.RoleBoundTextControlV2,
     agent_canvas_role_prompt_preparation.RolePromptContextBlockV2,
