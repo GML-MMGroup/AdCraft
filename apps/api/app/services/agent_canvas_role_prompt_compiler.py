@@ -184,7 +184,11 @@ class AgentCanvasRolePromptCompiler:
             if editable_prompt_override is not None
             else concrete_brief.editable_prompt
         )
-        if editable_prompt is not None:
+        engine_owned_product_views = (
+            isinstance(concrete_brief, ProductMultiviewRoleBriefV2)
+            and editable_prompt_override is None
+        )
+        if editable_prompt is not None and not engine_owned_product_views:
             prompt = editable_prompt.strip()
             if not prompt:
                 raise _error(
@@ -542,6 +546,22 @@ def _semantic_projections(
                 "scene_environment_projection_invalid",
                 "Scene preparation requires an environment-only projection.",
             )
+        if context.node_parameters.get("scene_asset_kind") == "multi_view":
+            if len(context.bindings) != 1:
+                raise _error(
+                    "scene_parent_environment_projection_invalid",
+                    "Scene Multi-view requires one exact Scene Main authority.",
+                )
+            parent = context.bindings[0]
+            if (
+                parent.source_role != "scene"
+                or parent.reference_purpose != "scene_main_identity"
+                or parent.source_node_id != projection.source_node_id
+            ):
+                raise _error(
+                    "scene_parent_environment_projection_invalid",
+                    "Scene Main projection is stale or not the exact bound authority.",
+                )
         if (
             projection.source_node_revision != context.node_revision
             and context.node_id == projection.source_node_id
@@ -571,7 +591,7 @@ def _render(
         return (
             f"Use the exact bound Product Main as identity authority. Preserve {brief.identity}; "
             f"geometry: {brief.geometry}; materials: {brief.materials}; marks: {brief.marks}; "
-            f"palette: {brief.palette}. Render {', '.join(brief.views)} on a clean neutral "
+            f"palette: {brief.palette}. Render {', '.join(PRODUCT_MULTIVIEW_VIEWS)} on a clean neutral "
             "studio background.",
             "No people, hands, active use, application scene, unrelated prop, labels, captions, "
             "storyboard layout, or Product Main prompt reuse.",
