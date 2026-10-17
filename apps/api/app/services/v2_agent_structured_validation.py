@@ -636,7 +636,7 @@ def _role_prompt_contract_violations(
         message = "The Scene brief conflicts with its environment-only role contract."
         expected = "environment_only"
     elif role_variant == "video_segment":
-        message = "The video brief conflicts with its video-only role contract."
+        message = "The video brief mentions music. Remove every reference to background music, BGM, soundtrack, music beats, or cutting to music from editable_prompt, and express rhythm only as visual timing (for example a hard cut at 3 s or a freeze frame at 15 s)."
         expected = "video_without_background_music"
     else:
         message = "The role brief conflicts with its role contract."
