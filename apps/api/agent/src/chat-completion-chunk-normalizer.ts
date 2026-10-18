@@ -4,6 +4,7 @@ const ALLOWED_DELTA_FIELDS = new Set([
   "tool_calls",
   "function_call",
   "reasoning_content",
+  "encrypted_content",
 ]);
 
 const CHAT_COMPLETION_CHUNK_ERROR_CODES = new Set([
@@ -36,6 +37,18 @@ export interface NormalizedChatCompletionChunk {
   readonly reasoningContentPresent: boolean;
   readonly finishReason: "stop" | null;
   readonly responseBytes: number;
+}
+
+/** Remove provider-encrypted reasoning before a chunk reaches observers or traces. */
+export function sanitizeChatCompletionChunk(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.choices)) return value;
+  const choices = value.choices.map((choice) => {
+    if (!isRecord(choice) || !isRecord(choice.delta)) return choice;
+    if (!("encrypted_content" in choice.delta)) return choice;
+    const { encrypted_content: _discarded, ...safeDelta } = choice.delta;
+    return { ...choice, delta: safeDelta };
+  });
+  return { ...value, choices };
 }
 
 export function normalizeChatCompletionChunk(
@@ -108,6 +121,15 @@ export function normalizeChatCompletionChunk(
     );
   }
   if (
+    delta.encrypted_content !== undefined &&
+    typeof delta.encrypted_content !== "string"
+  ) {
+    throw chunkFailure(
+      "agent_provider_transport_failed",
+      "stream_reasoning_content_invalid",
+    );
+  }
+  if (
     choice.finish_reason !== undefined &&
     choice.finish_reason !== null &&
     choice.finish_reason !== "stop"
@@ -120,10 +142,14 @@ export function normalizeChatCompletionChunk(
   const content = typeof delta.content === "string" ? delta.content : null;
   const reasoning =
     typeof delta.reasoning_content === "string" ? delta.reasoning_content : null;
+  const encrypted =
+    typeof delta.encrypted_content === "string" ? delta.encrypted_content : null;
   return {
     providerTraceId: value.id,
     content,
-    reasoningContentPresent: reasoning !== null && reasoning.length > 0,
+    reasoningContentPresent:
+      (reasoning !== null && reasoning.length > 0) ||
+      (encrypted !== null && encrypted.length > 0),
     finishReason: choice.finish_reason === "stop" ? "stop" : null,
     responseBytes:
       Buffer.byteLength(content ?? "", "utf8") +

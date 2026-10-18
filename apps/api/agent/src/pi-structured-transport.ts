@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import {
   chatCompletionChunkFailure,
   normalizeChatCompletionChunk,
+  sanitizeChatCompletionChunk,
 } from "./chat-completion-chunk-normalizer.js";
 import {
   buildWorkflowModelCallSkillContext,
@@ -620,7 +621,9 @@ export async function aggregateStreamingJsonCompletion(
       }
       if (stallError !== undefined) throw stallError;
       if (item.done) break;
-      try { options.onChunk?.(item.value); } catch { /* Diagnostic observers cannot affect parsing. */ }
+      try {
+        options.onChunk?.(sanitizeChatCompletionChunk(item.value));
+      } catch { /* Diagnostic observers cannot affect parsing. */ }
       responseActivityObserved = true;
       const observedAt = now().toISOString();
       lastActivityAt = observedAt;
