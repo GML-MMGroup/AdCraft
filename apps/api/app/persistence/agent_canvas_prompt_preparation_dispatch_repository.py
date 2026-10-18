@@ -14,7 +14,7 @@ import json
 from hashlib import sha256
 from typing import Any
 
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, exists, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -725,7 +725,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 AgentCanvasPromptPreparationOutboxRow.created_at.asc(),
                                 AgentCanvasPromptPreparationOutboxRow.dispatch_id.asc(),
                             )
-                            .limit(batch_limit)
+                            .limit(max(batch_limit * 8, 64))
                         ).mappings()
                     )
                     exhausted_rows = list(
@@ -802,6 +802,34 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 )
                                 terminalized.append(_dispatch_from_row(failed_row))
                             continue
+                        upstream_pending = connection.execute(
+                            select(
+                                exists(
+                                    select(1)
+                                    .select_from(
+                                        AgentCanvasPromptPreparationOutboxRow,
+                                        AgentCanvasBindingRow,
+                                    )
+                                    .where(
+                                        AgentCanvasPromptPreparationOutboxRow.dispatch_id
+                                        != row["dispatch_id"],
+                                        AgentCanvasPromptPreparationOutboxRow.workflow_id
+                                        == row["workflow_id"],
+                                        AgentCanvasPromptPreparationOutboxRow.status.in_(
+                                            ("queued", "leased")
+                                        ),
+                                        AgentCanvasBindingRow.workflow_id == row["workflow_id"],
+                                        AgentCanvasBindingRow.target_node_id == row["node_id"],
+                                        AgentCanvasBindingRow.source_kind == "node_output",
+                                        AgentCanvasBindingRow.source_node_id
+                                        == AgentCanvasPromptPreparationOutboxRow.node_id,
+                                        AgentCanvasBindingRow.enabled.is_(True),
+                                    )
+                                )
+                            )
+                        ).scalar_one()
+                        if upstream_pending:
+                            continue
                         generation = int(row["lease_generation"]) + 1
                         changed = connection.execute(
                             update(AgentCanvasPromptPreparationOutboxRow)
@@ -843,6 +871,8 @@ class AgentCanvasPromptPreparationDispatchRepository:
                             created_at=timestamp,
                         )
                         claimed.append(dispatch)
+                        if len(claimed) >= batch_limit:
+                            break
                     connection.commit()
                     if _terminalized_out is not None:
                         _terminalized_out.extend(terminalized)
