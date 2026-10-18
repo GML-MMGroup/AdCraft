@@ -382,6 +382,7 @@ class DynamicCanvasScheduler:
             now=self._clock(),
             event_type="execution_started",
         )
+        in_place_refresh_waves = 0
         while True:
             current = self._runtime.get_execution(execution_id)
             if current.cancel_requested:
@@ -406,6 +407,7 @@ class DynamicCanvasScheduler:
                 leases.append(lease)
             with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
                 dependency_barrier_seen = False
+                all_deferred_refreshed_in_place = True
                 prepared_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
                 for lease in leases:
                     try:
@@ -416,7 +418,8 @@ class DynamicCanvasScheduler:
                         )
                     except Exception as error:
                         if self._is_dependency_barrier(error):
-                            self._defer_dependency_member(current.workflow_id, lease, error)
+                            if not self._defer_dependency_member(current.workflow_id, lease, error):
+                                all_deferred_refreshed_in_place = False
                             dependency_barrier_seen = True
                             continue
                         self._fail_member(current.workflow_id, lease, error)
@@ -434,7 +437,8 @@ class DynamicCanvasScheduler:
                         )
                     except Exception as error:
                         if self._is_dependency_barrier(error):
-                            self._defer_dependency_member(current.workflow_id, lease, error)
+                            if not self._defer_dependency_member(current.workflow_id, lease, error):
+                                all_deferred_refreshed_in_place = False
                             dependency_barrier_seen = True
                             continue
                         self._fail_member(current.workflow_id, lease, error)
@@ -495,12 +499,13 @@ class DynamicCanvasScheduler:
                         )
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
-                # A dependency barrier is durable state owned by the prompt
-                # preparation/reconciliation path.  Do not immediately loop
-                # and reclaim the same member while its successor evidence is
-                # still queued; the preparation worker (or the next runtime
-                # recovery tick) will wake a subsequent scheduler wave.
+                # A dependency barrier with an in-place evidence refresh can
+                # continue immediately, while queued successors and other
+                # barriers still wait for the preparation or recovery worker.
                 if dependency_barrier_seen:
+                    if all_deferred_refreshed_in_place and in_place_refresh_waves < 3:
+                        in_place_refresh_waves += 1
+                        continue
                     self._finish_if_quiescent(execution_id)
                     return
 
@@ -1203,7 +1208,7 @@ class DynamicCanvasScheduler:
         workflow_id: str,
         lease: NodeExecutionLeaseV2,
         error: Exception,
-    ) -> None:
+    ) -> bool:
         """Return a stale member to a durable dependency barrier.
 
         This path deliberately never enters provider preparation/submission and
@@ -1283,6 +1288,8 @@ class DynamicCanvasScheduler:
                         },
                         expected_lease_generation=lease.generation,
                     )
+                return refreshed_node is not None
+            return False
         except Exception as reconciliation_error:  # noqa: BLE001 - persist typed wait.
             error_code = getattr(
                 reconciliation_error,
@@ -1309,6 +1316,7 @@ class DynamicCanvasScheduler:
                 },
                 expected_lease_generation=lease.generation,
             )
+            return False
         finally:
             # Reconciliation must never strand the execution lease, even when
             # a snapshot refresh or prompt successor write fails.
