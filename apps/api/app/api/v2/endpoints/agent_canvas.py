@@ -4079,7 +4079,7 @@ def _publish_next_brand_interaction_after_form_submit(
         failure_code = getattr(error, "code", None)
         if not isinstance(failure_code, str) or not failure_code:
             failure_code = "brand_interaction_publication_failed"
-        runtime.conversations.record_brand_interaction_publication_failure(
+        runtime.conversation_repository.record_brand_interaction_publication_failure(
             workflow_id,
             failure_id=submission_id or f"workflow:{workflow_id}",
             error_code=failure_code,
