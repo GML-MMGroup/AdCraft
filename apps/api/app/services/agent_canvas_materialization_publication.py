@@ -493,21 +493,6 @@ class CapabilityMaterializationPublicationService:
             )
         )
 
-    def _allows_internal_scene_multiview_successor(
-        self,
-        envelope: ProposalApplicationEnvelopeV1,
-        node: CanvasNodeV2,
-    ) -> bool:
-        return (
-            envelope.capability_id == "scene_design"
-            and envelope.operation_kind == "standalone"
-            and node.creative_role == "scene"
-            and (
-                node.structured_content.get("scene_asset_kind") == "multi_view"
-                or node.parameters.get("scene_asset_kind") == "multi_view"
-            )
-        )
-
     def _prepare_guided_document_stage(
         self,
         envelope: ProposalApplicationEnvelopeV1,
@@ -1058,10 +1043,8 @@ class CapabilityMaterializationPublicationService:
                 node_id=node_id,
                 committed_operation_id=operation_id,
                 current_operation_id=node.prompt_preparation.operation_id,
-                allow_successor=self._allows_prompt_successor_recovery(envelope, node),
-                allow_dependency_successor=self._allows_internal_scene_multiview_successor(
-                    envelope, node
-                ),
+                allow_reference_successor=self._allows_prompt_successor_recovery(envelope, node),
+                allow_dependency_successor=True,
             )
             if current_operation_id is None:
                 raise V2PersistenceError(
@@ -1219,12 +1202,19 @@ class CapabilityMaterializationPublicationService:
         node_id: str,
         committed_operation_id: str,
         current_operation_id: str | None,
-        allow_successor: bool,
+        allow_reference_successor: bool,
         allow_dependency_successor: bool = False,
     ) -> str | None:
         if current_operation_id == committed_operation_id:
             return current_operation_id
-        if current_operation_id is None or not allow_successor:
+        if current_operation_id is None:
+            return None
+        allowed_reasons = (
+            {"guided_reference_source_resolved"} if allow_reference_successor else set()
+        )
+        if allow_dependency_successor:
+            allowed_reasons.add("dependency_or_binding_revision_changed")
+        if not allowed_reasons:
             return None
         committed = self._prompt_dispatch.get_by_node_operation(
             workflow_id,
@@ -1236,9 +1226,6 @@ class CapabilityMaterializationPublicationService:
             node_id,
             current_operation_id,
         )
-        allowed_reasons = {"guided_reference_source_resolved"}
-        if allow_dependency_successor:
-            allowed_reasons.add("dependency_or_binding_revision_changed")
         if (
             committed is None
             or current is None
@@ -1291,7 +1278,7 @@ class CapabilityMaterializationPublicationService:
             node_id=parent_snapshot.node_id,
             committed_operation_id=expected_operation_id,
             current_operation_id=current_operation_id,
-            allow_successor=self._requires_reference_source_checkpoint(envelope),
+            allow_reference_successor=self._requires_reference_source_checkpoint(envelope),
         )
         if resolved_operation_id is None:
             raise V2PersistenceError(
