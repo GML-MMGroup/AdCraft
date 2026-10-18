@@ -395,6 +395,32 @@ class DynamicCanvasScheduler:
             leases = []
             now = self._clock()
             for node_id in ready_wave:
+                if self._run_snapshots is not None:
+                    member = next(
+                        (
+                            item
+                            for item in self._runtime.list_members(execution_id)
+                            if item.node_id == node_id
+                        ),
+                        None,
+                    )
+                    if member is not None and member.run_intent_snapshot is not None:
+                        workflow = self._workflows.get_workflow(current.workflow_id)
+                        nodes_by_id = {node.node_id: node for node in workflow.nodes}
+                        refresh_required = any(
+                            binding.source_kind == "node_output"
+                            and binding.source_asset_version_id is None
+                            and (source_node := nodes_by_id.get(binding.source_id)) is not None
+                            and source_node.status == "ready"
+                            and source_node.output_asset_version_id is not None
+                            for binding in member.run_intent_snapshot.binding_snapshots
+                        )
+                        if refresh_required:
+                            self._run_snapshots.refresh_member_intent(
+                                execution_id,
+                                node_id,
+                                now=self._clock(),
+                            )
                 lease = self._runtime.claim_lease(
                     execution_id,
                     node_id,
