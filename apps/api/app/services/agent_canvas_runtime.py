@@ -523,10 +523,18 @@ class DynamicCanvasScheduler:
                 dict.fromkeys(_same_wave_dependency_sources(member, members_by_node))
             )
             preferred_waiting = tuple(
-                source_node_id
-                for source_node_id in _frozen_unready_sources(member, nodes)
-                if members_by_node.get(source_node_id) is not None
-                and members_by_node[source_node_id].state in {"queued", "waiting", "running"}
+                dict.fromkeys(
+                    (
+                        *(
+                            source_node_id
+                            for source_node_id in _frozen_unready_sources(member, nodes)
+                            if members_by_node.get(source_node_id) is not None
+                            and members_by_node[source_node_id].state
+                            in {"queued", "waiting", "running"}
+                        ),
+                        *_same_execution_reference_sources(member, members_by_node),
+                    )
+                )
             )
             waiting = tuple(dict.fromkeys((*required_waiting, *preferred_waiting)))
             if waiting:
@@ -2235,6 +2243,23 @@ def _same_wave_dependency_sources(
         for binding in snapshot.binding_snapshots
         if binding.source_kind == "node_output"
         and binding.input_role == "text_context"
+        and (source_member := members_by_node.get(binding.source_id)) is not None
+        and source_member.state in {"queued", "waiting", "running"}
+    )
+
+
+def _same_execution_reference_sources(
+    member: CanvasExecutionMembershipV2,
+    members_by_node: dict[str, CanvasExecutionMembershipV2],
+) -> tuple[str, ...]:
+    snapshot = member.run_intent_snapshot
+    if snapshot is None:
+        return ()
+    return tuple(
+        binding.source_id
+        for binding in snapshot.binding_snapshots
+        if binding.source_kind == "node_output"
+        and binding.input_role != "text_context"
         and (source_member := members_by_node.get(binding.source_id)) is not None
         and source_member.state in {"queued", "waiting", "running"}
     )
