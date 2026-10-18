@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import and_, exists, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import aliased
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -46,6 +47,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 APPLICABLE_NODE_TYPES = frozenset({"text", "script", "image", "video", "audio"})
 NON_TERMINAL_STATUSES = ("waiting_user", "queued", "leased")
+EXCLUSIVE_ROLE_VARIANTS = frozenset({"storyboard_grid", "video_segment"})
 
 
 class AgentCanvasPromptPreparationDispatchRepository:
@@ -746,6 +748,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     )
                     rows = [*exhausted_rows, *runnable_rows]
                     claimed: list[PromptPreparationDispatchV1] = []
+                    leased_row = aliased(AgentCanvasPromptPreparationOutboxRow)
                     for row in rows:
                         current_attempt = int(row["attempt_count"])
                         if current_attempt >= int(row["max_attempts"]):
@@ -801,6 +804,27 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                     created_at=timestamp,
                                 )
                                 terminalized.append(_dispatch_from_row(failed_row))
+                            continue
+                        leased_conflict = connection.execute(
+                            select(
+                                exists(
+                                    select(1)
+                                    .select_from(leased_row)
+                                    .where(
+                                        leased_row.dispatch_id != row["dispatch_id"],
+                                        leased_row.workflow_id == row["workflow_id"],
+                                        leased_row.status == "leased",
+                                        leased_row.lease_expires_at > now_value,
+                                        (
+                                            leased_row.role_variant.in_(EXCLUSIVE_ROLE_VARIANTS)
+                                            if row["role_variant"] not in EXCLUSIVE_ROLE_VARIANTS
+                                            else True
+                                        ),
+                                    )
+                                )
+                            )
+                        ).scalar_one()
+                        if leased_conflict:
                             continue
                         upstream_pending = connection.execute(
                             select(

@@ -176,6 +176,7 @@ class Settings:
     v2_max_parallel_audio_jobs: int = 1
     v2_max_parallel_generation_jobs: int = 5
     v2_provider_task_poll_interval_seconds: int = 8
+    agent_canvas_prompt_preparation_concurrency: int = 3
     v2_provider_task_max_concurrent_polls: int = 2
     v2_provider_task_timeout_seconds: int = 3600
     v2_provider_download_max_attempts: int = 3
@@ -435,6 +436,13 @@ class Settings:
             v2_provider_task_poll_interval_seconds=_read_int(
                 "V2_PROVIDER_TASK_POLL_INTERVAL_SECONDS",
                 cls.v2_provider_task_poll_interval_seconds,
+            ),
+            agent_canvas_prompt_preparation_concurrency=max(
+                1,
+                _read_int(
+                    "AGENT_CANVAS_PROMPT_PREPARATION_CONCURRENCY",
+                    cls.agent_canvas_prompt_preparation_concurrency,
+                ),
             ),
             v2_require_authoring_if_match=_read_bool(
                 "V2_REQUIRE_AUTHORING_IF_MATCH",
