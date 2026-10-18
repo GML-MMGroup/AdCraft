@@ -578,10 +578,14 @@ def _reference_description(
             "and timing. Do not show the grid itself."
         )
     if semantic_role == "subject_reference":
-        if (
-            reference.character_phase == "turnaround"
-            or reference.source_identity_facts.get("character_asset_kind") == "turnaround"
-        ):
+        if reference.source_semantic_role == "product":
+            return (
+                "Product reference: preserve the exact shape, proportions, materials, colors, and "
+                "marks. Do not reproduce any multi-view layout."
+            )
+        if reference.source_semantic_role == "prop":
+            return "Prop reference: preserve the exact shape, materials, and colors."
+        if reference.source_identity_facts.get("character_asset_kind") == "turnaround":
             return (
                 "Character turnaround sheet: use it only for this character's face, hair, "
                 "wardrobe, body shape, and proportions. Do not reproduce the sheet layout or "
