@@ -114,7 +114,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       return result;
     };
     if (
-      isNonStreamingStructuredTransport(
+      isStructuredTransport(
         credential.execution_policy.structured_transport,
       )
     ) {
@@ -340,13 +340,14 @@ export function providerForCredential(credential: AgentCredentialSnapshot): stri
   return credential.transport_kind === "litellm_chat" ? "litellm" : credential.provider;
 }
 
-export function isNonStreamingStructuredTransport(
+export function isStructuredTransport(
   transport: AgentCredentialSnapshot["execution_policy"]["structured_transport"],
 ): boolean {
   return (
     transport === "non_streaming_tool_call" ||
     transport === "non_streaming_json_object" ||
-    transport === "non_streaming_json_schema"
+    transport === "non_streaming_json_schema" ||
+    transport === "streaming_json_object"
   );
 }
 
