@@ -141,6 +141,7 @@ export type StructuredCompletionExecutor = (
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly idleTimeoutMs?: number;
     readonly onChunk?: (chunk: unknown) => void;
   },
 ) => Promise<StructuredCompletionResponse>;
@@ -447,6 +448,7 @@ export class PiStructuredTransportRouter {
           signal: input.signal,
           timeoutMs,
           maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
+          idleTimeoutMs: 90_000,
           ...(capture ? { onChunk: (chunk: unknown) => capture.chunk(chunk) } : {}),
         });
       capture?.finish({ response });
@@ -529,6 +531,7 @@ export async function executeOpenAICompletion(
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly idleTimeoutMs?: number;
     readonly onChunk?: (chunk: unknown) => void;
   },
 ): Promise<StructuredCompletionResponse> {
@@ -559,6 +562,9 @@ export async function executeOpenAICompletion(
     return await aggregateStreamingJsonCompletion(stream as AsyncIterable<unknown>, {
       signal: controller.signal,
       maxOutputBytes: options.maxOutputBytes ?? 262_144,
+      ...(options.idleTimeoutMs !== undefined
+        ? { idleTimeoutMs: options.idleTimeoutMs }
+        : {}),
       ...(options.onChunk ? { onChunk: options.onChunk } : {}),
     });
   } finally {
@@ -572,12 +578,27 @@ export async function aggregateStreamingJsonCompletion(
   options: {
     readonly signal: AbortSignal;
     readonly maxOutputBytes: number;
+    readonly idleTimeoutMs?: number;
     readonly now?: () => Date;
     readonly onChunk?: (chunk: unknown) => void;
   },
 ): Promise<StructuredCompletionResponse> {
   const now = options.now ?? (() => new Date());
   const iterator = stream[Symbol.asyncIterator]();
+  const streamController = new AbortController();
+  const abortFromCaller = () => streamController.abort(options.signal.reason);
+  options.signal.addEventListener("abort", abortFromCaller, { once: true });
+  if (options.signal.aborted) streamController.abort(options.signal.reason);
+  const idleTimeoutMs = Math.max(1, options.idleTimeoutMs ?? 90_000);
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let stallError: Error | undefined;
+  const resetIdleTimer = () => {
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      stallError = streamingStallFailure();
+      streamController.abort();
+    }, idleTimeoutMs);
+  };
   let content = "";
   let responseBytes = 0;
   let responseActivityObserved = false;
@@ -588,8 +609,16 @@ export async function aggregateStreamingJsonCompletion(
   let terminal = false;
   const normalizedChunks: AgentModelTraceStreamingChunkV1[] = [];
   try {
+    resetIdleTimer();
     while (true) {
-      const item = await abortableNext(iterator, options.signal);
+      let item: IteratorResult<unknown>;
+      try {
+        item = await abortableNext(iterator, streamController.signal);
+      } catch (error) {
+        if (stallError !== undefined) throw stallError;
+        throw error;
+      }
+      if (stallError !== undefined) throw stallError;
       if (item.done) break;
       try { options.onChunk?.(item.value); } catch { /* Diagnostic observers cannot affect parsing. */ }
       responseActivityObserved = true;
@@ -629,6 +658,13 @@ export async function aggregateStreamingJsonCompletion(
       if (parsed.finishReason !== null) {
         finishReason = parsed.finishReason;
         terminal = true;
+      }
+      if (
+        (parsed.content !== null && parsed.content.length > 0) ||
+        parsed.reasoningContentPresent ||
+        parsed.finishReason !== null
+      ) {
+        resetIdleTimer();
       }
     }
     if (!terminal) {
@@ -670,12 +706,29 @@ export async function aggregateStreamingJsonCompletion(
     }
     throw error;
   } finally {
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    options.signal.removeEventListener("abort", abortFromCaller);
     try {
-      await iterator.return?.();
+      const close = iterator.return?.();
+      if (close !== undefined) {
+        if (stallError !== undefined) {
+          void close.catch(() => undefined);
+        } else {
+          await close;
+        }
+      }
     } catch {
       // Stream cleanup cannot replace the authoritative transport outcome.
     }
   }
+}
+
+function streamingStallFailure(): Error {
+  return Object.assign(new Error("Agent provider stream stalled."), {
+    name: "TimeoutError",
+    code: "agent_provider_timeout",
+    stall_detected: true,
+  });
 }
 
 async function abortableNext(
@@ -1379,10 +1432,11 @@ function providerTimeout(
   recoveryAllowed = false,
   manualRetryable = false,
 ): AgentOperationFailure {
+  const stallDetected = isStallDetected(attemptMetadata);
   const retryable = manualRetryable ||
     (recoveryAllowed &&
       stage === "initial" &&
-      attemptMetadata?.response_activity_observed === false &&
+      (attemptMetadata?.response_activity_observed === false || stallDetected) &&
       (attemptMetadata?.effective_timeout_ms ?? 0) > 0);
   return new AgentOperationFailure(
     "agent_provider_timeout",
@@ -1402,7 +1456,7 @@ function failureMetadata(
   error?: unknown,
 ): AgentTransportAttemptMetadataV1 {
   const shape = safeFailureShape(error);
-  return {
+  const metadata: AgentTransportAttemptMetadataV1 = {
     provider: input.credential.provider,
     model_ref: input.credential.model_ref,
     structured_transport: input.credential.execution_policy.structured_transport,
@@ -1440,6 +1494,18 @@ function failureMetadata(
     ...(shape.providerTraceId ? { provider_trace_id: shape.providerTraceId } : {}),
     ...safeActivityTimes(error),
   };
+  if (isStallDetected(error)) {
+    Object.assign(metadata, { stall_detected: true });
+  }
+  return metadata;
+}
+
+function isStallDetected(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      (error as { readonly stall_detected?: unknown }).stall_detected === true,
+  );
 }
 
 function safeResponseBytes(error: unknown): number | null {

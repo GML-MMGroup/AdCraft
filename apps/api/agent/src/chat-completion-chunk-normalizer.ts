@@ -33,6 +33,7 @@ export function isChatCompletionChunkErrorCode(value: string): boolean {
 export interface NormalizedChatCompletionChunk {
   readonly providerTraceId: unknown;
   readonly content: string | null;
+  readonly reasoningContentPresent: boolean;
   readonly finishReason: "stop" | null;
   readonly responseBytes: number;
 }
@@ -122,6 +123,7 @@ export function normalizeChatCompletionChunk(
   return {
     providerTraceId: value.id,
     content,
+    reasoningContentPresent: reasoning !== null && reasoning.length > 0,
     finishReason: choice.finish_reason === "stop" ? "stop" : null,
     responseBytes:
       Buffer.byteLength(content ?? "", "utf8") +
