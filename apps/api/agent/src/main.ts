@@ -16,6 +16,11 @@ if (mode === "fake" && process.env.NODE_ENV === "production") {
 const host = process.env.AGENT_RUNTIME_HOST?.trim() || "127.0.0.1";
 const port = Number.parseInt(process.env.AGENT_RUNTIME_PORT ?? "8765", 10);
 const pythonBaseUrl = process.env.AGENT_RUNTIME_PYTHON_BASE_URL?.trim() || "http://127.0.0.1:8000";
+const configuredMaxConcurrentRuns = Number(process.env.AGENT_RUNTIME_MAX_CONCURRENT_RUNS);
+const maxConcurrentRuns =
+  Number.isInteger(configuredMaxConcurrentRuns) && configuredMaxConcurrentRuns > 0
+    ? configuredMaxConcurrentRuns
+    : 6;
 const adapter =
   mode === "real"
     ? new PiModelAdapter(
@@ -28,6 +33,7 @@ const adapter =
 const server = createAgentRuntimeServer({
   internalToken: token,
   mode,
+  maxConcurrentRuns,
   ...(adapter ? { adapter } : {}),
 });
 await startVerifiedServer(server, port, host).catch((error: unknown) => {
