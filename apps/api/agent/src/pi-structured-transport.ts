@@ -153,10 +153,11 @@ export type StructuredCompletionExecutor = (
 
 export type PresentationSegment = "reasoning" | "answer";
 
+// Chat operations stream reasoning only: one turn can span several Agent calls
+// and the engine may author the final message, so their `assistant_message`
+// is not reliably the text the user ends up seeing. Python publishes the
+// committed message as the answer instead.
 export const PRESENTATION_ANSWER_KEYS: Readonly<Record<string, string>> = Object.freeze({
-  decide_turn_intent: "assistant_message",
-  decide_next_action: "assistant_message",
-  author_decision_bundle: "assistant_message",
   author_role_brief: "editable_prompt",
 });
 

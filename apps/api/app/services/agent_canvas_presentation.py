@@ -22,7 +22,10 @@ class PresentationStreamPublisher:
 
     def __init__(self, repository: PresentationStreamRepository) -> None:
         self._repository = repository
-        self._highest_attempt: dict[str, int] = {}
+        # One stream can receive several sequential Agent runs (for example a
+        # chat turn's intent and next-action calls); attempts are per run.
+        self._runtime_attempt: dict[str, tuple[str, int]] = {}
+        self._reasoning_streams: set[str] = set()
         self._answer_text: dict[str, str] = {}
 
     def create_assistant_stream(
@@ -111,17 +114,41 @@ class PresentationStreamPublisher:
             return None
         if metadata.status != "open":
             return None
-        last_attempt = self._highest_attempt.get(metadata.stream_id, 1)
-        if event.attempt < last_attempt:
-            return None
-        if event.attempt > last_attempt:
-            self.reset(
-                metadata,
-                reason="attempt_restarted",
-                event_key=f"reset:attempt_restarted:{event.attempt}",
-            )
-            self._answer_text[metadata.stream_id] = ""
-        self._highest_attempt[metadata.stream_id] = event.attempt
+        stream_id = metadata.stream_id
+        # A first-seen retry still clears whatever an unseen earlier attempt left.
+        current = self._runtime_attempt.get(stream_id, (event.generation_id, 1))
+        separate_reasoning = False
+        if current[0] == event.generation_id:
+            if event.attempt < current[1]:
+                return None
+            if event.attempt > current[1]:
+                run_digest = sha256(event.generation_id.encode("utf-8")).hexdigest()[:16]
+                self.reset(
+                    metadata,
+                    reason="attempt_restarted",
+                    event_key=f"reset:attempt_restarted:{run_digest}:{event.attempt}",
+                )
+                self._answer_text[stream_id] = ""
+                self._reasoning_streams.discard(stream_id)
+        else:
+            # A later run on the same stream continues the visible thinking.
+            separate_reasoning = stream_id in self._reasoning_streams
+        self._runtime_attempt[stream_id] = (event.generation_id, event.attempt)
+        if event.segment == "reasoning" and separate_reasoning:
+            self._publish_runtime_text(metadata, event, "\n\n")
+        published = self._publish_runtime_text(metadata, event, event.text)
+        if published is not None and event.segment == "answer":
+            self._answer_text[stream_id] = self._answer_text.get(stream_id, "") + event.text
+        if published is not None and event.segment == "reasoning":
+            self._reasoning_streams.add(stream_id)
+        return published
+
+    def _publish_runtime_text(
+        self,
+        metadata: PresentationStreamMetadataV1,
+        event: AgentPresentationDeltaV1,
+        text: str,
+    ) -> PresentationStreamEventV1 | None:
         try:
             delta = SafePresentationDeltaV1(
                 stream_id=metadata.stream_id,
@@ -133,16 +160,11 @@ class PresentationStreamPublisher:
                 node_revision=metadata.node_revision,
                 response_locale=event.response_locale,
                 segment=event.segment,
-                text=event.text,
+                text=text,
             )
         except (TypeError, ValueError):
             return None
-        published = self.publish_delta(delta)
-        if published is not None and event.segment == "answer":
-            self._answer_text[metadata.stream_id] = (
-                self._answer_text.get(metadata.stream_id, "") + event.text
-            )
-        return published
+        return self.publish_delta(delta)
 
     def answer_text(self, stream_id: str) -> str:
         """Return the accepted answer text for the current stream attempt."""
@@ -204,8 +226,7 @@ class PresentationStreamPublisher:
         except V2PersistenceError:
             return None
         finally:
-            self._highest_attempt.pop(metadata.stream_id, None)
-            self._answer_text.pop(metadata.stream_id, None)
+            self._forget_runtime_state(metadata.stream_id)
 
     def fail(
         self, metadata: PresentationStreamMetadataV1, error_code: str
@@ -219,8 +240,7 @@ class PresentationStreamPublisher:
         except V2PersistenceError:
             return None
         finally:
-            self._highest_attempt.pop(metadata.stream_id, None)
-            self._answer_text.pop(metadata.stream_id, None)
+            self._forget_runtime_state(metadata.stream_id)
 
     def supersede(self, metadata: PresentationStreamMetadataV1) -> PresentationStreamEventV1 | None:
         """Close a stale prompt generation without changing node authority."""
@@ -233,8 +253,12 @@ class PresentationStreamPublisher:
         except V2PersistenceError:
             return None
         finally:
-            self._highest_attempt.pop(metadata.stream_id, None)
-            self._answer_text.pop(metadata.stream_id, None)
+            self._forget_runtime_state(metadata.stream_id)
+
+    def _forget_runtime_state(self, stream_id: str) -> None:
+        self._runtime_attempt.pop(stream_id, None)
+        self._reasoning_streams.discard(stream_id)
+        self._answer_text.pop(stream_id, None)
 
     def reset(
         self,

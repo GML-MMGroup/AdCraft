@@ -18,7 +18,8 @@ from app.schemas.agent_canvas_presentation import (
     SafePresentationDeltaV1,
 )
 
-MAX_PRESENTATION_CHUNKS = 512
+# Live reasoning batches at about 4 chunks/s, so 2048 covers ~8 minutes.
+MAX_PRESENTATION_CHUNKS = 2_048
 MAX_PRESENTATION_BYTES = 1_048_576
 MAX_PRESENTATION_CHUNK_BYTES = 4_096
 PRESENTATION_COALESCE_WINDOW = timedelta(milliseconds=100)
@@ -481,7 +482,13 @@ class PresentationStreamRepository:
                     connection.commit()
                     return PresentationStreamEventV1.model_validate_json(existing["event_json"])
                 _ensure_open_generation(stream, event.generation_id)
-                count, total = _chunk_limits(connection, event.stream_id)
+                # Retention limits bound text only; lifecycle events must always
+                # land so a full stream can still commit, fail, or reset.
+                count, total = (
+                    _chunk_limits(connection, event.stream_id)
+                    if event.event_type == "delta"
+                    else (0, 0)
+                )
                 if count >= MAX_PRESENTATION_CHUNKS or total + byte_size > MAX_PRESENTATION_BYTES:
                     raise _error(
                         "presentation_stream_backpressure_exceeded",

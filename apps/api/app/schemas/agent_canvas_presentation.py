@@ -165,6 +165,9 @@ class PresentationStreamEventV1(_StrictModel):
         return self
 
 
+_CREDENTIAL_MARKERS = ("authorization: bearer", "api_key")
+
+
 class SafePresentationDeltaV1(_StrictModel):
     """Typed input accepted from a runtime safe-presentation callback."""
 
@@ -191,6 +194,14 @@ class SafePresentationDeltaV1(_StrictModel):
             self.node_id is None or self.node_revision is None
         ):
             raise ValueError("Prompt presentation deltas require node identity.")
+        if self.segment == "reasoning":
+            # Reasoning arrives as arbitrary fragments of model thinking, so
+            # whole-text shape checks would drop legitimate pieces. Credential
+            # markers are still refused.
+            lowered = self.text.lower()
+            if any(marker in lowered for marker in _CREDENTIAL_MARKERS):
+                raise ValueError("Credential content is not presentation text.")
+            return self
         normalized = self.text.strip()
         if normalized.startswith(("{", "[", "```")):
             raise ValueError("Structured or code-fenced output is not presentation text.")
