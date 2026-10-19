@@ -7,7 +7,7 @@ anything is persisted, and appends the decision log in the same transaction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 from hashlib import sha256
@@ -79,9 +79,15 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
+    StructuredPresentationTargetV1,
 )
+from app.persistence.agent_canvas_presentation_repository import PresentationStreamRepository
+from app.services.agent_canvas_presentation import PresentationStreamPublisher
+import logging
 
 _LogAction = Literal["select", "reject", "fusion", "recommend", "edit", "confirm", "lock"]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -201,6 +207,75 @@ class BrandCapabilityInvocationService:
             creative_method_seed_dir(),
         )
         self._video_skills = VideoSkillRegistry()
+        self._presentation_publisher = PresentationStreamPublisher(
+            PresentationStreamRepository(database)
+        )
+
+    def _run_with_presentation(
+        self,
+        spec: StructuredGenerationSpec,
+        *,
+        brand_id: str,
+        stage: str,
+        stage_revision: int,
+        substep_or_slot: str,
+    ):
+        workflow_id = self._repository.workflow_id_for_brand(brand_id)
+        if workflow_id is None:
+            return self._runtime.run(spec), None
+        generation_id = f"brand-gen:{brand_id}:{stage}:{stage_revision}:{substep_or_slot}"
+        attempt = uuid4().hex
+        idempotency_key = f"{generation_id}:{attempt}"
+        stream_id = f"prs_{sha256(idempotency_key.encode('utf-8')).hexdigest()[:32]}"
+        stream = self._presentation_publisher.create_assistant_stream(
+            workflow_id=workflow_id,
+            turn_id=generation_id,
+            generation_id=generation_id,
+            stream_id=stream_id,
+            idempotency_key=idempotency_key,
+        )
+        if stream is not None:
+            self._presentation_publisher.started(stream)
+        targeted = replace(
+            spec,
+            presentation=StructuredPresentationTargetV1(
+                workflow_id=workflow_id,
+                stream_id=stream.stream_id if stream is not None else stream_id,
+            ),
+        )
+        try:
+            result = self._runtime.run(targeted)
+        except Exception as error:
+            if stream is not None:
+                try:
+                    self._presentation_publisher.fail(
+                        stream,
+                        str(getattr(error, "code", None) or "brand_generation_failed"),
+                    )
+                except Exception as presentation_error:  # noqa: BLE001
+                    logger.warning(
+                        "Brand presentation failure handling failed: %s", presentation_error
+                    )
+            raise
+        return result, stream
+
+    def _finish_presentation(
+        self,
+        stream,
+        *,
+        authoritative_id: str,
+        content: str = "",
+    ) -> None:
+        if stream is None:
+            return
+        try:
+            self._presentation_publisher.commit(
+                stream,
+                authoritative_id=authoritative_id,
+                content=content,
+            )
+        except Exception as error:  # noqa: BLE001 - presentation is best effort
+            logger.warning("Brand presentation completion failed: %s", error)
 
     def _workflow_response_locale(self, brand_id: str) -> str:
         """Resolve the conversation response locale for one brand's workflow."""
@@ -311,7 +386,16 @@ class BrandCapabilityInvocationService:
                 trace_metadata={"workflow_id": product_context.workflow_id},
                 quality_validator=lambda out: _validate_strategy(out, stage),
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage=stage,
+                stage_revision=journey.stage_revision,
+                substep_or_slot="question",
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         card = output.question_card
         slot_values = validate_question_output(
             output,
@@ -371,6 +455,13 @@ class BrandCapabilityInvocationService:
                 },
                 now=now,
             )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=card.card_id
+            if card is not None
+            else f"brand-gen:{brand_id}:{stage}:{journey.stage_revision}:question",
+            content=card.question if card is not None else "",
+        )
         return card
 
     def run_slot_form(
@@ -484,7 +575,16 @@ class BrandCapabilityInvocationService:
                     ),
                 )
 
-            output = self._runtime.run(build_spec()).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                build_spec(),
+                brand_id=brand_id,
+                stage=stage,
+                stage_revision=journey.stage_revision,
+                substep_or_slot=(round_id or "initial"),
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         cards = tuple(output.form_cards)
         by_slot = {card.target_slot_id: card for card in cards}
         try:
@@ -550,7 +650,7 @@ class BrandCapabilityInvocationService:
                 if requested_slot_ids is None
                 else "Compare the existing and new options, then choose one option for every row. Select Other (custom) to request more options or enter your own answer."
             )
-        return BrandFormV1(
+        form = BrandFormV1(
             form_id=f"brand_form_{brand_id}_{stage}_{journey.stage_revision}_{suffix}",
             stage=stage,
             revision=journey.stage_revision,
@@ -560,6 +660,12 @@ class BrandCapabilityInvocationService:
             instructions=instructions,
             rows=rows,
         )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=form.form_id,
+            content="\n".join(row.prompt for row in form.rows),
+        )
+        return form
 
     @staticmethod
     def _merge_form_options(
@@ -763,7 +869,18 @@ class BrandCapabilityInvocationService:
                 trace_metadata={"workflow_id": context.workflow_id},
                 operation="brand_slot_form",
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage=form.stage,
+                stage_revision=form.revision,
+                substep_or_slot="answer-intent",
+            )
+            output = runtime_result.output
+            self._finish_presentation(
+                presentation_stream,
+                authoritative_id=f"brand-form-intent:{form.form_id}",
+            )
             for item in output.form_answer_intents:
                 if item.question_id in {answer.question_id for answer in custom_answers}:
                     intents[item.question_id] = item.intent
@@ -933,7 +1050,16 @@ class BrandCapabilityInvocationService:
                 output_model=CreativeStrategyOutputV1,
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage="hypothesis",
+                stage_revision=journey.stage_revision,
+                substep_or_slot="candidates",
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
             state = BrandQuestionState(self._database)
@@ -952,6 +1078,11 @@ class BrandCapabilityInvocationService:
                 detail={"count": len(output.candidates)},
                 now=now,
             )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=f"brand-hypothesis:{brand_id}:{journey.stage_revision}",
+            content="\n".join(item.label for item in output.candidates),
+        )
         return output.candidates
 
     def apply_hypothesis_selection(self, brand_id: str, hypothesis_id: str) -> None:
@@ -1343,14 +1474,28 @@ class BrandCapabilityInvocationService:
             trace_metadata={"workflow_id": self._repository.workflow_id_for_brand(brand_id)},
         )
         try:
-            output = self._runtime.run(spec).output
+            journey = self._repository.get_journey(brand_id)
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage="skill-stack",
+                stage_revision=journey.stage_revision if journey is not None else 1,
+                substep_or_slot="recommendation",
+            )
+            output = runtime_result.output
         except StructuredGenerationRuntimeError as error:
             raise V2PersistenceError(
                 "brand_skill_recommendation_unavailable",
                 "Skill recommendations are unavailable. Retry the current step.",
                 stage="brand_skill_recommendation",
             ) from error
-        return skills.recommendation_stack(output)
+        result = skills.recommendation_stack(output)
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=f"brand-skill-stack:{brand_id}",
+            content="\n".join(item.skill_id for item in result.entries),
+        )
+        return result
 
     def creative_method_catalog(self) -> BrandCreativeMethodCatalogV1:
         return BrandSkillStackService(self._database).creative_method_catalog()
@@ -1515,7 +1660,16 @@ class BrandCapabilityInvocationService:
                 output_model=treatment_output_model(cast_step(journey.treatment_substep)),
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage="treatment",
+                stage_revision=journey.stage_revision,
+                substep_or_slot=journey.treatment_substep,
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         step = output.step
         if step.step_key != journey.treatment_substep:
             raise _card_invalid("The proposal must match the current Treatment step.")
@@ -1544,6 +1698,11 @@ class BrandCapabilityInvocationService:
                 detail={"card_id": card.card_id, "context_digest": product_context.digest},
                 now=now,
             )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=card.card_id,
+            content=step.question,
+        )
         return step
 
     def apply_treatment_selection(
