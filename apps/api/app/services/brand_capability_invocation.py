@@ -2156,12 +2156,22 @@ class BrandCapabilityInvocationService:
                 action="select",
                 target_type="treatment_step",
                 target_id=step_key,
-                detail={"card_id": card_id, "option_id": option.option_id, "custom": True},
+                # The Treatment document reads each step's sections from this
+                # log entry, exactly like ``apply_treatment_selection``.
+                detail={
+                    "card_id": card_id,
+                    "option_id": option.option_id,
+                    "custom": True,
+                    "content_version": 2,
+                    "structured_detail": option.detail.model_dump(mode="json"),
+                },
                 now=now,
             )
-            self._repository.save_journey_in_transaction(
-                connection, brand_id, advance_treatment_substep(observed)
-            )
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is not None:
+                self._repository.save_journey_in_transaction(
+                    connection, brand_id, advance_treatment_substep(journey)
+                )
             return updated_card
 
     def append_treatment_options(
