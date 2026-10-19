@@ -156,8 +156,8 @@ class BrandCardCustomTextIntentV1(_BrandModel):
     direction: str | None = Field(default=None, min_length=1, max_length=240)
 
 
-class BrandCardCustomTextIntentOutputV1(_BrandModel):
-    """Strict structured output for one Brand card custom-text classification."""
+class BrandCardCustomIntentV1(_BrandModel):
+    """Interpretation of custom text typed into a Brand hypothesis or Treatment card."""
 
     intent: Literal["answer", "request_more_options"]
     direction: str | None = Field(default=None, min_length=1, max_length=240)
@@ -205,6 +205,7 @@ class BrandStrategyOutputV1(_BrandModel):
     question_card: BrandOptionCardV1 | None = None
     form_cards: tuple[BrandOptionCardV1, ...] = Field(default=(), max_length=32)
     form_answer_intents: tuple[BrandFormAnswerIntentV1, ...] = Field(default=(), max_length=32)
+    card_custom_intent: BrandCardCustomIntentV1 | None = None
     question_impact: BrandQuestionImpactV1 | None = None
 
 
@@ -227,12 +228,6 @@ class CreativeStrategyOutputV1(_BrandModel):
     # The MVP shows the user exactly three directions; the contract is exact so a
     # model that diverges internally cannot publish a 2- or 4-option card.
     candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=3, max_length=3)
-
-
-class CreativeHypothesisGenerationOutputV1(_BrandModel):
-    """Private one-to-three candidate output for bounded card custom generation."""
-
-    candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=1, max_length=3)
 
 
 class TreatmentCandidateV1(BrandShortOptionV1):

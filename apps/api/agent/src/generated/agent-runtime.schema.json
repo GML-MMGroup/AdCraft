@@ -7633,6 +7633,39 @@
       "title": "BrandBriefSummaryV1",
       "type": "object"
     },
+    "BrandCardCustomIntentV1": {
+      "additionalProperties": false,
+      "description": "Interpretation of custom text typed into a Brand hypothesis or Treatment card.",
+      "properties": {
+        "direction": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "intent": {
+          "enum": [
+            "answer",
+            "request_more_options"
+          ],
+          "title": "Intent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent"
+      ],
+      "title": "BrandCardCustomIntentV1",
+      "type": "object"
+    },
     "BrandFormAnswerIntentV1": {
       "additionalProperties": false,
       "description": "Structured interpretation of one custom form answer.",
@@ -7915,7 +7948,7 @@
     },
     "BrandOptionCardV1": {
       "additionalProperties": false,
-      "description": "Exactly three short options for one slot question or sub-step.",
+      "description": "Short options for one slot question or Brand hypothesis/Treatment card.",
       "properties": {
         "card_id": {
           "maxLength": 120,
@@ -7927,7 +7960,7 @@
           "items": {
             "$ref": "#/$defs/BrandShortOptionV1"
           },
-          "maxItems": 3,
+          "maxItems": 12,
           "minItems": 3,
           "title": "Options",
           "type": "array"
@@ -8546,6 +8579,17 @@
       "additionalProperties": false,
       "description": "Structured output of the brand-strategy capability.",
       "properties": {
+        "card_custom_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandCardCustomIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "clarifications": {
           "default": [],
           "items": {
@@ -17562,7 +17606,7 @@
           "items": {
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
-          "maxItems": 6,
+          "maxItems": 12,
           "minItems": 3,
           "title": "Options",
           "type": "array"

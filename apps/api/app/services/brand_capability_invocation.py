@@ -32,7 +32,6 @@ from app.schemas.brand_professional_mode import (
     BrandFormOptionV1,
     BrandFormRowV1,
     BrandFormV1,
-    BrandCardCustomTextIntentOutputV1,
     BrandShortOptionV1,
     BrandSlotValueV1,
     BrandStage,
@@ -42,7 +41,6 @@ from app.schemas.brand_professional_mode import (
     BrandSkillRecommendationsV1,
     BrandSkillSelectionRequestV1,
     CreativeHypothesisCandidateV1,
-    CreativeHypothesisGenerationOutputV1,
     CreativeStrategyOutputV1,
     CreativeTreatmentOutputV1,
     CreativeTreatmentStepOutputV1,
@@ -899,27 +897,39 @@ class BrandCapabilityInvocationService:
         card: BrandOptionCardV1,
         custom_text: str,
     ) -> tuple[Literal["answer", "request_more_options"], str | None]:
-        """Classify one card custom value, preserving answer fallback semantics."""
+        """Classify one card custom value, preserving answer fallback semantics.
 
+        Obvious requests for alternatives never depend on a model call, so a
+        classifier outage cannot turn "再来几个方案" into an applied idea.
+        """
+
+        if obvious_more_options_request(custom_text):
+            return "request_more_options", custom_text.strip()[:240]
         context = BrandQuestionState(self._database).context.read(brand_id)
         try:
-            spec = StructuredGenerationSpec[BrandCardCustomTextIntentOutputV1](
+            # ``brand_slot_form`` validates against ``BrandStrategyOutputV1``,
+            # so the interpretation travels in its optional
+            # ``card_custom_intent`` field, like ``form_answer_intents``.
+            spec = StructuredGenerationSpec[BrandStrategyOutputV1](
                 stage_name="brand_card_custom_text_intent",
                 contract_name="BrandStrategyOutputV1",
                 model_id=self._settings.llm_creative_model,
                 system_prompt=(
                     _BRAND_STRATEGY_PROMPT
-                    + " Classify the supplied custom text for this Brand card. Return intent=answer "
-                    + "for a user's own idea, and request_more_options only when they ask for alternatives "
-                    + "or a changed direction. Extract a short direction when present. Do not generate options."
+                    + " Analyze the supplied custom text typed into this Brand card. Return only "
+                    + "card_custom_intent and leave every other field empty. Use intent=answer for the "
+                    + "user's own idea, and request_more_options only when they ask for alternatives or a "
+                    + "changed direction. Put a short direction in direction when present. Do not "
+                    + "generate options or change any slot value."
                 ),
                 input_payload={
                     "product_context": context.payload,
+                    "answer_analysis_mode": True,
                     "card": card.model_dump(mode="json"),
                     "custom_text": custom_text,
                     "response_locale": self._workflow_response_locale(brand_id),
                 },
-                output_model=BrandCardCustomTextIntentOutputV1,
+                output_model=BrandStrategyOutputV1,
                 trace_metadata={"workflow_id": context.workflow_id},
                 operation="brand_slot_form",
             )
@@ -930,12 +940,14 @@ class BrandCapabilityInvocationService:
                 stage_revision=card.stage_revision,
                 substep_or_slot="custom-intent",
             )
-            output = runtime_result.output
             self._finish_presentation(
                 presentation_stream,
                 authoritative_id=f"brand-card-custom-intent:{card.card_id}",
             )
-            return output.intent, output.direction
+            interpretation = runtime_result.output.card_custom_intent
+            if interpretation is None:
+                return "answer", None
+            return interpretation.intent, interpretation.direction
         except Exception:  # noqa: BLE001 - classifier failure falls back to answer
             return "answer", None
 
@@ -952,15 +964,16 @@ class BrandCapabilityInvocationService:
 
         context = BrandQuestionContextService(self._database).read(brand_id)
         existing_options = [{"label": option.label, "why": option.why} for option in card.options]
-        spec = StructuredGenerationSpec[CreativeHypothesisGenerationOutputV1](
+        spec = StructuredGenerationSpec[CreativeStrategyOutputV1](
             stage_name="brand_hypothesis_custom",
             contract_name="CreativeStrategyOutputV1",
             model_id=self._settings.llm_creative_model,
             system_prompt=(
                 _CREATIVE_STRATEGY_PROMPT
-                + " Generate exactly the requested count. For an answer, preserve the user's idea as "
-                + "the label core without reinterpretation. For more options, do not repeat or paraphrase "
-                + "existing options and use the supplied direction as guidance."
+                + " Always return exactly three candidates. In answer mode the first candidate is the "
+                + "user's idea expanded faithfully, keeping it as the label core without reinterpretation; "
+                + "the other two are close variants. In request_more_options mode do not repeat or "
+                + "paraphrase existing options and use the supplied direction as guidance."
             ),
             input_payload={
                 "product_context": context.payload,
@@ -968,10 +981,10 @@ class BrandCapabilityInvocationService:
                 "user_idea": custom_text,
                 "direction": direction,
                 "existing_options": existing_options,
-                "count": count,
                 "custom_text_mode": "answer" if count == 1 else "request_more_options",
             },
-            output_model=CreativeHypothesisGenerationOutputV1,
+            # The ``brand_hypothesis`` contract requires exactly three candidates.
+            output_model=CreativeStrategyOutputV1,
             trace_metadata={"workflow_id": context.workflow_id},
             operation="brand_hypothesis",
         )
@@ -1024,9 +1037,10 @@ class BrandCapabilityInvocationService:
             model_id=self._settings.llm_creative_model,
             system_prompt=(
                 _CREATIVE_TREATMENT_PROMPT
-                + " Generate exactly the requested count for the current step. For an answer, preserve "
-                + "the user's idea as the label core without reinterpretation. For more options, do not "
-                + "repeat or paraphrase existing options and follow the supplied direction."
+                + " Always return exactly three options for the current step. In answer mode the first "
+                + "option is the user's idea expanded faithfully, keeping it as the label core without "
+                + "reinterpretation; the other two are close variants. In request_more_options mode do "
+                + "not repeat or paraphrase existing options and follow the supplied direction."
             ),
             input_payload={
                 "product_context": context.payload,
@@ -1038,10 +1052,10 @@ class BrandCapabilityInvocationService:
                 "existing_options": [
                     {"label": option.label, "why": option.why} for option in card.options
                 ],
-                "count": count,
                 "custom_text_mode": "answer" if count == 1 else "request_more_options",
             },
-            output_model=treatment_output_model(step_key, count),
+            # The ``brand_treatment_step`` contract publishes three options.
+            output_model=treatment_output_model(step_key),
             trace_metadata={"workflow_id": context.workflow_id},
             operation="brand_treatment_step",
         )
@@ -2233,6 +2247,40 @@ class BrandCapabilityInvocationService:
             brand_id=brand_id,
         )
         append_brand_answer_in_transaction(connection, brand_id=brand_id, entry=entry)
+
+
+_MORE_OPTIONS_MARKERS = (
+    "再来",
+    "再给",
+    "多给",
+    "多来",
+    "换一批",
+    "换几个",
+    "换个方向",
+    "换一个方向",
+    "其他方案",
+    "其它方案",
+    "别的方案",
+    "更多方案",
+    "更多选项",
+    "还有别的",
+    "还有其他",
+    "还有其它",
+    "重新给",
+    "more options",
+    "more ideas",
+    "other options",
+    "another",
+    "different direction",
+    "give me more",
+)
+
+
+def obvious_more_options_request(text: str) -> bool:
+    """Return whether card custom text plainly asks for more alternatives."""
+
+    normalized = text.strip().casefold()
+    return any(marker in normalized for marker in _MORE_OPTIONS_MARKERS)
 
 
 def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
