@@ -682,7 +682,8 @@ def _render(
             "non-photorealistic semi-realistic commercial illustration in front, side, and back "
             "full-body views on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
-            f"{silhouette}. Wardrobe: {wardrobe}. Accessories: {accessories}.",
+            f"{silhouette}. Wardrobe: {wardrobe}."
+            f"{_optional_labeled_fragment('Accessories', accessories)}",
             "No photorealistic human, identity drift, labels, captions, annotation text, product, "
             "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
@@ -692,8 +693,8 @@ def _render(
             f"illustration on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
-            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
-            f"{brief.accessories}.",
+            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}."
+            f"{_optional_labeled_fragment('Accessories', brief.accessories)}",
             "No photograph, photorealistic human, product, prop, active scene, second person, "
             "text, labels, annotation, captions, or board layout.",
         )
@@ -716,7 +717,8 @@ def _render(
             "Create one text-free 3x3 environment board of the same coherent environment. "
             f"Identity: {environment_identity}. Spatial logic: {spatial_logic}. "
             f"Lighting: {lighting}. Materials: {materials}. Atmosphere: "
-            f"{atmosphere}. Views: {'; '.join(views)}.",
+            f"{atmosphere}."
+            f"{_optional_labeled_fragment('Views', '; '.join(views))}",
             "No active character, product, prop interaction, narrative action, plot progression, "
             "captions, labels, panel numbers, or unrelated environment.",
         )
@@ -752,6 +754,12 @@ def _render(
     if isinstance(brief, FreeMediaRoleBriefV2):
         return brief.prompt, "No undeclared identities, references, or hidden context."
     raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
+
+
+def _optional_labeled_fragment(label: str, value: str) -> str:
+    """Render an optional prompt field only when it contains meaningful text."""
+
+    return f" {label}: {value}." if value.strip() else ""
 
 
 def _authored_visual_style(brief: RoleCreativeBriefMemberV2) -> str | None:
