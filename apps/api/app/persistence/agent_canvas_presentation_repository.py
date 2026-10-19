@@ -13,6 +13,7 @@ from app.persistence.errors import V2PersistenceError
 from app.persistence.models import PresentationStreamChunkRow, PresentationStreamRow
 from app.schemas.agent_canvas_presentation import (
     PresentationStreamEventV1,
+    PresentationStreamListItemV1,
     PresentationStreamMetadataV1,
     SafePresentationDeltaV1,
 )
@@ -114,6 +115,45 @@ class PresentationStreamRepository:
                 "Presentation stream was not found.",
             )
         return _metadata(row)
+
+    def list_recent(
+        self, workflow_id: str, limit: int
+    ) -> tuple[PresentationStreamListItemV1, ...]:
+        """List workflow-owned streams newest first within a bounded limit."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(PresentationStreamRow)
+                        .where(PresentationStreamRow.workflow_id == workflow_id)
+                        .order_by(
+                            PresentationStreamRow.created_at.desc(),
+                            PresentationStreamRow.stream_id.desc(),
+                        )
+                        .limit(limit)
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _error(
+                "presentation_stream_unavailable", "Presentation stream storage failed."
+            ) from exc
+        return tuple(
+            PresentationStreamListItemV1(
+                stream_id=row["stream_id"],
+                stream_kind=row["stream_kind"],
+                generation_id=row["generation_id"],
+                turn_id=row.get("turn_id"),
+                node_id=row.get("node_id"),
+                node_revision=row.get("node_revision"),
+                status=row["status"],
+                created_at=row["created_at"],
+                terminal_at=row.get("terminal_at"),
+            )
+            for row in rows
+        )
 
     def append_event(
         self,
@@ -576,6 +616,8 @@ def _metadata(row: dict[str, object]) -> PresentationStreamMetadataV1:
             "authoritative_id": row.get("authoritative_id"),
             "content_digest": row.get("content_digest"),
             "error_code": row.get("error_code"),
+            "created_at": row.get("created_at"),
+            "terminal_at": row.get("terminal_at"),
         }
     )
 

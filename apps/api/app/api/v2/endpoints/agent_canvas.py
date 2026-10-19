@@ -132,6 +132,7 @@ from app.schemas.agent_canvas import (
     ProjectCreateResponseV2,
     SaveImageToLibraryRequestV2,
 )
+from app.schemas.agent_canvas_presentation import PresentationStreamListV1
 from app.schemas.agent_canvas_editing_output_reuse import (
     EditingExportOutputReuseRequestV2,
     EditingExportOutputReuseResponseV2,
@@ -3866,6 +3867,25 @@ def stream_canvas_runtime_events(
                 )
 
     return StreamingResponse(body(), media_type="text/event-stream")
+
+
+@router.get(
+    "/workflows/{workflow_id}/presentation/streams",
+    response_model=PresentationStreamListV1,
+)
+def list_agent_presentation_streams(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> PresentationStreamListV1:
+    """List recent workflow-owned presentation streams for timeline placement."""
+
+    try:
+        runtime.workflows.get_workflow(workflow_id)
+        streams = runtime.presentation_streams.list_recent(workflow_id, limit)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return PresentationStreamListV1(streams=streams)
 
 
 @router.get(

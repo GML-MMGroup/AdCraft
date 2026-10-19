@@ -65,6 +65,8 @@ class PresentationStreamMetadataV1(_StrictModel):
     authoritative_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     content_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     error_code: str | None = Field(default=None, max_length=_MAX_ERROR_CODE)
+    created_at: str | None = None
+    terminal_at: str | None = None
 
     @model_validator(mode="after")
     def validate_target(self) -> "PresentationStreamMetadataV1":
@@ -81,6 +83,30 @@ class PresentationStreamMetadataV1(_StrictModel):
         if self.status == "failed" and self.error_code is None:
             raise ValueError("Failed presentation streams require an error code.")
         return self
+
+
+class PresentationStreamListItemV1(_StrictModel):
+    """Timeline-safe metadata returned when listing presentation streams."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stream_id: str = Field(min_length=1, max_length=_MAX_IDENTIFIER)
+    stream_kind: PresentationStreamKindV1
+    generation_id: str = Field(min_length=1, max_length=_MAX_IDENTIFIER)
+    turn_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
+    node_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
+    node_revision: int | None = Field(default=None, ge=1)
+    status: PresentationStreamStatusV1
+    created_at: str
+    terminal_at: str | None = None
+
+
+class PresentationStreamListV1(_StrictModel):
+    """Bounded recent presentation streams for one workflow."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    streams: tuple[PresentationStreamListItemV1, ...] = Field(max_length=50)
 
 
 class PresentationStreamEventV1(_StrictModel):
@@ -205,6 +231,8 @@ class PresentationTimingV1(_StrictModel):
 
 __all__ = (
     "PresentationStreamEventV1",
+    "PresentationStreamListItemV1",
+    "PresentationStreamListV1",
     "PresentationStreamMetadataV1",
     "PresentationStreamResetV1",
     "PresentationTimingV1",
