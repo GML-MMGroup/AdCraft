@@ -565,6 +565,30 @@ class AgentCanvasRuntime:
     prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
 
 
+def _advance_storyboard_after_materialization(
+    delivery: object,
+    *,
+    owned_nodes: dict[str, set[str]],
+    advance_node: Callable[[str, str], object],
+    rescan_workflow: Callable[[str], object],
+) -> None:
+    """Advance Storyboard progression once a materialization continuation completes.
+
+    Prompt dispatches owned by a materialization record their node in
+    ``owned_nodes``. That set is process-local, and recovery workers each run
+    in their own runtime, so a dispatch that finished in another runtime is
+    never in this set. The journey then stopped at ``storyboard_grids``
+    (production, 2026-10-19). After the in-memory pass, rescan the durable
+    ready Storyboard Drafts; the progression is idempotent.
+    """
+
+    workflow_id = getattr(delivery, "workflow_id")
+    for node_id in tuple(owned_nodes.pop(workflow_id, set())):
+        advance_node(workflow_id, node_id)
+    if getattr(delivery, "operation", None) == "capability_materialization":
+        rescan_workflow(workflow_id)
+
+
 def _resume_prompt_preparation_barrier(
     dispatch: PromptPreparationDispatchV1,
     _result: object,
@@ -1883,11 +1907,12 @@ def create_agent_canvas_runtime(
     materialization_owned_nodes: dict[str, set[str]] = {}
 
     def advance_completed_storyboard_prompts(delivery):
-        for node_id in tuple(materialization_owned_nodes.pop(delivery.workflow_id, set())):
-            storyboard_progression.advance_after_prompt_ready(
-                delivery.workflow_id,
-                node_id,
-            )
+        _advance_storyboard_after_materialization(
+            delivery,
+            owned_nodes=materialization_owned_nodes,
+            advance_node=storyboard_progression.advance_after_prompt_ready,
+            rescan_workflow=resume_storyboard_progression,
+        )
 
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
