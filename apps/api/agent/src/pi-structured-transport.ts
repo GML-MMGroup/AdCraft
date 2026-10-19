@@ -417,7 +417,7 @@ export class PiStructuredTransportRouter {
       }
       await this.#sleep(250);
       const retry = await this.#executeOnce(
-        request,
+        withRetryReasoning(request, input.credential.execution_policy),
         input,
         "transport_retry",
         nextAttempt(),
@@ -1381,6 +1381,39 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
       ? { thinking_budget: policy.thinking_budget_tokens }
       : {}),
   };
+}
+
+const RETRY_REASONING_EFFORT: Readonly<Record<string, "minimal" | "low" | "medium">> = {
+  high: "medium",
+  medium: "low",
+};
+
+/**
+ * A transport retry runs inside the shorter recovery budget, so a deep
+ * reasoning call thinks one step less there. Boolean thinking controls have
+ * no intermediate level and stay unchanged.
+ */
+export function retryReasoningPayload(
+  policy: AgentCredentialSnapshot["execution_policy"],
+): ReturnType<typeof reasoningPayload> {
+  const payload = reasoningPayload(policy);
+  if (policy.reasoning_control !== "reasoning_effort" || payload.reasoning_effort == null) {
+    return payload;
+  }
+  return {
+    ...payload,
+    reasoning_effort: RETRY_REASONING_EFFORT[payload.reasoning_effort] ?? payload.reasoning_effort,
+  };
+}
+
+function withRetryReasoning(
+  request: StructuredCompletionRequest,
+  policy: AgentCredentialSnapshot["execution_policy"],
+): StructuredCompletionRequest {
+  if (policy.reasoning_control !== "reasoning_effort" || request.reasoning_effort == null) {
+    return request;
+  }
+  return { ...request, ...retryReasoningPayload(policy) };
 }
 
 function repairReasoningPayload(
