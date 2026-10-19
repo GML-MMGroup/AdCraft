@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from hashlib import sha256
+from app.schemas.agent_runtime import AgentPresentationDeltaV1
 
 from app.persistence.agent_canvas_presentation_repository import PresentationStreamRepository
 from app.persistence.errors import V2PersistenceError
@@ -86,6 +87,43 @@ class PresentationStreamPublisher:
             return self._repository.append_chunk(delta)
         except V2PersistenceError:
             return None
+
+    def publish_runtime_delta(
+        self,
+        workflow_id: str,
+        event: AgentPresentationDeltaV1,
+    ) -> PresentationStreamEventV1 | None:
+        """Resolve runtime stream identity from Python-owned stream metadata.
+
+        Runtime events carry a stream id only as a routing hint.  The stream
+        metadata is authoritative for workflow ownership and all generation
+        identity fields, so foreign, missing, or terminal streams are ignored.
+        """
+
+        if event.stream_id is None:
+            return None
+        try:
+            metadata = self._repository.get(workflow_id, event.stream_id)
+        except V2PersistenceError:
+            return None
+        if metadata.status != "open":
+            return None
+        try:
+            delta = SafePresentationDeltaV1(
+                stream_id=metadata.stream_id,
+                workflow_id=metadata.workflow_id,
+                stream_kind=metadata.stream_kind,
+                generation_id=metadata.generation_id,
+                turn_id=metadata.turn_id,
+                node_id=metadata.node_id,
+                node_revision=metadata.node_revision,
+                response_locale=event.response_locale,
+                segment=event.segment,
+                text=event.text,
+            )
+        except (TypeError, ValueError):
+            return None
+        return self.publish_delta(delta)
 
     def publish_validated_text(
         self,
@@ -210,4 +248,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-__all__ = ("PresentationStreamPublisher",)
+def presentation_stream_id(workflow_id: str, generation_id: str) -> str:
+    """Derive the stable assistant stream identity used by chat turns."""
+
+    digest = sha256(f"assistant:{workflow_id}:{generation_id}".encode("utf-8")).hexdigest()[:32]
+    return f"prs_{digest}"
+
+
+__all__ = ("PresentationStreamPublisher", "presentation_stream_id")

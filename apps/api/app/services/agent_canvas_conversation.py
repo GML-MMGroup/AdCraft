@@ -140,6 +140,9 @@ from app.services.agent_run_context_registry import (
 )
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.agent_canvas_nodes import AgentCanvasNodeService
+from app.services.agent_canvas_presentation import (
+    presentation_stream_id as derive_presentation_stream_id,
+)
 from app.services.agent_canvas_requirement_projection import (
     AgentCanvasRequirementProjectionService,
     requirement_projection_digest,
@@ -279,6 +282,8 @@ class VideoAgentGateway(Protocol):
         context: RolePromptPreparationContextV2,
         *,
         request_identity: str,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[..., None] | None = None,
     ) -> RoleCreativeBriefV2: ...
 
     def answer_workflow_conversation(
@@ -395,6 +400,8 @@ class DeterministicVideoAgentGateway:
         context: RolePromptPreparationContextV2,
         *,
         request_identity: str,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> RoleCreativeBriefV2:
         del request_identity
         brief = deterministic_role_brief(context)
@@ -534,7 +541,7 @@ class PiVideoAgentGateway:
         model_resolution: ModelResolutionService,
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
         on_provider_waiting: Callable[..., object] | None = None,
-        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
+        on_presentation: Callable[..., None] | None = None,
     ) -> None:
         self._durable_runner = durable_runner
         self._timeout_seconds = timeout_seconds
@@ -617,6 +624,8 @@ class PiVideoAgentGateway:
         context: RolePromptPreparationContextV2,
         *,
         request_identity: str,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> RoleCreativeBriefV2:
         completed = self._run_structured(
             operation="author_role_brief",
@@ -629,6 +638,9 @@ class PiVideoAgentGateway:
                 "node_revision": context.node_revision,
                 "role_variant": context.role_variant,
             },
+            presentation_channel="node_prompt" if presentation_stream_id else None,
+            presentation_stream_id=presentation_stream_id,
+            on_presentation=on_presentation,
         )
         brief = RoleCreativeBriefV2.model_validate(completed.value)
         if not brief.root.editable_prompt or not brief.root.editable_prompt.strip():
@@ -822,6 +834,9 @@ class PiVideoAgentGateway:
         contract,
         identity_fields: dict[str, str | int],
         parent_run_id: str | None = None,
+        presentation_channel: Literal["assistant", "node_prompt"] | None = None,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> PiStructuredRunResult:
         operation_definition = self._operation_registry.resolve(operation)
         validate_video_agent_operation_context(operation, context)
@@ -925,7 +940,23 @@ class PiVideoAgentGateway:
             },
         )
         if operation in {"decide_turn_intent", "decide_next_action", "author_decision_bundle"}:
-            request = request.model_copy(update={"presentation_channel": "assistant"})
+            request = request.model_copy(
+                update={
+                    "presentation_channel": "assistant",
+                    "presentation_stream_id": (
+                        derive_presentation_stream_id(context.workflow_id, turn_id)
+                        if isinstance(turn_id, str)
+                        else None
+                    ),
+                }
+            )
+        elif presentation_channel is not None:
+            request = request.model_copy(
+                update={
+                    "presentation_channel": presentation_channel,
+                    "presentation_stream_id": presentation_stream_id,
+                }
+            )
         if operation == "decide_turn_intent":
             schema_bytes = len(
                 json.dumps(
@@ -975,7 +1006,14 @@ class PiVideoAgentGateway:
             identity_fields=identity_fields,
             model_ref=resolution.model_ref,
             on_dispatch_owned=on_dispatch_owned,
-            on_presentation=self._on_presentation,
+            on_presentation=(
+                on_presentation
+                or (
+                    (lambda event: self._on_presentation(event, context.workflow_id))
+                    if self._on_presentation is not None
+                    else None
+                )
+            ),
         )
         return _completed_structured_run(result, model_ref=resolution.model_ref)
 

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import inspect
 from pathlib import Path
 from time import monotonic
 
@@ -61,7 +62,7 @@ from app.services.agent_canvas_derivative_prompt_reuse import (
 )
 
 
-RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
+RoleBriefAuthor = Callable[..., RoleCreativeBriefV2]
 LockedElementGuard = Callable[[str, CanvasNodeV2, str], None]
 _GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
 
@@ -169,6 +170,15 @@ class NodePromptPreparationService:
             ),
         )
         role_context: RolePromptPreparationContextV2 | None = None
+        answer_delta_received = False
+
+        def on_presentation(event) -> None:
+            nonlocal answer_delta_received
+            if event.segment == "answer":
+                answer_delta_received = True
+            if self._presentation_publisher is not None:
+                self._presentation_publisher.publish_runtime_delta(workflow_id, event)
+
         try:
             role_context = self._project_context(working, context)
             character_authority_digest = (
@@ -215,7 +225,20 @@ class NodePromptPreparationService:
                 and not preserve_creative_text
             ):
                 try:
-                    brief = self._role_brief_author(role_context, operation_id)
+                    author_parameters = inspect.signature(self._role_brief_author).parameters
+                    if "presentation_stream_id" in author_parameters:
+                        brief = self._role_brief_author(
+                            role_context,
+                            operation_id,
+                            presentation_stream_id=(
+                                presentation_stream.stream_id
+                                if presentation_stream is not None
+                                else None
+                            ),
+                            on_presentation=on_presentation,
+                        )
+                    else:
+                        brief = self._role_brief_author(role_context, operation_id)
                 except Exception as error:
                     if (
                         role_context.role_variant == "scene_board"
@@ -459,7 +482,8 @@ class NodePromptPreparationService:
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
             if presentation_stream is not None and self._presentation_publisher is not None:
-                self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
+                if not answer_delta_received:
+                    self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
                 self._presentation_publisher.commit(
                     presentation_stream,
                     authoritative_id=f"{node_id}:{persisted.revision}",

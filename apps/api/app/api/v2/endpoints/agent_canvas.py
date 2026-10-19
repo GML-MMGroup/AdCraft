@@ -212,7 +212,6 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRuntimeSnapshotV2,
 )
 from app.schemas.agent_canvas_post_ready_checkpoint import CanvasPostReadyCheckpointV2
-from app.schemas.agent_canvas_presentation import SafePresentationDeltaV1
 from app.schemas.agent_canvas_editing import (
     EditingExportAcceptedV2,
     EditingExportCancelResponseV2,
@@ -372,7 +371,10 @@ from app.services.agent_canvas_prompt_preparation import NodePromptPreparationSe
 from app.services.agent_canvas_prompt_preparation_worker import (
     AgentCanvasPromptPreparationWorker,
 )
-from app.services.agent_canvas_presentation import PresentationStreamPublisher
+from app.services.agent_canvas_presentation import (
+    PresentationStreamPublisher,
+    presentation_stream_id,
+)
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -827,24 +829,8 @@ def create_agent_canvas_runtime(
             timeout_seconds=settings.agent_runtime_run_timeout_seconds,
             model_resolution=model_resolution,
             on_provider_waiting=conversation_repository.mark_turn_provider_waiting,
-            on_presentation=lambda event: presentation_publisher.publish_delta(
-                SafePresentationDeltaV1(
-                    stream_id=(
-                        event.stream_id
-                        or _presentation_stream_id(
-                            event.workflow_id, event.turn_id or event.generation_id
-                        )
-                    ),
-                    workflow_id=event.workflow_id,
-                    stream_kind=event.channel,
-                    generation_id=event.generation_id,
-                    turn_id=event.turn_id,
-                    node_id=event.node_id,
-                    node_revision=event.node_revision,
-                    response_locale=event.response_locale,
-                    segment=event.segment,
-                    text=event.text,
-                )
+            on_presentation=lambda event, workflow_id: presentation_publisher.publish_runtime_delta(
+                workflow_id, event
             ),
         )
     )
@@ -867,10 +853,11 @@ def create_agent_canvas_runtime(
 
     prompt_preparation_service = NodePromptPreparationService(
         workflow_repository,
-        role_brief_author=lambda role_context, request_identity: (
+        role_brief_author=lambda role_context, request_identity, **presentation: (
             video_agent_gateway.author_role_brief(
                 role_context,
                 request_identity=request_identity,
+                **presentation,
             )
         ),
         asset_resolver=asset_service.resolve_asset,
@@ -3055,7 +3042,7 @@ def submit_chat_message(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    stream_id = _presentation_stream_id(workflow_id, accepted.turn_id)
+    stream_id = presentation_stream_id(workflow_id, accepted.turn_id)
     stream = runtime.presentation_publisher.create_assistant_stream(
         workflow_id=workflow_id,
         turn_id=accepted.turn_id,
@@ -4026,7 +4013,7 @@ def _process_agent_turn_and_resume(
     turn_id: str,
 ) -> None:
     turn = runtime.conversations.process_turn(turn_id)
-    stream_id = _presentation_stream_id(workflow_id, turn_id)
+    stream_id = presentation_stream_id(workflow_id, turn_id)
     try:
         presentation_streams = getattr(runtime, "presentation_streams", None)
         presentation_publisher = getattr(runtime, "presentation_publisher", None)
@@ -4107,13 +4094,6 @@ def _persisted_assistant_result(
     return None
 
 
-def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
-    """Derive a stable opaque identity without exposing request content."""
-
-    digest = sha256(f"assistant:{workflow_id}:{generation_id}".encode("utf-8")).hexdigest()[:32]
-    return f"prs_{digest}"
-
-
 def _persist_text_document(
     documents: AgentCanvasDocumentRepository,
     node: CanvasNodeV2,
@@ -4135,6 +4115,12 @@ def _persist_text_document(
         ).hexdigest(),
         node_revision=node.revision,
     )
+
+
+def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
+    """Compatibility alias for the shared presentation identity helper."""
+
+    return presentation_stream_id(workflow_id, generation_id)
 
 
 def _expected_revision(value: str | None, workflow_id: str) -> int:
