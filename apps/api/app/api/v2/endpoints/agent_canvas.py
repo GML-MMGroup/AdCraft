@@ -3351,9 +3351,15 @@ def submit_guided_interaction(
         # background work; it must not wait for another chat message and it is
         # intentionally independent of the Agent continuation outbox.
         background_tasks.add_task(
-            _publish_next_brand_interaction_after_form_submit,
-            runtime,
-            workflow_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.BRAND_INTERACTION_PUBLISH,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.INTERACTION,
+                resource_id=interaction_id,
+                callback=_publish_next_brand_interaction_after_form_submit,
+                args=(runtime, workflow_id),
+            ),
         )
     elif is_brand_concept_selection and not accepted.replayed:
         # Brand Professional cards own a separate deterministic journey.  The
@@ -3361,9 +3367,15 @@ def submit_guided_interaction(
         # journey, so selecting a Brand hypothesis, AdSpec, skill, or
         # Treatment option must publish the next Brand card directly.
         background_tasks.add_task(
-            _publish_next_brand_interaction_after_form_submit,
-            runtime,
-            workflow_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.BRAND_INTERACTION_PUBLISH,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.INTERACTION,
+                resource_id=interaction_id,
+                callback=_publish_next_brand_interaction_after_form_submit,
+                args=(runtime, workflow_id),
+            ),
         )
     elif not accepted.replayed:
         background_tasks.add_task(
