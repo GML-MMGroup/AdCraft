@@ -71,7 +71,14 @@ class BrandOptionCardV1(_BrandModel):
     stage_revision: int = Field(ge=1)
     target_slot_id: str | None = Field(default=None, max_length=80)
     question: str = Field(min_length=1, max_length=400)
-    options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=12)
+    # Models always author exactly three options, so the published JSON schema
+    # stays 3..3. Only persisted hypothesis/Treatment cards grow (to 12) when
+    # the user asks for more options through the "Other" input.
+    options: tuple[BrandShortOptionV1, ...] = Field(
+        min_length=3,
+        max_length=12,
+        json_schema_extra={"maxItems": 3},
+    )
 
     @model_validator(mode="after")
     def validate_option_count(self) -> "BrandOptionCardV1":
@@ -147,13 +154,6 @@ class BrandFormAnswerIntentV1(_BrandModel):
 
     question_id: str = Field(min_length=1, max_length=120)
     intent: Literal["answer", "request_more_options"]
-
-
-class BrandCardCustomTextIntentV1(_BrandModel):
-    """Bounded intent and optional direction extracted from card custom text."""
-
-    intent: Literal["answer", "request_more_options"]
-    direction: str | None = Field(default=None, min_length=1, max_length=240)
 
 
 class BrandCardCustomIntentV1(_BrandModel):

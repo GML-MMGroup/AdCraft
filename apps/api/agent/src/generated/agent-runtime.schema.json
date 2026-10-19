@@ -7960,7 +7960,7 @@
           "items": {
             "$ref": "#/$defs/BrandShortOptionV1"
           },
-          "maxItems": 12,
+          "maxItems": 3,
           "minItems": 3,
           "title": "Options",
           "type": "array"
