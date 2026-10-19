@@ -176,6 +176,14 @@ _ADSPEC_LABELS: dict[str, dict[str, str]] = {
     },
 }
 
+_CUSTOM_CARD_ANSWER_MODE_INSTRUCTION = (
+    " Answer mode: the user wrote their own idea in `user_requirements`. Every concrete instruction "
+    "in it is mandatory for every candidate — including order of shots or events, what opens the "
+    "step, which subject appears first, tone, and anything to include or avoid. Implement each one "
+    "literally; never reorder, drop, soften, or substitute them. The three candidates may differ "
+    "only in details the user left unspecified. Keep the user's wording as the core of the label."
+)
+
 
 def _adspec_labels(response_locale: str) -> dict[str, str]:
     """Return the AdSpec label table for one response locale."""
@@ -970,18 +978,20 @@ class BrandCapabilityInvocationService:
             model_id=self._settings.llm_creative_model,
             system_prompt=(
                 _CREATIVE_STRATEGY_PROMPT
-                + " Always return exactly three candidates. In answer mode the first candidate is the "
-                + "user's idea expanded faithfully, keeping it as the label core without reinterpretation; "
-                + "the other two are close variants. In request_more_options mode do not repeat or "
+                + " Always return exactly three candidates."
+                + _CUSTOM_CARD_ANSWER_MODE_INSTRUCTION
+                + " In request_more_options mode do not repeat or "
                 + "paraphrase existing options and use the supplied direction as guidance."
             ),
             input_payload={
                 "product_context": context.payload,
                 "response_locale": self._workflow_response_locale(brand_id),
-                "user_idea": custom_text,
-                "direction": direction,
-                "existing_options": existing_options,
                 "custom_text_mode": "answer" if count == 1 else "request_more_options",
+                **(
+                    {"user_requirements": custom_text}
+                    if count == 1
+                    else {"direction": direction, "existing_options": existing_options}
+                ),
             },
             # The ``brand_hypothesis`` contract requires exactly three candidates.
             output_model=CreativeStrategyOutputV1,
@@ -1037,9 +1047,9 @@ class BrandCapabilityInvocationService:
             model_id=self._settings.llm_creative_model,
             system_prompt=(
                 _CREATIVE_TREATMENT_PROMPT
-                + " Always return exactly three options for the current step. In answer mode the first "
-                + "option is the user's idea expanded faithfully, keeping it as the label core without "
-                + "reinterpretation; the other two are close variants. In request_more_options mode do "
+                + " Always return exactly three options for the current step."
+                + _CUSTOM_CARD_ANSWER_MODE_INSTRUCTION
+                + " In request_more_options mode do "
                 + "not repeat or paraphrase existing options and follow the supplied direction."
             ),
             input_payload={
@@ -1047,12 +1057,20 @@ class BrandCapabilityInvocationService:
                 **BrandSkillStackService(self._database).treatment_context(brand_id, step_key),
                 "substep": step_key,
                 "response_locale": self._workflow_response_locale(brand_id),
-                "user_idea": custom_text,
-                "direction": direction,
-                "existing_options": [
-                    {"label": option.label, "why": option.why} for option in card.options
-                ],
                 "custom_text_mode": "answer" if count == 1 else "request_more_options",
+                **(
+                    {
+                        "user_requirements": custom_text,
+                        "user_requirements_scope": "This Treatment step only",
+                    }
+                    if count == 1
+                    else {
+                        "direction": direction,
+                        "existing_options": [
+                            {"label": option.label, "why": option.why} for option in card.options
+                        ],
+                    }
+                ),
             },
             # The ``brand_treatment_step`` contract publishes three options.
             output_model=treatment_output_model(step_key),
