@@ -132,7 +132,10 @@ from app.schemas.agent_canvas import (
     ProjectCreateResponseV2,
     SaveImageToLibraryRequestV2,
 )
-from app.schemas.agent_canvas_presentation import PresentationStreamListV1
+from app.schemas.agent_canvas_presentation import (
+    PresentationStreamEventV1,
+    PresentationStreamListV1,
+)
 from app.schemas.agent_canvas_editing_output_reuse import (
     EditingExportOutputReuseRequestV2,
     EditingExportOutputReuseResponseV2,
@@ -3905,6 +3908,7 @@ def stream_agent_presentation(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     after_seq: Annotated[int | None, Query(ge=0)] = None,
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    segments: Annotated[bool, Query()] = False,
 ) -> StreamingResponse:
     """Replay one bounded workflow-owned presentation stream over SSE."""
 
@@ -3925,10 +3929,17 @@ def stream_agent_presentation(
         while True:
             for event in pending:
                 cursor = event.sequence_no
+                payload = (
+                    event.model_dump(mode="json")
+                    if segments
+                    else legacy_presentation_event_payload(event)
+                )
+                if payload is None:
+                    continue
                 yield (
                     f"id: {event.sequence_no}\n"
                     f"event: {event.event_type}\n"
-                    f"data: {event.model_dump_json()}\n\n"
+                    f"data: {json.dumps(payload, separators=(',', ':'), ensure_ascii=False)}\n\n"
                 )
             current = runtime.presentation_streams.get(workflow_id, stream_id)
             if current.status != "open":
@@ -3951,6 +3962,21 @@ def stream_agent_presentation(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def legacy_presentation_event_payload(
+    event: PresentationStreamEventV1,
+) -> dict[str, object] | None:
+    """Project one stored presentation event for clients without segment support."""
+
+    if event.event_type == "delta" and event.segment == "reasoning":
+        return None
+    payload = event.model_dump(mode="json")
+    payload.pop("segment", None)
+    reset = payload.get("reset")
+    if isinstance(reset, dict) and reset.get("reason") in {"attempt_restarted", "final_replaced"}:
+        reset["reason"] = "store_recovered"
+    return payload
 
 
 def _presentation_cursor(last_event_id: str | None, after_seq: int | None) -> int:
