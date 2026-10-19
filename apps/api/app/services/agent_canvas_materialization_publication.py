@@ -1917,6 +1917,9 @@ class CapabilityMaterializationPublicationService:
                 # not carry the stale operation into the next dependency wave;
                 # the returned Node is the only current snapshot authority.
                 node = invalidated
+                if node.prompt_preparation.status == "ready":
+                    # A READY prompt was refreshed in place, not re-authored.
+                    continue
                 operation_id = node.prompt_preparation.operation_id
                 if not operation_id:
                     raise V2PersistenceError(
@@ -2056,6 +2059,9 @@ class CapabilityMaterializationPublicationService:
             # The dependency wave may publish a new Node revision and must be
             # prepared under the successor identity returned by invalidation.
             node = invalidated
+            if node.prompt_preparation.status == "ready":
+                # A READY prompt was refreshed in place, not re-authored.
+                continue
             operation_id = node.prompt_preparation.operation_id
             if not operation_id:
                 raise V2PersistenceError(

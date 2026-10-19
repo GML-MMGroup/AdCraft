@@ -1454,6 +1454,38 @@ class AgentCanvasPromptPreparationDispatchRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def refresh_completed_references_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        node: CanvasNodeV2,
+        binding_digest: str | None,
+        now: datetime,
+    ) -> None:
+        """Re-pin a completed dispatch to the Node's current input lineage.
+
+        Ready prompts are never re-authored automatically (user rule,
+        2026-10-19). When only upstream references change, the completed
+        dispatch keeps its operation and context but records the current
+        source snapshot so terminal identity checks stay consistent.
+        """
+
+        connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.workflow_id == node.workflow_id,
+                AgentCanvasPromptPreparationOutboxRow.node_id == node.node_id,
+                AgentCanvasPromptPreparationOutboxRow.operation_id
+                == node.prompt_preparation.operation_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "completed",
+            )
+            .values(
+                binding_digest=binding_digest,
+                source_snapshot_json=_json(_source_snapshot_for_node(connection, node, ())),
+                updated_at=_iso(_utc(now)),
+            )
+        )
+
     def reconcile_node_terminal_in_transaction(
         self,
         connection: Connection,

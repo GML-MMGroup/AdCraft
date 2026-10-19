@@ -18,6 +18,7 @@ from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContext
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
 from app.schemas.agent_canvas_prompt_assertion import (
+    PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
     safe_prompt_assertion_metadata,
 )
@@ -611,6 +612,14 @@ class NodePromptPreparationService:
             )
         if current.prompt_preparation.status != "ready":
             return current
+        if current.prompt_preparation.assertion_evidence is not None:
+            # A READY prompt keeps its text; only its references follow the
+            # current sources (user rule, 2026-10-19).
+            return self.refresh_dependency_evidence(
+                workflow_id,
+                node_id,
+                operation_id=operation_id,
+            )
         if (
             self._presentation_publisher is not None
             and current.prompt_preparation.presentation_stream_id is not None
@@ -676,16 +685,25 @@ class NodePromptPreparationService:
             and preparation.binding_digest == binding_digest
         ):
             return current
-        # Dependency evidence is an immutable part of the preparation
-        # operation.  Once a source snapshot changes, never rewrite that
-        # evidence in place: supersede the old identity and enqueue exactly
-        # one successor for the next preparation wave.  The existing
-        # repository method performs the Node/dispatch mutation atomically.
-        del current_sources, binding_digest
-        return self.invalidate_for_dependency_change(
+        # User rule (2026-10-19): a READY prompt is never re-authored by an
+        # automatic trigger. Upstream reference changes refresh the evidence,
+        # binding digest, and reference snapshots in place; the prompt text,
+        # status, and outputs stay untouched and no model is called.
+        refreshed_evidence = PromptAssertionEvidenceV1.build(
+            **{
+                key: value
+                for key, value in evidence.model_dump(mode="json").items()
+                if key not in {"schema_version", "evidence_digest", "source_snapshots"}
+            },
+            source_snapshots=[item.model_dump(mode="json") for item in current_sources],
+        )
+        return self._workflows.refresh_ready_prompt_references(
             workflow_id,
             node_id,
             operation_id=operation_id,
+            assertion_evidence=refreshed_evidence,
+            binding_digest=binding_digest,
+            prepared_reference_snapshots=[item.model_dump(mode="json") for item in bindings],
         )
 
     def _append_trace(
