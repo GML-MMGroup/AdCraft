@@ -640,6 +640,11 @@ export async function executeOpenAICompletion(
   }
 }
 
+// Time-led batching keeps live typing smooth while bounding per-event envelope
+// overhead against the runtime stream byte budget.
+const PRESENTATION_FLUSH_INTERVAL_MS = 250;
+const PRESENTATION_FLUSH_CHARACTERS = 1024;
+
 class PresentationBatcher {
   readonly #emit: (segment: PresentationSegment, text: string) => void;
   readonly #buffers: Record<PresentationSegment, string> = {
@@ -656,9 +661,14 @@ class PresentationBatcher {
     if (text.length === 0) return;
     this.#buffers[segment] += text;
     if (this.#timers[segment] === undefined) {
-      this.#timers[segment] = setTimeout(() => this.flush(segment), 250);
+      this.#timers[segment] = setTimeout(
+        () => this.flush(segment),
+        PRESENTATION_FLUSH_INTERVAL_MS,
+      );
     }
-    if (Array.from(this.#buffers[segment]).length >= 32) this.flush(segment);
+    if (Array.from(this.#buffers[segment]).length >= PRESENTATION_FLUSH_CHARACTERS) {
+      this.flush(segment);
+    }
   }
 
   flush(segment: PresentationSegment): void {
