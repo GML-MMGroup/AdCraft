@@ -144,8 +144,31 @@ export type StructuredCompletionExecutor = (
     readonly maxOutputBytes?: number;
     readonly idleTimeoutMs?: number;
     readonly onChunk?: (chunk: unknown) => void;
+    readonly onPresentation?: (segment: PresentationSegment, text: string) => void;
+    readonly presentationAnswerKey?: string | null;
+    readonly attempt?: number;
+    readonly attemptStage?: ModelAttemptStage;
   },
 ) => Promise<StructuredCompletionResponse>;
+
+export type PresentationSegment = "reasoning" | "answer";
+
+export const PRESENTATION_ANSWER_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  decide_turn_intent: "assistant_message",
+  decide_next_action: "assistant_message",
+  author_decision_bundle: "assistant_message",
+  author_role_brief: "editable_prompt",
+});
+
+export function presentationAnswerKeyForOperation(operation: string): string | null {
+  return PRESENTATION_ANSWER_KEYS[operation] ?? null;
+}
+
+export type PresentationDeltaSink = (
+  segment: PresentationSegment,
+  text: string,
+  attempt: number,
+) => void;
 
 interface StructuredValidationResult {
   readonly status: string;
@@ -153,7 +176,7 @@ interface StructuredValidationResult {
   readonly result?: Readonly<Record<string, unknown>>;
 }
 
-interface StructuredTransportRunInput {
+export interface StructuredTransportRunInput {
   readonly credential: AgentRuntimeTransportSource;
   readonly request: AgentRunRequest;
   readonly systemPrompt: string;
@@ -162,6 +185,8 @@ interface StructuredTransportRunInput {
   readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
   readonly traceClient?: AgentModelTraceClient & WorkflowModelCallClient;
   readonly signal: AbortSignal;
+  readonly onPresentation?: PresentationDeltaSink;
+  readonly presentationAnswerKey?: string | null;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
     attempt: number,
@@ -208,8 +233,13 @@ export class PiStructuredTransportRouter {
       );
     }
     const startedAt = this.#now().toISOString();
+    const presentationAttempt = { value: 0 };
     const primaryRequest = buildPrimaryStructuredCompletionRequest(input);
-    const primary = await this.#executeWithRetry(primaryRequest, input);
+    const primary = await this.#executeWithRetry(
+      primaryRequest,
+      input,
+      () => ++presentationAttempt.value,
+    );
     let structuredAttempts = 1;
     const validationAttempts: AgentStructuredValidationAttemptAuditV1[] = [];
     let value = primaryValue(input, primary.response);
@@ -288,6 +318,7 @@ export class PiStructuredTransportRouter {
       repairPayload(input, validation, value, primary.response.choices?.[0]?.message?.content),
       input,
       "structured_repair",
+      ++presentationAttempt.value,
     );
     value = repairContent(repair.response);
     if (value === undefined) {
@@ -362,9 +393,10 @@ export class PiStructuredTransportRouter {
   async #executeWithRetry(
     request: StructuredCompletionRequest,
     input: StructuredTransportRunInput,
+    nextAttempt: () => number,
   ): Promise<CompletionAttempt> {
     try {
-      return await this.#executeOnce(request, input, "initial");
+      return await this.#executeOnce(request, input, "initial", nextAttempt());
     } catch (error) {
       if (isAgentModelTraceFailure(error)) throw error;
       if (isCertifiedJsonObjectCapabilityFallback(error, input)) {
@@ -372,6 +404,7 @@ export class PiStructuredTransportRouter {
           jsonObjectCapabilityFallbackRequest(request),
           input,
           "capability_fallback",
+          nextAttempt(),
         );
         return { ...fallback, capabilityFallbackCount: 1 };
       }
@@ -382,7 +415,12 @@ export class PiStructuredTransportRouter {
         throw normalizeTransportFailure(error, input.signal);
       }
       await this.#sleep(250);
-      const retry = await this.#executeOnce(request, input, "transport_retry");
+      const retry = await this.#executeOnce(
+        request,
+        input,
+        "transport_retry",
+        nextAttempt(),
+      );
       return { ...retry, retryCount: 1 };
     }
   }
@@ -391,6 +429,7 @@ export class PiStructuredTransportRouter {
     request: StructuredCompletionRequest,
     input: StructuredTransportRunInput,
     stage: ModelAttemptStage,
+    attempt: number,
   ): Promise<CompletionAttempt> {
     const startedAt = this.#now().toISOString();
     const timeoutMs = modelAttemptTimeoutMs(
@@ -433,6 +472,13 @@ export class PiStructuredTransportRouter {
       transport_options: { timeout_ms: timeoutMs, max_retries: 0, max_output_bytes: input.request.policy?.max_output_bytes ?? 262_144 },
       ...(!isAcceptanceReplaySource(input.credential) ? { base_url: input.credential.base_url } : {}),
     });
+    const presentationEnabled = Boolean(
+      input.onPresentation &&
+      input.request.presentation_stream_id &&
+      input.request.presentation_channel &&
+      input.credential.execution_policy.structured_transport === "streaming_json_object" &&
+      request.stream,
+    );
     try {
       const response = isAcceptanceReplaySource(input.credential)
         ? await claimAgentModelTraceOutcome(
@@ -451,6 +497,18 @@ export class PiStructuredTransportRouter {
           maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
           idleTimeoutMs: 90_000,
           ...(capture ? { onChunk: (chunk: unknown) => capture.chunk(chunk) } : {}),
+          ...(presentationEnabled
+            ? {
+              onPresentation: (segment: PresentationSegment, text: string) => {
+                input.onPresentation?.(segment, text, attempt);
+              },
+            }
+            : {}),
+          ...(presentationEnabled && input.presentationAnswerKey !== undefined
+            ? { presentationAnswerKey: input.presentationAnswerKey }
+            : {}),
+          attempt,
+          attemptStage: stage,
         });
       capture?.finish({ response });
       await recordAgentModelTraceOutcome(
@@ -534,6 +592,8 @@ export async function executeOpenAICompletion(
     readonly maxOutputBytes?: number;
     readonly idleTimeoutMs?: number;
     readonly onChunk?: (chunk: unknown) => void;
+    readonly onPresentation?: (segment: PresentationSegment, text: string) => void;
+    readonly presentationAnswerKey?: string | null;
   },
 ): Promise<StructuredCompletionResponse> {
   const client = new OpenAI({
@@ -567,10 +627,242 @@ export async function executeOpenAICompletion(
         ? { idleTimeoutMs: options.idleTimeoutMs }
         : {}),
       ...(options.onChunk ? { onChunk: options.onChunk } : {}),
+      ...(options.onPresentation
+        ? { onPresentation: options.onPresentation }
+        : {}),
+      ...(options.presentationAnswerKey !== undefined
+        ? { answerKey: options.presentationAnswerKey }
+        : {}),
     });
   } finally {
     clearTimeout(timer);
     options.signal.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+class PresentationBatcher {
+  readonly #emit: (segment: PresentationSegment, text: string) => void;
+  readonly #buffers: Record<PresentationSegment, string> = {
+    reasoning: "",
+    answer: "",
+  };
+  readonly #timers: Partial<Record<PresentationSegment, ReturnType<typeof setTimeout>>> = {};
+
+  constructor(emit: (segment: PresentationSegment, text: string) => void) {
+    this.#emit = emit;
+  }
+
+  push(segment: PresentationSegment, text: string): void {
+    if (text.length === 0) return;
+    this.#buffers[segment] += text;
+    if (this.#timers[segment] === undefined) {
+      this.#timers[segment] = setTimeout(() => this.flush(segment), 250);
+    }
+    if (Array.from(this.#buffers[segment]).length >= 32) this.flush(segment);
+  }
+
+  flush(segment: PresentationSegment): void {
+    const timer = this.#timers[segment];
+    if (timer !== undefined) clearTimeout(timer);
+    delete this.#timers[segment];
+    const text = this.#buffers[segment];
+    this.#buffers[segment] = "";
+    if (text.length === 0) return;
+    let part = "";
+    for (const character of text) {
+      const candidate = part + character;
+      if (Buffer.byteLength(candidate, "utf8") > 4096 && part.length > 0) {
+        this.#safeEmit(segment, part);
+        part = character;
+      } else {
+        part = candidate;
+      }
+    }
+    if (part.length > 0) this.#safeEmit(segment, part);
+  }
+
+  flushAll(): void {
+    this.flush("reasoning");
+    this.flush("answer");
+  }
+
+  #safeEmit(segment: PresentationSegment, text: string): void {
+    try {
+      this.#emit(segment, text);
+    } catch {
+      // Presentation is best effort and cannot affect structured parsing.
+    }
+  }
+}
+
+class AnswerStringScanner {
+  readonly #answerKey: string;
+  readonly #onText: (text: string) => void;
+  #state:
+    | "normal"
+    | "key_string"
+    | "key_escape"
+    | "after_key"
+    | "after_colon"
+    | "skip_value_string"
+    | "skip_value_escape"
+    | "answer_string"
+    | "answer_escape"
+    | "answer_unicode" = "normal";
+  #keyText = "";
+  #keyCandidate = "";
+  #answerUnicode = "";
+  #pendingHighSurrogate: number | undefined;
+  #found = false;
+
+  constructor(answerKey: string, onText: (text: string) => void) {
+    this.#answerKey = answerKey;
+    this.#onText = onText;
+  }
+
+  feed(content: string): void {
+    for (const character of content) this.#consume(character);
+  }
+
+  #consume(character: string): void {
+    switch (this.#state) {
+      case "normal":
+        if (character === '"') {
+          this.#keyText = "";
+          this.#state = "key_string";
+        }
+        return;
+      case "key_string":
+        if (character === '"') {
+          this.#keyCandidate = decodeJsonString(this.#keyText);
+          this.#state = "after_key";
+        } else if (character === "\\") {
+          this.#keyText += character;
+          this.#state = "key_escape";
+        } else {
+          this.#keyText += character;
+        }
+        return;
+      case "key_escape":
+        this.#keyText += character;
+        this.#state = character === "u" ? "key_string" : "key_string";
+        return;
+      case "after_key":
+        if (/\s/.test(character)) return;
+        if (character === ":") {
+          this.#state = "after_colon";
+        } else {
+          this.#state = "normal";
+          this.#consume(character);
+        }
+        return;
+      case "after_colon":
+        if (/\s/.test(character)) return;
+        if (character !== '"') {
+          this.#state = "normal";
+          this.#consume(character);
+          return;
+        }
+        if (!this.#found && this.#keyCandidate === this.#answerKey) {
+          this.#found = true;
+          this.#answerUnicode = "";
+          this.#pendingHighSurrogate = undefined;
+          this.#state = "answer_string";
+        } else {
+          this.#state = "skip_value_string";
+        }
+        return;
+      case "skip_value_string":
+        if (character === "\\") this.#state = "skip_value_escape";
+        else if (character === '"') this.#state = "normal";
+        return;
+      case "skip_value_escape":
+        this.#state = "skip_value_string";
+        return;
+      case "answer_string":
+        if (character === '"') {
+          this.#flushPendingHighSurrogate();
+          this.#state = "normal";
+        } else if (character === "\\") {
+          this.#state = "answer_escape";
+        } else {
+          this.#flushPendingHighSurrogate();
+          this.#emit(character);
+        }
+        return;
+      case "answer_escape":
+        if (character === "u") {
+          this.#answerUnicode = "";
+          this.#state = "answer_unicode";
+          return;
+        }
+        this.#flushPendingHighSurrogate();
+        const escaped = ({
+          '"': '"',
+          "\\": "\\",
+          "/": "/",
+          b: "\b",
+          f: "\f",
+          n: "\n",
+          r: "\r",
+          t: "\t",
+        } as Record<string, string>)[character];
+        if (escaped !== undefined) this.#emit(escaped);
+        this.#state = "answer_string";
+        return;
+      case "answer_unicode":
+        this.#answerUnicode += character;
+        if (this.#answerUnicode.length < 4) return;
+        const codeUnit = Number.parseInt(this.#answerUnicode, 16);
+        if (Number.isNaN(codeUnit)) {
+          this.#state = "answer_string";
+          return;
+        }
+        if (this.#pendingHighSurrogate !== undefined) {
+          if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+            this.#emit(String.fromCodePoint(
+              0x10000 + ((this.#pendingHighSurrogate - 0xd800) << 10) + codeUnit - 0xdc00,
+            ));
+            this.#pendingHighSurrogate = undefined;
+          } else {
+            this.#emit(String.fromCharCode(this.#pendingHighSurrogate));
+            this.#pendingHighSurrogate = undefined;
+            this.#consumeUnicodeCodeUnit(codeUnit);
+          }
+        } else {
+          this.#consumeUnicodeCodeUnit(codeUnit);
+        }
+        this.#answerUnicode = "";
+        this.#state = "answer_string";
+        return;
+    }
+  }
+
+  #consumeUnicodeCodeUnit(codeUnit: number): void {
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      this.#pendingHighSurrogate = codeUnit;
+    } else {
+      this.#emit(String.fromCharCode(codeUnit));
+    }
+  }
+
+  #flushPendingHighSurrogate(): void {
+    if (this.#pendingHighSurrogate !== undefined) {
+      this.#emit(String.fromCharCode(this.#pendingHighSurrogate));
+      this.#pendingHighSurrogate = undefined;
+    }
+  }
+
+  #emit(text: string): void {
+    if (text.length > 0) this.#onText(text);
+  }
+}
+
+function decodeJsonString(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw;
   }
 }
 
@@ -582,6 +874,8 @@ export async function aggregateStreamingJsonCompletion(
     readonly idleTimeoutMs?: number;
     readonly now?: () => Date;
     readonly onChunk?: (chunk: unknown) => void;
+    readonly onPresentation?: (segment: PresentationSegment, text: string) => void;
+    readonly answerKey?: string | null;
   },
 ): Promise<StructuredCompletionResponse> {
   const now = options.now ?? (() => new Date());
@@ -609,6 +903,15 @@ export async function aggregateStreamingJsonCompletion(
   let providerTraceId: string | null = null;
   let terminal = false;
   const normalizedChunks: AgentModelTraceStreamingChunkV1[] = [];
+  const presentationBatcher = options.onPresentation
+    ? new PresentationBatcher(options.onPresentation)
+    : undefined;
+  const answerScanner =
+    presentationBatcher !== undefined && options.answerKey
+      ? new AnswerStringScanner(options.answerKey, (text) => {
+        presentationBatcher.push("answer", text);
+      })
+      : undefined;
   try {
     resetIdleTimer();
     while (true) {
@@ -648,6 +951,10 @@ export async function aggregateStreamingJsonCompletion(
           firstContentAt = observedAt;
         }
         content += parsed.content;
+        answerScanner?.feed(parsed.content);
+      }
+      if (parsed.reasoningContent !== null && parsed.reasoningContent.length > 0) {
+        presentationBatcher?.push("reasoning", parsed.reasoningContent);
       }
       if (parsed.content !== null || parsed.finishReason !== null) {
         normalizedChunks.push({
@@ -682,6 +989,7 @@ export async function aggregateStreamingJsonCompletion(
         "stream_content_missing",
       );
     }
+    presentationBatcher?.flushAll();
     const completedAt = now().toISOString();
     return {
       id: providerTraceId,
@@ -709,6 +1017,7 @@ export async function aggregateStreamingJsonCompletion(
     }
     throw error;
   } finally {
+    presentationBatcher?.flushAll();
     if (idleTimer !== undefined) clearTimeout(idleTimer);
     options.signal.removeEventListener("abort", abortFromCaller);
     try {
