@@ -552,6 +552,7 @@ class AgentPresentationDeltaV1(_StrictModel):
     node_revision: int | None = Field(default=None, ge=1)
     text: str = Field(min_length=1, max_length=4_096)
     response_locale: str | None = Field(default=None, max_length=35)
+    attempt: int = Field(default=1, ge=1, le=32)
 
     @model_validator(mode="after")
     def validate_text(self) -> "AgentPresentationDeltaV1":

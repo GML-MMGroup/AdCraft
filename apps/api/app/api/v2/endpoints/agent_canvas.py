@@ -4045,7 +4045,17 @@ def _process_agent_turn_and_resume(
         if stream is not None and turn.status == "completed":
             persisted_result = _persisted_assistant_result(runtime, workflow_id, turn_id)
             authoritative_id, message = persisted_result or (turn.turn_id, "")
-            presentation_publisher.publish_validated_text(stream, message)
+            if persisted_result is not None:
+                streamed_answer = presentation_publisher.answer_text(stream.stream_id)
+                if not streamed_answer:
+                    presentation_publisher.publish_validated_text(stream, message)
+                elif streamed_answer != message:
+                    presentation_publisher.reset(
+                        stream,
+                        reason="final_replaced",
+                        event_key="reset:final_replaced",
+                    )
+                    presentation_publisher.publish_validated_text(stream, message)
             presentation_publisher.commit(
                 stream,
                 authoritative_id=authoritative_id,

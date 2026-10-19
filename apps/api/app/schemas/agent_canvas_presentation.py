@@ -42,7 +42,12 @@ class PresentationStreamResetV1(_StrictModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    reason: Literal["cursor_expired", "store_recovered"]
+    reason: Literal[
+        "cursor_expired",
+        "store_recovered",
+        "attempt_restarted",
+        "final_replaced",
+    ]
     authoritative_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     resource_kind: Literal["message", "prompt", "workflow"]
 

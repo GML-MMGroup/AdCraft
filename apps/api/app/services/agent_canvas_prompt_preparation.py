@@ -170,12 +170,18 @@ class NodePromptPreparationService:
             ),
         )
         role_context: RolePromptPreparationContextV2 | None = None
-        answer_delta_received = False
+        streamed_answer = ""
+        streamed_attempt = 1
 
         def on_presentation(event) -> None:
-            nonlocal answer_delta_received
+            nonlocal streamed_answer, streamed_attempt
+            if event.attempt < streamed_attempt:
+                return
+            if event.attempt > streamed_attempt:
+                streamed_attempt = event.attempt
+                streamed_answer = ""
             if event.segment == "answer":
-                answer_delta_received = True
+                streamed_answer += event.text
             if self._presentation_publisher is not None:
                 self._presentation_publisher.publish_runtime_delta(workflow_id, event)
 
@@ -486,7 +492,14 @@ class NodePromptPreparationService:
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
             if presentation_stream is not None and self._presentation_publisher is not None:
-                if not answer_delta_received:
+                if not streamed_answer:
+                    self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
+                elif streamed_answer != prompt:
+                    self._presentation_publisher.reset(
+                        presentation_stream,
+                        reason="final_replaced",
+                        event_key="reset:final_replaced",
+                    )
                     self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
                 self._presentation_publisher.commit(
                     presentation_stream,

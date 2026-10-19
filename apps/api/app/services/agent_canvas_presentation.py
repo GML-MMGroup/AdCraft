@@ -11,6 +11,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_presentation import (
     PresentationStreamEventV1,
     PresentationStreamMetadataV1,
+    PresentationStreamResetV1,
     PresentationTimingV1,
     SafePresentationDeltaV1,
 )
@@ -21,6 +22,8 @@ class PresentationStreamPublisher:
 
     def __init__(self, repository: PresentationStreamRepository) -> None:
         self._repository = repository
+        self._highest_attempt: dict[str, int] = {}
+        self._answer_text: dict[str, str] = {}
 
     def create_assistant_stream(
         self,
@@ -108,6 +111,17 @@ class PresentationStreamPublisher:
             return None
         if metadata.status != "open":
             return None
+        last_attempt = self._highest_attempt.get(metadata.stream_id, 1)
+        if event.attempt < last_attempt:
+            return None
+        if event.attempt > last_attempt:
+            self.reset(
+                metadata,
+                reason="attempt_restarted",
+                event_key=f"reset:attempt_restarted:{event.attempt}",
+            )
+            self._answer_text[metadata.stream_id] = ""
+        self._highest_attempt[metadata.stream_id] = event.attempt
         try:
             delta = SafePresentationDeltaV1(
                 stream_id=metadata.stream_id,
@@ -123,7 +137,17 @@ class PresentationStreamPublisher:
             )
         except (TypeError, ValueError):
             return None
-        return self.publish_delta(delta)
+        published = self.publish_delta(delta)
+        if published is not None and event.segment == "answer":
+            self._answer_text[metadata.stream_id] = (
+                self._answer_text.get(metadata.stream_id, "") + event.text
+            )
+        return published
+
+    def answer_text(self, stream_id: str) -> str:
+        """Return the accepted answer text for the current stream attempt."""
+
+        return self._answer_text.get(stream_id, "")
 
     def publish_validated_text(
         self,
@@ -179,6 +203,9 @@ class PresentationStreamPublisher:
             )
         except V2PersistenceError:
             return None
+        finally:
+            self._highest_attempt.pop(metadata.stream_id, None)
+            self._answer_text.pop(metadata.stream_id, None)
 
     def fail(
         self, metadata: PresentationStreamMetadataV1, error_code: str
@@ -191,6 +218,9 @@ class PresentationStreamPublisher:
             )
         except V2PersistenceError:
             return None
+        finally:
+            self._highest_attempt.pop(metadata.stream_id, None)
+            self._answer_text.pop(metadata.stream_id, None)
 
     def supersede(self, metadata: PresentationStreamMetadataV1) -> PresentationStreamEventV1 | None:
         """Close a stale prompt generation without changing node authority."""
@@ -201,6 +231,41 @@ class PresentationStreamPublisher:
                 generation_id=metadata.generation_id,
             )
         except V2PersistenceError:
+            return None
+        finally:
+            self._highest_attempt.pop(metadata.stream_id, None)
+            self._answer_text.pop(metadata.stream_id, None)
+
+    def reset(
+        self,
+        metadata: PresentationStreamMetadataV1,
+        *,
+        reason: str,
+        event_key: str | None = None,
+    ) -> PresentationStreamEventV1 | None:
+        """Append a safe presentation reset marker for an open stream."""
+
+        try:
+            event = PresentationStreamEventV1(
+                stream_id=metadata.stream_id,
+                workflow_id=metadata.workflow_id,
+                stream_kind=metadata.stream_kind,
+                event_type="reset",
+                sequence_no=metadata.last_sequence_no + 1,
+                generation_id=metadata.generation_id,
+                turn_id=metadata.turn_id,
+                node_id=metadata.node_id,
+                node_revision=metadata.node_revision,
+                reset=PresentationStreamResetV1(
+                    reason=reason,  # type: ignore[arg-type]
+                    resource_kind=("message" if metadata.stream_kind == "assistant" else "prompt"),
+                ),
+            )
+            return self._repository.append_event(
+                event,
+                event_key=event_key or f"reset:{reason}",
+            )
+        except (TypeError, ValueError, V2PersistenceError):
             return None
 
     def get(self, workflow_id: str, stream_id: str) -> PresentationStreamMetadataV1 | None:

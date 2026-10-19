@@ -116,9 +116,7 @@ class PresentationStreamRepository:
             )
         return _metadata(row)
 
-    def list_recent(
-        self, workflow_id: str, limit: int
-    ) -> tuple[PresentationStreamListItemV1, ...]:
+    def list_recent(self, workflow_id: str, limit: int) -> tuple[PresentationStreamListItemV1, ...]:
         """List workflow-owned streams newest first within a bounded limit."""
 
         try:

@@ -3848,6 +3848,13 @@
       "additionalProperties": false,
       "description": "Explicit user-visible text emitted only through an approved channel.",
       "properties": {
+        "attempt": {
+          "default": 1,
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
         "channel": {
           "enum": [
             "assistant",
@@ -24070,6 +24077,18 @@
           "default": null,
           "title": "Content Digest"
         },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
         "error_code": {
           "anyOf": [
             {
@@ -24151,6 +24170,18 @@
           "title": "Stream Kind",
           "type": "string"
         },
+        "terminal_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal At"
+        },
         "turn_id": {
           "anyOf": [
             {
@@ -24200,7 +24231,9 @@
         },
         "reason": {
           "enum": [
+            "attempt_restarted",
             "cursor_expired",
+            "final_replaced",
             "store_recovered"
           ],
           "title": "Reason",
