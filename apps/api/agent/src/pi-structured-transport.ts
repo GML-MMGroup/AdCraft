@@ -153,13 +153,13 @@ export type StructuredCompletionExecutor = (
 
 export type PresentationSegment = "reasoning" | "answer";
 
-// Chat operations stream reasoning only: one turn can span several Agent calls
-// and the engine may author the final message, so their `assistant_message`
-// is not reliably the text the user ends up seeing. Python publishes the
-// committed message as the answer instead.
-export const PRESENTATION_ANSWER_KEYS: Readonly<Record<string, string>> = Object.freeze({
-  author_role_brief: "editable_prompt",
-});
+// Live answer extraction is currently disabled for every operation; only
+// reasoning streams live. A chat turn can span several Agent calls and the
+// engine may author the final message, and node prompts are rendered by the
+// engine from structured brief fields, so neither `assistant_message` nor
+// `editable_prompt` is reliably the text the user ends up seeing. Python
+// publishes the committed text as the answer instead.
+export const PRESENTATION_ANSWER_KEYS: Readonly<Record<string, string>> = Object.freeze({});
 
 export function presentationAnswerKeyForOperation(operation: string): string | null {
   return PRESENTATION_ANSWER_KEYS[operation] ?? null;
