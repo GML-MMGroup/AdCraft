@@ -109,6 +109,7 @@ class BrandGuidedInteractionSubmitter:
                     "hypothesis",
                     custom_text,
                     submission_id,
+                    content.stage_revision,
                 )
                 if replayed:
                     return self._accepted(workflow_id, interaction, submission_id)
@@ -144,6 +145,7 @@ class BrandGuidedInteractionSubmitter:
                     "treatment",
                     custom_text,
                     submission_id,
+                    content.stage_revision,
                 )
                 if replayed:
                     return self._accepted(workflow_id, interaction, submission_id)
@@ -222,25 +224,15 @@ class BrandGuidedInteractionSubmitter:
         stage: str,
         custom_text: str,
         submission_id: str,
+        stage_revision: int,
     ) -> tuple[bool, bool]:
         """Claim, generate, persist, and publish one card custom operation."""
 
-        card = self._brand_service._repository.get_open_card(brand_id)
-        if card is None or card.card_id != card_id or card.stage != stage:
-            raise V2PersistenceError(
-                "brand_stage_action_mismatch",
-                "The submitted Brand card is not current.",
-            )
         digest = sha256(custom_text.encode("utf-8")).hexdigest()
-        if len(card.options) >= 12:
-            raise V2PersistenceError(
-                "brand_option_card_invalid",
-                "This Brand card already contains the maximum of twelve options.",
-            )
         claim = self._bridge.claim_card_generation(
             workflow_id,
             stage,  # type: ignore[arg-type]
-            card.stage_revision,
+            stage_revision,
             generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
         )
         if claim.role == "ready":
@@ -252,7 +244,7 @@ class BrandGuidedInteractionSubmitter:
             claim = self._bridge.claim_card_generation(
                 workflow_id,
                 stage,  # type: ignore[arg-type]
-                card.stage_revision,
+                stage_revision,
                 generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
             )
             if claim.role == "ready":
@@ -262,6 +254,25 @@ class BrandGuidedInteractionSubmitter:
                     "brand_form_generation_in_progress",
                     "Brand card generation is still in progress.",
                 )
+        card = self._brand_service._repository.get_open_card(brand_id)
+        if card is None or card.card_id != card_id or card.stage != stage:
+            self._bridge.release_card_generation(claim)
+            raise V2PersistenceError(
+                "brand_stage_action_mismatch",
+                "The submitted Brand card is not current.",
+            )
+        if card.stage_revision != stage_revision:
+            self._bridge.release_card_generation(claim)
+            raise V2PersistenceError(
+                "brand_context_stale",
+                "The Brand brief has changed. Refresh the current question.",
+            )
+        if len(card.options) >= 12:
+            self._bridge.release_card_generation(claim)
+            raise V2PersistenceError(
+                "brand_option_card_invalid",
+                "This Brand card already contains the maximum of twelve options.",
+            )
         try:
             intent, direction = self._brand_service._card_custom_text_intent(
                 brand_id, card, custom_text
