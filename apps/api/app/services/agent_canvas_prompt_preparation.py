@@ -226,7 +226,11 @@ class NodePromptPreparationService:
             ):
                 try:
                     author_parameters = inspect.signature(self._role_brief_author).parameters
-                    if "presentation_stream_id" in author_parameters:
+                    accepts_presentation = "presentation_stream_id" in author_parameters or any(
+                        parameter.kind is inspect.Parameter.VAR_KEYWORD
+                        for parameter in author_parameters.values()
+                    )
+                    if accepts_presentation:
                         brief = self._role_brief_author(
                             role_context,
                             operation_id,
