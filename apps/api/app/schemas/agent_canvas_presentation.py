@@ -98,6 +98,7 @@ class PresentationStreamEventV1(_StrictModel):
     node_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     generation_id: str = Field(min_length=1, max_length=_MAX_IDENTIFIER)
     response_locale: str | None = Field(default=None, max_length=35)
+    segment: Literal["reasoning", "answer"] = "answer"
     node_revision: int | None = Field(default=None, ge=1)
     delta: str | None = Field(default=None, max_length=_MAX_DELTA_BYTES)
     authoritative_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
@@ -146,6 +147,7 @@ class SafePresentationDeltaV1(_StrictModel):
     node_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     node_revision: int | None = Field(default=None, ge=1)
     response_locale: str | None = Field(default=None, max_length=35)
+    segment: Literal["reasoning", "answer"] = "answer"
     text: str = Field(min_length=1, max_length=_MAX_DELTA_BYTES)
 
     @model_validator(mode="after")

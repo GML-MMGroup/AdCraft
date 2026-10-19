@@ -829,8 +829,11 @@ def create_agent_canvas_runtime(
             on_provider_waiting=conversation_repository.mark_turn_provider_waiting,
             on_presentation=lambda event: presentation_publisher.publish_delta(
                 SafePresentationDeltaV1(
-                    stream_id=_presentation_stream_id(
-                        event.workflow_id, event.turn_id or event.generation_id
+                    stream_id=(
+                        event.stream_id
+                        or _presentation_stream_id(
+                            event.workflow_id, event.turn_id or event.generation_id
+                        )
                     ),
                     workflow_id=event.workflow_id,
                     stream_kind=event.channel,
@@ -839,6 +842,7 @@ def create_agent_canvas_runtime(
                     node_id=event.node_id,
                     node_revision=event.node_revision,
                     response_locale=event.response_locale,
+                    segment=event.segment,
                     text=event.text,
                 )
             ),

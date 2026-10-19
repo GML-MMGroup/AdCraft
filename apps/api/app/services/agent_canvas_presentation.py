@@ -117,6 +117,7 @@ class PresentationStreamPublisher:
                     node_id=metadata.node_id,
                     node_revision=metadata.node_revision,
                     response_locale=response_locale,
+                    segment="answer",
                     text=piece,
                 )
             )

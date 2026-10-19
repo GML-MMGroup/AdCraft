@@ -458,6 +458,7 @@ class AgentRunRequest(_StrictModel):
     validation_context: dict[str, Any] = Field(default_factory=dict)
     audit_metadata: dict[str, Any] = Field(default_factory=dict)
     presentation_channel: Literal["assistant", "node_prompt"] | None = None
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
 
 
 def canonical_agent_run_request_digest(request: AgentRunRequest) -> str:
@@ -542,6 +543,8 @@ class AgentPresentationDeltaV1(_StrictModel):
     """Explicit user-visible text emitted only through an approved channel."""
 
     channel: Literal["assistant", "node_prompt"]
+    segment: Literal["reasoning", "answer"] = "answer"
+    stream_id: str | None = Field(default=None, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     generation_id: str = Field(min_length=1, max_length=160)
     turn_id: str | None = Field(default=None, max_length=160)

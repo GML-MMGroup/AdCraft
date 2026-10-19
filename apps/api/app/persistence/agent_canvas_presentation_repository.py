@@ -170,6 +170,7 @@ class PresentationStreamRepository:
                     if (
                         previous.event_type == "delta"
                         and previous.generation_id == delta.generation_id
+                        and previous.segment == delta.segment
                         and age <= PRESENTATION_COALESCE_WINDOW
                         and len(combined.encode("utf-8")) <= MAX_PRESENTATION_CHUNK_BYTES
                     ):
@@ -206,6 +207,7 @@ class PresentationStreamRepository:
                     node_id=delta.node_id,
                     node_revision=delta.node_revision,
                     response_locale=delta.response_locale,
+                    segment=delta.segment,
                     delta=delta.text,
                 )
                 connection.execute(

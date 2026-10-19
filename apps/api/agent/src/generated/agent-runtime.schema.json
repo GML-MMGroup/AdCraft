@@ -3901,6 +3901,28 @@
           "default": null,
           "title": "Response Locale"
         },
+        "segment": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "reasoning"
+          ],
+          "title": "Segment",
+          "type": "string"
+        },
+        "stream_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stream Id"
+        },
         "text": {
           "maxLength": 4096,
           "minLength": 1,
@@ -4721,6 +4743,19 @@
           ],
           "default": null,
           "title": "Presentation Channel"
+        },
+        "presentation_stream_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Presentation Stream Id"
         },
         "protocol_version": {
           "const": "1",
@@ -23946,6 +23981,15 @@
           "title": "Schema Version",
           "type": "integer"
         },
+        "segment": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "reasoning"
+          ],
+          "title": "Segment",
+          "type": "string"
+        },
         "sequence_no": {
           "minimum": 1,
           "title": "Sequence No",
@@ -30476,6 +30520,15 @@
           ],
           "default": null,
           "title": "Response Locale"
+        },
+        "segment": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "reasoning"
+          ],
+          "title": "Segment",
+          "type": "string"
         },
         "stream_id": {
           "maxLength": 160,
