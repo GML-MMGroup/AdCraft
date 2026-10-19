@@ -149,9 +149,11 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
         if (
             not self.capability_id.startswith("brand_hypothesis")
             and not self.capability_id.startswith("brand_treatment")
-            and len(self.options) != 3
+            and len(self.options) > 6
         ):
-            raise ValueError("Non-Brand appended concept choices require exactly three options.")
+            # Only Brand hypothesis and Treatment cards may grow past six
+            # options through the "Other" input; every other card keeps 3-6.
+            raise ValueError("Only Brand hypothesis and Treatment choices may exceed six options.")
         if sum(option.recommended for option in self.options) != 1:
             raise ValueError("A guided concept requires exactly one recommended option.")
         scope_values = (
