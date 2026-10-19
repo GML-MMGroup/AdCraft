@@ -381,6 +381,31 @@ class BrandDecisionRepository:
                 )
             )
 
+    def append_hypotheses_in_transaction(
+        self,
+        connection: Connection,
+        brand_id: str,
+        candidates: tuple[CreativeHypothesisCandidateV1, ...],
+    ) -> None:
+        """Append generated hypotheses without rewriting existing provenance."""
+
+        for candidate in candidates:
+            connection.execute(
+                insert(BrandHypothesisRow).values(
+                    hypothesis_id=candidate.candidate_id,
+                    brand_id=brand_id,
+                    label=candidate.label,
+                    insight=candidate.insight,
+                    mechanism=candidate.mechanism,
+                    hypothesis_text=candidate.hypothesis,
+                    product_role=candidate.product_role,
+                    hook_mechanism=candidate.hook_mechanism,
+                    why=candidate.why,
+                    selected=False,
+                    created_at=_now(),
+                )
+            )
+
     def select_hypothesis_in_transaction(
         self,
         connection: Connection,

@@ -138,7 +138,7 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     occurrence_count: int | None = Field(default=None, ge=1, le=32)
     character_phase: Literal["main"] | None = None
     capability_id: str = Field(min_length=1, max_length=80)
-    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=6)
+    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=12)
     allow_custom: Literal[True] = True
     allow_exclusion: bool
 
@@ -146,6 +146,12 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     def validate_option_ids(self) -> "GuidedConceptChoiceV2":
         if len({option.option_id for option in self.options}) != len(self.options):
             raise ValueError("Guided concept option IDs must be unique.")
+        if (
+            not self.capability_id.startswith("brand_hypothesis")
+            and not self.capability_id.startswith("brand_treatment")
+            and len(self.options) != 3
+        ):
+            raise ValueError("Non-Brand appended concept choices require exactly three options.")
         if sum(option.recommended for option in self.options) != 1:
             raise ValueError("A guided concept requires exactly one recommended option.")
         scope_values = (

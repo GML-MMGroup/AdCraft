@@ -64,14 +64,22 @@ class BrandShortOptionV1(_BrandModel):
 
 
 class BrandOptionCardV1(_BrandModel):
-    """Exactly three short options for one slot question or sub-step."""
+    """Short options for one slot question or Brand hypothesis/Treatment card."""
 
     card_id: str = Field(min_length=1, max_length=120)
     stage: BrandStage
     stage_revision: int = Field(ge=1)
     target_slot_id: str | None = Field(default=None, max_length=80)
     question: str = Field(min_length=1, max_length=400)
-    options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_option_count(self) -> "BrandOptionCardV1":
+        if self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3:
+            raise ValueError(
+                "Brand slot, AdSpec, and Skill stack cards require exactly three options."
+            )
+        return self
 
 
 class BrandFormOptionV1(_BrandModel):
@@ -141,6 +149,20 @@ class BrandFormAnswerIntentV1(_BrandModel):
     intent: Literal["answer", "request_more_options"]
 
 
+class BrandCardCustomTextIntentV1(_BrandModel):
+    """Bounded intent and optional direction extracted from card custom text."""
+
+    intent: Literal["answer", "request_more_options"]
+    direction: str | None = Field(default=None, min_length=1, max_length=240)
+
+
+class BrandCardCustomTextIntentOutputV1(_BrandModel):
+    """Strict structured output for one Brand card custom-text classification."""
+
+    intent: Literal["answer", "request_more_options"]
+    direction: str | None = Field(default=None, min_length=1, max_length=240)
+
+
 class BrandFormSubmitV1(_BrandModel):
     """Atomic confirmation payload for one foundation form."""
 
@@ -205,6 +227,12 @@ class CreativeStrategyOutputV1(_BrandModel):
     # The MVP shows the user exactly three directions; the contract is exact so a
     # model that diverges internally cannot publish a 2- or 4-option card.
     candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=3, max_length=3)
+
+
+class CreativeHypothesisGenerationOutputV1(_BrandModel):
+    """Private one-to-three candidate output for bounded card custom generation."""
+
+    candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=1, max_length=3)
 
 
 class TreatmentCandidateV1(BrandShortOptionV1):

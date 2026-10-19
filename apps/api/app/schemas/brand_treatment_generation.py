@@ -20,8 +20,11 @@ from app.schemas.brand_treatment_detail import (
 )
 
 
-@lru_cache(maxsize=8)
-def treatment_output_model(step_key: BrandTreatmentSubstep) -> type[CreativeTreatmentOutputV1]:
+@lru_cache(maxsize=16)
+def treatment_output_model(
+    step_key: BrandTreatmentSubstep,
+    option_count: int = 3,
+) -> type[CreativeTreatmentOutputV1]:
     """Expose current-step keys/counts to the model while retaining all validators."""
     required = dict(TREATMENT_SECTION_KEYS).get(step_key)
     if required is None:
@@ -51,7 +54,10 @@ def treatment_output_model(step_key: BrandTreatmentSubstep) -> type[CreativeTrea
         f"{prefix}StepV1",
         __base__=CreativeTreatmentStepOutputV1,
         step_key=(Literal[step_key], ...),
-        options=(tuple[candidate_model, ...], Field(min_length=3, max_length=3)),
+        options=(
+            tuple[candidate_model, ...],
+            Field(min_length=option_count, max_length=option_count),
+        ),
     )
     return create_model(
         f"{prefix}OutputV1", __base__=CreativeTreatmentOutputV1, step=(step_model, ...)
