@@ -582,7 +582,10 @@ class RawHttpPostTransport(Protocol):
 
 
 class UrllibRawHttpPostTransport:
-    """POST prepared bytes with redirects disabled."""
+    """POST prepared bytes with redirects disabled, optionally via one proxy."""
+
+    def __init__(self, *, proxy_url: str | None = None) -> None:
+        self.proxy_url = proxy_url
 
     def post(
         self,
@@ -597,6 +600,7 @@ class UrllibRawHttpPostTransport:
             request=Request(url, data=body, headers=headers, method="POST"),
             timeout_seconds=timeout_seconds,
             max_response_bytes=max_response_bytes,
+            proxy_url=self.proxy_url,
         )
 
 
@@ -611,13 +615,17 @@ class TeamoRouterImageTransport:
     ) -> None:
         self._api_key = (settings.teamorouter_api_key or "").strip()
         self._base_url = settings.teamorouter_base_url.rstrip("/")
-        self._http = http_transport or UrllibRawHttpPostTransport()
+        # Only TeamoRouter traffic uses this proxy; other providers stay direct.
+        self._proxy_url = (settings.teamorouter_proxy_url or "").strip() or None
+        self._http = http_transport or UrllibRawHttpPostTransport(proxy_url=self._proxy_url)
 
     def submit(self, payload: Mapping[str, object]) -> Mapping[str, object]:
         if not self._api_key:
             raise ValueError("provider_configuration_missing")
         if self._base_url != _TEAMOROUTER_BASE_URL:
             raise ValueError("provider_base_url_invalid")
+        if self._proxy_url is not None and not _valid_http_proxy_url(self._proxy_url):
+            raise ValueError("provider_proxy_invalid")
         fields = payload.get("fields")
         images = payload.get("images")
         if not isinstance(fields, Mapping) or not isinstance(images, list):
@@ -724,6 +732,21 @@ class TeamoRouterImageAdapter(ProviderNativeAdapter):
             request_fingerprint=status.request_fingerprint,
             raw={"media_type": media_type},
         )
+
+
+def _valid_http_proxy_url(value: str) -> bool:
+    try:
+        parsed = urlsplit(value)
+        parsed.port  # noqa: B018 - raises ValueError for a malformed port.
+    except ValueError:
+        return False
+    return (
+        parsed.scheme in {"http", "https"}
+        and bool(parsed.hostname)
+        and parsed.path in {"", "/"}
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 def _single_b64_raster(response: Mapping[str, object]) -> tuple[str, str]:

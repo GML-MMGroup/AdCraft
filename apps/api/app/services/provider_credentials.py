@@ -15,7 +15,13 @@ from types import MappingProxyType
 from typing import Callable, Iterable, Iterator, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import (
+    BaseHandler,
+    HTTPRedirectHandler,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 
 from filelock import FileLock, Timeout
 from dotenv import dotenv_values
@@ -1158,8 +1164,12 @@ class UrllibProviderHttpTransport:
         request: Request,
         timeout_seconds: float,
         max_response_bytes: int,
+        proxy_url: str | None = None,
     ) -> ProviderHttpResponse:
-        opener = build_opener(_NoRedirectHandler())
+        handlers: list[BaseHandler] = [_NoRedirectHandler()]
+        if proxy_url is not None:
+            handlers.append(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+        opener = build_opener(*handlers)
         try:
             with opener.open(request, timeout=timeout_seconds) as response:
                 body = response.read(max_response_bytes + 1)

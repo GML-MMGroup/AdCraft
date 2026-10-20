@@ -105,6 +105,7 @@ _NATIVE_PROVIDER_ERROR_CODES = frozenset(
         "provider_adapter_profile_invalid",
         "provider_base_url_invalid",
         "provider_configuration_missing",
+        "provider_proxy_invalid",
         "provider_payload_resolution_mismatch",
         "openrouter_routing_contract_invalid",
         "provider_prompt_empty",

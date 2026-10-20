@@ -102,6 +102,7 @@ class Settings:
     minimax_base_url: str | None = None
     teamorouter_api_key: str | None = None
     teamorouter_base_url: str = "https://api.teamorouter.com/v1"
+    teamorouter_proxy_url: str | None = None
     llm_transient_retry_delay_seconds: float = 2.0
     llm_front_desk_model: str = "doubao-seed-2-0-mini-260428"
     llm_team_model: str = "doubao-seed-2-0-mini-260428"
@@ -263,6 +264,7 @@ class Settings:
                 "TEAMOROUTER_BASE_URL",
                 cls.teamorouter_base_url,
             ),
+            teamorouter_proxy_url=os.getenv("TEAMOROUTER_PROXY_URL") or None,
             llm_transient_retry_delay_seconds=_read_float(
                 "LLM_TRANSIENT_RETRY_DELAY_SECONDS",
                 cls.llm_transient_retry_delay_seconds,
