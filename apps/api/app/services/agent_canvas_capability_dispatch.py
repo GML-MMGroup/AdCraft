@@ -32,6 +32,7 @@ from app.persistence.models import (
     AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasNodeRow,
+    AgentCanvasBindingRow,
     AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas_capabilities import (
@@ -49,6 +50,7 @@ from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.services.agent_canvas_production_journey import parse_production_journey
+from app.services.agent_canvas_retry_fingerprint import journey_fingerprint_from_rows
 from app.schemas.language import BCP47Tag
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -520,14 +522,28 @@ def _retry_snapshot_json(
         if active_action is not None and active_action.turn_id == source_turn.turn_id
         else str(source_turn.request.get("source_action_id") or source_turn.turn_id)
     )
-    nodes = connection.execute(
-        select(AgentCanvasNodeRow.node_id, AgentCanvasNodeRow.revision).where(
-            AgentCanvasNodeRow.workflow_id == envelope.workflow_id
+    node_rows = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(AgentCanvasNodeRow.workflow_id == envelope.workflow_id)
         )
-    ).all()
+        .mappings()
+        .all()
+    )
+    binding_rows = (
+        connection.execute(
+            select(AgentCanvasBindingRow).where(
+                AgentCanvasBindingRow.workflow_id == envelope.workflow_id
+            )
+        )
+        .mappings()
+        .all()
+    )
+    journey_node_revisions, journey_binding_digest = journey_fingerprint_from_rows(
+        node_rows, binding_rows
+    )
+    all_node_revisions = {str(row["node_id"]): int(row["revision"]) for row in node_rows}
     projection = _project_retry_reference_authority(context_snapshot)
-    node_revisions = {str(node_id): int(revision) for node_id, revision in nodes}
-    if any(node_id not in node_revisions for node_id in projection.node_ids):
+    if any(node_id not in all_node_revisions for node_id in projection.node_ids):
         raise V2PersistenceError(
             "capability_retry_reference_projection_invalid",
             "Capability retry references a missing Canvas Node.",
@@ -556,7 +572,12 @@ def _retry_snapshot_json(
         envelope_digest=operation_envelope_digest(envelope),
         requirement_revision_id=envelope.requirement_revision_id,
         requirement_digest=envelope.requirement_digest,
-        node_revisions=node_revisions,
+        node_revisions=journey_node_revisions,
+        referenced_node_revisions={
+            node_id: all_node_revisions[node_id] for node_id in projection.node_ids
+        },
+        journey_node_revisions=journey_node_revisions,
+        journey_binding_digest=journey_binding_digest,
         asset_ids=projection.image_asset_ids,
         response_locale=envelope.response_locale,
         policy_identity_digest=_capability_policy_identity(envelope),

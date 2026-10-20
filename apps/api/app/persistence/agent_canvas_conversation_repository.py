@@ -63,6 +63,7 @@ from app.persistence.models import (
     AgentCanvasMaterializationCommitRow,
     AgentCanvasRequirementLedgerRow,
     AgentCanvasNodeRow,
+    AgentCanvasBindingRow,
     AgentCanvasSkillRunRow,
     AgentCanvasWorkflowRow,
     WorkflowEventRow,
@@ -133,6 +134,7 @@ from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
+from app.services.agent_canvas_retry_fingerprint import journey_fingerprint_from_rows
 from app.services.agent_canvas_production_journey import (
     CURRENT_GUIDED_JOURNEY_POLICY_REVISION,
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
@@ -4369,14 +4371,25 @@ class AgentCanvasConversationRepository:
                 )
             ).scalar_one()
         )
-        node_revisions = {
-            str(node_id): int(revision)
-            for node_id, revision in connection.execute(
-                select(AgentCanvasNodeRow.node_id, AgentCanvasNodeRow.revision).where(
-                    AgentCanvasNodeRow.workflow_id == workflow_id
+        node_rows = (
+            connection.execute(
+                select(AgentCanvasNodeRow).where(AgentCanvasNodeRow.workflow_id == workflow_id)
+            )
+            .mappings()
+            .all()
+        )
+        binding_rows = (
+            connection.execute(
+                select(AgentCanvasBindingRow).where(
+                    AgentCanvasBindingRow.workflow_id == workflow_id
                 )
-            ).all()
-        }
+            )
+            .mappings()
+            .all()
+        )
+        node_revisions, journey_binding_digest = journey_fingerprint_from_rows(
+            node_rows, binding_rows
+        )
         retry_snapshot = ContinuationTurnRetrySnapshotV1(
             workflow_id=workflow_id,
             conversation_id=conversation_id,
@@ -4393,6 +4406,8 @@ class AgentCanvasConversationRepository:
             requirement_revision_id=requirement.revision_id,
             requirement_digest=requirement.digest,
             node_revisions=node_revisions,
+            journey_node_revisions=node_revisions,
+            journey_binding_digest=journey_binding_digest,
             asset_ids=(),
             response_locale=str(session["response_locale"]),
         )
@@ -6113,7 +6128,7 @@ def _turn_retry_snapshot(
     mentioned_node_ids = tuple(
         str(item) for item in request.get("mentioned_node_ids", ()) if str(item)
     )
-    node_rows = (
+    mentioned_node_rows = (
         connection.execute(
             select(AgentCanvasNodeRow.node_id, AgentCanvasNodeRow.revision).where(
                 AgentCanvasNodeRow.workflow_id == workflow_id,
@@ -6125,13 +6140,38 @@ def _turn_retry_snapshot(
         if mentioned_node_ids
         else ()
     )
+    all_node_rows = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+            )
+        )
+        .mappings()
+        .all()
+    )
+    binding_rows = (
+        connection.execute(
+            select(AgentCanvasBindingRow).where(
+                AgentCanvasBindingRow.workflow_id == workflow_id,
+            )
+        )
+        .mappings()
+        .all()
+    )
+    journey_node_revisions, journey_binding_digest = journey_fingerprint_from_rows(
+        all_node_rows, binding_rows
+    )
     journey = json.loads(str(session_row["journey_state_json"])) if session_row is not None else {}
     return {
         "workflow_revision": int(workflow_revision),
         "session_revision": int(session_row["revision"]) if session_row is not None else 0,
         "journey_stage": journey.get("stage"),
         "journey_stage_revision": journey.get("stage_revision"),
-        "node_revisions": {str(row["node_id"]): int(row["revision"]) for row in node_rows},
+        "node_revisions": {
+            str(row["node_id"]): int(row["revision"]) for row in mentioned_node_rows
+        },
+        "journey_node_revisions": journey_node_revisions,
+        "journey_binding_digest": journey_binding_digest,
         "asset_ids": sorted(
             str(item) for item in request.get("mentioned_image_asset_ids", ()) if str(item)
         ),
