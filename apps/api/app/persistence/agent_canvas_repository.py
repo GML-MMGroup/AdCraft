@@ -1199,6 +1199,10 @@ class AgentCanvasWorkflowRepository:
                     refreshed = current.model_copy(
                         update={
                             "revision": current.revision + 1,
+                            "prompt_presentation": _advance_in_sync_presentation(
+                                current.prompt_presentation,
+                                from_revision=current.revision,
+                            ),
                             "updated_at": datetime.fromisoformat(now),
                             "prompt_preparation": current.prompt_preparation.model_copy(
                                 update={
@@ -1211,6 +1215,7 @@ class AgentCanvasWorkflowRepository:
                                 **current.metadata,
                                 **safe_prompt_assertion_metadata(assertion_evidence),
                                 "prepared_reference_snapshots": prepared_reference_snapshots,
+                                **_advance_in_sync_review_marker(current),
                             },
                         }
                     )
@@ -2934,6 +2939,39 @@ def _reconcile_editing_manifest_for_binding(
             updated_at=updated_at,
         )
     )
+
+
+def _advance_in_sync_presentation(
+    presentation: EditablePromptProjectionV1 | None,
+    *,
+    from_revision: int,
+) -> EditablePromptProjectionV1 | None:
+    """Move an in-sync editable prompt projection with a reference-only revision bump.
+
+    Provider compilation requires the projection revision to match the Node
+    revision (production incident 2026-10-20). A projection that was already
+    out of sync is left alone so the real conflict still surfaces. Derived
+    Video parameter writes keep their one-revision lag on purpose; the runtime
+    restores the frozen revision through the guided review marker.
+    """
+
+    if presentation is None or presentation.revision != from_revision:
+        return presentation
+    return presentation.model_copy(update={"revision": from_revision + 1})
+
+
+def _advance_in_sync_review_marker(node: CanvasNodeV2) -> dict[str, object]:
+    """Keep the guided review marker on the projection it reviewed."""
+
+    projection = node.prompt_presentation
+    review_revision = node.metadata.get("guided_review_node_revision")
+    if (
+        projection is None
+        or projection.revision != node.revision
+        or review_revision != node.revision
+    ):
+        return {}
+    return {"guided_review_node_revision": node.revision + 1}
 
 
 def _node_values(node: CanvasNodeV2) -> dict[str, object]:
