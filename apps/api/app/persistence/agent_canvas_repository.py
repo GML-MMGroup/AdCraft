@@ -2121,6 +2121,16 @@ class AgentCanvasWorkflowRepository:
                     if existing is None:
                         raise _binding_not_found_error()
                     binding = _binding_from_row(existing)
+                    if user_authoring and _agent_is_writing_prompt(
+                        connection,
+                        workflow_id=workflow_id,
+                        node_id=binding.target_node_id,
+                    ):
+                        # User rule (2026-10-20): a node's inputs cannot be
+                        # disconnected while the Agent writes its prompt. The
+                        # deletion is silently void and the workflow is unchanged.
+                        connection.rollback()
+                        return self.get_workflow(workflow_id)
                     deleted = connection.execute(
                         delete(AgentCanvasBindingRow).where(
                             AgentCanvasBindingRow.workflow_id == workflow_id,
@@ -3293,6 +3303,32 @@ def _invalidate_target_prompt_preparation(
             now=_parse_datetime(updated_at),
         )
     return queued_node
+
+
+def _agent_is_writing_prompt(
+    connection: Connection,
+    *,
+    workflow_id: str,
+    node_id: str,
+) -> bool:
+    row = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+                AgentCanvasNodeRow.node_id == node_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None or _row_is_deleted(row):
+        return False
+    node = _node_from_row(row)
+    return (
+        node.execution_mode != "source_only"
+        and _has_managed_prompt_preparation(node)
+        and node.prompt_preparation.status in {"queued", "working"}
+    )
 
 
 def _make_target_prompt_user_owned(
