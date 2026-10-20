@@ -1102,6 +1102,11 @@ _RETIRED_MODEL_REFS = frozenset(
     }
 )
 _BLOCKING_RETIRED_DEFAULT_REFS = frozenset({"openai:gpt-image-2"})
+# Retired ids that the same provider model now serves under a new id; nodes
+# pinned to the old id run on the successor instead of failing.
+RETIRED_MODEL_SUCCESSORS: Mapping[str, str] = {
+    "volcengine_ark:doubao-seedance-2-5-260128": "volcengine_ark:doubao-seedance-2-5-260628",
+}
 _CREDENTIAL_INDEPENDENT_SELECTION_REFS = frozenset({"openrouter:openai/gpt-image-2"})
 
 

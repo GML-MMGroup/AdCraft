@@ -15,6 +15,7 @@ from app.persistence.provider_model_repository import ProviderModelRecord
 from app.schemas.agent_canvas import CanvasModelSummaryV2, CanvasNodeV2
 from app.schemas.provider_models import ProviderAdapterProfileV1
 from app.services.agent_canvas_parameter_policy import NON_PROVIDER_NODE_PARAMETER_KEYS
+from app.services.provider_model_catalog import RETIRED_MODEL_SUCCESSORS
 from app.services.automatic_model_routing import (
     AutomaticModelRoutingService,
     validate_audio_model_parameters,
@@ -128,7 +129,7 @@ class ModelSelectionService:
         if model_selection_mode == "explicit":
             if model_ref is None:
                 raise _model_error("model_selection_invalid", "A model reference is required.")
-            return self._record(model_ref)
+            return self._record(RETIRED_MODEL_SUCCESSORS.get(model_ref, model_ref))
         default_key = "agent" if node_type == "script" else node_type
         defaults = self._catalog.get_default_records()
         default = defaults.get(default_key)
