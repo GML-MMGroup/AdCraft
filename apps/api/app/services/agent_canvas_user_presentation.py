@@ -25,6 +25,7 @@ PresentationMessageKey = Literal[
     "media_review.pending_action",
     "action.topic_deferred",
     "action.element_excluded",
+    "prompt_preparation.failed",
 ]
 
 PRESENTATION_MESSAGE_KEYS: frozenset[str] = frozenset(get_args(PresentationMessageKey))

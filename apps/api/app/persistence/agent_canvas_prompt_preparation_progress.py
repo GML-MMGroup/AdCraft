@@ -19,6 +19,7 @@ from app.persistence.models import (
 from app.schemas.agent_canvas_prompt_preparation_dispatch import PromptPreparationDispatchV1
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
 def append_prompt_preparation_progress(
@@ -87,6 +88,9 @@ def append_prompt_preparation_progress(
     content = f"{node['title']}: {labels[status]}."
     if status == "failed" and dispatch.last_error_code:
         content += f" Error: {dispatch.last_error_code}."
+    if status == "failed":
+        # User rule (2026-10-20): every failure names the recovery path.
+        content += " Reply 'continue' to retry."
     sequence_no = 1 + int(
         connection.execute(
             select(func.coalesce(func.max(AgentCanvasChatEntryRow.sequence_no), 0)).where(
@@ -99,7 +103,7 @@ def append_prompt_preparation_progress(
             AgentCanvasGuidanceSessionRow.workflow_id == dispatch.workflow_id
         )
     ).scalar_one_or_none()
-    metadata = {
+    base = {
         "type": "prompt_preparation",
         "node_id": dispatch.node_id,
         "node_title": node["title"],
@@ -109,10 +113,18 @@ def append_prompt_preparation_progress(
         "status": status,
         "attempt": dispatch.attempt_no,
         "error_code": dispatch.last_error_code,
-        "response_locale": str(locale or "und"),
-        "presentation_key": f"planning:prompt:{dispatch.dispatch_id}",
         "presentation_revision": sequence_no,
     }
+    metadata = build_presentation_metadata(
+        message_key="prompt_preparation.failed",
+        message_args={
+            "node_title": node["title"],
+            "error_code": dispatch.last_error_code,
+        },
+        response_locale=str(locale or "und"),
+        presentation_key=f"planning:prompt:{dispatch.dispatch_id}",
+        base=base,
+    )
     connection.execute(
         insert(AgentCanvasChatEntryRow).values(
             entry_id=entry_id,
