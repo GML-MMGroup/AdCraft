@@ -91,8 +91,8 @@ _RECIPE_DEFINITIONS: tuple[
         ("requirements", "style", "world_view"),
         (),
         ("aspect_ratio", "size"),
-        "One coherent environment board.",
-        "No narrative subject activity or text.",
+        "One primary location environment.",
+        "No narrative subject activity, multiple locations, or text.",
     ),
     (
         "script",

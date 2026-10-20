@@ -214,20 +214,19 @@ def _render_result(
         )
     if isinstance(seed, SceneDraftSeedV1):
         summary = _join(seed.identity, seed.spatial_layout, seed.atmosphere)
-        panels = tuple(
+        panels = (
             {
-                "panel_index": index,
-                "view_or_zone": f"Spatial view {index}",
-                "spatial_description": f"{seed.spatial_layout} View {index} preserves {seed.identity}.",
+                "panel_index": 1,
+                "view_or_zone": "Primary location",
+                "spatial_description": f"{seed.spatial_layout} preserves {seed.identity}.",
                 "lighting_material_detail": f"{seed.lighting} Materials: {seed.materials}.",
-            }
-            for index in range(1, 10)
+            },
         )
         return SceneMaterializationResultV1(
             title=_display_title(seed.identity),
             summary_prompt=summary,
             generation_prompt=_join(
-                "Create one static 3x3 scene design board with exactly nine distinct views.",
+                "Create one single full-frame image of the scene's primary location.",
                 summary,
                 f"Lighting: {seed.lighting}",
                 f"Materials: {seed.materials}",

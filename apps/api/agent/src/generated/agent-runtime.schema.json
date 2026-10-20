@@ -30786,7 +30786,7 @@
             "type": "string"
           },
           "maxItems": 9,
-          "minItems": 9,
+          "minItems": 1,
           "title": "Views",
           "type": "array"
         }
@@ -31028,7 +31028,7 @@
             "$ref": "#/$defs/SceneBoardPanelV2"
           },
           "maxItems": 9,
-          "minItems": 9,
+          "minItems": 1,
           "title": "Panels",
           "type": "array"
         },

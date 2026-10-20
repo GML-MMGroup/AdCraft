@@ -343,7 +343,15 @@ class RolePromptContextProjector:
             ),
             explicit_controls=explicit_controls or {},
             bound_text_controls=bound_text_controls,
-            node_parameters=node.parameters,
+            node_parameters={
+                **node.parameters,
+                **(
+                    {"scene_asset_kind": node.structured_content.get("scene_asset_kind")}
+                    if role_variant == "scene_board"
+                    and node.structured_content.get("scene_asset_kind") is not None
+                    else {}
+                ),
+            },
             storyboard_parameters=storyboard_parameters or {},
             storyboard_projection=_storyboard_projection(node, stage_context, role_variant),
             style_parameters=style_parameters or {},

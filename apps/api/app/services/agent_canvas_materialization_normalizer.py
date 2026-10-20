@@ -126,8 +126,13 @@ def _fallback_prompt(capability_id: CapabilityIdV1, result: BaseModel) -> str | 
         summary = str(getattr(structured, "environment_summary", "") or "").strip()
         if not identity or not summary:
             return None
+        is_multiview = getattr(structured, "scene_asset_kind", "main") == "multi_view"
         return _join(
-            f"Create one static 3x3 scene design board for {identity}.",
+            (
+                f"Create one static 3x3 grid of nine equal viewpoints of the same primary location: {identity}."
+                if is_multiview
+                else f"Create one single full-frame image of the scene's primary location: {identity}."
+            ),
             summary,
             f"Layout: {getattr(structured, 'layout', '')}.",
             f"Lighting: {getattr(structured, 'lighting', '')}.",

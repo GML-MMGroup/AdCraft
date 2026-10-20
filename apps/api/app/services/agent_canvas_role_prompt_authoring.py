@@ -6,6 +6,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleCreativeBriefV2,
     RolePromptPreparationContextV2,
 )
+from app.services.agent_canvas_prompt_assertion_policy import SCENE_MULTIVIEW_VIEWS
 
 
 def deterministic_role_brief(
@@ -69,6 +70,7 @@ def deterministic_role_brief(
             **({"views": ["front", "side", "back"]} if variant == "character_turnaround" else {}),
         }
     elif variant == "scene_board":
+        is_multiview = context.node_parameters.get("scene_asset_kind") == "multi_view"
         value = {
             "role_variant": variant,
             "environment_identity": summary,
@@ -76,7 +78,7 @@ def deterministic_role_brief(
             "lighting": "Preserve the accepted lighting.",
             "materials": "Preserve the accepted materials.",
             "atmosphere": "Preserve the accepted atmosphere.",
-            "views": [f"Environment view {index}" for index in range(1, 10)],
+            "views": list(SCENE_MULTIVIEW_VIEWS) if is_multiview else ["Primary location"],
         }
     elif variant == "script":
         value = {

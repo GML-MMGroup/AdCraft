@@ -42,6 +42,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleCreativeBriefMemberV2,
     RolePromptPreparationContextV2,
     RolePromptViolationV1,
+    SceneEnvironmentViewV1,
     SceneBoardRoleBriefV2,
     SceneEnvironmentProjectionV1,
     ScriptRoleBriefV2,
@@ -51,6 +52,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 )
 from app.services.agent_canvas_prompt_assertion_policy import (
     PRODUCT_MULTIVIEW_VIEWS,
+    SCENE_MULTIVIEW_VIEWS,
     PromptAssertionPolicyRegistry,
     source_snapshots_from_context,
 )
@@ -160,6 +162,11 @@ class AgentCanvasRolePromptCompiler:
                 context.role_variant == "video_segment"
                 and any(item.name == "generate_audio" and item.value is True for item in parameters)
             ),
+            scene_asset_kind=(
+                context.node_parameters.get("scene_asset_kind")
+                if context.role_variant == "scene_board"
+                else None
+            ),
         )
         role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
         if isinstance(concrete_brief, ProductMultiviewRoleBriefV2):
@@ -177,6 +184,10 @@ class AgentCanvasRolePromptCompiler:
         )
         rendered_prompt, negative = _render(
             concrete_brief,
+            scene_multiview=(
+                context.role_variant == "scene_board"
+                and context.node_parameters.get("scene_asset_kind") == "multi_view"
+            ),
             character_projection=character_projection,
             scene_projection=scene_projection,
             product_projection=product_projection,
@@ -196,8 +207,11 @@ class AgentCanvasRolePromptCompiler:
                     CharacterTurnaroundRoleBriefV2,
                 ),
             )
-            and editable_prompt_override is None
-        )
+            or (
+                context.role_variant == "scene_board"
+                and context.node_parameters.get("scene_asset_kind") == "multi_view"
+            )
+        ) and editable_prompt_override is None
         if editable_prompt is not None and not engine_owned_identity_render:
             prompt = editable_prompt.strip()
             if not prompt:
@@ -237,7 +251,22 @@ class AgentCanvasRolePromptCompiler:
                     context.role_variant, authored_style, field_path="style_description"
                 )
                 prompt = f"{prompt} Visual style: {authored_style.strip()}"
-        self._validate_required_references(recipe.reference_purposes, context)
+        required_references = recipe.reference_purposes
+        if (
+            context.role_variant == "scene_board"
+            and context.node_parameters.get("scene_asset_kind") == "multi_view"
+        ):
+            matching = tuple(
+                item for item in context.bindings if item.reference_purpose == "scene_main_identity"
+            )
+            scene_sources = tuple(item for item in context.bindings if item.source_role == "scene")
+            if len(matching) != 1 or matching[0].source_role != "scene" or len(scene_sources) != 1:
+                raise _error(
+                    "node_prompt_required_reference_missing",
+                    "Scene Multi-view requires the sole bound Scene Main identity source.",
+                )
+            required_references = ("scene_main_identity",)
+        self._validate_required_references(required_references, context)
         self._reference_policy.require_derivative_prompt_bindings(
             context.role_variant,
             context.bindings,
@@ -623,6 +652,7 @@ def _semantic_projections(
 def _render(
     brief: RoleCreativeBriefMemberV2,
     *,
+    scene_multiview: bool = False,
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
@@ -708,20 +738,27 @@ def _render(
         lighting = scene_projection.lighting if scene_projection else brief.lighting
         materials = scene_projection.materials if scene_projection else brief.materials
         atmosphere = scene_projection.atmosphere if scene_projection else brief.atmosphere
-        views = (
-            tuple(item.view_or_zone for item in scene_projection.views)
-            if scene_projection
-            else brief.views
-        )
-        return (
-            "Create one text-free 3x3 environment board of the same coherent environment. "
+        views = SCENE_MULTIVIEW_VIEWS if scene_multiview else ()
+        prompt = (
+            (
+                "Use the bound Scene Main image as the sole environment identity source. "
+                "Create one text-free 3x3 grid of nine equal panels showing the same primary "
+                "location from distinct viewpoints around and inside it. "
+            )
+            if scene_multiview
+            else "Create one single full-frame image of the scene's primary location. "
+        ) + (
             f"Identity: {environment_identity}. Spatial logic: {spatial_logic}. "
-            f"Lighting: {lighting}. Materials: {materials}. Atmosphere: "
-            f"{atmosphere}."
-            f"{_optional_labeled_fragment('Views', '; '.join(views))}",
-            "No active character, product, prop interaction, narrative action, plot progression, "
-            "captions, labels, panel numbers, or unrelated environment.",
+            f"Lighting: {lighting}. Materials: {materials}. Atmosphere: {atmosphere}."
+            f"{_optional_labeled_fragment('Views', '; '.join(views))}"
         )
+        negative = (
+            "No other locations, people, text, captions, or narrative action."
+            if scene_multiview
+            else "No combined alternate views, collage, split screen, multiple locations, people, product, "
+            "prop interaction, narrative action, plot progression, or text."
+        )
+        return prompt, negative
     if isinstance(brief, ScriptRoleBriefV2):
         return (
             f"Editable narrative: {brief.narrative}. Timing: {brief.timing}. Dialogue: "
@@ -919,13 +956,29 @@ def _structured_content(
         lighting = projection.lighting if projection else brief.lighting
         materials = projection.materials if projection else brief.materials
         atmosphere = projection.atmosphere if projection else brief.atmosphere
-        scene_views = projection.views if projection else None
+        if context.node_parameters.get("scene_asset_kind") == "multi_view":
+            scene_views = tuple(
+                SceneEnvironmentViewV1(
+                    view_or_zone=view,
+                    spatial_details=f"{spatial_logic} View: {view}.",
+                    allowed_environment_elements=(),
+                )
+                for view in SCENE_MULTIVIEW_VIEWS
+            )
+        elif projection is not None:
+            scene_views = projection.views[:1]
+        else:
+            scene_views = tuple(brief.views[:1])
         panels = tuple(
             SceneBoardPanelV2(
                 panel_index=index,
-                view_or_zone=(view.view_or_zone if scene_views else view),
+                view_or_zone=(
+                    view.view_or_zone if isinstance(view, SceneEnvironmentViewV1) else view
+                ),
                 spatial_description=(
-                    view.spatial_details if scene_views else f"{spatial_logic} View: {view}."
+                    view.spatial_details
+                    if isinstance(view, SceneEnvironmentViewV1)
+                    else f"{spatial_logic} View: {view}."
                 ),
                 lighting_material_detail=f"{lighting} {materials}",
             )
@@ -939,7 +992,11 @@ def _structured_content(
             ),
             scene_identity=environment_identity,
             environment_summary=f"{spatial_logic} {atmosphere}",
-            layout="Nine distinct views of one coherent environment.",
+            layout=(
+                "Nine distinct viewpoints of the same primary location."
+                if context.node_parameters.get("scene_asset_kind") == "multi_view"
+                else "One full-frame primary location."
+            ),
             lighting=lighting,
             materials=materials,
             time_of_day="Use the accepted scene time of day.",

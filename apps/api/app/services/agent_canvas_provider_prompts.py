@@ -221,6 +221,12 @@ class AgentCanvasProviderPromptCompiler:
                 preparation.recipe_id,
                 preparation.recipe_version,
                 native_audio_required=native_audio_required,
+                scene_asset_kind=(
+                    node.structured_content.get("scene_asset_kind")
+                    or node.parameters.get("scene_asset_kind")
+                    if preparation.role_variant == "scene_board"
+                    else None
+                ),
             )
             PromptAssertionEvidenceValidator().validate_preparation(
                 policy=policy,

@@ -581,7 +581,7 @@ class SceneBoardRoleBriefV2(_RoleBriefModel):
     lighting: str = Field(min_length=1, max_length=2_048)
     materials: str = Field(min_length=1, max_length=2_048)
     atmosphere: str = Field(min_length=1, max_length=2_048)
-    views: tuple[str, ...] = Field(min_length=9, max_length=9)
+    views: tuple[str, ...] = Field(min_length=1, max_length=9)
     entity_references: tuple[str, ...] = Field(default=(), max_length=32)
     action_references: tuple[str, ...] = Field(default=(), max_length=32)
     environment_only: Literal[True] = True
