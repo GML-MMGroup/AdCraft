@@ -427,6 +427,58 @@ _OPENROUTER_IMAGE_ROUTING = build_openrouter_routing_policy(
     operation_contract="openrouter-gpt-image-2-v1",
 )
 
+# TeamoRouter serves GPT Image 2 through the OpenAI Images API. Every guided
+# per-ratio size satisfies GPT Image 2 limits (edges multiples of 16, at most
+# 3840 px, aspect ratio at most 3:1, 655,360 to 8,294,400 pixels).
+TEAMOROUTER_IMAGE_SIZES = (
+    *dict.fromkeys(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO.values()),
+    "1024x1024",
+    "1536x1024",
+    "1024x1536",
+    "auto",
+)
+TEAMOROUTER_IMAGE_PROFILE = _image_profile(
+    "teamorouter:gpt-image-2",
+    adapter_id="teamorouter-image-native",
+    transport_kind="teamorouter_images_native",
+    parameter_matrix=_parameter_matrix(
+        schema_id="teamorouter-gpt-image-2-v1",
+        descriptors=(
+            {
+                "name": "size",
+                "value_type": "enum",
+                "allowed_values": list(TEAMOROUTER_IMAGE_SIZES),
+            },
+            {
+                "name": "aspect_ratio",
+                "value_type": "enum",
+                "allowed_values": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            },
+            {
+                "name": "quality",
+                "value_type": "enum",
+                "allowed_values": ["low", "medium", "high", "auto"],
+            },
+            {
+                "name": "background",
+                "value_type": "enum",
+                "allowed_values": ["transparent", "opaque", "auto"],
+            },
+            {
+                "name": "output_format",
+                "value_type": "enum",
+                "allowed_values": ["png", "jpeg", "webp"],
+            },
+            {
+                "name": "output_compression",
+                "value_type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+            },
+        ),
+    ),
+)
+
 _OPENROUTER_TEXT_ADAPTER_REVISION = "openrouter-pi-agent-v1"
 _OPENROUTER_TEXT_CAPABILITY_REVISION = "openrouter-openai-gpt-5-6-sol-agent-v1"
 _OPENROUTER_TEXT_PROFILE = _adapter_profile(
@@ -789,6 +841,31 @@ _TRUSTED_MANIFESTS = (
         },
     ),
     TrustedModelManifest(
+        provider_id="teamorouter",
+        provider_model_id="gpt-image-2",
+        display_name="GPT Image 2",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": [
+                "size",
+                "aspect_ratio",
+                "quality",
+                "background",
+                "output_format",
+                "output_compression",
+            ],
+            "supported_aspect_ratios": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "provider_protocol": "openai_images",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": dict(TEAMOROUTER_IMAGE_PROFILE),
+        },
+    ),
+    TrustedModelManifest(
         provider_id="openrouter",
         provider_model_id="openai/gpt-5.6-sol",
         display_name="GPT-5.6 Sol",
@@ -1144,6 +1221,7 @@ class ProviderModelCatalogService:
                 "tianpuyue",
                 "openrouter",
                 "minimax",
+                "teamorouter",
                 "fake",
             )
         )

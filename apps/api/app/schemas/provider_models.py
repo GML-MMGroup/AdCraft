@@ -24,6 +24,7 @@ ProviderTransportKindV1 = Literal[
     "litellm_openai_image",
     "openrouter_images_native",
     "openai_images_native",
+    "teamorouter_images_native",
     "ark_image_native",
     "ark_video_native",
     "minimax_video_native",

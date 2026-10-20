@@ -9,6 +9,8 @@ import hashlib
 import json
 from typing import Any, Mapping, Protocol
 from urllib.parse import urlsplit
+from urllib.request import Request
+from uuid import uuid4
 
 from app.core.config import Settings
 from app.schemas.provider_models import (
@@ -19,7 +21,12 @@ from app.schemas.provider_models import (
     ReferenceInputPolicyV1,
 )
 from app.services.openrouter_policy import build_openrouter_routing_policy
-from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
+from app.services.provider_credentials import (
+    ProviderHttpResponse,
+    ProviderHttpTransport,
+    UrllibProviderHttpTransport,
+)
+from app.services.provider_model_catalog import TEAMOROUTER_IMAGE_PROFILE
 
 
 @dataclass(frozen=True, slots=True)
@@ -547,6 +554,246 @@ class OpenRouterImageAdapter(ProviderNativeAdapter):
             request_fingerprint=status.request_fingerprint,
             raw={"media_type": media_type, "decoded_size": len(decoded)},
         )
+
+
+_TEAMOROUTER_BASE_URL = "https://api.teamorouter.com/v1"
+# GPT Image 2 can take minutes; TeamoRouter recommends a 300 s client timeout.
+_TEAMOROUTER_TIMEOUT_SECONDS = 300.0
+_TEAMOROUTER_MAX_RESPONSE_BYTES = 64_000_000
+_TEAMOROUTER_REQUEST_FIELDS = (
+    "size",
+    "quality",
+    "background",
+    "output_format",
+    "output_compression",
+)
+
+
+class RawHttpPostTransport(Protocol):
+    def post(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse: ...
+
+
+class UrllibRawHttpPostTransport:
+    """POST prepared bytes with redirects disabled."""
+
+    def post(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse:
+        return UrllibProviderHttpTransport._open(
+            request=Request(url, data=body, headers=headers, method="POST"),
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+        )
+
+
+class TeamoRouterImageTransport:
+    """Synchronous OpenAI Images transport fixed to the TeamoRouter endpoint."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        http_transport: RawHttpPostTransport | None = None,
+    ) -> None:
+        self._api_key = (settings.teamorouter_api_key or "").strip()
+        self._base_url = settings.teamorouter_base_url.rstrip("/")
+        self._http = http_transport or UrllibRawHttpPostTransport()
+
+    def submit(self, payload: Mapping[str, object]) -> Mapping[str, object]:
+        if not self._api_key:
+            raise ValueError("provider_configuration_missing")
+        if self._base_url != _TEAMOROUTER_BASE_URL:
+            raise ValueError("provider_base_url_invalid")
+        fields = payload.get("fields")
+        images = payload.get("images")
+        if not isinstance(fields, Mapping) or not isinstance(images, list):
+            raise ValueError("provider_request_contract_invalid")
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        if images:
+            boundary = f"adcraft-{uuid4().hex}"
+            url = f"{self._base_url}/images/edits"
+            headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+            body = _multipart_body(boundary, fields, [_data_url_file(item) for item in images])
+        else:
+            url = f"{self._base_url}/images/generations"
+            headers["Content-Type"] = "application/json"
+            body = json.dumps(dict(fields), separators=(",", ":")).encode("utf-8")
+        response = self._http.post(
+            url=url,
+            headers=headers,
+            body=body,
+            timeout_seconds=_TEAMOROUTER_TIMEOUT_SECONDS,
+            max_response_bytes=_TEAMOROUTER_MAX_RESPONSE_BYTES,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            raise ValueError("provider_request_failed")
+        try:
+            parsed = json.loads(response.body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("provider_response_contract_invalid") from error
+        if not isinstance(parsed, Mapping):
+            raise ValueError("provider_response_contract_invalid")
+        return parsed
+
+    def poll(self, provider_task_id: str) -> Mapping[str, object]:
+        del provider_task_id
+        raise ValueError("provider_task_not_pollable")
+
+    def download(self, value: str) -> Mapping[str, object]:
+        del value
+        raise ValueError("provider_task_not_pollable")
+
+
+class TeamoRouterImageAdapter(ProviderNativeAdapter):
+    """Project one canonical image request into TeamoRouter GPT Image 2."""
+
+    profile = ProviderAdapterProfileV1.model_validate(TEAMOROUTER_IMAGE_PROFILE)
+
+    def _compile_payload(self, request: CanonicalProviderRequest) -> Mapping[str, object]:
+        fields: dict[str, object] = {
+            "model": request.provider_model_id,
+            "prompt": request.prompt,
+            "n": 1,
+        }
+        fields.update(
+            {
+                name: request.parameters[name]
+                for name in _TEAMOROUTER_REQUEST_FIELDS
+                if name in request.parameters
+            }
+        )
+        return {
+            "fields": fields,
+            "images": [reference.value for reference in request.references],
+        }
+
+    def _validate_references(
+        self,
+        references: tuple[CanonicalProviderReference, ...],
+    ) -> tuple[str, ...]:
+        # The OpenAI Images API has no reference roles; order alone is meaningful.
+        if references and "native_reference_slots" not in self.profile.accepted_input_modes:
+            return ("reference_input_mode_unsupported",)
+        for reference in references:
+            if reference.input_type != "data_url":
+                return ("provider_reference_input_invalid",)
+            try:
+                _data_url_file(reference.value)
+            except ValueError:
+                return ("provider_reference_input_invalid",)
+        return ()
+
+    def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
+        transport = self._require_transport()
+        response = transport.submit(request.payload)
+        value, media_type = _single_b64_raster(response)
+        return ProviderSubmission(
+            provider_task_id=f"sync:{request.request_fingerprint}",
+            request_fingerprint=request.request_fingerprint,
+            raw={"data": [{"b64_json": value, "media_type": media_type}]},
+        )
+
+    def poll(self, submission: ProviderSubmission) -> ProviderStatus:
+        return ProviderStatus(
+            provider_task_id=submission.provider_task_id,
+            request_fingerprint=submission.request_fingerprint,
+            state="completed",
+            raw=submission.raw,
+        )
+
+    def download(self, status: ProviderStatus) -> ProviderArtifact:
+        value, media_type = _single_b64_raster(status.raw)
+        return ProviderArtifact(
+            media_type="image",
+            value=value,
+            provider_task_id=status.provider_task_id,
+            request_fingerprint=status.request_fingerprint,
+            raw={"media_type": media_type},
+        )
+
+
+def _single_b64_raster(response: Mapping[str, object]) -> tuple[str, str]:
+    data = response.get("data") if isinstance(response, Mapping) else None
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], Mapping):
+        raise ValueError("provider_response_contract_invalid")
+    value = data[0].get("b64_json")
+    if not isinstance(value, str) or not value:
+        raise ValueError("provider_response_contract_invalid")
+    try:
+        head = base64.b64decode(value[:64], validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("provider_response_contract_invalid") from error
+    media_type = _raster_media_type(head)
+    _decode_raster(value, media_type)
+    return value, media_type
+
+
+def _raster_media_type(head: bytes) -> str:
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(head) >= 12 and head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("provider_response_contract_invalid")
+
+
+def _data_url_file(value: object) -> tuple[str, bytes]:
+    if not isinstance(value, str) or not value.startswith("data:image/"):
+        raise ValueError("provider_reference_input_invalid")
+    header, separator, encoded = value.partition(",")
+    mime_type = header[len("data:") :].split(";", 1)[0]
+    if not separator or ";base64" not in header or len(value) > 8_000_000:
+        raise ValueError("provider_reference_input_invalid")
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("provider_reference_input_invalid") from error
+    if not content:
+        raise ValueError("provider_reference_input_invalid")
+    return mime_type, content
+
+
+def _multipart_body(
+    boundary: str,
+    fields: Mapping[str, object],
+    files: list[tuple[str, bytes]],
+) -> bytes:
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append(
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
+            ).encode("utf-8")
+        )
+    for index, (mime_type, content) in enumerate(files, start=1):
+        extension = mime_type.split("/", 1)[1]
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="image[]"; '
+                f'filename="reference-{index}.{extension}"\r\n'
+                f"Content-Type: {mime_type}\r\n\r\n"
+            ).encode("utf-8")
+            + content
+            + b"\r\n"
+        )
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(parts)
 
 
 class MiniMaxVideoAdapter(ProviderNativeAdapter):

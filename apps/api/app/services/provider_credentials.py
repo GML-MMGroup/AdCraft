@@ -120,6 +120,7 @@ class ProviderCredentialRegistry:
             _volcengine_ark_definition(),
             _openrouter_definition(),
             _minimax_definition(),
+            _teamorouter_definition(),
             _fake_definition(),
         )
         self._definitions = MappingProxyType(
@@ -1572,6 +1573,24 @@ def _minimax_definition() -> ProviderCredentialDefinition:
         allowed_test_origins=("https://api.minimaxi.chat",),
         display_name="MiniMax",
         capability_consumers=MappingProxyType({"video": "video"}),
+    )
+
+
+def _teamorouter_definition() -> ProviderCredentialDefinition:
+    binding = ConsumerCredentialBinding(
+        consumer="image",
+        dotenv_field="TEAMOROUTER_API_KEY",
+        settings_field="teamorouter_api_key",
+        endpoint_field="teamorouter_base_url",
+        endpoint_dotenv_field="TEAMOROUTER_BASE_URL",
+        test_capability="unsupported",
+    )
+    return ProviderCredentialDefinition(
+        provider_id="teamorouter",
+        bindings=MappingProxyType({"image": binding}),
+        allowed_test_origins=("https://api.teamorouter.com",),
+        display_name="TeamoRouter",
+        capability_consumers=MappingProxyType({"image": "image"}),
     )
 
 

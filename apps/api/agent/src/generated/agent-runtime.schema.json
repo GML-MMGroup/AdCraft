@@ -26903,6 +26903,7 @@
             "openai_images_native",
             "openrouter_images_native",
             "pi_native_openai_compatible",
+            "teamorouter_images_native",
             "tianpuyue_audio_native"
           ],
           "title": "Transport Kind",
@@ -27021,6 +27022,7 @@
             "openai_images_native",
             "openrouter_images_native",
             "pi_native_openai_compatible",
+            "teamorouter_images_native",
             "tianpuyue_audio_native"
           ],
           "title": "Transport Kind",
@@ -27160,6 +27162,7 @@
             "openai_images_native",
             "openrouter_images_native",
             "pi_native_openai_compatible",
+            "teamorouter_images_native",
             "tianpuyue_audio_native"
           ],
           "title": "Transport Kind",
@@ -27336,6 +27339,7 @@
                 "openai_images_native",
                 "openrouter_images_native",
                 "pi_native_openai_compatible",
+                "teamorouter_images_native",
                 "tianpuyue_audio_native"
               ],
               "type": "string"

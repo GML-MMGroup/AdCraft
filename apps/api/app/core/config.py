@@ -100,6 +100,8 @@ class Settings:
     openrouter_image_base_url: str = "https://openrouter.ai/api/v1"
     minimax_api_key: str | None = None
     minimax_base_url: str | None = None
+    teamorouter_api_key: str | None = None
+    teamorouter_base_url: str = "https://api.teamorouter.com/v1"
     llm_transient_retry_delay_seconds: float = 2.0
     llm_front_desk_model: str = "doubao-seed-2-0-mini-260428"
     llm_team_model: str = "doubao-seed-2-0-mini-260428"
@@ -256,6 +258,11 @@ class Settings:
             ),
             minimax_api_key=os.getenv("MINIMAX_API_KEY") or None,
             minimax_base_url=os.getenv("MINIMAX_BASE_URL") or None,
+            teamorouter_api_key=os.getenv("TEAMOROUTER_API_KEY") or None,
+            teamorouter_base_url=os.getenv(
+                "TEAMOROUTER_BASE_URL",
+                cls.teamorouter_base_url,
+            ),
             llm_transient_retry_delay_seconds=_read_float(
                 "LLM_TRANSIENT_RETRY_DELAY_SECONDS",
                 cls.llm_transient_retry_delay_seconds,

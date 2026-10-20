@@ -94,7 +94,9 @@ from app.tools.volcengine_image_generations import V2ProviderRequestContractErro
 
 ProviderFactory = Callable[[Settings], MediaProvider]
 
-_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset({"openrouter_images_native", "minimax_video_native"})
+_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset(
+    {"openrouter_images_native", "teamorouter_images_native", "minimax_video_native"}
+)
 _NATIVE_PROVIDER_ERROR_CODES = frozenset(
     {
         "model_adapter_unavailable",
