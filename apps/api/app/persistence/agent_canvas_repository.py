@@ -2043,6 +2043,7 @@ class AgentCanvasWorkflowRepository:
                     if user_authoring:
                         _make_target_prompt_user_owned(
                             connection,
+                            events=self._events,
                             prompt_dispatch=self._prompt_dispatch,
                             workflow_id=binding.workflow_id,
                             target_node_id=binding.target_node_id,
@@ -2141,6 +2142,7 @@ class AgentCanvasWorkflowRepository:
                     if user_authoring:
                         _make_target_prompt_user_owned(
                             connection,
+                            events=self._events,
                             prompt_dispatch=self._prompt_dispatch,
                             workflow_id=workflow_id,
                             target_node_id=binding.target_node_id,
@@ -2381,6 +2383,7 @@ class AgentCanvasWorkflowRepository:
                     if user_authoring:
                         _make_target_prompt_user_owned(
                             connection,
+                            events=self._events,
                             prompt_dispatch=self._prompt_dispatch,
                             workflow_id=binding.workflow_id,
                             target_node_id=binding.target_node_id,
@@ -3295,6 +3298,7 @@ def _invalidate_target_prompt_preparation(
 def _make_target_prompt_user_owned(
     connection: Connection,
     *,
+    events: EventRepository,
     prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository,
     workflow_id: str,
     target_node_id: str,
@@ -3318,6 +3322,20 @@ def _make_target_prompt_user_owned(
     if node.execution_mode == "source_only" or not _has_managed_prompt_preparation(node):
         return None
     prompt = node.generation_prompt.strip() if node.generation_prompt else ""
+    if not prompt:
+        # The Agent has not written this prompt yet, so there is nothing for the
+        # user to own: re-prepare it from the edited references instead of
+        # leaving an ownerless prompt that no one will ever write.
+        return _invalidate_target_prompt_preparation(
+            connection,
+            events=events,
+            prompt_dispatch=prompt_dispatch,
+            workflow_id=workflow_id,
+            target_node_id=target_node_id,
+            updated_at=updated_at,
+            supersession_reason="explicit_binding_authoring",
+            regeneration="user_requested",
+        )
     timestamp = _parse_datetime(updated_at)
     if prompt:
         preparation = NodePromptPreparationV1(
