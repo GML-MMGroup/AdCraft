@@ -249,6 +249,10 @@ class AgentCanvasPromptPreparationWorker:
         if current.status in {"completed", "superseded"}:
             return "completed" if current.status == "completed" else "superseded"
         error_code, retryable = _failure(error)
+        if error_code in _ONE_AUTOMATIC_RETRY_CODES and dispatch.attempt_no < 2:
+            # User rule (2026-10-20): a provider timeout is often transient, so
+            # retry once automatically before asking the user to continue.
+            retryable = True
         next_attempt = dispatch.attempt_no
         if retryable and next_attempt < dispatch.max_attempts:
             delay = min(
@@ -325,6 +329,9 @@ class AgentCanvasPromptPreparationWorker:
         if self._barrier_callback is None or dispatch.status not in {"completed", "failed"}:
             return
         self._barrier_callback(dispatch, result)
+
+
+_ONE_AUTOMATIC_RETRY_CODES = frozenset({"agent_provider_timeout"})
 
 
 def _failure(error: Exception) -> tuple[str, bool]:
