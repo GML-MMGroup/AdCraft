@@ -561,14 +561,14 @@ _TEAMOROUTER_BASE_URL = "https://api.teamorouter.com/v1"
 _TEAMOROUTER_TIMEOUT_SECONDS = 300.0
 _TEAMOROUTER_MAX_RESPONSE_BYTES = 64_000_000
 # The OpenAI edits endpoint treats input images as the canvas to modify, while
-# Canvas bindings are references (as with Seedream). Without this framing a
-# Multi-view request returned the bound Product Main almost unchanged.
+# Canvas bindings are references (as with Seedream). Live checks (2026-10-20)
+# showed a descriptive node prompt returns the reference almost unchanged; a
+# layout-first edit instruction with high input fidelity yields the requested
+# views while keeping the subject's identity.
 TEAMOROUTER_REFERENCE_INSTRUCTION = (
-    "The attached image(s) are reference material only: use them for the subject's "
-    "identity, shape, materials and colors. Create a new image that follows the "
-    "instructions below, with its own composition, framing and viewpoints. Do not "
-    "reproduce the reference image's composition unless the instructions explicitly "
-    "ask for it."
+    "Turn the attached reference image into a NEW image that satisfies the required "
+    "layout below. Keep the subject's exact identity, shape, materials and colors; change "
+    "the composition, framing and viewpoints as the layout requires."
 )
 _TEAMOROUTER_REQUEST_FIELDS = (
     "size",
@@ -694,16 +694,14 @@ class TeamoRouterImageAdapter(ProviderNativeAdapter):
             self.profile = profile
 
     def _compile_payload(self, request: CanonicalProviderRequest) -> Mapping[str, object]:
-        prompt = (
-            f"{TEAMOROUTER_REFERENCE_INSTRUCTION}\n\n{request.prompt}"
-            if request.references
-            else request.prompt
-        )
+        prompt = _layout_first_edit_prompt(request.prompt) if request.references else request.prompt
         fields: dict[str, object] = {
             "model": request.provider_model_id,
             "prompt": prompt,
             "n": 1,
         }
+        if request.references:
+            fields["input_fidelity"] = "high"
         fields.update(
             {
                 name: request.parameters[name]
@@ -774,6 +772,33 @@ def _valid_http_proxy_url(value: str) -> bool:
         and not parsed.query
         and not parsed.fragment
     )
+
+
+def _layout_first_edit_prompt(prompt: str) -> str:
+    """Lead an edit with its deterministic layout rules, then the descriptive prompt."""
+
+    requirements: list[str] = []
+    prohibited: list[str] = []
+    section: list[str] | None = None
+    for line in prompt.splitlines():
+        stripped = line.strip()
+        if stripped == "Required assertions:":
+            section = requirements
+        elif stripped == "Prohibited behavior:":
+            section = prohibited
+        elif section is not None and stripped.startswith("- "):
+            item = stripped[2:]
+            if item.startswith("[") and "]" in item:
+                item = item.split("]", 1)[1].strip()
+            section.append(item)
+        elif stripped:
+            section = None
+    rules = ""
+    if requirements:
+        rules += "Required layout and rules:\n" + "".join(f"- {item}\n" for item in requirements)
+    if prohibited:
+        rules += "Prohibited:\n" + "".join(f"- {item}\n" for item in prohibited)
+    return f"{TEAMOROUTER_REFERENCE_INSTRUCTION}\n{rules}\nSubject and style details:\n{prompt}"
 
 
 def _single_b64_raster(response: Mapping[str, object]) -> tuple[str, str]:
