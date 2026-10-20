@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
@@ -50,6 +51,11 @@ from app.services.agent_canvas_guided_production_closure import (
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_editing_timeline import normalize_manifest
+
+# Minimum horizontal and vertical distance between Node anchors, matching the
+# storyboard progression column (360) and row (280) steps.
+EDITING_NODE_CLEARANCE = (360.0, 280.0)
+_DEFAULT_EDITING_POSITION = CanvasPositionV2(x=960, y=640)
 
 
 class GuidedEditingPreparationService:
@@ -263,7 +269,7 @@ class GuidedEditingPreparationService:
                     "source_agent_document_revision": plan_document.revision,
                     "source_agent_document_digest": plan_document.content_digest,
                 },
-                position=CanvasPositionV2(x=960, y=640),
+                position=guided_editing_position(desired_sources, workflow.nodes),
                 revision=1,
                 created_at=now,
                 updated_at=now,
@@ -558,3 +564,20 @@ def _plan_node_records(
 def _stable_id(prefix: str, *parts: str) -> str:
     digest = hashlib.sha256(":".join(parts).encode()).hexdigest()[:24]
     return f"{prefix}_{digest}"
+
+
+def guided_editing_position(
+    sources: Sequence[CanvasNodeV2],
+    occupied: Iterable[CanvasNodeV2],
+) -> CanvasPositionV2:
+    """Place Editing one column right of its sources, below any Node in that slot."""
+
+    if not sources:
+        return _DEFAULT_EDITING_POSITION
+    width, height = EDITING_NODE_CLEARANCE
+    x = max(source.position.x for source in sources) + width
+    y = sum(source.position.y for source in sources) / len(sources)
+    taken = tuple(node.position for node in occupied)
+    while any(abs(item.x - x) < width and abs(item.y - y) < height for item in taken):
+        y += height
+    return CanvasPositionV2(x=x, y=y)
