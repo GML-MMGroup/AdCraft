@@ -50,6 +50,7 @@ class AgentCanvasNodeService:
         request: CanvasNodeCreateRequestV2,
         *,
         expected_revision: int,
+        user_authored: bool = False,
     ) -> CanvasNodeV2:
         now = datetime.now(timezone.utc)
         workflow = self._repository.get_workflow(workflow_id)
@@ -79,7 +80,7 @@ class AgentCanvasNodeService:
             error=None,
             prompt_preparation=_initial_prompt_preparation(request, now),
             # Canvas-created nodes belong to the user and stay outside Agent journeys.
-            metadata={USER_AUTHORING_ORIGIN_KEY: USER_AUTHORING_ORIGIN},
+            metadata=({USER_AUTHORING_ORIGIN_KEY: USER_AUTHORING_ORIGIN} if user_authored else {}),
             created_at=now,
             updated_at=now,
         )
