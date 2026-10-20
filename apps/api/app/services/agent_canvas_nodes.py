@@ -19,6 +19,8 @@ from app.schemas.agent_canvas import (
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
     CanvasNodeV2,
+    USER_AUTHORING_ORIGIN,
+    USER_AUTHORING_ORIGIN_KEY,
 )
 from app.schemas.agent_canvas_editing import default_editing_content
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
@@ -76,6 +78,8 @@ class AgentCanvasNodeService:
             revision=1,
             error=None,
             prompt_preparation=_initial_prompt_preparation(request, now),
+            # Canvas-created nodes belong to the user and stay outside Agent journeys.
+            metadata={USER_AUTHORING_ORIGIN_KEY: USER_AUTHORING_ORIGIN},
             created_at=now,
             updated_at=now,
         )

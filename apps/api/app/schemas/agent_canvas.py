@@ -63,6 +63,11 @@ ProjectAssetSourceTypeV2 = Literal[
 ImageLibraryCategoryV2 = Literal["character", "scene", "prop"]
 
 
+# Node metadata marking canvas nodes the user created; Agent journeys ignore them.
+USER_AUTHORING_ORIGIN_KEY = "authoring_origin"
+USER_AUTHORING_ORIGIN = "user"
+
+
 class _AgentCanvasModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

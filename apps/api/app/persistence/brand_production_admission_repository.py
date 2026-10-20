@@ -22,6 +22,7 @@ from app.persistence.models import (
     BrandRow,
     ProjectRow,
 )
+from app.schemas.agent_canvas import USER_AUTHORING_ORIGIN, USER_AUTHORING_ORIGIN_KEY
 from app.schemas.agent_canvas_creative_session import CreativeElementDecisionV2, CreativeGoalV2
 from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2, JourneyEvidenceV2
 from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
@@ -83,8 +84,16 @@ class BrandProductionAdmissionRepository:
             return False
         if row["status"] != "active" or current.active_action or current.suspended_action:
             raise _conflict()
+        if any(
+            _blocks_handoff(json.loads(str(metadata_json or "{}")))
+            for metadata_json in connection.execute(
+                select(AgentCanvasNodeRow.metadata_json).where(
+                    AgentCanvasNodeRow.workflow_id == workflow_id
+                )
+            ).scalars()
+        ):
+            raise _conflict()
         guards = (
-            select(AgentCanvasNodeRow.node_id).where(AgentCanvasNodeRow.workflow_id == workflow_id),
             select(AgentWorkingDocumentRow.document_id).where(
                 AgentWorkingDocumentRow.workflow_id == workflow_id
             ),
@@ -180,3 +189,17 @@ def _conflict() -> V2PersistenceError:
         "Brand production cannot restart intake while its reviewed authority or active work conflicts.",
         stage="brand_production_admission",
     )
+
+
+def _blocks_handoff(metadata: object) -> bool:
+    """Only live Agent-journey nodes conflict with a Brand production handoff.
+
+    Deleted nodes and nodes the user created on the canvas are independent of
+    the Agent journey, so they neither block nor get changed by the handoff.
+    """
+
+    if not isinstance(metadata, dict):
+        return True
+    if isinstance(metadata.get("_deleted_at"), str):
+        return False
+    return metadata.get(USER_AUTHORING_ORIGIN_KEY) != USER_AUTHORING_ORIGIN
