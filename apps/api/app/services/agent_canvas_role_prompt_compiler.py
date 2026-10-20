@@ -34,6 +34,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     FreeMediaRoleBriefV2,
     ProductMainRoleBriefV2,
     ProductMultiviewRoleBriefV2,
+    ProductIdentityAuthorityProjectionV1,
     PropRoleBriefV2,
     RolePromptCompactionDecisionV2,
     ResolvedNodeParameterV2,
@@ -170,7 +171,7 @@ class AgentCanvasRolePromptCompiler:
             recipe,
             brief_digest=brief_digest,
         )
-        character_projection, scene_projection = _semantic_projections(
+        character_projection, scene_projection, product_projection = _semantic_projections(
             concrete_brief,
             context,
         )
@@ -178,13 +179,26 @@ class AgentCanvasRolePromptCompiler:
             concrete_brief,
             character_projection=character_projection,
             scene_projection=scene_projection,
+            product_projection=product_projection,
         )
         editable_prompt = (
             editable_prompt_override
             if editable_prompt_override is not None
             else concrete_brief.editable_prompt
         )
-        if editable_prompt is not None:
+        engine_owned_identity_render = (
+            isinstance(
+                concrete_brief,
+                (
+                    ProductMainRoleBriefV2,
+                    PropRoleBriefV2,
+                    CharacterMainRoleBriefV2,
+                    CharacterTurnaroundRoleBriefV2,
+                ),
+            )
+            and editable_prompt_override is None
+        )
+        if editable_prompt is not None and not engine_owned_identity_render:
             prompt = editable_prompt.strip()
             if not prompt:
                 raise _error(
@@ -267,7 +281,12 @@ class AgentCanvasRolePromptCompiler:
         policy_negative = " ".join(policy.negative_clauses)
         if policy_negative and policy_negative not in negative:
             negative = f"{negative} {policy_negative}".strip()
-        structured = _structured_content(concrete_brief, context, scene_projection=scene_projection)
+        structured = _structured_content(
+            concrete_brief,
+            context,
+            scene_projection=scene_projection,
+            product_projection=product_projection,
+        )
         if conditioning_plan is not None and isinstance(structured.get("style"), dict):
             structured = {
                 **structured,
@@ -464,7 +483,11 @@ class AgentCanvasRolePromptCompiler:
 def _semantic_projections(
     brief: RoleCreativeBriefMemberV2,
     context: RolePromptPreparationContextV2,
-) -> tuple[CharacterIdentityAuthorityProjectionV1 | None, SceneEnvironmentProjectionV1 | None]:
+) -> tuple[
+    CharacterIdentityAuthorityProjectionV1 | None,
+    SceneEnvironmentProjectionV1 | None,
+    ProductIdentityAuthorityProjectionV1 | None,
+]:
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         projection = context.character_identity_projection
         if projection is not None:
@@ -502,8 +525,8 @@ def _semantic_projections(
                         "character_turnaround_identity_conflict",
                         "Turnaround identity differs from the bound Character Main authority.",
                     )
-            return projection, None
-        return None, None
+            return projection, None, None
+        return None, None, None
     if isinstance(brief, CharacterMainRoleBriefV2):
         projection = context.character_identity_projection
         if projection is not None and projection.occurrence_id != context.occurrence_id:
@@ -511,7 +534,7 @@ def _semantic_projections(
                 "character_parent_identity_projection_invalid",
                 "Character Main projection occurrence is stale.",
             )
-        return projection, None
+        return projection, None, None
     if isinstance(brief, SceneBoardRoleBriefV2):
         projection = context.scene_environment_projection
         if projection is None:
@@ -542,6 +565,25 @@ def _semantic_projections(
                 "scene_environment_projection_invalid",
                 "Scene preparation requires an environment-only projection.",
             )
+        if context.node_parameters.get("scene_asset_kind") == "multi_view":
+            parent_bindings = tuple(
+                item for item in context.bindings if item.reference_purpose == "scene_main_identity"
+            )
+            if len(parent_bindings) != 1:
+                raise _error(
+                    "scene_parent_environment_projection_invalid",
+                    "Scene Multi-view requires one exact Scene Main authority.",
+                )
+            parent = parent_bindings[0]
+            if (
+                parent.source_role != "scene"
+                or parent.reference_purpose != "scene_main_identity"
+                or parent.source_node_id != projection.source_node_id
+            ):
+                raise _error(
+                    "scene_parent_environment_projection_invalid",
+                    "Scene Main projection is stale or not the exact bound authority.",
+                )
         if (
             projection.source_node_revision != context.node_revision
             and context.node_id == projection.source_node_id
@@ -550,8 +592,32 @@ def _semantic_projections(
                 "node_prompt_context_stale",
                 "Scene environment projection revision is stale.",
             )
-        return None, projection
-    return None, None
+        return None, projection, None
+    if isinstance(brief, ProductMultiviewRoleBriefV2):
+        projection = context.product_identity_projection
+        if projection is not None:
+            parent_bindings = tuple(
+                item
+                for item in context.bindings
+                if item.reference_purpose == "product_main_identity"
+            )
+            if len(parent_bindings) != 1:
+                raise _error(
+                    "product_parent_identity_projection_invalid",
+                    "Product Multi-view projection requires one exact Product Main authority.",
+                )
+            parent = parent_bindings[0]
+            if (
+                parent.source_role != "product"
+                or parent.source_node_id != projection.source_node_id
+                or parent.source_node_revision != projection.source_node_revision
+            ):
+                raise _error(
+                    "product_parent_identity_projection_invalid",
+                    "Product Main projection is stale or not the exact bound authority.",
+                )
+        return None, None, projection
+    return None, None, None
 
 
 def _render(
@@ -559,6 +625,7 @@ def _render(
     *,
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
+    product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> tuple[str, str]:
     if isinstance(brief, WorldViewRoleBriefV2):
         return (
@@ -568,10 +635,15 @@ def _render(
             "No complete script, shot list, provider syntax, or hidden topology.",
         )
     if isinstance(brief, ProductMultiviewRoleBriefV2):
+        identity = product_projection.subject_identity if product_projection else brief.identity
+        design_summary = (
+            product_projection.design_summary
+            if product_projection
+            else "; ".join((brief.geometry, brief.materials, brief.marks, brief.palette))
+        )
         return (
-            f"Use the exact bound Product Main as identity authority. Preserve {brief.identity}; "
-            f"geometry: {brief.geometry}; materials: {brief.materials}; marks: {brief.marks}; "
-            f"palette: {brief.palette}. Render {', '.join(brief.views)} on a clean neutral "
+            f"Use the exact bound Product Main as identity authority. Preserve {identity}; "
+            f"{design_summary}. Render {', '.join(PRODUCT_MULTIVIEW_VIEWS)} on a clean neutral "
             "studio background.",
             "No people, hands, active use, application scene, unrelated prop, labels, captions, "
             "storyboard layout, or Product Main prompt reuse.",
@@ -610,7 +682,8 @@ def _render(
             "non-photorealistic semi-realistic commercial illustration in front, side, and back "
             "full-body views on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
-            f"{silhouette}. Wardrobe: {wardrobe}. Accessories: {accessories}.",
+            f"{silhouette}. Wardrobe: {wardrobe}."
+            f"{_optional_labeled_fragment('Accessories', accessories)}",
             "No photorealistic human, identity drift, labels, captions, annotation text, product, "
             "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
@@ -620,8 +693,8 @@ def _render(
             f"illustration on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
-            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
-            f"{brief.accessories}.",
+            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}."
+            f"{_optional_labeled_fragment('Accessories', brief.accessories)}",
             "No photograph, photorealistic human, product, prop, active scene, second person, "
             "text, labels, annotation, captions, or board layout.",
         )
@@ -644,7 +717,8 @@ def _render(
             "Create one text-free 3x3 environment board of the same coherent environment. "
             f"Identity: {environment_identity}. Spatial logic: {spatial_logic}. "
             f"Lighting: {lighting}. Materials: {materials}. Atmosphere: "
-            f"{atmosphere}. Views: {'; '.join(views)}.",
+            f"{atmosphere}."
+            f"{_optional_labeled_fragment('Views', '; '.join(views))}",
             "No active character, product, prop interaction, narrative action, plot progression, "
             "captions, labels, panel numbers, or unrelated environment.",
         )
@@ -682,6 +756,12 @@ def _render(
     raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
 
 
+def _optional_labeled_fragment(label: str, value: str) -> str:
+    """Render an optional prompt field only when it contains meaningful text."""
+
+    return f" {label}: {value}." if value.strip() else ""
+
+
 def _authored_visual_style(brief: RoleCreativeBriefMemberV2) -> str | None:
     if isinstance(brief, VideoSegmentRoleBriefV2):
         return brief.target_style
@@ -700,6 +780,7 @@ def _structured_content(
     context: RolePromptPreparationContextV2,
     *,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
+    product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
     if (
@@ -735,8 +816,14 @@ def _structured_content(
     if isinstance(brief, ProductMultiviewRoleBriefV2):
         return DesignAssetContentV2(
             asset_kind="multi_view",
-            subject_identity=brief.identity,
-            design_summary="; ".join((brief.geometry, brief.materials, brief.marks, brief.palette)),
+            subject_identity=(
+                product_projection.subject_identity if product_projection else brief.identity
+            ),
+            design_summary=(
+                product_projection.design_summary
+                if product_projection
+                else "; ".join((brief.geometry, brief.materials, brief.marks, brief.palette))
+            ),
             style=style,
             explicit_inclusions=brief.views,
             negative_constraints=("application scene", "main prompt reuse", "text"),
@@ -990,12 +1077,24 @@ def role_prompt_text_violation(
     """Return a safe deterministic violation without exposing matched text."""
 
     normalized = text.casefold()
-    for phrase in _ROLE_PROMPT_CONFLICTS.get(role_variant, ()):
+    negated_match_ranges: list[tuple[int, int]] = []
+    phrases = sorted(
+        _ROLE_PROMPT_CONFLICTS.get(role_variant, ()),
+        key=len,
+        reverse=True,
+    )
+    for phrase in phrases:
         pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])")
-        if any(
-            not _is_explicitly_negated(normalized, match.start())
-            for match in pattern.finditer(normalized)
-        ):
+        for match in pattern.finditer(normalized):
+            match_range = (match.start(), match.end())
+            if _is_explicitly_negated(normalized, match.start()):
+                negated_match_ranges.append(match_range)
+                continue
+            if any(
+                negated_start <= match_range[0] and match_range[1] <= negated_end
+                for negated_start, negated_end in negated_match_ranges
+            ):
+                continue
             return RolePromptViolationV1(
                 role_variant=role_variant,
                 violation_category=_SCENE_CONFLICT_CATEGORIES.get(

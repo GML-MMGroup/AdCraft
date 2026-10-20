@@ -101,7 +101,35 @@ class BrandGuidedInteractionSubmitter:
                 option_id=option_id or "delegate",
             )
         elif "hypothesis" in content.capability_id:
-            self._brand_service.apply_hypothesis_selection(brand_id, option_id)
+            if request.action == "custom" and custom_text:
+                replayed, keep_open = self._submit_card_custom_text(
+                    workflow_id,
+                    brand_id,
+                    content.action_id,
+                    "hypothesis",
+                    custom_text,
+                    submission_id,
+                    content.stage_revision,
+                )
+                if replayed:
+                    return self._accepted(workflow_id, interaction, submission_id)
+                if keep_open:
+                    revision = self._session_revision(workflow_id) or 1
+                    return GuidedInteractionAcceptedV1(
+                        workflow_id=workflow_id,
+                        interaction_id=interaction.interaction_id,
+                        submission_id=submission_id,
+                        receipt_id=f"receipt_{submission_id}",
+                        resulting_session_revision=revision,
+                        events_cursor=0,
+                    )
+            elif request.action != "select" or custom_text:
+                raise V2PersistenceError(
+                    "guided_interaction_action_not_allowed",
+                    "Choose a hypothesis option or provide a custom idea.",
+                )
+            else:
+                self._brand_service.apply_hypothesis_selection(brand_id, option_id)
         elif "adspec" in content.capability_id:
             self._brand_service.apply_adspec_selection(
                 brand_id,
@@ -109,19 +137,42 @@ class BrandGuidedInteractionSubmitter:
                 option_id=option_id or "recommended",
             )
         elif "treatment" in content.capability_id:
-            if request.action != "select" or custom_text:
+            if request.action == "custom" and custom_text:
+                replayed, keep_open = self._submit_card_custom_text(
+                    workflow_id,
+                    brand_id,
+                    content.action_id,
+                    "treatment",
+                    custom_text,
+                    submission_id,
+                    content.stage_revision,
+                )
+                if replayed:
+                    return self._accepted(workflow_id, interaction, submission_id)
+                if keep_open:
+                    revision = self._session_revision(workflow_id) or 1
+                    return GuidedInteractionAcceptedV1(
+                        workflow_id=workflow_id,
+                        interaction_id=interaction.interaction_id,
+                        submission_id=submission_id,
+                        receipt_id=f"receipt_{submission_id}",
+                        resulting_session_revision=revision,
+                        events_cursor=0,
+                    )
+            elif request.action != "select" or custom_text:
                 raise V2PersistenceError(
                     "guided_interaction_action_not_allowed",
-                    "Select a Treatment candidate first. Use the Treatment step editor to submit complete revised details before final confirmation.",
+                    "Choose a Treatment option or provide a custom idea.",
                 )
-            selected_label = custom_text or self._option_label(content, option_id)
-            self._brand_service.apply_treatment_selection(
-                brand_id,
-                card_id=action_id,
-                option_id=option_id,
-                selected_label=selected_label,
-                detail="",
-            )
+            else:
+                selected_label = self._option_label(content, option_id)
+                self._brand_service.apply_treatment_selection(
+                    brand_id,
+                    card_id=action_id,
+                    option_id=option_id,
+                    selected_label=selected_label,
+                    detail="",
+                )
         else:
             if request.action not in {"select", "custom", "delegate"}:
                 raise V2PersistenceError(
@@ -148,6 +199,147 @@ class BrandGuidedInteractionSubmitter:
             events_cursor=0,
         )
         return accepted
+
+    def _accepted(
+        self,
+        workflow_id: str,
+        interaction: GuidedInteractionV1,
+        submission_id: str,
+    ) -> GuidedInteractionAcceptedV1:
+        revision = self._session_revision(workflow_id) or 1
+        return GuidedInteractionAcceptedV1(
+            workflow_id=workflow_id,
+            interaction_id=interaction.interaction_id,
+            submission_id=submission_id,
+            receipt_id=f"receipt_{submission_id}",
+            resulting_session_revision=revision,
+            events_cursor=0,
+        )
+
+    def _submit_card_custom_text(
+        self,
+        workflow_id: str,
+        brand_id: str,
+        card_id: str,
+        stage: str,
+        custom_text: str,
+        submission_id: str,
+        stage_revision: int,
+    ) -> tuple[bool, bool]:
+        """Claim, generate, persist, and publish one card custom operation."""
+
+        digest = sha256(custom_text.encode("utf-8")).hexdigest()
+        claim = self._bridge.claim_card_generation(
+            workflow_id,
+            stage,  # type: ignore[arg-type]
+            stage_revision,
+            generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
+        )
+        if claim.role == "ready":
+            return True, False
+        if claim.role == "wait":
+            waited = self._bridge.wait_for_card_generation(claim)
+            if waited is not None:
+                return True, False
+            claim = self._bridge.claim_card_generation(
+                workflow_id,
+                stage,  # type: ignore[arg-type]
+                stage_revision,
+                generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
+            )
+            if claim.role == "ready":
+                return True, False
+            if claim.role != "owner":
+                raise V2PersistenceError(
+                    "brand_form_generation_in_progress",
+                    "Brand card generation is still in progress.",
+                )
+        card = self._brand_service._repository.get_open_card(brand_id)
+        if card is None or card.card_id != card_id or card.stage != stage:
+            self._bridge.release_card_generation(claim)
+            raise V2PersistenceError(
+                "brand_stage_action_mismatch",
+                "The submitted Brand card is not current.",
+            )
+        if card.stage_revision != stage_revision:
+            self._bridge.release_card_generation(claim)
+            raise V2PersistenceError(
+                "brand_context_stale",
+                "The Brand brief has changed. Refresh the current question.",
+            )
+        if len(card.options) >= 12:
+            self._bridge.release_card_generation(claim)
+            raise V2PersistenceError(
+                "brand_option_card_invalid",
+                "This Brand card already contains the maximum of twelve options.",
+            )
+        try:
+            intent, direction = self._brand_service._card_custom_text_intent(
+                brand_id, card, custom_text
+            )
+            if intent == "request_more_options":
+                if len(card.options) + 3 > 12:
+                    raise V2PersistenceError(
+                        "brand_option_card_invalid",
+                        "Adding three options would exceed the twelve-option card limit.",
+                    )
+                if stage == "hypothesis":
+                    candidates = self._brand_service.generate_hypothesis_custom_candidates(
+                        brand_id,
+                        card,
+                        custom_text=custom_text,
+                        direction=direction,
+                        count=3,
+                    )
+                    updated = self._brand_service.append_hypothesis_options(
+                        brand_id, card_id=card_id, candidates=candidates
+                    )
+                else:
+                    candidates = self._brand_service.generate_treatment_custom_candidates(
+                        brand_id,
+                        card,
+                        custom_text=custom_text,
+                        direction=direction,
+                        count=3,
+                    )
+                    updated = self._brand_service.append_treatment_options(
+                        brand_id, card_id=card_id, candidates=candidates
+                    )
+                self._bridge.publish_card_interaction(
+                    workflow_id,
+                    updated,
+                    self._brand_service._workflow_response_locale(brand_id),
+                )
+                self._bridge.publish_card_generation(claim, updated)
+                return False, True
+            if stage == "hypothesis":
+                candidate = self._brand_service.generate_hypothesis_custom_candidates(
+                    brand_id,
+                    card,
+                    custom_text=custom_text,
+                    direction=direction,
+                    count=1,
+                )[0]
+                updated = self._brand_service.apply_hypothesis_custom_candidate(
+                    brand_id, card_id=card_id, candidate=candidate
+                )
+            else:
+                candidate = self._brand_service.generate_treatment_custom_candidates(
+                    brand_id,
+                    card,
+                    custom_text=custom_text,
+                    direction=direction,
+                    count=1,
+                )[0]
+                updated = self._brand_service.apply_treatment_custom_candidate(
+                    brand_id, card_id=card_id, candidate=candidate
+                )
+            self._bridge.publish_card_generation(claim, updated)
+            self._bridge.close_current_interaction(workflow_id)
+            return False, False
+        except Exception:
+            self._bridge.release_card_generation(claim)
+            raise
 
     def _publish_more_options_form(
         self,

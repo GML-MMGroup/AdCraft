@@ -219,7 +219,12 @@ class AgentModelTraceStreamingChunkV1(_FrozenTraceModel):
             raise ValueError("acceptance_model_trace_invalid")
         if self.content is not None and has_tool_fragment:
             raise ValueError("acceptance_model_trace_invalid")
-        _validate_safe_trace_value(self.model_dump(mode="json"))
+        _validate_safe_trace_value(
+            self.model_dump(
+                mode="json",
+                exclude={"content", "tool_arguments_fragment"},
+            )
+        )
         return self
 
 
@@ -241,7 +246,22 @@ class AgentModelTraceStreamingResponseV1(_FrozenTraceModel):
         terminal_indexes = [index for index, chunk in enumerate(self.chunks) if chunk.finish_reason]
         if len(terminal_indexes) != 1 or terminal_indexes[0] != len(self.chunks) - 1:
             raise ValueError("acceptance_model_trace_invalid")
-        _validate_safe_trace_value(self.model_dump(mode="json"))
+        assembled_content = "".join(chunk.content or "" for chunk in self.chunks)
+        assembled_tool_arguments = "".join(
+            chunk.tool_arguments_fragment or "" for chunk in self.chunks
+        )
+        _validate_safe_trace_value(assembled_content)
+        _validate_safe_trace_value(assembled_tool_arguments)
+
+        safe_payload = self.model_dump(mode="json", exclude={"chunks"})
+        safe_payload["chunks"] = [
+            chunk.model_dump(
+                mode="json",
+                exclude={"content", "tool_arguments_fragment"},
+            )
+            for chunk in self.chunks
+        ]
+        _validate_safe_trace_value(safe_payload)
         return self
 
 

@@ -64,14 +64,29 @@ class BrandShortOptionV1(_BrandModel):
 
 
 class BrandOptionCardV1(_BrandModel):
-    """Exactly three short options for one slot question or sub-step."""
+    """Short options for one slot question or Brand hypothesis/Treatment card."""
 
     card_id: str = Field(min_length=1, max_length=120)
     stage: BrandStage
     stage_revision: int = Field(ge=1)
     target_slot_id: str | None = Field(default=None, max_length=80)
     question: str = Field(min_length=1, max_length=400)
-    options: tuple[BrandShortOptionV1, ...] = Field(min_length=3, max_length=3)
+    # Models always author exactly three options, so the published JSON schema
+    # stays 3..3. Only persisted hypothesis/Treatment cards grow (to 12) when
+    # the user asks for more options through the "Other" input.
+    options: tuple[BrandShortOptionV1, ...] = Field(
+        min_length=3,
+        max_length=12,
+        json_schema_extra={"maxItems": 3},
+    )
+
+    @model_validator(mode="after")
+    def validate_option_count(self) -> "BrandOptionCardV1":
+        if self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3:
+            raise ValueError(
+                "Brand slot, AdSpec, and Skill stack cards require exactly three options."
+            )
+        return self
 
 
 class BrandFormOptionV1(_BrandModel):
@@ -141,6 +156,13 @@ class BrandFormAnswerIntentV1(_BrandModel):
     intent: Literal["answer", "request_more_options"]
 
 
+class BrandCardCustomIntentV1(_BrandModel):
+    """Interpretation of custom text typed into a Brand hypothesis or Treatment card."""
+
+    intent: Literal["answer", "request_more_options"]
+    direction: str | None = Field(default=None, min_length=1, max_length=240)
+
+
 class BrandFormSubmitV1(_BrandModel):
     """Atomic confirmation payload for one foundation form."""
 
@@ -183,6 +205,7 @@ class BrandStrategyOutputV1(_BrandModel):
     question_card: BrandOptionCardV1 | None = None
     form_cards: tuple[BrandOptionCardV1, ...] = Field(default=(), max_length=32)
     form_answer_intents: tuple[BrandFormAnswerIntentV1, ...] = Field(default=(), max_length=32)
+    card_custom_intent: BrandCardCustomIntentV1 | None = None
     question_impact: BrandQuestionImpactV1 | None = None
 
 

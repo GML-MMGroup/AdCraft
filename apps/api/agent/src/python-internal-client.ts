@@ -54,6 +54,8 @@ interface PythonInternalClientOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
+const TRACE_REQUEST_TIMEOUT_MS = 30_000;
+
 export class PythonInternalClient {
   readonly #baseUrl: string;
   readonly #internalToken: string;
@@ -223,7 +225,10 @@ export class PythonInternalClient {
           "content-type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(5_000),
+        // Acceptance-only live recording rewrites the whole session bundle on
+        // each record, which grows to >10 MB over a journey. A short timeout
+        // turned a completed Provider response into a transport retry.
+        signal: AbortSignal.timeout(TRACE_REQUEST_TIMEOUT_MS),
       },
     );
     return boundedJson(response);

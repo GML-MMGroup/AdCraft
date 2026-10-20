@@ -3848,6 +3848,13 @@
       "additionalProperties": false,
       "description": "Explicit user-visible text emitted only through an approved channel.",
       "properties": {
+        "attempt": {
+          "default": 1,
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
         "channel": {
           "enum": [
             "assistant",
@@ -3900,6 +3907,28 @@
           ],
           "default": null,
           "title": "Response Locale"
+        },
+        "segment": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "reasoning"
+          ],
+          "title": "Segment",
+          "type": "string"
+        },
+        "stream_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stream Id"
         },
         "text": {
           "maxLength": 4096,
@@ -4721,6 +4750,19 @@
           ],
           "default": null,
           "title": "Presentation Channel"
+        },
+        "presentation_stream_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Presentation Stream Id"
         },
         "protocol_version": {
           "const": "1",
@@ -7591,6 +7633,39 @@
       "title": "BrandBriefSummaryV1",
       "type": "object"
     },
+    "BrandCardCustomIntentV1": {
+      "additionalProperties": false,
+      "description": "Interpretation of custom text typed into a Brand hypothesis or Treatment card.",
+      "properties": {
+        "direction": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "intent": {
+          "enum": [
+            "answer",
+            "request_more_options"
+          ],
+          "title": "Intent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent"
+      ],
+      "title": "BrandCardCustomIntentV1",
+      "type": "object"
+    },
     "BrandFormAnswerIntentV1": {
       "additionalProperties": false,
       "description": "Structured interpretation of one custom form answer.",
@@ -7873,7 +7948,7 @@
     },
     "BrandOptionCardV1": {
       "additionalProperties": false,
-      "description": "Exactly three short options for one slot question or sub-step.",
+      "description": "Short options for one slot question or Brand hypothesis/Treatment card.",
       "properties": {
         "card_id": {
           "maxLength": 120,
@@ -8504,6 +8579,17 @@
       "additionalProperties": false,
       "description": "Structured output of the brand-strategy capability.",
       "properties": {
+        "card_custom_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandCardCustomIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "clarifications": {
           "default": [],
           "items": {
@@ -17520,7 +17606,7 @@
           "items": {
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
-          "maxItems": 6,
+          "maxItems": 12,
           "minItems": 3,
           "title": "Options",
           "type": "array"
@@ -23946,6 +24032,15 @@
           "title": "Schema Version",
           "type": "integer"
         },
+        "segment": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "reasoning"
+          ],
+          "title": "Segment",
+          "type": "string"
+        },
         "sequence_no": {
           "minimum": 1,
           "title": "Sequence No",
@@ -24025,6 +24120,18 @@
           ],
           "default": null,
           "title": "Content Digest"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
         },
         "error_code": {
           "anyOf": [
@@ -24107,6 +24214,18 @@
           "title": "Stream Kind",
           "type": "string"
         },
+        "terminal_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal At"
+        },
         "turn_id": {
           "anyOf": [
             {
@@ -24156,7 +24275,9 @@
         },
         "reason": {
           "enum": [
+            "attempt_restarted",
             "cursor_expired",
+            "final_replaced",
             "store_recovered"
           ],
           "title": "Reason",
@@ -24575,6 +24696,49 @@
         "user_input"
       ],
       "title": "ProductExpertAgentContext",
+      "type": "object"
+    },
+    "ProductIdentityAuthorityProjectionV1": {
+      "additionalProperties": false,
+      "description": "Frozen identity authority projected from one Product Main node.",
+      "properties": {
+        "design_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Design Summary",
+          "type": "string"
+        },
+        "projection_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "subject_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Subject Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "design_summary",
+        "projection_digest",
+        "source_node_id",
+        "source_node_revision",
+        "subject_identity"
+      ],
+      "title": "ProductIdentityAuthorityProjectionV1",
       "type": "object"
     },
     "ProductMainRoleBriefV2": {
@@ -30090,6 +30254,17 @@
           "default": null,
           "title": "Occurrence Id"
         },
+        "product_identity_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProductIdentityAuthorityProjectionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "requirement_facts": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -30422,6 +30597,15 @@
           ],
           "default": null,
           "title": "Response Locale"
+        },
+        "segment": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "reasoning"
+          ],
+          "title": "Segment",
+          "type": "string"
         },
         "stream_id": {
           "maxLength": 160,

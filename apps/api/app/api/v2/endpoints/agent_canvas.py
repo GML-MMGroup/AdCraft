@@ -132,6 +132,10 @@ from app.schemas.agent_canvas import (
     ProjectCreateResponseV2,
     SaveImageToLibraryRequestV2,
 )
+from app.schemas.agent_canvas_presentation import (
+    PresentationStreamEventV1,
+    PresentationStreamListV1,
+)
 from app.schemas.agent_canvas_editing_output_reuse import (
     EditingExportOutputReuseRequestV2,
     EditingExportOutputReuseResponseV2,
@@ -212,7 +216,6 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRuntimeSnapshotV2,
 )
 from app.schemas.agent_canvas_post_ready_checkpoint import CanvasPostReadyCheckpointV2
-from app.schemas.agent_canvas_presentation import SafePresentationDeltaV1
 from app.schemas.agent_canvas_editing import (
     EditingExportAcceptedV2,
     EditingExportCancelResponseV2,
@@ -372,7 +375,10 @@ from app.services.agent_canvas_prompt_preparation import NodePromptPreparationSe
 from app.services.agent_canvas_prompt_preparation_worker import (
     AgentCanvasPromptPreparationWorker,
 )
-from app.services.agent_canvas_presentation import PresentationStreamPublisher
+from app.services.agent_canvas_presentation import (
+    PresentationStreamPublisher,
+    presentation_stream_id,
+)
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -557,6 +563,30 @@ class AgentCanvasRuntime:
     presentation_streams: PresentationStreamRepository
     presentation_publisher: PresentationStreamPublisher
     prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
+
+
+def _advance_storyboard_after_materialization(
+    delivery: object,
+    *,
+    owned_nodes: dict[str, set[str]],
+    advance_node: Callable[[str, str], object],
+    rescan_workflow: Callable[[str], object],
+) -> None:
+    """Advance Storyboard progression once a materialization continuation completes.
+
+    Prompt dispatches owned by a materialization record their node in
+    ``owned_nodes``. That set is process-local, and recovery workers each run
+    in their own runtime, so a dispatch that finished in another runtime is
+    never in this set. The journey then stopped at ``storyboard_grids``
+    (production, 2026-10-19). After the in-memory pass, rescan the durable
+    ready Storyboard Drafts; the progression is idempotent.
+    """
+
+    workflow_id = getattr(delivery, "workflow_id")
+    for node_id in tuple(owned_nodes.pop(workflow_id, set())):
+        advance_node(workflow_id, node_id)
+    if getattr(delivery, "operation", None) == "capability_materialization":
+        rescan_workflow(workflow_id)
 
 
 def _resume_prompt_preparation_barrier(
@@ -827,20 +857,8 @@ def create_agent_canvas_runtime(
             timeout_seconds=settings.agent_runtime_run_timeout_seconds,
             model_resolution=model_resolution,
             on_provider_waiting=conversation_repository.mark_turn_provider_waiting,
-            on_presentation=lambda event: presentation_publisher.publish_delta(
-                SafePresentationDeltaV1(
-                    stream_id=_presentation_stream_id(
-                        event.workflow_id, event.turn_id or event.generation_id
-                    ),
-                    workflow_id=event.workflow_id,
-                    stream_kind=event.channel,
-                    generation_id=event.generation_id,
-                    turn_id=event.turn_id,
-                    node_id=event.node_id,
-                    node_revision=event.node_revision,
-                    response_locale=event.response_locale,
-                    text=event.text,
-                )
+            on_presentation=lambda event, workflow_id: presentation_publisher.publish_runtime_delta(
+                workflow_id, event
             ),
         )
     )
@@ -863,10 +881,11 @@ def create_agent_canvas_runtime(
 
     prompt_preparation_service = NodePromptPreparationService(
         workflow_repository,
-        role_brief_author=lambda role_context, request_identity: (
+        role_brief_author=lambda role_context, request_identity, **presentation: (
             video_agent_gateway.author_role_brief(
                 role_context,
                 request_identity=request_identity,
+                **presentation,
             )
         ),
         asset_resolver=asset_service.resolve_asset,
@@ -1127,6 +1146,10 @@ def create_agent_canvas_runtime(
         asset_service,
         publication_intents=publication_intents,
     )
+    automatic_run_repository = AgentCanvasAutomaticRunRepository(
+        database,
+        event_repository,
+    )
     result_commit_repository = AgentCanvasResultCommitRepository(
         database,
         asset_repository,
@@ -1146,6 +1169,50 @@ def create_agent_canvas_runtime(
         result_committer,
         owner_id=f"agent-canvas-result-publication:{uuid4().hex}",
     )
+
+    def queue_scene_parent_derived_auto_run(node) -> tuple[str, ...]:
+        if (
+            node.status != "ready"
+            or execution_settings.get_or_create(node.workflow_id).media_execution_mode
+            != "automatic"
+        ):
+            return ()
+        workflow = workflow_repository.get_workflow(node.workflow_id)
+        parent_command = next(
+            (
+                command
+                for command in automatic_run_repository.list_for_workflow(node.workflow_id)
+                if command.node_id == node.node_id
+            ),
+            None,
+        )
+        source_action_id = (
+            parent_command.source_action_id
+            if parent_command is not None
+            else f"scene-parent-ready:{node.node_id}"
+        )
+        for binding in workflow.bindings:
+            if (
+                (binding.source.node_id if hasattr(binding.source, "node_id") else None)
+                != node.node_id
+                or not binding.enabled
+                or not binding.metadata.get("scene_pair")
+            ):
+                continue
+            target = next(
+                (item for item in workflow.nodes if item.node_id == binding.target_node_id),
+                None,
+            )
+            if target is None or target.status in {"ready", "working"}:
+                continue
+            automatic_run_repository.enqueue(
+                workflow_id=node.workflow_id,
+                source_action_id=source_action_id,
+                node_id=target.node_id,
+                now=datetime.now(timezone.utc),
+            )
+        return ()
+
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -1374,10 +1441,6 @@ def create_agent_canvas_runtime(
             capabilities=provider_capabilities,
         ),
     )
-    automatic_run_repository = AgentCanvasAutomaticRunRepository(
-        database,
-        event_repository,
-    )
     fanout_activation = StoryboardFanoutActivationService(
         brand_context_loader=BrandProductionHandoffService(database).production_context,
         workflows=workflow_repository,
@@ -1445,6 +1508,9 @@ def create_agent_canvas_runtime(
         )
 
     def handle_storyboard_progression(effect) -> CanvasPostReadyEffectDispositionV1:
+        queue_scene_parent_derived_auto_run(
+            workflow_repository.get_node(effect.workflow_id, effect.node_id)
+        )
         return guided_media_reviews.publish_from_effect(effect)
 
     post_ready_effects = AgentCanvasPostReadyEffectWorker(
@@ -1464,6 +1530,22 @@ def create_agent_canvas_runtime(
         start_or_extend=run_service.start_or_extend,
         resume_execution=scheduler.resume,
         worker_id=f"agent-canvas-auto-run:{uuid4().hex}",
+        terminal_failure_publisher=lambda workflow_id, node_id, error, command_id: (
+            workflow_repository.set_node_runtime_state(
+                workflow_id,
+                node_id,
+                status="failed",
+                updated_at=datetime.now(timezone.utc),
+                error=error,
+                execution_id=f"automatic-run:{command_id}",
+                event_type="node_failed",
+                event_payload={
+                    "code": error.code,
+                    "retryable": error.retryable,
+                    "automatic_run_command_id": command_id,
+                },
+            )
+        ),
     )
     command_repository = AgentCanvasCommandRepository(
         database,
@@ -1825,11 +1907,12 @@ def create_agent_canvas_runtime(
     materialization_owned_nodes: dict[str, set[str]] = {}
 
     def advance_completed_storyboard_prompts(delivery):
-        for node_id in tuple(materialization_owned_nodes.pop(delivery.workflow_id, set())):
-            storyboard_progression.advance_after_prompt_ready(
-                delivery.workflow_id,
-                node_id,
-            )
+        _advance_storyboard_after_materialization(
+            delivery,
+            owned_nodes=materialization_owned_nodes,
+            advance_node=storyboard_progression.advance_after_prompt_ready,
+            rescan_workflow=resume_storyboard_progression,
+        )
 
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
@@ -2988,7 +3071,7 @@ def submit_chat_message(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    stream_id = _presentation_stream_id(workflow_id, accepted.turn_id)
+    stream_id = presentation_stream_id(workflow_id, accepted.turn_id)
     stream = runtime.presentation_publisher.create_assistant_stream(
         workflow_id=workflow_id,
         turn_id=accepted.turn_id,
@@ -3268,9 +3351,15 @@ def submit_guided_interaction(
         # background work; it must not wait for another chat message and it is
         # intentionally independent of the Agent continuation outbox.
         background_tasks.add_task(
-            _publish_next_brand_interaction_after_form_submit,
-            runtime,
-            workflow_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.BRAND_INTERACTION_PUBLISH,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.INTERACTION,
+                resource_id=interaction_id,
+                callback=_publish_next_brand_interaction_after_form_submit,
+                args=(runtime, workflow_id),
+            ),
         )
     elif is_brand_concept_selection and not accepted.replayed:
         # Brand Professional cards own a separate deterministic journey.  The
@@ -3278,9 +3367,15 @@ def submit_guided_interaction(
         # journey, so selecting a Brand hypothesis, AdSpec, skill, or
         # Treatment option must publish the next Brand card directly.
         background_tasks.add_task(
-            _publish_next_brand_interaction_after_form_submit,
-            runtime,
-            workflow_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.BRAND_INTERACTION_PUBLISH,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.INTERACTION,
+                resource_id=interaction_id,
+                callback=_publish_next_brand_interaction_after_form_submit,
+                args=(runtime, workflow_id),
+            ),
         )
     elif not accepted.replayed:
         background_tasks.add_task(
@@ -3815,6 +3910,25 @@ def stream_canvas_runtime_events(
 
 
 @router.get(
+    "/workflows/{workflow_id}/presentation/streams",
+    response_model=PresentationStreamListV1,
+)
+def list_agent_presentation_streams(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> PresentationStreamListV1:
+    """List recent workflow-owned presentation streams for timeline placement."""
+
+    try:
+        runtime.workflows.get_workflow(workflow_id)
+        streams = runtime.presentation_streams.list_recent(workflow_id, limit)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return PresentationStreamListV1(streams=streams)
+
+
+@router.get(
     "/workflows/{workflow_id}/presentation/streams/{stream_id}",
     response_class=StreamingResponse,
     responses={
@@ -3831,6 +3945,7 @@ def stream_agent_presentation(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     after_seq: Annotated[int | None, Query(ge=0)] = None,
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    segments: Annotated[bool, Query()] = False,
 ) -> StreamingResponse:
     """Replay one bounded workflow-owned presentation stream over SSE."""
 
@@ -3851,10 +3966,17 @@ def stream_agent_presentation(
         while True:
             for event in pending:
                 cursor = event.sequence_no
+                payload = (
+                    event.model_dump(mode="json")
+                    if segments
+                    else legacy_presentation_event_payload(event)
+                )
+                if payload is None:
+                    continue
                 yield (
                     f"id: {event.sequence_no}\n"
                     f"event: {event.event_type}\n"
-                    f"data: {event.model_dump_json()}\n\n"
+                    f"data: {json.dumps(payload, separators=(',', ':'), ensure_ascii=False)}\n\n"
                 )
             current = runtime.presentation_streams.get(workflow_id, stream_id)
             if current.status != "open":
@@ -3877,6 +3999,21 @@ def stream_agent_presentation(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def legacy_presentation_event_payload(
+    event: PresentationStreamEventV1,
+) -> dict[str, object] | None:
+    """Project one stored presentation event for clients without segment support."""
+
+    if event.event_type == "delta" and event.segment == "reasoning":
+        return None
+    payload = event.model_dump(mode="json")
+    payload.pop("segment", None)
+    reset = payload.get("reset")
+    if isinstance(reset, dict) and reset.get("reason") in {"attempt_restarted", "final_replaced"}:
+        reset["reason"] = "store_recovered"
+    return payload
 
 
 def _presentation_cursor(last_event_id: str | None, after_seq: int | None) -> int:
@@ -3959,7 +4096,7 @@ def _process_agent_turn_and_resume(
     turn_id: str,
 ) -> None:
     turn = runtime.conversations.process_turn(turn_id)
-    stream_id = _presentation_stream_id(workflow_id, turn_id)
+    stream_id = presentation_stream_id(workflow_id, turn_id)
     try:
         presentation_streams = getattr(runtime, "presentation_streams", None)
         presentation_publisher = getattr(runtime, "presentation_publisher", None)
@@ -3971,7 +4108,17 @@ def _process_agent_turn_and_resume(
         if stream is not None and turn.status == "completed":
             persisted_result = _persisted_assistant_result(runtime, workflow_id, turn_id)
             authoritative_id, message = persisted_result or (turn.turn_id, "")
-            presentation_publisher.publish_validated_text(stream, message)
+            if persisted_result is not None:
+                streamed_answer = presentation_publisher.answer_text(stream.stream_id)
+                if not streamed_answer:
+                    presentation_publisher.publish_validated_text(stream, message)
+                elif streamed_answer != message:
+                    presentation_publisher.reset(
+                        stream,
+                        reason="final_replaced",
+                        event_key="reset:final_replaced",
+                    )
+                    presentation_publisher.publish_validated_text(stream, message)
             presentation_publisher.commit(
                 stream,
                 authoritative_id=authoritative_id,
@@ -3990,6 +4137,7 @@ def _process_agent_turn_and_resume(
 def _publish_next_brand_interaction_after_form_submit(
     runtime: AgentCanvasRuntime,
     workflow_id: str,
+    submission_id: str | None = None,
 ) -> None:
     """Continue the Brand journey after an atomic foundation-form commit.
 
@@ -3998,18 +4146,28 @@ def _publish_next_brand_interaction_after_form_submit(
     continuation outbox (which is reserved for Agent turns).  The Brand
     endpoint owns the deterministic next-stage projection and is idempotent:
     if the client refreshes or requests it concurrently, the existing open
-    interaction is reused.
+    interaction is reused.  A publication error is recorded in the chat
+    timeline so the committed Brand action remains visibly retryable.
     """
 
     from app.api.v2.endpoints.brand_mode import post_next_question
 
     try:
         post_next_question(workflow_id, runtime.database)
-    except Exception:  # noqa: BLE001 - the committed form remains recoverable via next-question.
+    except Exception as error:  # noqa: BLE001 - the committed form remains recoverable via next-question.
         logger.exception(
             "Brand foundation form committed but next interaction publication failed "
             "workflow_id=%s",
             workflow_id,
+        )
+        failure_code = getattr(error, "code", None)
+        if not isinstance(failure_code, str) or not failure_code:
+            failure_code = "brand_interaction_publication_failed"
+        runtime.conversation_repository.record_brand_interaction_publication_failure(
+            workflow_id,
+            failure_id=submission_id or f"workflow:{workflow_id}",
+            error_code=failure_code,
+            retryable=True,
         )
 
 
@@ -4027,13 +4185,6 @@ def _persisted_assistant_result(
         ):
             return entry.entry_id, entry.content
     return None
-
-
-def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
-    """Derive a stable opaque identity without exposing request content."""
-
-    digest = sha256(f"assistant:{workflow_id}:{generation_id}".encode("utf-8")).hexdigest()[:32]
-    return f"prs_{digest}"
 
 
 def _persist_text_document(
@@ -4057,6 +4208,12 @@ def _persist_text_document(
         ).hexdigest(),
         node_revision=node.revision,
     )
+
+
+def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
+    """Compatibility alias for the shared presentation identity helper."""
+
+    return presentation_stream_id(workflow_id, generation_id)
 
 
 def _expected_revision(value: str | None, workflow_id: str) -> int:

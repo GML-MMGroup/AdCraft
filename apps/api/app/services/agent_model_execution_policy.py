@@ -105,7 +105,7 @@ def resolve_agent_model_execution_policy(
     )
     reasoning_effort = None
     if reasoning_control == "reasoning_effort":
-        reasoning_effort = "low" if operation_policy.reasoning_mode == "low" else "medium"
+        reasoning_effort = "minimal" if operation_policy.reasoning_mode == "low" else "medium"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,

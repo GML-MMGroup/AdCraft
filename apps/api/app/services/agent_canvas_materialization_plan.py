@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from hashlib import sha256
 import logging
 from typing import Any
@@ -43,10 +44,16 @@ class CapabilityMaterializationPlanCompiler:
         self,
         envelope: ProposalApplicationEnvelopeV1,
         normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
+        *,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None = None,
     ) -> CapabilityDraftBundleV1:
         """Compile the canonical draft bundle used to prepare authority documents."""
 
-        return CapabilityDraftBundleBuilder().build(envelope, normalization)
+        return CapabilityDraftBundleBuilder().build(
+            envelope,
+            normalization,
+            reference_nodes=reference_nodes,
+        )
 
     def compile(
         self,
@@ -57,8 +64,13 @@ class CapabilityMaterializationPlanCompiler:
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
         prompt_context: StageAuthoringContextV1 | None = None,
         reference_source_admission: bool = False,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None = None,
     ) -> MaterializationPlanV1:
-        bundle = self.compile_draft_bundle(envelope, normalization)
+        bundle = self.compile_draft_bundle(
+            envelope,
+            normalization,
+            reference_nodes=reference_nodes,
+        )
         nodes = bundle.nodes
         bindings = bundle.bindings
         preparations = tuple(

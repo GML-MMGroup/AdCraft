@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from hashlib import sha256
 from collections.abc import Mapping
-from typing import cast
+from typing import Literal, cast
 from uuid import uuid4
 
 from pydantic import JsonValue
@@ -67,7 +67,10 @@ from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
     detached_context_payload,
 )
-from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
+from app.schemas.agent_canvas_prompt_assertion import (
+    PromptAssertionEvidenceV1,
+    safe_prompt_assertion_metadata,
+)
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
     EditingNodeContentV2,
@@ -1151,6 +1154,125 @@ class AgentCanvasWorkflowRepository:
         restored = self.get_node(node.workflow_id, node.node_id)
         return restored if replayed else restored
 
+    def refresh_ready_prompt_references(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+        assertion_evidence: PromptAssertionEvidenceV1,
+        binding_digest: str | None,
+        prepared_reference_snapshots: list[dict[str, object]],
+    ) -> CanvasNodeV2:
+        """Refresh a READY prompt's reference evidence without re-authoring it.
+
+        User rule (2026-10-19): once a node's text prompt is ready, automatic
+        paths never regenerate, supersede, or clear it. When only upstream
+        references changed, the prompt text, status, and outputs stay; only
+        the reference evidence, binding digest, and reference snapshots move
+        to the current sources.
+        """
+
+        now = _utc_now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _node_not_found_error()
+                    current = _node_from_row(row)
+                    if current.prompt_preparation.operation_id != operation_id:
+                        raise _prompt_preparation_conflict()
+                    if current.prompt_preparation.status != "ready":
+                        connection.commit()
+                        return current
+                    refreshed = current.model_copy(
+                        update={
+                            "revision": current.revision + 1,
+                            "updated_at": datetime.fromisoformat(now),
+                            "prompt_preparation": current.prompt_preparation.model_copy(
+                                update={
+                                    "assertion_evidence": assertion_evidence,
+                                    "binding_digest": binding_digest,
+                                    "updated_at": datetime.fromisoformat(now),
+                                }
+                            ),
+                            "metadata": {
+                                **current.metadata,
+                                **safe_prompt_assertion_metadata(assertion_evidence),
+                                "prepared_reference_snapshots": prepared_reference_snapshots,
+                            },
+                        }
+                    )
+                    values = _node_values(refreshed)
+                    values.pop("node_id")
+                    values.pop("workflow_id")
+                    updated = connection.execute(
+                        update(AgentCanvasNodeRow)
+                        .where(
+                            AgentCanvasNodeRow.workflow_id == workflow_id,
+                            AgentCanvasNodeRow.node_id == node_id,
+                            AgentCanvasNodeRow.revision == current.revision,
+                        )
+                        .values(**values)
+                    )
+                    if updated.rowcount != 1:
+                        raise _prompt_preparation_conflict()
+                    self._prompt_dispatch.refresh_completed_references_in_transaction(
+                        connection,
+                        node=refreshed,
+                        binding_digest=binding_digest,
+                        now=datetime.fromisoformat(now),
+                    )
+                    current_workflow_revision = int(
+                        connection.execute(
+                            select(AgentCanvasWorkflowRow.revision).where(
+                                AgentCanvasWorkflowRow.workflow_id == workflow_id
+                            )
+                        ).scalar_one()
+                    )
+                    _advance_workflow_revision(
+                        connection,
+                        workflow_id=workflow_id,
+                        current_revision=current_workflow_revision,
+                        updated_at=now,
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            node_id=node_id,
+                            event_type="node_prompt_references_refreshed",
+                            created_at=now,
+                            payload={
+                                "node_revision": refreshed.revision,
+                                "workflow_revision": current_workflow_revision + 1,
+                                "operation_id": operation_id,
+                                "binding_digest": binding_digest,
+                                **safe_prompt_assertion_metadata(assertion_evidence),
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return refreshed
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+
     def invalidate_prompt_preparation_for_dependency_change(
         self,
         workflow_id: str,
@@ -1777,6 +1899,7 @@ class AgentCanvasWorkflowRepository:
                             workflow_id,
                             requirement_revision.ledger,
                             now,
+                            events=self._events,
                         )
                         self._events.append_in_transaction(
                             connection,
@@ -2892,6 +3015,7 @@ def _invalidate_target_prompt_preparation(
     updated_at: str,
     expected_operation_id: str | None = None,
     supersession_reason: str = "dependency_or_binding_revision_changed",
+    regeneration: Literal["automatic", "user_requested"] = "automatic",
 ) -> CanvasNodeV2 | None:
     row = (
         connection.execute(
@@ -2929,6 +3053,23 @@ def _invalidate_target_prompt_preparation(
     if node.status not in {"draft", "failed", "ready", "working"}:
         return None
     if node.prompt_preparation.status == "not_applicable":
+        return None
+    prompt_failed_node = (
+        node.status == "failed"
+        and node.error is not None
+        and node.error.code.startswith("node_prompt_")
+    )
+    if (
+        regeneration == "automatic"
+        and node.prompt_preparation.status == "ready"
+        and not prompt_failed_node
+    ):
+        # User rule (2026-10-19): a READY text prompt is never re-authored,
+        # superseded, or cleared by an automatic trigger (upstream media,
+        # binding or dependency changes, recovery). Reference evidence is
+        # refreshed in place by the prompt-preparation service when it is
+        # next checked; the prompt, status, and outputs stay untouched. A Node
+        # that failed because its own prompt became unusable still recovers.
         return None
     bindings = _load_target_bindings(connection, workflow_id, target_node_id)
     frozen_context: dict[str, object] = {}

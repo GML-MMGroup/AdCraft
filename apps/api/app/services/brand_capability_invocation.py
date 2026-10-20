@@ -7,7 +7,7 @@ anything is persisted, and appends the decision log in the same transaction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 from hashlib import sha256
@@ -47,6 +47,7 @@ from app.schemas.brand_professional_mode import (
     SlotProvenance,
     SkillStackV1,
     TreatmentStepResultV1,
+    TreatmentCandidateV1,
 )
 from app.persistence.models import BrandDecisionLogRow, BrandOptionCardRow
 from app.schemas.brand_treatment_generation import treatment_output_model
@@ -79,9 +80,15 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
+    StructuredPresentationTargetV1,
 )
+from app.persistence.agent_canvas_presentation_repository import PresentationStreamRepository
+from app.services.agent_canvas_presentation import PresentationStreamPublisher
+import logging
 
 _LogAction = Literal["select", "reject", "fusion", "recommend", "edit", "confirm", "lock"]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -169,6 +176,14 @@ _ADSPEC_LABELS: dict[str, dict[str, str]] = {
     },
 }
 
+_CUSTOM_CARD_ANSWER_MODE_INSTRUCTION = (
+    " Answer mode: the user wrote their own idea in `user_requirements`. Every concrete instruction "
+    "in it is mandatory for every candidate — including order of shots or events, what opens the "
+    "step, which subject appears first, tone, and anything to include or avoid. Implement each one "
+    "literally; never reorder, drop, soften, or substitute them. The three candidates may differ "
+    "only in details the user left unspecified. Keep the user's wording as the core of the label."
+)
+
 
 def _adspec_labels(response_locale: str) -> dict[str, str]:
     """Return the AdSpec label table for one response locale."""
@@ -201,6 +216,75 @@ class BrandCapabilityInvocationService:
             creative_method_seed_dir(),
         )
         self._video_skills = VideoSkillRegistry()
+        self._presentation_publisher = PresentationStreamPublisher(
+            PresentationStreamRepository(database)
+        )
+
+    def _run_with_presentation(
+        self,
+        spec: StructuredGenerationSpec,
+        *,
+        brand_id: str,
+        stage: str,
+        stage_revision: int,
+        substep_or_slot: str,
+    ):
+        workflow_id = self._repository.workflow_id_for_brand(brand_id)
+        if workflow_id is None:
+            return self._runtime.run(spec), None
+        generation_id = f"brand-gen:{brand_id}:{stage}:{stage_revision}:{substep_or_slot}"
+        attempt = uuid4().hex
+        idempotency_key = f"{generation_id}:{attempt}"
+        stream_id = f"prs_{sha256(idempotency_key.encode('utf-8')).hexdigest()[:32]}"
+        stream = self._presentation_publisher.create_assistant_stream(
+            workflow_id=workflow_id,
+            turn_id=generation_id,
+            generation_id=generation_id,
+            stream_id=stream_id,
+            idempotency_key=idempotency_key,
+        )
+        if stream is not None:
+            self._presentation_publisher.started(stream)
+        targeted = replace(
+            spec,
+            presentation=StructuredPresentationTargetV1(
+                workflow_id=workflow_id,
+                stream_id=stream.stream_id if stream is not None else stream_id,
+            ),
+        )
+        try:
+            result = self._runtime.run(targeted)
+        except Exception as error:
+            if stream is not None:
+                try:
+                    self._presentation_publisher.fail(
+                        stream,
+                        str(getattr(error, "code", None) or "brand_generation_failed"),
+                    )
+                except Exception as presentation_error:  # noqa: BLE001
+                    logger.warning(
+                        "Brand presentation failure handling failed: %s", presentation_error
+                    )
+            raise
+        return result, stream
+
+    def _finish_presentation(
+        self,
+        stream,
+        *,
+        authoritative_id: str,
+        content: str = "",
+    ) -> None:
+        if stream is None:
+            return
+        try:
+            self._presentation_publisher.commit(
+                stream,
+                authoritative_id=authoritative_id,
+                content=content,
+            )
+        except Exception as error:  # noqa: BLE001 - presentation is best effort
+            logger.warning("Brand presentation completion failed: %s", error)
 
     def _workflow_response_locale(self, brand_id: str) -> str:
         """Resolve the conversation response locale for one brand's workflow."""
@@ -311,7 +395,16 @@ class BrandCapabilityInvocationService:
                 trace_metadata={"workflow_id": product_context.workflow_id},
                 quality_validator=lambda out: _validate_strategy(out, stage),
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage=stage,
+                stage_revision=journey.stage_revision,
+                substep_or_slot="question",
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         card = output.question_card
         slot_values = validate_question_output(
             output,
@@ -371,6 +464,13 @@ class BrandCapabilityInvocationService:
                 },
                 now=now,
             )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=card.card_id
+            if card is not None
+            else f"brand-gen:{brand_id}:{stage}:{journey.stage_revision}:question",
+            content=card.question if card is not None else "",
+        )
         return card
 
     def run_slot_form(
@@ -484,7 +584,16 @@ class BrandCapabilityInvocationService:
                     ),
                 )
 
-            output = self._runtime.run(build_spec()).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                build_spec(),
+                brand_id=brand_id,
+                stage=stage,
+                stage_revision=journey.stage_revision,
+                substep_or_slot=(round_id or "initial"),
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         cards = tuple(output.form_cards)
         by_slot = {card.target_slot_id: card for card in cards}
         try:
@@ -550,7 +659,7 @@ class BrandCapabilityInvocationService:
                 if requested_slot_ids is None
                 else "Compare the existing and new options, then choose one option for every row. Select Other (custom) to request more options or enter your own answer."
             )
-        return BrandFormV1(
+        form = BrandFormV1(
             form_id=f"brand_form_{brand_id}_{stage}_{journey.stage_revision}_{suffix}",
             stage=stage,
             revision=journey.stage_revision,
@@ -560,6 +669,12 @@ class BrandCapabilityInvocationService:
             instructions=instructions,
             rows=rows,
         )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=form.form_id,
+            content="\n".join(row.prompt for row in form.rows),
+        )
+        return form
 
     @staticmethod
     def _merge_form_options(
@@ -763,7 +878,18 @@ class BrandCapabilityInvocationService:
                 trace_metadata={"workflow_id": context.workflow_id},
                 operation="brand_slot_form",
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage=form.stage,
+                stage_revision=form.revision,
+                substep_or_slot="answer-intent",
+            )
+            output = runtime_result.output
+            self._finish_presentation(
+                presentation_stream,
+                authoritative_id=f"brand-form-intent:{form.form_id}",
+            )
             for item in output.form_answer_intents:
                 if item.question_id in {answer.question_id for answer in custom_answers}:
                     intents[item.question_id] = item.intent
@@ -772,6 +898,211 @@ class BrandCapabilityInvocationService:
             # answer path; it must not make form confirmation unavailable.
             pass
         return intents
+
+    def _card_custom_text_intent(
+        self,
+        brand_id: str,
+        card: BrandOptionCardV1,
+        custom_text: str,
+    ) -> tuple[Literal["answer", "request_more_options"], str | None]:
+        """Classify one card custom value, preserving answer fallback semantics.
+
+        Obvious requests for alternatives never depend on a model call, so a
+        classifier outage cannot turn "再来几个方案" into an applied idea.
+        """
+
+        if obvious_more_options_request(custom_text):
+            return "request_more_options", custom_text.strip()[:240]
+        context = BrandQuestionState(self._database).context.read(brand_id)
+        try:
+            # ``brand_slot_form`` validates against ``BrandStrategyOutputV1``,
+            # so the interpretation travels in its optional
+            # ``card_custom_intent`` field, like ``form_answer_intents``.
+            spec = StructuredGenerationSpec[BrandStrategyOutputV1](
+                stage_name="brand_card_custom_text_intent",
+                contract_name="BrandStrategyOutputV1",
+                model_id=self._settings.llm_creative_model,
+                system_prompt=(
+                    _BRAND_STRATEGY_PROMPT
+                    + " Analyze the supplied custom text typed into this Brand card. Return only "
+                    + "card_custom_intent and leave every other field empty. Use intent=answer for the "
+                    + "user's own idea, and request_more_options only when they ask for alternatives or a "
+                    + "changed direction. Put a short direction in direction when present. Do not "
+                    + "generate options or change any slot value."
+                ),
+                input_payload={
+                    "product_context": context.payload,
+                    "answer_analysis_mode": True,
+                    "card": card.model_dump(mode="json"),
+                    "custom_text": custom_text,
+                    "response_locale": self._workflow_response_locale(brand_id),
+                },
+                output_model=BrandStrategyOutputV1,
+                trace_metadata={"workflow_id": context.workflow_id},
+                operation="brand_slot_form",
+            )
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage=card.stage,
+                stage_revision=card.stage_revision,
+                substep_or_slot="custom-intent",
+            )
+            self._finish_presentation(
+                presentation_stream,
+                authoritative_id=f"brand-card-custom-intent:{card.card_id}",
+            )
+            interpretation = runtime_result.output.card_custom_intent
+            if interpretation is None:
+                return "answer", None
+            return interpretation.intent, interpretation.direction
+        except Exception:  # noqa: BLE001 - classifier failure falls back to answer
+            return "answer", None
+
+    def generate_hypothesis_custom_candidates(
+        self,
+        brand_id: str,
+        card: BrandOptionCardV1,
+        *,
+        custom_text: str,
+        direction: str | None,
+        count: Literal[1, 3],
+    ) -> tuple[CreativeHypothesisCandidateV1, ...]:
+        """Generate faithful hypothesis candidates for a card custom operation."""
+
+        context = BrandQuestionContextService(self._database).read(brand_id)
+        existing_options = [{"label": option.label, "why": option.why} for option in card.options]
+        spec = StructuredGenerationSpec[CreativeStrategyOutputV1](
+            stage_name="brand_hypothesis_custom",
+            contract_name="CreativeStrategyOutputV1",
+            model_id=self._settings.llm_creative_model,
+            system_prompt=(
+                _CREATIVE_STRATEGY_PROMPT
+                + " Always return exactly three candidates."
+                + _CUSTOM_CARD_ANSWER_MODE_INSTRUCTION
+                + " In request_more_options mode do not repeat or "
+                + "paraphrase existing options and use the supplied direction as guidance."
+            ),
+            input_payload={
+                "product_context": context.payload,
+                "response_locale": self._workflow_response_locale(brand_id),
+                "custom_text_mode": "answer" if count == 1 else "request_more_options",
+                **(
+                    {"user_requirements": custom_text}
+                    if count == 1
+                    else {"direction": direction, "existing_options": existing_options}
+                ),
+            },
+            # The ``brand_hypothesis`` contract requires exactly three candidates.
+            output_model=CreativeStrategyOutputV1,
+            trace_metadata={"workflow_id": context.workflow_id},
+            operation="brand_hypothesis",
+        )
+        runtime_result, presentation_stream = self._run_with_presentation(
+            spec,
+            brand_id=brand_id,
+            stage="hypothesis",
+            stage_revision=card.stage_revision,
+            substep_or_slot="user-idea" if count == 1 else "more-options",
+        )
+        output = runtime_result.output
+        candidates = tuple(output.candidates)
+        if len(candidates) < count:
+            raise _card_invalid("Generated hypothesis options did not match the requested count.")
+        candidates = candidates[:count]
+        digest = sha256(
+            f"{card.card_id}:{len(card.options)}:{custom_text}".encode("utf-8")
+        ).hexdigest()[:16]
+        normalized = tuple(
+            candidate.model_copy(
+                update={
+                    "candidate_id": f"custom_{digest}_{index}",
+                }
+            )
+            for index, candidate in enumerate(candidates, start=1)
+        )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=f"brand-hypothesis-custom:{card.card_id}:{digest}",
+            content="\n".join(candidate.label for candidate in normalized),
+        )
+        return normalized
+
+    def generate_treatment_custom_candidates(
+        self,
+        brand_id: str,
+        card: BrandOptionCardV1,
+        *,
+        custom_text: str,
+        direction: str | None,
+        count: Literal[1, 3],
+    ) -> tuple[TreatmentCandidateV1, ...]:
+        """Generate and validate structured Treatment candidates for a card."""
+
+        step_key = cast_step(card.target_slot_id)
+        context = BrandQuestionContextService(self._database).read(brand_id)
+        spec = StructuredGenerationSpec(
+            stage_name="brand_treatment_custom",
+            contract_name="CreativeTreatmentOutputV1",
+            model_id=self._settings.llm_creative_model,
+            system_prompt=(
+                _CREATIVE_TREATMENT_PROMPT
+                + " Always return exactly three options for the current step."
+                + _CUSTOM_CARD_ANSWER_MODE_INSTRUCTION
+                + " In request_more_options mode do "
+                + "not repeat or paraphrase existing options and follow the supplied direction."
+            ),
+            input_payload={
+                "product_context": context.payload,
+                **BrandSkillStackService(self._database).treatment_context(brand_id, step_key),
+                "substep": step_key,
+                "response_locale": self._workflow_response_locale(brand_id),
+                "custom_text_mode": "answer" if count == 1 else "request_more_options",
+                **(
+                    {
+                        "user_requirements": custom_text,
+                        "user_requirements_scope": "This Treatment step only",
+                    }
+                    if count == 1
+                    else {
+                        "direction": direction,
+                        "existing_options": [
+                            {"label": option.label, "why": option.why} for option in card.options
+                        ],
+                    }
+                ),
+            },
+            # The ``brand_treatment_step`` contract publishes three options.
+            output_model=treatment_output_model(step_key),
+            trace_metadata={"workflow_id": context.workflow_id},
+            operation="brand_treatment_step",
+        )
+        runtime_result, presentation_stream = self._run_with_presentation(
+            spec,
+            brand_id=brand_id,
+            stage="treatment",
+            stage_revision=card.stage_revision,
+            substep_or_slot="user-idea" if count == 1 else "more-options",
+        )
+        output = runtime_result.output
+        if output.step.step_key != step_key or len(output.step.options) < count:
+            raise _card_invalid("Generated Treatment options did not match the current step.")
+        selected_options = tuple(output.step.options[:count])
+        for candidate in selected_options:
+            candidate.detail.validate_step(step_key)
+        digest = sha256(
+            f"{card.card_id}:{len(card.options)}:{custom_text}".encode("utf-8")
+        ).hexdigest()[:16]
+        normalized = tuple(
+            candidate.model_copy(update={"option_id": f"custom_{digest}_{index}"})
+            for index, candidate in enumerate(selected_options, start=1)
+        )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=f"brand-treatment-custom:{card.card_id}:{digest}",
+            content="\n".join(candidate.label for candidate in normalized),
+        )
+        return normalized
 
     def _namespace_colliding_card_id(
         self,
@@ -933,7 +1264,16 @@ class BrandCapabilityInvocationService:
                 output_model=CreativeStrategyOutputV1,
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage="hypothesis",
+                stage_revision=journey.stage_revision,
+                substep_or_slot="candidates",
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
             state = BrandQuestionState(self._database)
@@ -952,6 +1292,11 @@ class BrandCapabilityInvocationService:
                 detail={"count": len(output.candidates)},
                 now=now,
             )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=f"brand-hypothesis:{brand_id}:{journey.stage_revision}",
+            content="\n".join(item.label for item in output.candidates),
+        )
         return output.candidates
 
     def apply_hypothesis_selection(self, brand_id: str, hypothesis_id: str) -> None:
@@ -974,6 +1319,143 @@ class BrandCapabilityInvocationService:
             self._repository.save_journey_in_transaction(
                 connection, brand_id, advance_brand_stage(journey)
             )
+
+    @staticmethod
+    def _merge_card_options(
+        card: BrandOptionCardV1,
+        additions: tuple[BrandShortOptionV1, ...],
+    ) -> tuple[BrandShortOptionV1, ...]:
+        """Append distinct labels while preserving existing order and IDs."""
+
+        merged = list(card.options)
+        labels = {option.label.strip().casefold() for option in merged}
+        option_ids = {option.option_id for option in merged}
+        for option in additions:
+            label_key = option.label.strip().casefold()
+            if label_key in labels:
+                continue
+            option_id = option.option_id
+            if option_id in option_ids:
+                option_id = (
+                    f"more_{sha256(f'{card.card_id}:{option.label}'.encode()).hexdigest()[:16]}"
+                )
+            while option_id in option_ids:
+                option_id = f"more_{uuid4().hex[:16]}"
+            merged.append(option.model_copy(update={"option_id": option_id}))
+            labels.add(label_key)
+            option_ids.add(option_id)
+        return tuple(merged)
+
+    def apply_hypothesis_custom_candidate(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        candidate: CreativeHypothesisCandidateV1,
+    ) -> BrandOptionCardV1:
+        """Append one hypothesis candidate and select it atomically."""
+
+        now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        observed = self._repository.get_journey(brand_id)
+        if observed is None or observed.stage != "hypothesis":
+            raise _stage_mismatch()
+        with self._database.engine.begin() as connection:
+            state.claim(connection, brand_id, observed.stage_revision)
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "hypothesis":
+                raise _stage_mismatch()
+            if not state.card_is_current(connection, brand_id, card):
+                raise stale_context()
+            additions = (
+                BrandShortOptionV1(
+                    option_id=candidate.candidate_id,
+                    label=candidate.label,
+                    why=candidate.why,
+                ),
+            )
+            merged = self._merge_card_options(card, additions)
+            if len(merged) > 12:
+                raise _card_invalid("A Brand card can contain at most twelve options.")
+            updated_card = card.model_copy(update={"options": merged})
+            self._repository.append_hypotheses_in_transaction(connection, brand_id, (candidate,))
+            self._repository.save_option_card_in_transaction(connection, brand_id, updated_card)
+            self._repository.select_hypothesis_in_transaction(
+                connection, brand_id, candidate.candidate_id
+            )
+            self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="hypothesis",
+                action="select",
+                target_type="hypothesis",
+                target_id=candidate.candidate_id,
+                detail={"card_id": card_id, "custom": True},
+                now=now,
+            )
+            self._repository.save_journey_in_transaction(
+                connection, brand_id, advance_brand_stage(observed)
+            )
+            return updated_card
+
+    def append_hypothesis_options(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        candidates: tuple[CreativeHypothesisCandidateV1, ...],
+    ) -> BrandOptionCardV1:
+        """Append generated hypothesis choices while leaving the card open."""
+
+        now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        with self._database.engine.begin() as connection:
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "hypothesis":
+                raise _stage_mismatch()
+            if not state.card_is_current(connection, brand_id, card):
+                raise stale_context()
+            existing_labels = {option.label.strip().casefold() for option in card.options}
+            novel_candidates = tuple(
+                candidate
+                for candidate in candidates
+                if candidate.label.strip().casefold() not in existing_labels
+            )
+            additions = tuple(
+                BrandShortOptionV1(option_id=item.candidate_id, label=item.label, why=item.why)
+                for item in novel_candidates
+            )
+            merged = self._merge_card_options(card, additions)
+            if len(merged) > 12:
+                raise _card_invalid("A Brand card can contain at most twelve options.")
+            selected_candidates = tuple(
+                candidate.model_copy(
+                    update={
+                        "candidate_id": next(
+                            option.option_id for option in merged if option.label == candidate.label
+                        )
+                    }
+                )
+                for candidate in novel_candidates
+                if any(option.label == candidate.label for option in merged)
+            )
+            self._repository.append_hypotheses_in_transaction(
+                connection, brand_id, selected_candidates
+            )
+            updated_card = card.model_copy(update={"options": merged})
+            self._repository.save_option_card_in_transaction(connection, brand_id, updated_card)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="hypothesis",
+                action="recommend",
+                target_type="option_card",
+                target_id=card_id,
+                detail={"card_id": card_id, "custom": "more_options", "count": len(candidates)},
+                now=now,
+            )
+            return updated_card
 
     def run_hypothesis_question(
         self,
@@ -1343,14 +1825,28 @@ class BrandCapabilityInvocationService:
             trace_metadata={"workflow_id": self._repository.workflow_id_for_brand(brand_id)},
         )
         try:
-            output = self._runtime.run(spec).output
+            journey = self._repository.get_journey(brand_id)
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage="skill-stack",
+                stage_revision=journey.stage_revision if journey is not None else 1,
+                substep_or_slot="recommendation",
+            )
+            output = runtime_result.output
         except StructuredGenerationRuntimeError as error:
             raise V2PersistenceError(
                 "brand_skill_recommendation_unavailable",
                 "Skill recommendations are unavailable. Retry the current step.",
                 stage="brand_skill_recommendation",
             ) from error
-        return skills.recommendation_stack(output)
+        result = skills.recommendation_stack(output)
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=f"brand-skill-stack:{brand_id}",
+            content="\n".join(item.skill_id for item in result.entries),
+        )
+        return result
 
     def creative_method_catalog(self) -> BrandCreativeMethodCatalogV1:
         return BrandSkillStackService(self._database).creative_method_catalog()
@@ -1515,7 +2011,16 @@ class BrandCapabilityInvocationService:
                 output_model=treatment_output_model(cast_step(journey.treatment_substep)),
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
-            output = self._runtime.run(spec).output
+            runtime_result, presentation_stream = self._run_with_presentation(
+                spec,
+                brand_id=brand_id,
+                stage="treatment",
+                stage_revision=journey.stage_revision,
+                substep_or_slot=journey.treatment_substep,
+            )
+            output = runtime_result.output
+        else:
+            presentation_stream = None
         step = output.step
         if step.step_key != journey.treatment_substep:
             raise _card_invalid("The proposal must match the current Treatment step.")
@@ -1544,6 +2049,11 @@ class BrandCapabilityInvocationService:
                 detail={"card_id": card.card_id, "context_digest": product_context.digest},
                 now=now,
             )
+        self._finish_presentation(
+            presentation_stream,
+            authoritative_id=card.card_id,
+            content=step.question,
+        )
         return step
 
     def apply_treatment_selection(
@@ -1611,6 +2121,124 @@ class BrandCapabilityInvocationService:
                     connection, brand_id, advance_treatment_substep(journey)
                 )
 
+    def apply_treatment_custom_candidate(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        candidate: TreatmentCandidateV1,
+    ) -> BrandOptionCardV1:
+        """Append one structured Treatment candidate and select it atomically."""
+
+        now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        observed = self._repository.get_journey(brand_id)
+        if observed is None or observed.stage != "treatment":
+            raise _stage_mismatch()
+        with self._database.engine.begin() as connection:
+            state.claim(connection, brand_id, observed.stage_revision)
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "treatment":
+                raise _stage_mismatch()
+            if not state.card_is_current(connection, brand_id, card):
+                raise stale_context()
+            step_key = cast_step(card.target_slot_id)
+            candidate.detail.validate_step(step_key)
+            option = BrandShortOptionV1(
+                option_id=candidate.option_id,
+                label=candidate.label,
+                why=candidate.why,
+                detail=candidate.detail,
+            )
+            updated_card = card.model_copy(
+                update={"options": self._merge_card_options(card, (option,))}
+            )
+            if len(updated_card.options) > 12:
+                raise _card_invalid("A Brand card can contain at most twelve options.")
+            self._repository.save_option_card_in_transaction(connection, brand_id, updated_card)
+            self._repository.save_treatment_step_in_transaction(
+                connection,
+                brand_id,
+                TreatmentStepResultV1(
+                    step_key=step_key,
+                    selected_label=option.label,
+                    detail=option.detail.render(),
+                    confirmed_at=now,
+                ),
+            )
+            self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="treatment",
+                action="select",
+                target_type="treatment_step",
+                target_id=step_key,
+                # The Treatment document reads each step's sections from this
+                # log entry, exactly like ``apply_treatment_selection``.
+                detail={
+                    "card_id": card_id,
+                    "option_id": option.option_id,
+                    "custom": True,
+                    "content_version": 2,
+                    "structured_detail": option.detail.model_dump(mode="json"),
+                },
+                now=now,
+            )
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is not None:
+                self._repository.save_journey_in_transaction(
+                    connection, brand_id, advance_treatment_substep(journey)
+                )
+            return updated_card
+
+    def append_treatment_options(
+        self,
+        brand_id: str,
+        *,
+        card_id: str,
+        candidates: tuple[TreatmentCandidateV1, ...],
+    ) -> BrandOptionCardV1:
+        """Append structured Treatment choices and keep the current card open."""
+
+        now = datetime.now(timezone.utc)
+        state = BrandQuestionState(self._database)
+        with self._database.engine.begin() as connection:
+            card = self._repository.get_open_card_in_transaction(connection, brand_id)
+            if card is None or card.card_id != card_id or card.stage != "treatment":
+                raise _stage_mismatch()
+            if not state.card_is_current(connection, brand_id, card):
+                raise stale_context()
+            step_key = cast_step(card.target_slot_id)
+            additions = tuple(
+                BrandShortOptionV1(
+                    option_id=item.option_id,
+                    label=item.label,
+                    why=item.why,
+                    detail=item.detail,
+                )
+                for item in candidates
+            )
+            merged = self._merge_card_options(card, additions)
+            if len(merged) > 12:
+                raise _card_invalid("A Brand card can contain at most twelve options.")
+            for option in merged:
+                if option.detail is not None:
+                    option.detail.validate_step(step_key)
+            updated_card = card.model_copy(update={"options": merged})
+            self._repository.save_option_card_in_transaction(connection, brand_id, updated_card)
+            self._append_log(
+                connection,
+                brand_id=brand_id,
+                stage="treatment",
+                action="recommend",
+                target_type="option_card",
+                target_id=card_id,
+                detail={"card_id": card_id, "custom": "more_options", "count": len(candidates)},
+                now=now,
+            )
+            return updated_card
+
     def lock_treatment(
         self, brand_id: str, *, content_digest: str | None = None
     ) -> BrandJourneyStateV1:
@@ -1649,6 +2277,40 @@ class BrandCapabilityInvocationService:
         append_brand_answer_in_transaction(connection, brand_id=brand_id, entry=entry)
 
 
+_MORE_OPTIONS_MARKERS = (
+    "再来",
+    "再给",
+    "多给",
+    "多来",
+    "换一批",
+    "换几个",
+    "换个方向",
+    "换一个方向",
+    "其他方案",
+    "其它方案",
+    "别的方案",
+    "更多方案",
+    "更多选项",
+    "还有别的",
+    "还有其他",
+    "还有其它",
+    "重新给",
+    "more options",
+    "more ideas",
+    "other options",
+    "another",
+    "different direction",
+    "give me more",
+)
+
+
+def obvious_more_options_request(text: str) -> bool:
+    """Return whether card custom text plainly asks for more alternatives."""
+
+    normalized = text.strip().casefold()
+    return any(marker in normalized for marker in _MORE_OPTIONS_MARKERS)
+
+
 def _validate_strategy(output: BrandStrategyOutputV1, stage: BrandStage) -> None:
     if output.question_card is not None and output.question_card.stage != stage:
         raise ValueError("Question card does not match the current stage.")
@@ -1675,6 +2337,10 @@ def _with_declared_information_nature(
 def _validate_card(card: BrandOptionCardV1, stage: BrandStage) -> None:
     if card.stage != stage:
         raise _card_invalid("Option card stage does not match the current stage.")
+    if len(card.options) < 3 or len(card.options) > 12:
+        raise _card_invalid("Brand option cards must contain between three and twelve options.")
+    if stage not in {"hypothesis", "treatment"} and len(card.options) != 3:
+        raise _card_invalid("This Brand card stage requires exactly three options.")
 
 
 def _validate_form_cards(

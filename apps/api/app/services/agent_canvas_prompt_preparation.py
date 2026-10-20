@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import inspect
 from pathlib import Path
 from time import monotonic
 
@@ -17,6 +18,7 @@ from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContext
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
 from app.schemas.agent_canvas_prompt_assertion import (
+    PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
     safe_prompt_assertion_metadata,
 )
@@ -37,6 +39,7 @@ from app.services.agent_canvas_role_prompt_context import (
     RolePromptContextProjector,
     RolePromptParameterResolver,
     character_identity_projection_from_node,
+    product_identity_projection_from_node,
     scene_environment_projection_from_node,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
@@ -60,7 +63,7 @@ from app.services.agent_canvas_derivative_prompt_reuse import (
 )
 
 
-RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
+RoleBriefAuthor = Callable[..., RoleCreativeBriefV2]
 LockedElementGuard = Callable[[str, CanvasNodeV2, str], None]
 _GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
 
@@ -119,6 +122,12 @@ class NodePromptPreparationService:
             and current.prompt_preparation.operation_id == operation_id
         ):
             return current
+        if _is_scene_multiview(current):
+            _ensure_scene_main_projection_available(
+                current,
+                self._workflows,
+                self._binding_snapshots(current),
+            )
         snapshot_digest = context_digest(context)
         preserve_storyboard_text = (
             current.creative_role in {"storyboard_sequence", "storyboard_video"}
@@ -162,6 +171,21 @@ class NodePromptPreparationService:
             ),
         )
         role_context: RolePromptPreparationContextV2 | None = None
+        streamed_answer = ""
+        streamed_attempt = 1
+
+        def on_presentation(event) -> None:
+            nonlocal streamed_answer, streamed_attempt
+            if event.attempt < streamed_attempt:
+                return
+            if event.attempt > streamed_attempt:
+                streamed_attempt = event.attempt
+                streamed_answer = ""
+            if event.segment == "answer":
+                streamed_answer += event.text
+            if self._presentation_publisher is not None:
+                self._presentation_publisher.publish_runtime_delta(workflow_id, event)
+
         try:
             role_context = self._project_context(working, context)
             character_authority_digest = (
@@ -208,7 +232,24 @@ class NodePromptPreparationService:
                 and not preserve_creative_text
             ):
                 try:
-                    brief = self._role_brief_author(role_context, operation_id)
+                    author_parameters = inspect.signature(self._role_brief_author).parameters
+                    accepts_presentation = "presentation_stream_id" in author_parameters or any(
+                        parameter.kind is inspect.Parameter.VAR_KEYWORD
+                        for parameter in author_parameters.values()
+                    )
+                    if accepts_presentation:
+                        brief = self._role_brief_author(
+                            role_context,
+                            operation_id,
+                            presentation_stream_id=(
+                                presentation_stream.stream_id
+                                if presentation_stream is not None
+                                else None
+                            ),
+                            on_presentation=on_presentation,
+                        )
+                    else:
+                        brief = self._role_brief_author(role_context, operation_id)
                 except Exception as error:
                     if (
                         role_context.role_variant == "scene_board"
@@ -339,14 +380,15 @@ class NodePromptPreparationService:
                         "prompt_recipe_digest": recipe.recipe_digest,
                         "prompt_reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
                         "prompt_character_identity_projection_digest": (
-                            role_context.character_identity_projection.projection_digest
-                            if role_context.character_identity_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.character_identity_projection_digest
                         ),
                         "prompt_scene_environment_projection_digest": (
-                            role_context.scene_environment_projection.projection_digest
-                            if role_context.scene_environment_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.scene_environment_projection_digest
+                        ),
+                        **_scene_environment_projection_metadata(
+                            working,
+                            structured_content,
+                            role_context,
                         ),
                         "role_reference_policy_version": (
                             compiled_prompt.role_reference_policy_version
@@ -424,14 +466,10 @@ class NodePromptPreparationService:
                         document_revisions=role_context.document_revisions,
                         binding_digest=compiled_prompt.reference_bundle_digest,
                         character_identity_projection_digest=(
-                            role_context.character_identity_projection.projection_digest
-                            if role_context.character_identity_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.character_identity_projection_digest
                         ),
                         scene_environment_projection_digest=(
-                            role_context.scene_environment_projection.projection_digest
-                            if role_context.scene_environment_projection is not None
-                            else None
+                            compiled_prompt.assertion_evidence.scene_environment_projection_digest
                         ),
                         style_projection_digest=compiled_prompt.style_projection_digest,
                         brief_digest=compiled_prompt.brief_digest,
@@ -455,7 +493,15 @@ class NodePromptPreparationService:
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
             if presentation_stream is not None and self._presentation_publisher is not None:
-                self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
+                if not streamed_answer:
+                    self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
+                elif streamed_answer != prompt:
+                    self._presentation_publisher.reset(
+                        presentation_stream,
+                        reason="final_replaced",
+                        event_key="reset:final_replaced",
+                    )
+                    self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
                 self._presentation_publisher.commit(
                     presentation_stream,
                     authoritative_id=f"{node_id}:{persisted.revision}",
@@ -566,6 +612,14 @@ class NodePromptPreparationService:
             )
         if current.prompt_preparation.status != "ready":
             return current
+        if current.prompt_preparation.assertion_evidence is not None:
+            # A READY prompt keeps its text; only its references follow the
+            # current sources (user rule, 2026-10-19).
+            return self.refresh_dependency_evidence(
+                workflow_id,
+                node_id,
+                operation_id=operation_id,
+            )
         if (
             self._presentation_publisher is not None
             and current.prompt_preparation.presentation_stream_id is not None
@@ -631,16 +685,25 @@ class NodePromptPreparationService:
             and preparation.binding_digest == binding_digest
         ):
             return current
-        # Dependency evidence is an immutable part of the preparation
-        # operation.  Once a source snapshot changes, never rewrite that
-        # evidence in place: supersede the old identity and enqueue exactly
-        # one successor for the next preparation wave.  The existing
-        # repository method performs the Node/dispatch mutation atomically.
-        del current_sources, binding_digest
-        return self.invalidate_for_dependency_change(
+        # User rule (2026-10-19): a READY prompt is never re-authored by an
+        # automatic trigger. Upstream reference changes refresh the evidence,
+        # binding digest, and reference snapshots in place; the prompt text,
+        # status, and outputs stay untouched and no model is called.
+        refreshed_evidence = PromptAssertionEvidenceV1.build(
+            **{
+                key: value
+                for key, value in evidence.model_dump(mode="json").items()
+                if key not in {"schema_version", "evidence_digest", "source_snapshots"}
+            },
+            source_snapshots=[item.model_dump(mode="json") for item in current_sources],
+        )
+        return self._workflows.refresh_ready_prompt_references(
             workflow_id,
             node_id,
             operation_id=operation_id,
+            assertion_evidence=refreshed_evidence,
+            binding_digest=binding_digest,
+            prepared_reference_snapshots=[item.model_dump(mode="json") for item in bindings],
         )
 
     def _append_trace(
@@ -722,6 +785,7 @@ class NodePromptPreparationService:
         bindings = self._binding_snapshots(node)
         character_projection = None
         scene_projection = None
+        product_projection = None
         if (
             node.creative_role == "character"
             and node.metadata.get("character_phase") == "turnaround"
@@ -768,10 +832,61 @@ class NodePromptPreparationService:
                 allow_uninitialized_main=True,
             )
         elif node.creative_role == "scene":
-            scene_projection = scene_environment_projection_from_node(
-                node,
-                allow_uninitialized_seed=True,
+            if _is_scene_multiview(node):
+                workflow = self._workflows.get_workflow(node.workflow_id)
+                nodes = {item.node_id: item for item in workflow.nodes}
+                parents = tuple(
+                    item
+                    for item in bindings
+                    if item.reference_purpose == "scene_main_identity"
+                    and item.source_node_id is not None
+                    and item.source_role == "scene"
+                )
+                if len(parents) != 1:
+                    raise V2PersistenceError(
+                        "scene_parent_environment_projection_invalid",
+                        "Scene Multi-view requires one exact Scene Main authority.",
+                        stage="node_prompt_preparation",
+                    )
+                parent = parents[0]
+                source = nodes.get(parent.source_node_id)
+                if source is None:
+                    raise V2PersistenceError(
+                        "scene_parent_environment_projection_invalid",
+                        "Scene Main authority is unavailable.",
+                        stage="node_prompt_preparation",
+                    )
+                scene_projection = scene_environment_projection_from_node(
+                    source,
+                    prefer_persisted=True,
+                )
+                expected_digest = source.prompt_preparation.scene_environment_projection_digest
+                if expected_digest is not None and scene_projection is not None:
+                    if scene_projection.projection_digest != expected_digest:
+                        raise V2PersistenceError(
+                            "scene_parent_environment_projection_invalid",
+                            "Scene Main projection digest does not match its prepared authority.",
+                            stage="node_prompt_preparation",
+                        )
+            else:
+                scene_projection = scene_environment_projection_from_node(
+                    node,
+                    allow_uninitialized_seed=True,
+                )
+        elif node.creative_role == "product" and _is_product_multiview(node):
+            workflow = self._workflows.get_workflow(node.workflow_id)
+            nodes = {item.node_id: item for item in workflow.nodes}
+            parents = tuple(
+                item
+                for item in bindings
+                if item.reference_purpose == "product_main_identity"
+                and item.source_node_id is not None
+                and item.source_role == "product"
             )
+            if len(parents) == 1:
+                source = nodes.get(parents[0].source_node_id)
+                if source is not None:
+                    product_projection = product_identity_projection_from_node(source)
         controls = {
             key: value
             for key, value in context.requirement_facts.items()
@@ -809,6 +924,7 @@ class NodePromptPreparationService:
             world_view_projection=self._world_view_projection(node),
             character_identity_projection=character_projection,
             scene_environment_projection=scene_projection,
+            product_identity_projection=product_projection,
             allow_uninitialized_scene=(node.creative_role == "scene" and scene_projection is None),
         )
 
@@ -1036,6 +1152,77 @@ def _prompt_preparation_error_details(
 
 def context_digest(context: StageAuthoringContextV1) -> str:
     return sha256(canonical_context_bytes(context)).hexdigest()
+
+
+def _is_scene_multiview(node: CanvasNodeV2) -> bool:
+    return node.creative_role == "scene" and (
+        node.structured_content.get("scene_asset_kind") == "multi_view"
+        or node.parameters.get("scene_asset_kind") == "multi_view"
+    )
+
+
+def _is_product_multiview(node: CanvasNodeV2) -> bool:
+    return node.creative_role == "product" and (
+        node.structured_content.get("asset_kind") == "multi_view"
+        or node.parameters.get("asset_kind") == "multi_view"
+    )
+
+
+def _ensure_scene_main_projection_available(
+    node: CanvasNodeV2,
+    workflows: AgentCanvasWorkflowRepository,
+    bindings: tuple[RoleBindingSnapshotV2, ...],
+) -> None:
+    """Keep Scene Multi-view queued until an incomplete Main authority is usable."""
+
+    parents = tuple(
+        item
+        for item in bindings
+        if item.reference_purpose == "scene_main_identity" and item.source_node_id is not None
+    )
+    if len(parents) != 1:
+        return
+    source_id = parents[0].source_node_id
+    source = next(
+        (
+            item
+            for item in workflows.get_workflow(node.workflow_id).nodes
+            if item.node_id == source_id
+        ),
+        None,
+    )
+    if source is None or source.prompt_preparation.status == "ready":
+        return
+    try:
+        scene_environment_projection_from_node(source)
+    except V2PersistenceError as error:
+        if error.code == "scene_environment_projection_invalid":
+            raise V2PersistenceError(
+                "prompt_preparation_pending",
+                "Scene Multi-view prompt preparation waits for Scene Main.",
+                stage="node_prompt_preparation",
+                details={
+                    "retryable": True,
+                    "source_node_ids": [source.node_id],
+                    "reason": "scene_main_prompt_preparation_pending",
+                },
+            ) from error
+        raise
+
+
+def _scene_environment_projection_metadata(
+    node: CanvasNodeV2,
+    structured_content: dict[str, object],
+    context: RolePromptPreparationContextV2,
+) -> dict[str, object]:
+    if context.role_variant != "scene_board" or _is_scene_multiview(node):
+        return {}
+    projected = scene_environment_projection_from_node(
+        node.model_copy(update={"structured_content": structured_content}),
+    )
+    if projected is None:
+        return {}
+    return {"scene_environment_projection": projected.model_dump(mode="json")}
 
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:

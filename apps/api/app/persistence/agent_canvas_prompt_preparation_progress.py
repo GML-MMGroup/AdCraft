@@ -71,6 +71,11 @@ def append_prompt_preparation_progress(
     ):
         return
     status = {"leased": "working", "completed": "ready"}.get(dispatch.status, dispatch.status)
+    if status != "failed":
+        # Only failures reach the conversation (user decision, 2026-10-19);
+        # queued/working/ready/superseded progress stays on the Node and in
+        # the live presentation stream. The workflow events are unchanged.
+        return
     labels = {
         "waiting_user": "Prompt preparation awaits your choice",
         "queued": "Prompt preparation queued",

@@ -9,5 +9,6 @@ NON_PROVIDER_NODE_PARAMETER_KEYS = frozenset(
         "source_option_id",
         "source_proposal_id",
         "stage_draft_key",
+        "scene_asset_kind",
     }
 )

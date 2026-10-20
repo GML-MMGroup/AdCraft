@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 from typing import Any, Generic, Literal, TypeVar, cast
 from uuid import uuid4
 
@@ -17,6 +18,7 @@ from app.persistence.agent_run_repository import (
 )
 from app.persistence.database import create_v2_database
 from app.persistence.provider_model_repository import ProviderModelRepository
+from app.persistence.agent_canvas_presentation_repository import PresentationStreamRepository
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_operation_contexts import PlanningAgentContext
 from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunPolicy, AgentRunRequest
@@ -43,8 +45,12 @@ from app.services.agent_operation_policy import (
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
+from app.services.agent_canvas_presentation import PresentationStreamPublisher
+from app.schemas.agent_runtime import AgentPresentationDeltaV1
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 QualityValidator = Callable[[TOutput], None]
 OutputNormalizer = Callable[[TOutput], TOutput]
@@ -112,6 +118,12 @@ class StructuredGenerationSpec(Generic[TOutput]):
     policy: AgentRunPolicy | None = None
     invocation: AgentInvocation | None = None
     agent_context: PlanningAgentContext | AgentRunContext | None = None
+    presentation: "StructuredPresentationTargetV1 | None" = None
+
+
+class StructuredPresentationTargetV1(BaseModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    stream_id: str = Field(min_length=1, max_length=160)
 
 
 @dataclass(frozen=True)
@@ -167,6 +179,7 @@ class StructuredGenerationRuntime:
             self._settings.agent_runtime_run_timeout_seconds * 2,
         )
         event_projector = V2AgentEventProjector(self._settings.media_data_dir)
+        presentation_publisher = PresentationStreamPublisher(PresentationStreamRepository(database))
         persisted_sequences: set[int] = set()
         lease_generation = 0
 
@@ -224,7 +237,29 @@ class StructuredGenerationRuntime:
                 lease_generation = record.lease_generation
                 request = request.model_copy(update={"run_id": record.run_id})
                 persisted_sequences.update(range(1, record.last_event_seq + 1))
-            outcome = self._agent_runtime_client.run(request, on_event=persist_event)
+            on_presentation = None
+            if spec.presentation is not None:
+
+                def on_presentation(event: AgentPresentationDeltaV1) -> None:
+                    try:
+                        presentation_publisher.publish_runtime_delta(
+                            spec.presentation.workflow_id,
+                            event,
+                        )
+                    except Exception as error:  # noqa: BLE001 - presentation is best effort
+                        logger.warning(
+                            "Structured generation presentation delivery failed: %s",
+                            error,
+                        )
+
+            if on_presentation is None:
+                outcome = self._agent_runtime_client.run(request, on_event=persist_event)
+            else:
+                outcome = self._agent_runtime_client.run(
+                    request,
+                    on_event=persist_event,
+                    on_presentation=on_presentation,
+                )
             terminal = outcome.terminal_event
             repository.finish(
                 request.run_id,
@@ -642,7 +677,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         # authoritative hard deadline. A generic 120-second fallback here
         # silently shortened routing policies such as brand_slot_question.
         deadline_cap = None
-    return AgentRunRequestFactory().build(
+    request = AgentRunRequestFactory().build(
         run_id=run_id,
         request_id=(
             invocation.request_id
@@ -673,6 +708,14 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             **({"request_identity_digest": identity.input_digest} if identity is not None else {}),
         },
         contract_schema=spec.output_model.model_json_schema(),
+    )
+    return request.model_copy(
+        update={
+            "presentation_channel": "assistant" if spec.presentation is not None else None,
+            "presentation_stream_id": (
+                spec.presentation.stream_id if spec.presentation is not None else None
+            ),
+        }
     )
 
 

@@ -289,8 +289,14 @@ class BrandGuidedInteractionBridge:
         return None
 
     @staticmethod
-    def _card_generation_key(workflow_id: str, stage: str, stage_revision: int) -> str:
-        return f"{workflow_id}:card:{stage}:{stage_revision}"
+    def _card_generation_key(
+        workflow_id: str,
+        stage: str,
+        stage_revision: int,
+        generation_scope: str | None = None,
+    ) -> str:
+        suffix = f":{generation_scope}" if generation_scope else ""
+        return f"{workflow_id}:card:{stage}:{stage_revision}{suffix}"
 
     def claim_card_generation(
         self,
@@ -298,11 +304,14 @@ class BrandGuidedInteractionBridge:
         stage: Literal["hypothesis", "adspec", "skill-stack", "treatment"],
         stage_revision: int,
         *,
+        generation_scope: str | None = None,
         lease_seconds: int = 300,
     ) -> BrandCardGenerationClaim:
         """Claim one non-form card generation so concurrent callers share it."""
 
-        generation_key = self._card_generation_key(workflow_id, stage, stage_revision)
+        generation_key = self._card_generation_key(
+            workflow_id, stage, stage_revision, generation_scope
+        )
         now = int(time.time())
         now_iso = _now_iso()
         lease_token = uuid4().hex

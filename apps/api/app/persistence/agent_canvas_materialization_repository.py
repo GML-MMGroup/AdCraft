@@ -1123,7 +1123,12 @@ class AgentCanvasMaterializationRepository:
                     )
                     if execution_mode == "automatic" and not storyboard_preparation_pending:
                         for bundle_node in nodes:
-                            if is_automatic_run_eligible_node_type(bundle_node.node_type):
+                            if is_automatic_run_eligible_node_type(
+                                bundle_node.node_type
+                            ) and not _has_parent_derived_auto_run_binding(
+                                bundle_node,
+                                bindings,
+                            ):
                                 command = self._automatic_runs.enqueue_in_transaction(
                                     connection,
                                     workflow_id=bundle_node.workflow_id,
@@ -3516,6 +3521,20 @@ def _materialization_text_snapshots(
         )
         snapshots.append(snapshot.model_dump(mode="json"))
     return snapshots
+
+
+def _has_parent_derived_auto_run_binding(
+    node: CanvasNodeV2,
+    bindings: tuple[CanvasBindingV2, ...],
+) -> bool:
+    """Return whether a media Node waits for a Ready parent before auto-run."""
+
+    return any(
+        binding.target_node_id == node.node_id
+        and binding.enabled
+        and bool(binding.metadata.get("scene_pair"))
+        for binding in bindings
+    )
 
 
 def _require_current_derivative_parent(

@@ -35,8 +35,8 @@ class _OperationBudget:
 
 _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
     "routing": _OperationBudget(180, 110, 50, 20, 1_024, None),
-    "proposal": _OperationBudget(300, 190, 80, 30, 3_072, 2_048),
-    "materialization": _OperationBudget(420, 270, 120, 30, 4_096, 3_072),
+    "proposal": _OperationBudget(360, 190, 140, 30, 3_072, 2_048),
+    "materialization": _OperationBudget(480, 270, 180, 30, 4_096, 3_072),
     "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)

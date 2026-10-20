@@ -118,6 +118,13 @@ class StoryboardFanoutActivationService:
         ):
             current_node = self._workflows.get_node(fanout.workflow_id, plan.node_id)
             current_preparation = getattr(current_node, "prompt_preparation", None)
+            if getattr(current_preparation, "status", None) == "ready" and getattr(
+                current_preparation, "operation_id", None
+            ):
+                # A READY prompt is never re-authored on resume (user rule,
+                # 2026-10-19); only missing or failed preparations run again.
+                prepared_node_ids.append(plan.node_id)
+                continue
             if getattr(current_preparation, "status", None) in {"queued", "working"}:
                 # A dependency wave may already own this node through the
                 # durable prompt-preparation dispatch.  Calling prepare here

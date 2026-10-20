@@ -256,6 +256,8 @@ def _semantic_violations(
         return _brand_form_supplemental_novelty_violations(context, value)
     if profile == "brand_form_slots_v1":
         return _brand_form_slot_violations(context, value)
+    if profile == "brand_treatment_review_sources_v1":
+        return _brand_treatment_review_source_violations(context, value)
     if profile == "role_prompt_contract_v1":
         return _role_prompt_contract_violations(context, value)
     if profile != "frozen_fields_v1":
@@ -453,6 +455,126 @@ def _brand_form_slot_violations(
     )
 
 
+def _brand_treatment_review_source_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    """Require every Treatment review source to quote confirmed text."""
+
+    confirmed_sections = context.get("confirmed_sections")
+    if not isinstance(confirmed_sections, list) or not confirmed_sections:
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="Confirmed Treatment sections are unavailable for review validation.",
+                field_path="validation_context.confirmed_sections",
+            ),
+        )
+    sections: dict[tuple[str, str], str] = {}
+    for item in confirmed_sections:
+        if not isinstance(item, dict):
+            return (_invalid_brand_review_context(),)
+        step_key = item.get("step_key")
+        section_key = item.get("section_key")
+        text = item.get("text")
+        if not all(isinstance(field, str) and field for field in (step_key, section_key, text)):
+            return (_invalid_brand_review_context(),)
+        sections[(step_key, section_key)] = text
+
+    violations: list[StructuredViolation] = []
+    for field_path, source in _brand_treatment_review_sources(value):
+        step_key = source.get("step_key")
+        section_key = source.get("section_key")
+        quote = source.get("quote")
+        allowed_text = (
+            sections.get((step_key, section_key))
+            if isinstance(step_key, str) and isinstance(section_key, str)
+            else None
+        )
+        if (
+            not isinstance(quote, str)
+            or not quote.strip()
+            or not isinstance(allowed_text, str)
+            or normalize_confirmed_quote(quote) not in normalize_confirmed_quote(allowed_text)
+        ):
+            safe_allowed = allowed_text or "No confirmed text exists for this section."
+            safe_quote = quote if isinstance(quote, str) else ""
+            if len(safe_allowed) > 400:
+                safe_allowed = safe_allowed[:400] + "…"
+            violations.append(
+                StructuredViolation(
+                    code="brand_review_source_quote_invalid",
+                    message=(
+                        "Copy the confirmed section text exactly after normalization. "
+                        f"Invalid reference: step_key={step_key!r}, section_key={section_key!r}, "
+                        f"bad quote={safe_quote!r}, allowed text={safe_allowed!r}."
+                    ),
+                    field_path=field_path,
+                    expected=safe_allowed,
+                    actual={
+                        "step_key": step_key,
+                        "section_key": section_key,
+                        "quote": safe_quote,
+                        "allowed_text": safe_allowed,
+                    },
+                )
+            )
+    return tuple(violations)
+
+
+def _invalid_brand_review_context() -> StructuredViolation:
+    return StructuredViolation(
+        code="agent_validation_context_invalid",
+        message="Confirmed Treatment sections must contain step, section, and text.",
+        field_path="validation_context.confirmed_sections",
+    )
+
+
+def _brand_treatment_review_sources(
+    value: dict[str, Any],
+) -> tuple[tuple[str, dict[str, Any]], ...]:
+    found: list[tuple[str, dict[str, Any]]] = []
+    requirements = value.get("production_requirements")
+    if not isinstance(requirements, dict):
+        return ()
+
+    def add_sources(path: str, sources: Any) -> None:
+        if not isinstance(sources, list):
+            return
+        for index, source in enumerate(sources):
+            if isinstance(source, dict):
+                found.append((f"{path}.{index}", source))
+
+    add_sources("production_requirements.character_sources", requirements.get("character_sources"))
+    add_sources("production_requirements.prop_sources", requirements.get("prop_sources"))
+    add_sources("production_requirements.scene_sources", requirements.get("scene_sources"))
+    for element_name in ("characters", "scenes"):
+        elements = requirements.get(element_name)
+        if not isinstance(elements, list):
+            continue
+        for element_index, element in enumerate(elements):
+            if isinstance(element, dict):
+                add_sources(
+                    f"production_requirements.{element_name}.{element_index}.sources",
+                    element.get("sources"),
+                )
+    findings = value.get("findings")
+    if isinstance(findings, list):
+        for finding_index, finding in enumerate(findings):
+            if isinstance(finding, dict):
+                add_sources(f"findings.{finding_index}.sources", finding.get("sources"))
+    return tuple(found)
+
+
+def normalize_confirmed_quote(value: str) -> str:
+    normalized = " ".join(unicodedata.normalize("NFKC", value).split()).strip()
+    while normalized and unicodedata.category(normalized[0]).startswith("P"):
+        normalized = normalized[1:].lstrip()
+    while normalized and unicodedata.category(normalized[-1]).startswith("P"):
+        normalized = normalized[:-1].rstrip()
+    return normalized
+
+
 def _normalized_form_option_label(label: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", label).split()).casefold()
 
@@ -514,7 +636,7 @@ def _role_prompt_contract_violations(
         message = "The Scene brief conflicts with its environment-only role contract."
         expected = "environment_only"
     elif role_variant == "video_segment":
-        message = "The video brief conflicts with its video-only role contract."
+        message = "The video brief mentions music. Remove every reference to background music, BGM, soundtrack, music beats, or cutting to music from editable_prompt, and express rhythm only as visual timing (for example a hard cut at 3 s or a freeze frame at 15 s)."
         expected = "video_without_background_music"
     else:
         message = "The role brief conflicts with its role contract."

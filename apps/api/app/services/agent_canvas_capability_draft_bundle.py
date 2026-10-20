@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from hashlib import sha256
 from typing import Any
 
@@ -43,6 +44,10 @@ from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSe
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_storyboard_progression import (
+    _grid_source_role,
+    _select_canonical_singleton_bindings,
+)
 
 
 _MAIN_PROMPT = """Create one detailed semi-realistic 2D commercial character illustration, clearly illustrated rather than photographed. Show exactly one full-body human in a natural standing pose with a slight three-quarter front view on a seamless light-neutral design background with no environmental objects. Use only a subtle grounding shadow. Preserve readable facial features, hair, wardrobe construction, body proportions, silhouette, and color palette."""
@@ -72,15 +77,27 @@ class CapabilityDraftBundleBuilder:
         self,
         envelope: ProposalApplicationEnvelopeV1,
         materialization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
+        *,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None = None,
     ) -> CapabilityDraftBundleV1:
         if isinstance(materialization, CapabilityMaterializationContextV1):
-            return self._build_progressive(envelope, materialization)
-        return self._build_normalized(envelope, materialization)
+            return self._build_progressive(
+                envelope,
+                materialization,
+                reference_nodes=reference_nodes,
+            )
+        return self._build_normalized(
+            envelope,
+            materialization,
+            reference_nodes=reference_nodes,
+        )
 
     def _build_progressive(
         self,
         envelope: ProposalApplicationEnvelopeV1,
         context: CapabilityMaterializationContextV1,
+        *,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None,
     ) -> CapabilityDraftBundleV1:
         definitions = stage_definitions(envelope.capability_id, envelope.operation_kind)
         node_ids = tuple(
@@ -141,7 +158,12 @@ class CapabilityDraftBundleBuilder:
                     reference_intents=references,
                 )
             )
-        nodes, external, preparations = _draft_nodes(envelope, tuple(drafts), node_ids)
+        nodes, external, preparations = _draft_nodes(
+            envelope,
+            tuple(drafts),
+            node_ids,
+            reference_nodes=reference_nodes,
+        )
         internal = _pair_binding(
             envelope,
             nodes=nodes,
@@ -173,6 +195,8 @@ class CapabilityDraftBundleBuilder:
         self,
         envelope: ProposalApplicationEnvelopeV1,
         normalization: MaterializationNormalizationV1,
+        *,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None,
     ) -> CapabilityDraftBundleV1:
         if envelope.capability_id == "script_authoring":
             return CapabilityDraftBundleV1(
@@ -232,6 +256,7 @@ class CapabilityDraftBundleBuilder:
             envelope,
             (draft,),
             (f"node_{_digest(envelope.materialization_id)[:32]}",),
+            reference_nodes=reference_nodes,
         )
         return CapabilityDraftBundleV1(
             nodes=nodes,
@@ -549,6 +574,8 @@ def _draft_nodes(
     envelope: ProposalApplicationEnvelopeV1,
     drafts: tuple[Any, ...],
     node_ids: tuple[str, ...],
+    *,
+    reference_nodes: Mapping[str, CanvasNodeV2] | None = None,
 ) -> tuple[
     tuple[CanvasNodeV2, ...],
     tuple[CanvasBindingV2, ...],
@@ -688,6 +715,33 @@ def _draft_nodes(
                         }
                     }
                 )
+    if reference_nodes:
+        selected_ids: set[str] = set()
+        candidate_ids: set[str] = set()
+        for node in nodes:
+            if node.creative_role != "storyboard_sequence":
+                continue
+            candidates: list[tuple[int, CanvasBindingV2, str]] = []
+            for index, binding in enumerate(bindings):
+                if binding.target_node_id != node.node_id:
+                    continue
+                source_role = _grid_source_role(binding, dict(reference_nodes))
+                if source_role in {"character_turnaround", "scene_board"}:
+                    candidates.append((index, binding, source_role))
+            candidate_ids.update(binding.binding_id for _index, binding, _role in candidates)
+            selected_ids.update(
+                binding.binding_id
+                for binding in _select_canonical_singleton_bindings(
+                    candidates,
+                    dict(reference_nodes),
+                )
+            )
+        if selected_ids:
+            bindings = [
+                binding
+                for binding in bindings
+                if binding.binding_id not in candidate_ids or binding.binding_id in selected_ids
+            ]
     return tuple(nodes), tuple(bindings), tuple(preparations)
 
 
@@ -766,7 +820,7 @@ def _scene_pair_binding(
             target_node_id=multi_view.node_id,
             input_role="image_reference",
             enabled=True,
-            order=0,
+            order=1,
             label="Required Scene Main reference",
             metadata={
                 "semantic_reference_role": "environment_reference",

@@ -42,7 +42,12 @@ class PresentationStreamResetV1(_StrictModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    reason: Literal["cursor_expired", "store_recovered"]
+    reason: Literal[
+        "cursor_expired",
+        "store_recovered",
+        "attempt_restarted",
+        "final_replaced",
+    ]
     authoritative_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     resource_kind: Literal["message", "prompt", "workflow"]
 
@@ -65,6 +70,8 @@ class PresentationStreamMetadataV1(_StrictModel):
     authoritative_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     content_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     error_code: str | None = Field(default=None, max_length=_MAX_ERROR_CODE)
+    created_at: str | None = None
+    terminal_at: str | None = None
 
     @model_validator(mode="after")
     def validate_target(self) -> "PresentationStreamMetadataV1":
@@ -83,6 +90,30 @@ class PresentationStreamMetadataV1(_StrictModel):
         return self
 
 
+class PresentationStreamListItemV1(_StrictModel):
+    """Timeline-safe metadata returned when listing presentation streams."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stream_id: str = Field(min_length=1, max_length=_MAX_IDENTIFIER)
+    stream_kind: PresentationStreamKindV1
+    generation_id: str = Field(min_length=1, max_length=_MAX_IDENTIFIER)
+    turn_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
+    node_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
+    node_revision: int | None = Field(default=None, ge=1)
+    status: PresentationStreamStatusV1
+    created_at: str
+    terminal_at: str | None = None
+
+
+class PresentationStreamListV1(_StrictModel):
+    """Bounded recent presentation streams for one workflow."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    streams: tuple[PresentationStreamListItemV1, ...] = Field(max_length=50)
+
+
 class PresentationStreamEventV1(_StrictModel):
     """One stream-local SSE envelope; sequence numbers are never lifecycle cursors."""
 
@@ -98,6 +129,7 @@ class PresentationStreamEventV1(_StrictModel):
     node_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     generation_id: str = Field(min_length=1, max_length=_MAX_IDENTIFIER)
     response_locale: str | None = Field(default=None, max_length=35)
+    segment: Literal["reasoning", "answer"] = "answer"
     node_revision: int | None = Field(default=None, ge=1)
     delta: str | None = Field(default=None, max_length=_MAX_DELTA_BYTES)
     authoritative_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
@@ -133,6 +165,9 @@ class PresentationStreamEventV1(_StrictModel):
         return self
 
 
+_CREDENTIAL_MARKERS = ("authorization: bearer", "api_key")
+
+
 class SafePresentationDeltaV1(_StrictModel):
     """Typed input accepted from a runtime safe-presentation callback."""
 
@@ -146,6 +181,7 @@ class SafePresentationDeltaV1(_StrictModel):
     node_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER)
     node_revision: int | None = Field(default=None, ge=1)
     response_locale: str | None = Field(default=None, max_length=35)
+    segment: Literal["reasoning", "answer"] = "answer"
     text: str = Field(min_length=1, max_length=_MAX_DELTA_BYTES)
 
     @model_validator(mode="after")
@@ -158,6 +194,14 @@ class SafePresentationDeltaV1(_StrictModel):
             self.node_id is None or self.node_revision is None
         ):
             raise ValueError("Prompt presentation deltas require node identity.")
+        if self.segment == "reasoning":
+            # Reasoning arrives as arbitrary fragments of model thinking, so
+            # whole-text shape checks would drop legitimate pieces. Credential
+            # markers are still refused.
+            lowered = self.text.lower()
+            if any(marker in lowered for marker in _CREDENTIAL_MARKERS):
+                raise ValueError("Credential content is not presentation text.")
+            return self
         normalized = self.text.strip()
         if normalized.startswith(("{", "[", "```")):
             raise ValueError("Structured or code-fenced output is not presentation text.")
@@ -203,6 +247,8 @@ class PresentationTimingV1(_StrictModel):
 
 __all__ = (
     "PresentationStreamEventV1",
+    "PresentationStreamListItemV1",
+    "PresentationStreamListV1",
     "PresentationStreamMetadataV1",
     "PresentationStreamResetV1",
     "PresentationTimingV1",

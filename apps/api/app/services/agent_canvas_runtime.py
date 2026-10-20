@@ -382,6 +382,7 @@ class DynamicCanvasScheduler:
             now=self._clock(),
             event_type="execution_started",
         )
+        in_place_refresh_waves = 0
         while True:
             current = self._runtime.get_execution(execution_id)
             if current.cancel_requested:
@@ -394,6 +395,32 @@ class DynamicCanvasScheduler:
             leases = []
             now = self._clock()
             for node_id in ready_wave:
+                if self._run_snapshots is not None:
+                    member = next(
+                        (
+                            item
+                            for item in self._runtime.list_members(execution_id)
+                            if item.node_id == node_id
+                        ),
+                        None,
+                    )
+                    if member is not None and member.run_intent_snapshot is not None:
+                        workflow = self._workflows.get_workflow(current.workflow_id)
+                        nodes_by_id = {node.node_id: node for node in workflow.nodes}
+                        refresh_required = any(
+                            binding.source_kind == "node_output"
+                            and binding.source_asset_version_id is None
+                            and (source_node := nodes_by_id.get(binding.source_id)) is not None
+                            and source_node.status == "ready"
+                            and source_node.output_asset_version_id is not None
+                            for binding in member.run_intent_snapshot.binding_snapshots
+                        )
+                        if refresh_required:
+                            self._run_snapshots.refresh_member_intent(
+                                execution_id,
+                                node_id,
+                                now=self._clock(),
+                            )
                 lease = self._runtime.claim_lease(
                     execution_id,
                     node_id,
@@ -406,6 +433,7 @@ class DynamicCanvasScheduler:
                 leases.append(lease)
             with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
                 dependency_barrier_seen = False
+                all_deferred_refreshed_in_place = True
                 prepared_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
                 for lease in leases:
                     try:
@@ -416,7 +444,8 @@ class DynamicCanvasScheduler:
                         )
                     except Exception as error:
                         if self._is_dependency_barrier(error):
-                            self._defer_dependency_member(current.workflow_id, lease, error)
+                            if not self._defer_dependency_member(current.workflow_id, lease, error):
+                                all_deferred_refreshed_in_place = False
                             dependency_barrier_seen = True
                             continue
                         self._fail_member(current.workflow_id, lease, error)
@@ -434,7 +463,8 @@ class DynamicCanvasScheduler:
                         )
                     except Exception as error:
                         if self._is_dependency_barrier(error):
-                            self._defer_dependency_member(current.workflow_id, lease, error)
+                            if not self._defer_dependency_member(current.workflow_id, lease, error):
+                                all_deferred_refreshed_in_place = False
                             dependency_barrier_seen = True
                             continue
                         self._fail_member(current.workflow_id, lease, error)
@@ -495,12 +525,13 @@ class DynamicCanvasScheduler:
                         )
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
-                # A dependency barrier is durable state owned by the prompt
-                # preparation/reconciliation path.  Do not immediately loop
-                # and reclaim the same member while its successor evidence is
-                # still queued; the preparation worker (or the next runtime
-                # recovery tick) will wake a subsequent scheduler wave.
+                # A dependency barrier with an in-place evidence refresh can
+                # continue immediately, while queued successors and other
+                # barriers still wait for the preparation or recovery worker.
                 if dependency_barrier_seen:
+                    if all_deferred_refreshed_in_place and in_place_refresh_waves < 3:
+                        in_place_refresh_waves += 1
+                        continue
                     self._finish_if_quiescent(execution_id)
                     return
 
@@ -518,10 +549,18 @@ class DynamicCanvasScheduler:
                 dict.fromkeys(_same_wave_dependency_sources(member, members_by_node))
             )
             preferred_waiting = tuple(
-                source_node_id
-                for source_node_id in _frozen_unready_sources(member, nodes)
-                if members_by_node.get(source_node_id) is not None
-                and members_by_node[source_node_id].state in {"queued", "waiting", "running"}
+                dict.fromkeys(
+                    (
+                        *(
+                            source_node_id
+                            for source_node_id in _frozen_unready_sources(member, nodes)
+                            if members_by_node.get(source_node_id) is not None
+                            and members_by_node[source_node_id].state
+                            in {"queued", "waiting", "running"}
+                        ),
+                        *_same_execution_reference_sources(member, members_by_node),
+                    )
+                )
             )
             waiting = tuple(dict.fromkeys((*required_waiting, *preferred_waiting)))
             if waiting:
@@ -1203,7 +1242,7 @@ class DynamicCanvasScheduler:
         workflow_id: str,
         lease: NodeExecutionLeaseV2,
         error: Exception,
-    ) -> None:
+    ) -> bool:
         """Return a stale member to a durable dependency barrier.
 
         This path deliberately never enters provider preparation/submission and
@@ -1283,6 +1322,8 @@ class DynamicCanvasScheduler:
                         },
                         expected_lease_generation=lease.generation,
                     )
+                return refreshed_node is not None
+            return False
         except Exception as reconciliation_error:  # noqa: BLE001 - persist typed wait.
             error_code = getattr(
                 reconciliation_error,
@@ -1309,6 +1350,7 @@ class DynamicCanvasScheduler:
                 },
                 expected_lease_generation=lease.generation,
             )
+            return False
         finally:
             # Reconciliation must never strand the execution lease, even when
             # a snapshot refresh or prompt successor write fails.
@@ -2227,6 +2269,23 @@ def _same_wave_dependency_sources(
         for binding in snapshot.binding_snapshots
         if binding.source_kind == "node_output"
         and binding.input_role == "text_context"
+        and (source_member := members_by_node.get(binding.source_id)) is not None
+        and source_member.state in {"queued", "waiting", "running"}
+    )
+
+
+def _same_execution_reference_sources(
+    member: CanvasExecutionMembershipV2,
+    members_by_node: dict[str, CanvasExecutionMembershipV2],
+) -> tuple[str, ...]:
+    snapshot = member.run_intent_snapshot
+    if snapshot is None:
+        return ()
+    return tuple(
+        binding.source_id
+        for binding in snapshot.binding_snapshots
+        if binding.source_kind == "node_output"
+        and binding.input_role != "text_context"
         and (source_member := members_by_node.get(binding.source_id)) is not None
         and source_member.state in {"queued", "waiting", "running"}
     )

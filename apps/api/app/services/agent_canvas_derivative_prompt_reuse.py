@@ -27,6 +27,7 @@ def derivative_prompt_authority_digest(
         # on the first preparation and present after that preparation, so it
         # cannot be part of the authority identity used for reuse.
         payload["scene_environment_projection"] = None
+        payload["scene_projection_required"] = False
     lineage = {"source_node_revision", "asset_id", "asset_version_id"}
     bindings = [item.model_dump(mode="json", exclude=lineage) for item in context.bindings]
     payload["bindings"] = bindings

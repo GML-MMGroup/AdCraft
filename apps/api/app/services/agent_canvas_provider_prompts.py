@@ -318,17 +318,7 @@ class AgentCanvasProviderPromptCompiler:
             target_semantic_role=node.semantic_role,
         )
         references = "\n".join(
-            (
-                f"- Image {index}: binding={item.binding_id}; asset={item.asset_id}; "
-                f"media={item.media_type}; semantic_reference_role="
-                + (
-                    "style_reference"
-                    if _is_storyboard_style_anchor(item, node.semantic_role)
-                    else item.semantic_reference_role or "unspecified"
-                )
-                + "; "
-                + f"url={item.access_descriptor.media_url}"
-            )
+            f"- Image {index}: {_reference_description(item, node.semantic_role)}"
             for index, item in enumerate(reference_bundle.references, start=1)
         )
         try:
@@ -570,6 +560,56 @@ def _is_storyboard_style_anchor(
         target_semantic_role == "storyboard_sequence"
         and reference.storyboard_reference_purpose == "sequence_visual_anchor"
     )
+
+
+def _reference_description(
+    reference: ResolvedAdReferenceV2,
+    target_semantic_role: str,
+) -> str:
+    if _is_storyboard_style_anchor(reference, target_semantic_role):
+        return (
+            "Previous storyboard grid, style only: palette, rendering medium, texture, and "
+            "lighting. Do not reuse its panels."
+        )
+    semantic_role = reference.semantic_reference_role
+    if semantic_role == "storyboard_visual_reference":
+        return (
+            "Storyboard grid for this segment: follow its panel order, composition, action, "
+            "and timing. Do not show the grid itself."
+        )
+    if semantic_role == "subject_reference":
+        if reference.source_semantic_role == "product":
+            return (
+                "Product reference: preserve the exact shape, proportions, materials, colors, and "
+                "marks. Do not reproduce any multi-view layout."
+            )
+        if reference.source_semantic_role == "prop":
+            return "Prop reference: preserve the exact shape, materials, and colors."
+        if reference.source_identity_facts.get("character_asset_kind") == "turnaround":
+            return (
+                "Character turnaround sheet: use it only for this character's face, hair, "
+                "wardrobe, body shape, and proportions. Do not reproduce the sheet layout or "
+                "repeat the character."
+            )
+        return (
+            "Character identity reference: use it only for face, hair, wardrobe, body shape, "
+            "and proportions."
+        )
+    if semantic_role == "environment_reference":
+        return (
+            "Scene reference: use it only for spatial layout, materials, lighting, and "
+            "atmosphere. Do not reproduce any multi-view grid layout."
+        )
+    if semantic_role == "product_reference":
+        return (
+            "Product reference: preserve the exact shape, proportions, materials, colors, and "
+            "marks. Do not reproduce any multi-view layout."
+        )
+    if semantic_role == "prop_reference":
+        return "Prop reference: preserve the exact shape, materials, and colors."
+    if semantic_role in {"style_reference", "style_composition_reference"}:
+        return "Style reference: use it only for palette, rendering medium, texture, and lighting."
+    return "Additional reference image."
 
 
 def _storyboard_visual_anchor_clause(reference_bundle: AdReferenceBundleV2) -> str:

@@ -14,9 +14,10 @@ import json
 from hashlib import sha256
 from typing import Any
 
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, exists, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import aliased
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -46,6 +47,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 APPLICABLE_NODE_TYPES = frozenset({"text", "script", "image", "video", "audio"})
 NON_TERMINAL_STATUSES = ("waiting_user", "queued", "leased")
+EXCLUSIVE_ROLE_VARIANTS = frozenset({"storyboard_grid", "video_segment"})
 
 
 class AgentCanvasPromptPreparationDispatchRepository:
@@ -725,7 +727,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 AgentCanvasPromptPreparationOutboxRow.created_at.asc(),
                                 AgentCanvasPromptPreparationOutboxRow.dispatch_id.asc(),
                             )
-                            .limit(batch_limit)
+                            .limit(max(batch_limit * 8, 64))
                         ).mappings()
                     )
                     exhausted_rows = list(
@@ -746,6 +748,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     )
                     rows = [*exhausted_rows, *runnable_rows]
                     claimed: list[PromptPreparationDispatchV1] = []
+                    leased_row = aliased(AgentCanvasPromptPreparationOutboxRow)
                     for row in rows:
                         current_attempt = int(row["attempt_count"])
                         if current_attempt >= int(row["max_attempts"]):
@@ -802,6 +805,55 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 )
                                 terminalized.append(_dispatch_from_row(failed_row))
                             continue
+                        leased_conflict = connection.execute(
+                            select(
+                                exists(
+                                    select(1)
+                                    .select_from(leased_row)
+                                    .where(
+                                        leased_row.dispatch_id != row["dispatch_id"],
+                                        leased_row.workflow_id == row["workflow_id"],
+                                        leased_row.status == "leased",
+                                        leased_row.lease_expires_at > now_value,
+                                        (
+                                            leased_row.role_variant.in_(EXCLUSIVE_ROLE_VARIANTS)
+                                            if row["role_variant"] not in EXCLUSIVE_ROLE_VARIANTS
+                                            else True
+                                        ),
+                                    )
+                                )
+                            )
+                        ).scalar_one()
+                        if leased_conflict:
+                            continue
+                        upstream_pending = connection.execute(
+                            select(
+                                exists(
+                                    select(1)
+                                    .select_from(
+                                        AgentCanvasPromptPreparationOutboxRow,
+                                        AgentCanvasBindingRow,
+                                    )
+                                    .where(
+                                        AgentCanvasPromptPreparationOutboxRow.dispatch_id
+                                        != row["dispatch_id"],
+                                        AgentCanvasPromptPreparationOutboxRow.workflow_id
+                                        == row["workflow_id"],
+                                        AgentCanvasPromptPreparationOutboxRow.status.in_(
+                                            ("queued", "leased")
+                                        ),
+                                        AgentCanvasBindingRow.workflow_id == row["workflow_id"],
+                                        AgentCanvasBindingRow.target_node_id == row["node_id"],
+                                        AgentCanvasBindingRow.source_kind == "node_output",
+                                        AgentCanvasBindingRow.source_node_id
+                                        == AgentCanvasPromptPreparationOutboxRow.node_id,
+                                        AgentCanvasBindingRow.enabled.is_(True),
+                                    )
+                                )
+                            )
+                        ).scalar_one()
+                        if upstream_pending:
+                            continue
                         generation = int(row["lease_generation"]) + 1
                         changed = connection.execute(
                             update(AgentCanvasPromptPreparationOutboxRow)
@@ -843,6 +895,8 @@ class AgentCanvasPromptPreparationDispatchRepository:
                             created_at=timestamp,
                         )
                         claimed.append(dispatch)
+                        if len(claimed) >= batch_limit:
+                            break
                     connection.commit()
                     if _terminalized_out is not None:
                         _terminalized_out.extend(terminalized)
@@ -1399,6 +1453,38 @@ class AgentCanvasPromptPreparationDispatchRepository:
             raise
         except SQLAlchemyError as error:
             raise _persistence_error() from error
+
+    def refresh_completed_references_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        node: CanvasNodeV2,
+        binding_digest: str | None,
+        now: datetime,
+    ) -> None:
+        """Re-pin a completed dispatch to the Node's current input lineage.
+
+        Ready prompts are never re-authored automatically (user rule,
+        2026-10-19). When only upstream references change, the completed
+        dispatch keeps its operation and context but records the current
+        source snapshot so terminal identity checks stay consistent.
+        """
+
+        connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.workflow_id == node.workflow_id,
+                AgentCanvasPromptPreparationOutboxRow.node_id == node.node_id,
+                AgentCanvasPromptPreparationOutboxRow.operation_id
+                == node.prompt_preparation.operation_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "completed",
+            )
+            .values(
+                binding_digest=binding_digest,
+                source_snapshot_json=_json(_source_snapshot_for_node(connection, node, ())),
+                updated_at=_iso(_utc(now)),
+            )
+        )
 
     def reconcile_node_terminal_in_transaction(
         self,

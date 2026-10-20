@@ -1331,8 +1331,34 @@ def _delivery_inputs_with_validated_character_identity_semantics(
     node: CanvasNodeV2,
     inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
 ) -> tuple[ResolvedMediaInputSnapshotV2, ...]:
-    """Project validated Character identity semantics into the delivery compiler."""
+    """Project validated derivative identity semantics into the delivery compiler.
 
+    Pair bindings record only their pair purpose. The provider instruction
+    compiler needs an explicit reference kind, so Character Turnaround and
+    Scene Multi-view project their Main reference here. Without the Scene
+    projection every Scene Multi-view failed delivery with
+    ``semantic_reference_instruction_invalid``.
+    """
+
+    if (
+        node.node_type == "image"
+        and node.creative_role == "scene"
+        and node.structured_content.get("scene_asset_kind") == "multi_view"
+    ):
+        return tuple(
+            item.model_copy(
+                update={
+                    "binding_metadata": {
+                        **item.binding_metadata,
+                        "reference_kind": "scene_main",
+                        "reference_purpose": "environment_guidance",
+                    }
+                }
+            )
+            if item.binding_metadata.get("reference_purpose") == "scene_main_identity"
+            else item
+            for item in inputs
+        )
     if not (
         node.node_type == "image"
         and node.creative_role == "character"
