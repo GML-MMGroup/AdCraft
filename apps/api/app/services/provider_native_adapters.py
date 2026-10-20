@@ -560,6 +560,16 @@ _TEAMOROUTER_BASE_URL = "https://api.teamorouter.com/v1"
 # GPT Image 2 can take minutes; TeamoRouter recommends a 300 s client timeout.
 _TEAMOROUTER_TIMEOUT_SECONDS = 300.0
 _TEAMOROUTER_MAX_RESPONSE_BYTES = 64_000_000
+# The OpenAI edits endpoint treats input images as the canvas to modify, while
+# Canvas bindings are references (as with Seedream). Without this framing a
+# Multi-view request returned the bound Product Main almost unchanged.
+TEAMOROUTER_REFERENCE_INSTRUCTION = (
+    "The attached image(s) are reference material only: use them for the subject's "
+    "identity, shape, materials and colors. Create a new image that follows the "
+    "instructions below, with its own composition, framing and viewpoints. Do not "
+    "reproduce the reference image's composition unless the instructions explicitly "
+    "ask for it."
+)
 _TEAMOROUTER_REQUEST_FIELDS = (
     "size",
     "quality",
@@ -684,9 +694,14 @@ class TeamoRouterImageAdapter(ProviderNativeAdapter):
             self.profile = profile
 
     def _compile_payload(self, request: CanonicalProviderRequest) -> Mapping[str, object]:
+        prompt = (
+            f"{TEAMOROUTER_REFERENCE_INSTRUCTION}\n\n{request.prompt}"
+            if request.references
+            else request.prompt
+        )
         fields: dict[str, object] = {
             "model": request.provider_model_id,
-            "prompt": request.prompt,
+            "prompt": prompt,
             "n": 1,
         }
         fields.update(
