@@ -671,6 +671,18 @@ class TeamoRouterImageAdapter(ProviderNativeAdapter):
 
     profile = ProviderAdapterProfileV1.model_validate(TEAMOROUTER_IMAGE_PROFILE)
 
+    def __init__(
+        self,
+        *,
+        transport: NativeProviderTransport | None = None,
+        profile: ProviderAdapterProfileV1 | None = None,
+    ) -> None:
+        super().__init__(transport=transport)
+        if profile is not None:
+            if profile.transport_kind != "teamorouter_images_native":
+                raise ValueError("provider_adapter_profile_invalid")
+            self.profile = profile
+
     def _compile_payload(self, request: CanonicalProviderRequest) -> Mapping[str, object]:
         fields: dict[str, object] = {
             "model": request.provider_model_id,

@@ -437,47 +437,63 @@ TEAMOROUTER_IMAGE_SIZES = (
     "1024x1536",
     "auto",
 )
-TEAMOROUTER_IMAGE_PROFILE = _image_profile(
-    "teamorouter:gpt-image-2",
-    adapter_id="teamorouter-image-native",
-    transport_kind="teamorouter_images_native",
-    parameter_matrix=_parameter_matrix(
-        schema_id="teamorouter-gpt-image-2-v1",
-        descriptors=(
-            {
-                "name": "size",
-                "value_type": "enum",
-                "allowed_values": list(TEAMOROUTER_IMAGE_SIZES),
-            },
-            {
-                "name": "aspect_ratio",
-                "value_type": "enum",
-                "allowed_values": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
-            },
-            {
-                "name": "quality",
-                "value_type": "enum",
-                "allowed_values": ["low", "medium", "high", "auto"],
-            },
-            {
-                "name": "background",
-                "value_type": "enum",
-                "allowed_values": ["transparent", "opaque", "auto"],
-            },
-            {
-                "name": "output_format",
-                "value_type": "enum",
-                "allowed_values": ["png", "jpeg", "webp"],
-            },
-            {
-                "name": "output_compression",
-                "value_type": "integer",
-                "minimum": 0,
-                "maximum": 100,
-            },
+
+
+def _teamorouter_image_profile(provider_model_id: str) -> dict[str, Any]:
+    slug = provider_model_id.replace(".", "-")
+    return _image_profile(
+        f"teamorouter:{provider_model_id}",
+        adapter_id="teamorouter-image-native",
+        transport_kind="teamorouter_images_native",
+        parameter_matrix=_parameter_matrix(
+            schema_id=f"teamorouter-{slug}-v1",
+            descriptors=(
+                {
+                    "name": "size",
+                    "value_type": "enum",
+                    "allowed_values": list(TEAMOROUTER_IMAGE_SIZES),
+                },
+                {
+                    "name": "aspect_ratio",
+                    "value_type": "enum",
+                    "allowed_values": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+                },
+                {
+                    "name": "quality",
+                    "value_type": "enum",
+                    "allowed_values": ["low", "medium", "high", "auto"],
+                },
+                {
+                    "name": "background",
+                    "value_type": "enum",
+                    "allowed_values": ["transparent", "opaque", "auto"],
+                },
+                {
+                    "name": "output_format",
+                    "value_type": "enum",
+                    "allowed_values": ["png", "jpeg", "webp"],
+                },
+                {
+                    "name": "output_compression",
+                    "value_type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                },
+            ),
         ),
-    ),
+    )
+
+
+# GPT Image 2.5 Sunburst uses the same OpenAI Images contract and size limits.
+TEAMOROUTER_IMAGE_MODELS = (
+    ("gpt-image-2", "GPT Image 2"),
+    ("gpt-image-2.5-sunburst", "GPT Image 2.5 Sunburst"),
 )
+TEAMOROUTER_IMAGE_PROFILES = {
+    f"teamorouter:{model_id}": _teamorouter_image_profile(model_id)
+    for model_id, _ in TEAMOROUTER_IMAGE_MODELS
+}
+TEAMOROUTER_IMAGE_PROFILE = TEAMOROUTER_IMAGE_PROFILES["teamorouter:gpt-image-2"]
 
 _OPENROUTER_TEXT_ADAPTER_REVISION = "openrouter-pi-agent-v1"
 _OPENROUTER_TEXT_CAPABILITY_REVISION = "openrouter-openai-gpt-5-6-sol-agent-v1"
@@ -840,30 +856,33 @@ _TRUSTED_MANIFESTS = (
             "openrouter_routing": _OPENROUTER_IMAGE_ROUTING.model_dump(mode="json"),
         },
     ),
-    TrustedModelManifest(
-        provider_id="teamorouter",
-        provider_model_id="gpt-image-2",
-        display_name="GPT Image 2",
-        capability="image",
-        capability_metadata={
-            "accepted_input_types": ["text", "image"],
-            "max_references": 4,
-            "reference_limits": {"image": 4, "video": 0, "audio": 0},
-            "supported_parameters": [
-                "size",
-                "aspect_ratio",
-                "quality",
-                "background",
-                "output_format",
-                "output_compression",
-            ],
-            "supported_aspect_ratios": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
-            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
-            "provider_protocol": "openai_images",
-            "supports_provider_idempotency_token": False,
-            "supports_remote_task_lookup": False,
-            "adapter_profile": dict(TEAMOROUTER_IMAGE_PROFILE),
-        },
+    *(
+        TrustedModelManifest(
+            provider_id="teamorouter",
+            provider_model_id=model_id,
+            display_name=display_name,
+            capability="image",
+            capability_metadata={
+                "accepted_input_types": ["text", "image"],
+                "max_references": 4,
+                "reference_limits": {"image": 4, "video": 0, "audio": 0},
+                "supported_parameters": [
+                    "size",
+                    "aspect_ratio",
+                    "quality",
+                    "background",
+                    "output_format",
+                    "output_compression",
+                ],
+                "supported_aspect_ratios": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+                "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+                "provider_protocol": "openai_images",
+                "supports_provider_idempotency_token": False,
+                "supports_remote_task_lookup": False,
+                "adapter_profile": dict(TEAMOROUTER_IMAGE_PROFILES[f"teamorouter:{model_id}"]),
+            },
+        )
+        for model_id, display_name in TEAMOROUTER_IMAGE_MODELS
     ),
     TrustedModelManifest(
         provider_id="openrouter",

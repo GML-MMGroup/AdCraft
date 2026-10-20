@@ -138,7 +138,8 @@ def _adapter_for_profile(
         )
     if profile.transport_kind == "teamorouter_images_native":
         return TeamoRouterImageAdapter(
-            transport=TeamoRouterImageTransport(settings) if settings is not None else None
+            transport=TeamoRouterImageTransport(settings) if settings is not None else None,
+            profile=profile,
         )
     if profile.transport_kind == "minimax_video_native":
         return MiniMaxVideoAdapter(provider_model_id=provider_model_id)
