@@ -18,7 +18,9 @@ from app.schemas.agent_runtime import AgentRunRequest
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 _MAX_AUDIT_BYTES = 16_384
-_MAX_VALIDATION_CONTEXT_BYTES = 16_384
+# JSON escaping stores each CJK character as six bytes; Treatment review
+# contexts with all confirmed sections need more than 16 KB.
+_MAX_VALIDATION_CONTEXT_BYTES = 65_536
 _MAX_TOOL_RESULTS_BYTES = 65_536
 _SENSITIVE_KEYS = ("api_key", "authorization", "credential", "secret", "token")
 _SAFE_TOKEN_METADATA_KEYS = {
