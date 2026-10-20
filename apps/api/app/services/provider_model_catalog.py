@@ -551,6 +551,14 @@ def _video_capability_metadata(
         "supported_resolutions": ["480p", "720p", "1080p"],
         "duration_range_seconds": list(duration_range_seconds),
         "supports_native_audio": True,
+        # Execution fills unset video parameters from these defaults; without
+        # them a node lacking a resolution fails manual_media_parameters_unavailable.
+        "default_parameters": {
+            "duration_seconds": min(max(5, duration_range_seconds[0]), duration_range_seconds[1]),
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+            "generate_audio": False,
+        },
         "provider_protocol": provider_protocol,
         "supports_provider_idempotency_token": False,
         "supports_remote_task_lookup": True,
@@ -1088,6 +1096,8 @@ _RETIRED_MODEL_REFS = frozenset(
         "volcengine_ark:doubao-seed-2-0-mini-260428",
         "volcengine_ark:doubao-seedream-5-0-250128",
         "volcengine_ark:doubao-seedream-5-0-260128",
+        # Superseded by doubao-seedance-2-5-260628 in the trusted catalog.
+        "volcengine_ark:doubao-seedance-2-5-260128",
         "openai:gpt-image-2",
     }
 )
