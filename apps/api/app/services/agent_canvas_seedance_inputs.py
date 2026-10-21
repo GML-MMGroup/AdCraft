@@ -23,6 +23,7 @@ from app.schemas.seedance_inputs import (
     StoryboardGridGroundingPlanV1,
     StoryboardReferenceIdentityAuditV1,
 )
+from app.services.agent_canvas_face_mesh_rules import with_face_mesh_rule
 from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
 
 
@@ -71,7 +72,10 @@ class AgentCanvasSeedanceInputCompiler:
         media_inputs = _with_reference_purposes(node, media_inputs, grounding_plan)
         if grounding_plan is not None:
             _validate_grounding_manifest_inputs(grounding_plan, media_inputs)
-        compiled_prompt = _compile_prompt(prompt, text_inputs, media_inputs, grounding_plan)
+        compiled_prompt = with_face_mesh_rule(
+            _compile_prompt(prompt, text_inputs, media_inputs, grounding_plan),
+            node,
+        )
         manifest = SeedanceInputManifestV1(
             node_id=node.node_id,
             model_id=model_id,
