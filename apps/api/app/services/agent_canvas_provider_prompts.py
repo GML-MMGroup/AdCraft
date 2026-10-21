@@ -30,7 +30,6 @@ from app.schemas.agent_canvas_ad_media import (
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
 from app.schemas.agent_canvas_reference_conditioning import ReferenceConditioningPlanV1
-from app.services.agent_canvas_face_mesh_rules import with_face_mesh_rule
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
@@ -364,10 +363,7 @@ class AgentCanvasProviderPromptCompiler:
         prompt_parts = (
             character_policy.positive_boundary if character_policy is not None else "",
             registration.boundary,
-            with_face_mesh_rule(
-                f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
-                node,
-            ),
+            f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
             f"Structured role content:\n{body}",
             reference_identities,
             storyboard_anchor_clause,
