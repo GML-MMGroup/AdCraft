@@ -1479,11 +1479,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 == node.prompt_preparation.operation_id,
                 AgentCanvasPromptPreparationOutboxRow.status == "completed",
             )
-            .values(
-                binding_digest=binding_digest,
-                source_snapshot_json=_json(_source_snapshot_for_node(connection, node, ())),
-                updated_at=_iso(_utc(now)),
-            )
+            .values(updated_at=_iso(_utc(now)))
         )
 
     def reconcile_node_terminal_in_transaction(
