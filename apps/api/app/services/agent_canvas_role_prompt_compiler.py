@@ -222,6 +222,8 @@ class AgentCanvasRolePromptCompiler:
                 )
         else:
             prompt = rendered_prompt
+        if isinstance(concrete_brief, VideoSegmentRoleBriefV2) and editable_prompt_override is None:
+            prompt = _retain_video_audio(prompt, concrete_brief)
         _validate_role_prompt_text(
             context.role_variant,
             prompt,
@@ -815,6 +817,20 @@ def _authored_visual_style(brief: RoleCreativeBriefMemberV2) -> str | None:
     }:
         return None
     return brief.style_description
+
+
+def _retain_video_audio(prompt: str, brief: VideoSegmentRoleBriefV2) -> str:
+    """Keep declared native audio visible without inventing or reauthoring it."""
+    for label, value in (
+        ("Dialogue", brief.dialogue),
+        ("Voiceover", brief.voiceover),
+        ("Ambience", brief.ambience),
+        ("Synchronized action effects", brief.action_effects),
+    ):
+        text = value.strip()
+        if text and text not in prompt:
+            prompt = f"{prompt}\n{label}: {text}"
+    return prompt
 
 
 def _structured_content(

@@ -20,6 +20,7 @@ Use the creative objective, product truth, audience, campaign appeal, duration c
 - Begin with a clear hook, demonstrate the product benefit, and end with a concise call to action.
 - Keep spoken and on-screen lines natural, short, and suitable for viewers.
 - Keep timing and beat order internally consistent while preserving explicit user copy.
+- Preserve confirmed dialogue and voiceover as audible lines with speakers, delivery, and timing. Do not rewrite a spoken line as a subtitle or infer silence from `audio_mode=bgm_only`; that control limits separate audio generation to BGM, not native Video sound. Respect explicit no-dialogue or silent creative decisions.
 
 # Prompt Rules
 

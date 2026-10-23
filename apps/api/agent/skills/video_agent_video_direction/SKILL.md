@@ -19,6 +19,7 @@ Use the owning shot, its selected storyboard references, product and identity co
 - Preserve storyboard order and define clear subject action, camera motion, framing, and transition intent.
 - Keep camera motion limited and legible within each segment.
 - Preserve product, character, scene, lighting, and timing continuity across adjacent shots.
+- Preserve confirmed dialogue and voiceover with speaker, exact words, language, delivery, and local timing; retain ambience and synchronized action effects. Exclude background music only. `audio_mode=bgm_only` does not require silent Video, and a no-text image policy does not remove audible speech. Respect explicit silence or no-dialogue decisions.
 - Reference only the approved assets supplied for the same shot.
 - Define one segment-specific motion progression from its opening state through a distinct primary action to its closing state.
 - Use bounded prior-segment context only for the continuity handoff into the owning segment.

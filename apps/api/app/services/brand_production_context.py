@@ -40,12 +40,12 @@ _ROLE_STEPS = {
     "character": frozenset({"hook", "story", "character", "visual", "camera"}),
     "scene": frozenset({"hook", "story", "scene", "visual", "camera"}),
     "bgm": frozenset({"hook", "story", "editing", "sound"}),
-    # Script, Storyboard, and Video receive the narrative/visual authority they
-    # need for continuity. Editing and sound remain owned by the BGM/assembly
-    # path and are intentionally not duplicated into every media prompt.
-    "script": frozenset({"hook", "story", "character", "scene", "visual", "camera"}),
-    "storyboard": frozenset({"hook", "story", "character", "scene", "visual", "camera"}),
-    "video": frozenset({"hook", "story", "character", "scene", "visual", "camera"}),
+    # Narrative roles need reviewed timing and sound intent. Knowing music cues
+    # does not authorize embedding music in Video; the BGM node owns that asset.
+    **dict.fromkeys(
+        ("script", "storyboard", "video"),
+        frozenset({"hook", "story", "character", "scene", "visual", "camera", "editing", "sound"}),
+    ),
 }
 # These constraints and product decisions apply even outside their owning role.
 _SHARED_SECTIONS = frozenset({"boundaries", "prohibited_shots", "product_role", "product_shots"})

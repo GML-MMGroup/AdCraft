@@ -1,0 +1,7 @@
+export const nativeVideoAudioPolicy = [
+  'Audio ownership: audio_mode="bgm_only" controls standalone audio generation: only the separate BGM node creates music. It does not mean silent Video or prohibit dialogue, voiceover, ambience, or synchronized action effects.',
+  "Video renders required non-music sound natively when supported and enabled. Do not generate or embed background music in Video. BGM must remain instrumental and must not take over speech or sound effects.",
+  "Preserve confirmed spoken lines through Script, Storyboard planning, and Video: retain the speaker, exact words, language, timing, and delivery within the owning segment. Do not convert confirmed spoken lines into subtitles, captions, or silent acting. A prohibition on on-screen text does not prohibit audible words.",
+  "Check each segment against the confirmed narrative and sound intent before returning it. Keep spoken dialogue, voiceover, on-screen copy, ambience, and action effects distinct. If dialogue or voiceover is specified, carry it in the corresponding Video brief field and editable_prompt; an empty speech field is valid only when that segment has no required speech.",
+  "An explicit user request for silence or no dialogue still applies. Do not add speech merely because a character is present. Unsupported standalone sound-effects generation or final mixing does not disable native Video sound. Python owns provider capability checks and audio execution parameters.",
+].join(" ");
