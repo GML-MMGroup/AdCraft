@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { videoAgentBasePolicy } from "./agents.js";
+import { nativeVideoAudioPolicy } from "./audio-policy.js";
 import { listOperationDescriptors } from "../registry.js";
 
 const shotDirectionPolicy = [
@@ -25,8 +26,12 @@ export interface PromptDescriptor {
 
 const descriptors = Object.freeze(
   listOperationDescriptors().map((operation) => {
+    const needsAudioPolicy = operation.operation === "author_role_brief" || [
+      "script_authoring", "storyboard_design", "video_direction", "bgm_direction",
+    ].includes(operation.capability_id ?? "");
     const systemPrompt = [
       videoAgentBasePolicy,
+      ...(needsAudioPolicy ? [nativeVideoAudioPolicy] : []),
       instructionForOperation(operation.operation),
       localeInstructionForOperation(operation.operation),
       `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
