@@ -50,7 +50,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     VideoSegmentRoleBriefV2,
     WorldViewRoleBriefV2,
 )
-from app.services.agent_canvas_face_mesh_rules import FACE_MESH_RULES_BY_ROLE_VARIANT
+from app.services.agent_canvas_human_style_rules import HUMAN_STYLE_RULES_BY_ROLE_VARIANT
 from app.services.agent_canvas_prompt_assertion_policy import (
     PRODUCT_MULTIVIEW_VIEWS,
     SCENE_MULTIVIEW_VIEWS,
@@ -292,10 +292,10 @@ class AgentCanvasRolePromptCompiler:
         ):
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         prompt = f"{prompt}\n\n{policy.assertion_block}"
-        face_mesh_rule = FACE_MESH_RULES_BY_ROLE_VARIANT.get(context.role_variant)
-        if face_mesh_rule is not None:
-            # User decision (2026-10-21): the rule is visible in the node prompt.
-            prompt = f"{prompt}\n\n{face_mesh_rule}"
+        human_style_rule = HUMAN_STYLE_RULES_BY_ROLE_VARIANT.get(context.role_variant)
+        if human_style_rule is not None:
+            # User decision (2026-10-23): the rule is visible in the node prompt.
+            prompt = f"{prompt}\n\n{human_style_rule}"
         if (
             context.role_variant in {"video_segment", "free_video"}
             and context.video_representation_mode == "illustration_to_live_action"
