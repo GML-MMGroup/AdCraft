@@ -46,6 +46,9 @@ _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
 # the generic routing output ceiling truncates the required candidate fields
 # before the structured validator can inspect them.
 _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
+# Role briefs include structured production details and a complete editable prompt.
+# A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
+_ROLE_BRIEF_BUDGET = _OperationBudget(360, 190, 140, 30, 8_192, 2_048)
 _ROUTING_OPERATIONS = {
     "brand_hypothesis",
     "brand_slot_form",
@@ -188,7 +191,9 @@ class AgentOperationPolicyRegistryV2:
             contract_id=contract_id,
         )
         budget = (
-            _BRAND_FORM_BUDGET
+            _ROLE_BRIEF_BUDGET
+            if operation == "author_role_brief"
+            else _BRAND_FORM_BUDGET
             if operation == "brand_slot_form"
             else _BRAND_HYPOTHESIS_BUDGET
             if operation == "brand_hypothesis"
@@ -198,7 +203,9 @@ class AgentOperationPolicyRegistryV2:
         )
         return AgentOperationPolicyV2(
             policy_id=(
-                f"agent.{operation}.v1"
+                "agent.author_role_brief.v2"
+                if operation == "author_role_brief"
+                else f"agent.{operation}.v1"
                 if operation in {"brand_slot_form", "brand_slot_question"}
                 else f"agent.{policy_class}.v1"
             ),
