@@ -207,6 +207,10 @@ export function useAgentCanvasPresentationStreams(
     };
 
     activeIds.forEach((streamId) => {
+      const view = viewsRef.current.get(streamId);
+      // A cursor past the terminal event cannot replay it on a new connection.
+      // Preserve finished streams when another conversation stream is added.
+      if (view?.last_event_type && isTerminalEvent(view.last_event_type)) return;
       subscriptions.set(streamId, { source: null, reconnectTimer: null, finished: false });
       connect(streamId, 0);
     });

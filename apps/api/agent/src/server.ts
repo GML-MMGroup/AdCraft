@@ -277,6 +277,13 @@ async function handleRun(
   const startedAt = Date.now();
   const eventBuffer = new EventBuffer(response, maxQueueBytes);
   let terminalEmitted = false;
+  const abortForTransportLoss = () => {
+    if (response.writableFinished) return;
+    if (!active.abortCause) active.abortCause = "client_transport_lost";
+    controller.abort(new DOMException("Agent client transport closed.", "AbortError"));
+  };
+  response.once("close", abortForTransportLoss);
+  response.once("error", abortForTransportLoss);
   const emit = async (candidate: AgentRuntimeEvent): Promise<void> => {
     if (terminalEmitted) return;
     const next = event(request, 0, candidate.event_type, candidate.payload ?? {});
@@ -345,10 +352,16 @@ async function handleRun(
   } finally {
     clearInterval(heartbeat);
     clearTimeout(timeout);
+    // Model work is complete; a slow response sink must not retain its slots.
     activeRuns.delete(request.run_id);
     if (conversationId) activeConversations.delete(conversationId);
-    await eventBuffer.close();
-    response.end();
+    try {
+      await eventBuffer.close();
+    } finally {
+      response.removeListener("close", abortForTransportLoss);
+      response.removeListener("error", abortForTransportLoss);
+      if (!response.destroyed) response.end();
+    }
   }
 }
 
