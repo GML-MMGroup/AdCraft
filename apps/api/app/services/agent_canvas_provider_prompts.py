@@ -104,6 +104,10 @@ _ROLE_BOUNDARIES = {
         "Do not add undeclared speech or lyrics.",
     ),
 }
+_SCENE_MAIN_BOUNDARIES = (
+    "Render one single full-frame image of the scene's primary location.",
+    "Do not compose a grid, contact sheet, storyboard, or multiple views.",
+)
 _STYLE_ROLE_BY_SEMANTIC_ROLE = {
     "product": "product",
     "prop": "prop",
@@ -323,6 +327,11 @@ class AgentCanvasProviderPromptCompiler:
                     "Video style contract is invalid before provider dispatch.",
                 ) from error
             raise
+        if (
+            isinstance(structured, SceneDesignBoardContentV2)
+            and structured.scene_asset_kind == "main"
+        ):
+            registration = _registration("scene", *_SCENE_MAIN_BOUNDARIES)
         style = _style_from_content(
             node,
             structured,
@@ -719,6 +728,20 @@ def _style_from_projection(
 
 def _render_content(structured: object, *, generation_prompt: str = "") -> str:
     if isinstance(structured, SceneDesignBoardContentV2):
+        if structured.scene_asset_kind == "main":
+            primary = structured.panels[0]
+            return "\n".join(
+                (
+                    f"Environment: {structured.scene_identity}",
+                    f"Description: {structured.environment_summary}",
+                    f"Layout: {structured.layout}",
+                    f"Lighting: {structured.lighting}",
+                    f"Materials: {structured.materials}",
+                    f"Time of day: {structured.time_of_day}",
+                    f"Primary view: {primary.view_or_zone}; {primary.spatial_description}; "
+                    f"{primary.lighting_material_detail}",
+                )
+            )
         return "\n".join(
             [
                 f"Environment: {structured.scene_identity}",
