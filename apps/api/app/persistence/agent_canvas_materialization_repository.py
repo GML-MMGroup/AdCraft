@@ -2582,12 +2582,43 @@ class AgentCanvasMaterializationRepository:
             ) from error
         return self.get_projection(envelope.proposal_id)
 
+    def get_committed_character_parent(
+        self, workflow_id: str, occurrence_id: str
+    ) -> ProposalPublicationEnvelopeV1:
+        """Resolve accepted parent authority, never a merely queued proposal."""
+
+        with self._database.engine.connect() as connection:
+            rows = connection.execute(
+                select(AgentCanvasOperationEnvelopeRow.envelope_id)
+                .join(
+                    AgentCanvasMaterializationCommitRow,
+                    AgentCanvasMaterializationCommitRow.action_turn_id
+                    == AgentCanvasOperationEnvelopeRow.turn_id,
+                )
+                .where(AgentCanvasOperationEnvelopeRow.workflow_id == workflow_id)
+                .order_by(AgentCanvasMaterializationCommitRow.created_at.desc())
+            ).scalars()
+            for envelope_id in rows:
+                envelope = self._envelopes.get_in_transaction(connection, envelope_id)
+                if (
+                    isinstance(envelope, ProposalPublicationEnvelopeV1)
+                    and envelope.operation_kind == "parent"
+                    and envelope.capability_id == "character_design"
+                    and envelope.occurrence_id == occurrence_id
+                ):
+                    return envelope
+        raise _error(
+            "parent_materialization_missing",
+            "The Character occurrence has no committed parent materialization.",
+        )
+
     def queue_derivative(
         self,
         envelope: ProposalPublicationEnvelopeV1,
         *,
         source_turn_id: str,
         max_attempts: int = 5,
+        expected_action_turn_id: str | None = None,
     ) -> ProposalPublicationEnvelopeV1:
         """Queue one parent-derived operation without republishing its Proposal."""
 
@@ -2692,6 +2723,31 @@ class AgentCanvasMaterializationRepository:
                         .one_or_none()
                     )
                     if existing is None:
+                        if expected_action_turn_id is not None:
+                            session = (
+                                connection.execute(
+                                    select(AgentCanvasGuidanceSessionRow).where(
+                                        AgentCanvasGuidanceSessionRow.workflow_id
+                                        == envelope.workflow_id
+                                    )
+                                )
+                                .mappings()
+                                .one()
+                            )
+                            _require_guidance_revision(session, envelope.expected_session_revision)
+                            journey = parse_production_journey(str(session["journey_state_json"]))
+                            action = journey.active_action
+                            if (
+                                action is None
+                                or action.turn_id != expected_action_turn_id
+                                or action.character_phase != "turnaround"
+                                or action.occurrence_id != envelope.occurrence_id
+                                or action.stage_revision != envelope.stage_revision
+                            ):
+                                raise _error(
+                                    "character_authoring_phase_invalid",
+                                    "Turnaround recovery no longer owns the current Journey action.",
+                                )
                         event_turn = (
                             connection.execute(
                                 select(AgentCanvasChatTurnRow).where(

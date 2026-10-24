@@ -800,7 +800,13 @@ class CapabilityMaterializationPublicationService:
                         current_parent = None
                     parent_revision_matches = (
                         current_parent is not None
-                        and current_parent.revision == envelope.parent_snapshot.node_revision
+                        and (
+                            current_parent.revision == envelope.parent_snapshot.node_revision
+                            or (
+                                envelope.parent_snapshot.prompt_preparation_operation_id is not None
+                                and current_parent.revision > envelope.parent_snapshot.node_revision
+                            )
+                        )
                         and current_parent.prompt_preparation.status == "ready"
                         and current_parent.prompt_preparation.operation_id
                         == envelope.parent_snapshot.prompt_preparation_operation_id

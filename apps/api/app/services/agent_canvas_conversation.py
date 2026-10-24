@@ -40,6 +40,9 @@ from app.persistence.agent_canvas_capability_proposal_repository import (
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.brand_decision_repository import BrandDecisionRepository
+from app.services.agent_canvas_parent_derived_materialization import (
+    ParentDerivedMaterializationCoordinator,
+)
 from app.persistence.errors import V2PersistenceError
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
@@ -2241,6 +2244,17 @@ class AgentConversationService:
                 expected_session_revision=session.revision,
                 idempotency_key=f"reserve:{turn_id}",
             )
+            if (
+                ParentDerivedMaterializationCoordinator(
+                    workflows=self._workflows,
+                    conversations=self._conversations,
+                    materializations=AgentCanvasMaterializationRepository(
+                        self._workflows.database, self._conversations.events
+                    ),
+                ).queue_character_turnaround(session, turn_id=turn_id, lease_guard=lambda: None)
+                is not None
+            ):
+                return complete_message("Preparing the Turnaround from the current Character Main.")
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
                     if session.awaiting is None:

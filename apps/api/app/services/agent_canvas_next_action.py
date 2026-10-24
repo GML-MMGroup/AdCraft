@@ -30,6 +30,12 @@ from app.persistence.agent_canvas_editing_action_reconciliation_repository impor
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
+from app.persistence.agent_canvas_materialization_repository import (
+    AgentCanvasMaterializationRepository,
+)
+from app.services.agent_canvas_parent_derived_materialization import (
+    ParentDerivedMaterializationCoordinator,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
@@ -265,6 +271,25 @@ class DurableNextActionExecutionService:
                 turn_id=envelope.next_action_turn_id,
                 expected_session_revision=session.revision,
                 idempotency_key=f"reserve-next-action:{envelope.envelope_id}",
+            )
+        if (
+            ParentDerivedMaterializationCoordinator(
+                workflows=self._workflows,
+                conversations=self._conversations,
+                materializations=AgentCanvasMaterializationRepository(
+                    self._workflows.database, self._conversations.events
+                ),
+            ).queue_character_turnaround(
+                session, turn_id=envelope.next_action_turn_id, lease_guard=lease_guard
+            )
+            is not None
+        ):
+            message = "Preparing the Turnaround from the current Character Main."
+            self._conversations.complete_turn(
+                envelope.next_action_turn_id, assistant_message=message
+            )
+            return ValidatedNextActionV1(
+                command=NextActionCommandV1(action="reply", message=message)
             )
         if journey_action is not None and journey_action.action in {
             "wait_for_user",

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from collections.abc import Callable
+
+from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
@@ -39,6 +42,106 @@ class ParentDerivedMaterializationCoordinator:
         self._workflows = workflows
         self._conversations = conversations
         self._materializations = materializations
+
+    def queue_character_turnaround(
+        self,
+        session: GuidedSessionStateV2,
+        *,
+        turn_id: str,
+        lease_guard: Callable[[], None],
+    ) -> ProposalPublicationEnvelopeV1 | None:
+        """Route a reserved Turnaround to its current accepted parent, without cognition.
+
+        A new action freezes a new snapshot after an edit. Historical envelopes
+        remain immutable and continue to reject stale parent revisions.
+        """
+
+        action = session.journey.active_action
+        if (
+            session.journey.stage != "character"
+            or action is None
+            or action.character_phase != "turnaround"
+            or action.action_kind != "invoke_capability:character_design"
+            or action.turn_id != turn_id
+        ):
+            return None
+        if action.occurrence_id is None:
+            raise V2PersistenceError(
+                "character_occurrence_invalid",
+                "Turnaround recovery requires a current Character occurrence.",
+                stage="parent_derived_materialization",
+            )
+        parent = self._materializations.get_committed_character_parent(
+            session.workflow_id, action.occurrence_id
+        )
+        assert parent.derivative_intent is not None
+        intent_id = (
+            "derivative_" + _digest(f"{parent.derivative_intent.intent_id}:{action.action_id}")[:32]
+        )
+        envelope_id = "envelope_" + _digest("materialization_" + _digest(intent_id)[:32])[:32]
+        try:
+            existing = self._materializations.get_envelope(envelope_id)
+        except V2PersistenceError as error:
+            if error.code != "operation_envelope_not_found":
+                raise
+        else:
+            if not isinstance(existing, ProposalPublicationEnvelopeV1):
+                raise V2PersistenceError(
+                    "derivative_materialization_invalid",
+                    "Turnaround recovery requires a publication envelope.",
+                    stage="parent_derived_materialization",
+                )
+            lease_guard()
+            return self._materializations.queue_derivative(
+                existing, source_turn_id=turn_id, expected_action_turn_id=turn_id
+            )
+        node = self._workflows.get_node(
+            session.workflow_id, parent.derivative_intent.parent.node_id
+        )
+        if node.prompt_preparation.status != "ready":
+            raise V2PersistenceError(
+                "parent_prompt_not_ready",
+                "Finish preparing the current Character Main prompt before continuing.",
+                stage="parent_derived_materialization",
+            )
+        snapshot = parent.derivative_intent.parent.model_copy(
+            update={
+                "node_revision": node.revision,
+                "prompt_preparation_operation_id": node.prompt_preparation.operation_id,
+            }
+        )
+        intent = parent.derivative_intent.model_copy(
+            update={
+                "intent_id": intent_id,
+                "parent": snapshot,
+                "stage_revision": session.journey.stage_revision,
+                "payload_digest": _digest(snapshot.model_dump_json()),
+            }
+        )
+        requirement = AgentCanvasRequirementRepository(self._conversations.database).get_current(
+            session.workflow_id
+        )
+        turn = self._conversations.get_turn(turn_id)
+        derivative_turn = self._conversations.create_continuation_turn(
+            session.workflow_id,
+            source_action_id=intent_id,
+            workflow_revision=self._workflows.get_workflow(session.workflow_id).revision,
+            video_skill_run_id=parent.style_skill_run_id,
+            idempotency_key=f"parent-derived:{intent_id}",
+        )
+        envelope = self.build_derivative_envelope(
+            parent.model_copy(update={"derivative_intent": intent, "created_at": turn.created_at}),
+            intent=intent,
+            turn_id=derivative_turn.turn_id,
+            conversation_id=turn.conversation_id,
+            expected_session_revision=session.revision,
+            requirement_revision_id=requirement.revision_id,
+            requirement_revision_no=requirement.revision_no,
+        )
+        lease_guard()
+        return self._materializations.queue_derivative(
+            envelope, source_turn_id=turn_id, expected_action_turn_id=turn_id
+        )
 
     def reconcile_after_parent(
         self,
