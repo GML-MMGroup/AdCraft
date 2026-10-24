@@ -1034,7 +1034,9 @@ export async function aggregateStreamingJsonCompletion(
     try {
       const close = iterator.return?.();
       if (close !== undefined) {
-        if (stallError !== undefined) {
+        if (streamController.signal.aborted) {
+          // Async generators queue return() behind a pending next(). Cancellation
+          // must not wait for a provider iterator that has stopped responding.
           void close.catch(() => undefined);
         } else {
           await close;

@@ -1,8 +1,10 @@
 import type { AgentRuntimeEvent } from "./generated/agent-runtime.js";
 
 export interface EventStreamWriter {
+  readonly destroyed?: boolean;
   write(chunk: string): boolean;
-  once(event: "drain", listener: () => void): unknown;
+  once(event: "drain" | "close" | "error", listener: () => void): unknown;
+  removeListener(event: "drain" | "close" | "error", listener: () => void): unknown;
 }
 
 interface BufferedEvent {
@@ -35,6 +37,16 @@ export class EventBuffer {
   #writing = false;
   #terminalEnqueued = false;
   #closed = false;
+  #transportLost = false;
+  #resumeDrain: (() => void) | undefined;
+  readonly #onTransportLost = () => {
+    this.#transportLost = true;
+    this.#closed = true;
+    this.#queue.length = 0;
+    this.#bufferedBytes = 0;
+    this.#resumeDrain?.();
+    this.#removeLifecycleListeners();
+  };
 
   constructor(writer: EventStreamWriter, maximumBytes: number) {
     if (!Number.isInteger(maximumBytes) || maximumBytes <= 0) {
@@ -42,6 +54,9 @@ export class EventBuffer {
     }
     this.#writer = writer;
     this.#maximumBytes = maximumBytes;
+    writer.once("close", this.#onTransportLost);
+    writer.once("error", this.#onTransportLost);
+    if (writer.destroyed) this.#onTransportLost();
   }
 
   enqueue(candidate: AgentRuntimeEvent): boolean {
@@ -70,6 +85,7 @@ export class EventBuffer {
   async close(): Promise<void> {
     this.#closed = true;
     await this.flush();
+    this.#removeLifecycleListeners();
   }
 
   #append(candidate: AgentRuntimeEvent, allowTerminalOverflow: boolean): void {
@@ -119,18 +135,44 @@ export class EventBuffer {
   }
 
   async #drain(): Promise<void> {
-    while (this.#queue.length > 0) {
-      const entry = this.#queue.shift();
-      if (!entry) break;
-      const accepted = this.#writer.write(entry.encoded);
-      if (!accepted) {
-        await new Promise<void>((resolve) => this.#writer.once("drain", resolve));
+    try {
+      while (this.#queue.length > 0) {
+        if (this.#writer.destroyed) {
+          this.#onTransportLost();
+          break;
+        }
+        const entry = this.#queue.shift();
+        if (!entry) break;
+        const accepted = this.#writer.write(entry.encoded);
+        if (!accepted) await this.#waitForDrain();
+        this.#bufferedBytes = Math.max(0, this.#bufferedBytes - entry.bytes);
       }
-      this.#bufferedBytes -= entry.bytes;
+    } catch {
+      // A lost writer cannot deliver the remaining queue or a terminal event.
+      this.#onTransportLost();
+    } finally {
+      this.#writing = false;
+      for (const resolve of this.#flushWaiters.splice(0)) resolve();
+      if (this.#queue.length > 0) this.#startWriter();
     }
-    this.#writing = false;
-    for (const resolve of this.#flushWaiters.splice(0)) resolve();
-    if (this.#queue.length > 0) this.#startWriter();
+  }
+
+  async #waitForDrain(): Promise<void> {
+    if (this.#transportLost) return;
+    await new Promise<void>((resolve) => {
+      const resume = () => {
+        this.#writer.removeListener("drain", resume);
+        this.#resumeDrain = undefined;
+        resolve();
+      };
+      this.#resumeDrain = resume;
+      this.#writer.once("drain", resume);
+    });
+  }
+
+  #removeLifecycleListeners(): void {
+    this.#writer.removeListener("close", this.#onTransportLost);
+    this.#writer.removeListener("error", this.#onTransportLost);
   }
 }
 
