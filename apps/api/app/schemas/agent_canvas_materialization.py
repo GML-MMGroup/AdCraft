@@ -81,6 +81,7 @@ class ParentNodeSnapshotV1(_MaterializationModel):
     semantic_role: Literal["product_main", "character_main"]
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     prompt_preparation_operation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    creative_input_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class ParentDerivedMaterializationIntentV1(_MaterializationModel):

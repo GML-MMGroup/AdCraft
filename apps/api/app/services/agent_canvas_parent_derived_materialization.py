@@ -27,6 +27,7 @@ from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
 )
 from app.services.agent_canvas_requirements import character_occurrences_for_authoring
+from app.services.agent_canvas_node_change_authority import creative_node_input_digest
 
 
 class ParentDerivedMaterializationCoordinator:
@@ -108,6 +109,7 @@ class ParentDerivedMaterializationCoordinator:
             update={
                 "node_revision": node.revision,
                 "prompt_preparation_operation_id": node.prompt_preparation.operation_id,
+                "creative_input_digest": creative_node_input_digest(node),
             }
         )
         intent = parent.derivative_intent.model_copy(

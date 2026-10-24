@@ -23591,6 +23591,19 @@
     "ParentNodeSnapshotV1": {
       "additionalProperties": false,
       "properties": {
+        "creative_input_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Input Digest"
+        },
         "node_id": {
           "maxLength": 160,
           "minLength": 1,

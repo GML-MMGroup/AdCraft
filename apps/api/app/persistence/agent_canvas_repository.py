@@ -83,6 +83,7 @@ from app.services.agent_canvas_requirements import (
 )
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_character_prompt_reuse import retain_legacy_character_proof
+from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
 
 
 class AgentCanvasWorkflowRepository:
@@ -943,14 +944,21 @@ class AgentCanvasWorkflowRepository:
                             reason="explicit_node_authoring",
                             now=node.updated_at,
                         )
-                    else:
+                    elif not (
+                        current_node.prompt_preparation.status == "ready"
+                        and node.prompt_preparation == current_node.prompt_preparation
+                        and not _prompt_input_changed(current_node, node)
+                    ):
                         self._prompt_dispatch.ensure_for_node_in_transaction(
                             connection,
                             node,
                             bindings=bindings_for_node,
                             now=node.updated_at,
                         )
-                    if not user_prompt_edit:
+                    if not user_prompt_edit and (
+                        _prompt_input_changed(current_node, node)
+                        or current_node.output_asset_id != node.output_asset_id
+                    ):
                         _invalidate_prompt_preparations_for_source(
                             connection,
                             events=self._events,
@@ -1196,6 +1204,14 @@ class AgentCanvasWorkflowRepository:
                     if current.prompt_preparation.status != "ready":
                         connection.commit()
                         return current
+                    if (
+                        current.prompt_preparation.assertion_evidence == assertion_evidence
+                        and current.prompt_preparation.binding_digest == binding_digest
+                        and current.metadata.get("prepared_reference_snapshots")
+                        == prepared_reference_snapshots
+                    ):
+                        connection.commit()
+                        return current
                     refreshed = current.model_copy(
                         update={
                             "revision": current.revision + 1,
@@ -1233,12 +1249,6 @@ class AgentCanvasWorkflowRepository:
                     )
                     if updated.rowcount != 1:
                         raise _prompt_preparation_conflict()
-                    self._prompt_dispatch.refresh_completed_references_in_transaction(
-                        connection,
-                        node=refreshed,
-                        binding_digest=binding_digest,
-                        now=datetime.fromisoformat(now),
-                    )
                     current_workflow_revision = int(
                         connection.execute(
                             select(AgentCanvasWorkflowRow.revision).where(
@@ -1269,7 +1279,7 @@ class AgentCanvasWorkflowRepository:
                         ),
                     )
                     connection.commit()
-                    return refreshed
+                    return self.get_node(workflow_id, node_id)
                 except BaseException:
                     connection.rollback()
                     raise
@@ -3017,19 +3027,7 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
 def _prompt_input_changed(current: CanvasNodeV2, requested: CanvasNodeV2) -> bool:
     """Detect a new preparation input snapshot without comparing volatile fields."""
 
-    return any(
-        getattr(current, field) != getattr(requested, field)
-        for field in (
-            "node_type",
-            "creative_role",
-            "summary_prompt",
-            "generation_prompt",
-            "structured_content",
-            "model_selection_mode",
-            "model_ref",
-            "parameters",
-        )
-    )
+    return creative_node_inputs_changed(current, requested)
 
 
 def _has_managed_prompt_preparation(node: CanvasNodeV2) -> bool:

@@ -718,7 +718,7 @@ export type ProposalReferenceSnapshotV1 = { readonly "source_kind": "image_asset
 
 export type ProposalReferencePlanV1 = { readonly "plan_id": string; readonly "references"?: ReadonlyArray<ProposedDraftReferenceV2>; readonly "source_snapshots"?: ReadonlyArray<ProposalReferenceSnapshotV1>; readonly "digest": string };
 
-export type ParentNodeSnapshotV1 = { readonly "node_id": string; readonly "node_revision": number; readonly "semantic_role": "character_main" | "product_main"; readonly "occurrence_id"?: string | null; readonly "prompt_preparation_operation_id"?: string | null };
+export type ParentNodeSnapshotV1 = { readonly "node_id": string; readonly "node_revision": number; readonly "semantic_role": "character_main" | "product_main"; readonly "occurrence_id"?: string | null; readonly "prompt_preparation_operation_id"?: string | null; readonly "creative_input_digest"?: string | null };
 
 export type ParentDerivedMaterializationIntentV1 = { readonly "intent_id": string; readonly "workflow_id": string; readonly "stage_revision": number; readonly "occurrence_id": string; readonly "parent": ParentNodeSnapshotV1; readonly "derivative_role": "character_turnaround" | "product_multiview"; readonly "payload_digest": string };
 

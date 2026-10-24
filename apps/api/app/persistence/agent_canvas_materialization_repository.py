@@ -43,6 +43,8 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
 )
+from app.persistence.agent_canvas_repository import _node_from_row
+from app.services.agent_canvas_parent_identity import parent_snapshot_matches
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -2663,23 +2665,8 @@ class AgentCanvasMaterializationRepository:
                         if envelope.parent_snapshot.semantic_role == "character_main"
                         else "product"
                     )
-                    prompt_preparation = (
-                        json.loads(str(parent["prompt_preparation_json"]))
-                        if parent is not None
-                        else {}
-                    )
-                    expected_prompt_operation_id = (
-                        envelope.parent_snapshot.prompt_preparation_operation_id
-                    )
-                    revision_matches = parent is not None and (
-                        int(parent["revision"]) == envelope.parent_snapshot.node_revision
-                        or (
-                            expected_prompt_operation_id is not None
-                            and int(parent["revision"]) > envelope.parent_snapshot.node_revision
-                            and prompt_preparation.get("operation_id")
-                            == expected_prompt_operation_id
-                            and prompt_preparation.get("status") == "ready"
-                        )
+                    revision_matches = parent is not None and parent_snapshot_matches(
+                        envelope.parent_snapshot, _node_from_row(parent)
                     )
                     if (
                         parent is None
@@ -3627,15 +3614,7 @@ def _require_current_derivative_parent(
             "role_reference_mismatch",
             "The derivative parent does not match the authoritative role policy.",
         )
-    prompt_preparation = json.loads(str(parent["prompt_preparation_json"]))
-    prompt_operation_id = parent_snapshot.prompt_preparation_operation_id
-    revision_matches = int(parent["revision"]) == parent_snapshot.node_revision or (
-        prompt_operation_id is not None
-        and int(parent["revision"]) > parent_snapshot.node_revision
-        and prompt_preparation.get("operation_id") == prompt_operation_id
-        and prompt_preparation.get("status") == "ready"
-    )
-    if not revision_matches:
+    if not parent_snapshot_matches(parent_snapshot, _node_from_row(parent)):
         raise _error(
             "parent_materialization_revision_stale",
             "The derivative parent revision is stale.",
