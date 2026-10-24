@@ -27,6 +27,8 @@ from app.services.provider_credentials import (
     UrllibProviderHttpTransport,
 )
 from app.services.provider_model_catalog import TEAMOROUTER_IMAGE_PROFILE
+from app.services.workflow_model_call_redaction import redact_model_call
+from app.tools.media_provider_protocol import MediaApiError
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,7 +327,7 @@ class OpenRouterImageTransport:
             max_response_bytes=28_000_000,
         )
         if response.status_code < 200 or response.status_code >= 300:
-            raise ValueError("provider_request_failed")
+            raise _image_http_error(response, api_key=self._api_key)
         try:
             parsed = json.loads(response.body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -658,7 +660,7 @@ class TeamoRouterImageTransport:
             max_response_bytes=_TEAMOROUTER_MAX_RESPONSE_BYTES,
         )
         if response.status_code < 200 or response.status_code >= 300:
-            raise ValueError("provider_request_failed")
+            raise _image_http_error(response, api_key=self._api_key)
         try:
             parsed = json.loads(response.body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -674,6 +676,30 @@ class TeamoRouterImageTransport:
     def download(self, value: str) -> Mapping[str, object]:
         del value
         raise ValueError("provider_task_not_pollable")
+
+
+def _image_http_error(response: ProviderHttpResponse, *, api_key: str) -> MediaApiError:
+    metadata: dict[str, Any] = {"http_status": response.status_code}
+    if len(response.body) <= 16_384:
+        try:
+            parsed = json.loads(response.body)
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+            parsed = None
+        if isinstance(parsed, dict):
+            nested = parsed.get("error")
+            sources = (nested, parsed) if isinstance(nested, dict) else (parsed,)
+            details: dict[str, str] = {}
+            for key in ("code", "message", "request_id", "requestId"):
+                for source in sources:
+                    value = source.get(key)
+                    if isinstance(value, str) and value.strip():
+                        details[key] = value
+                        break
+            # Only bounded standard diagnostic fields cross the transport boundary.
+            # Never retain a raw response, provider stack, or echoed credentials.
+            safe_details, _ = redact_model_call(details, (api_key,))
+            metadata["response_body"] = safe_details
+    return MediaApiError("provider_request_failed", metadata)
 
 
 class TeamoRouterImageAdapter(ProviderNativeAdapter):

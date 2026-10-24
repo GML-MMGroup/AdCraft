@@ -1376,6 +1376,24 @@ class V2ProviderExecutor:
                 reference_asset_ids=reference_asset_ids,
                 slot_type=slot_type,
             )
+        except MediaApiError as error:
+            diagnostics, provider_message = _provider_submit_diagnostics(
+                provider_payload, error.metadata
+            )
+            http_status = diagnostics.get("http_status")
+            summary = "Provider request failed"
+            if http_status is not None:
+                summary += f" (HTTP {http_status})"
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code="provider_request_failed",
+                error_message=f"{summary}: {provider_message}"
+                if provider_message
+                else summary + ".",
+                diagnostics=diagnostics,
+                reference_asset_ids=reference_asset_ids,
+            )
         except ValueError as error:
             error_code = str(error)
             if error_code not in _NATIVE_PROVIDER_ERROR_CODES:
@@ -2744,6 +2762,7 @@ def _native_provider_failure(
     error_message: str | None = None,
     audit: Mapping[str, object] | None = None,
     reference_asset_ids: list[str] | None = None,
+    diagnostics: Mapping[str, Any] | None = None,
 ) -> V2ProviderResult:
     safe_audit = dict(audit or {})
     return V2ProviderResult(
@@ -2755,9 +2774,14 @@ def _native_provider_failure(
         reference_asset_ids=reference_asset_ids or _native_reference_asset_ids(provider_payload),
         error_code=error_code,
         error_message=error_message or error_code,
-        metadata=(
-            _native_result_metadata(safe_audit, "") if safe_audit else {"stage": "native_adapter"}
-        ),
+        metadata={
+            **(
+                _native_result_metadata(safe_audit, "")
+                if safe_audit
+                else {"stage": "native_adapter"}
+            ),
+            **dict(diagnostics or {}),
+        },
     )
 
 
