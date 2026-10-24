@@ -15,7 +15,12 @@ from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
+from app.schemas.agent_canvas import (
+    CanvasNodeErrorV2,
+    CanvasNodeV2,
+    ResolvedNodeInputManifestV2,
+)
+from app.schemas.agent_canvas_ad_media import CompiledProviderPromptV2
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
     NodeExecutionLeaseV2,
@@ -236,6 +241,55 @@ class ProviderTaskRecoveryService:
             for item in self._runtime.list_members(task.execution_id)
             if item.node_id == task.node_id
         )
+        # A remote task belongs to the accepted attempt, even if its editable
+        # Node has changed while the provider was working. Older tasks without
+        # these snapshots retain the saved-Node fallback; invalid snapshots must
+        # fail validation rather than silently publishing a different identity.
+        frozen_node = member.prompt_metadata.get("frozen_node")
+        if frozen_node is not None:
+            node = CanvasNodeV2.model_validate(frozen_node)
+        stored_prompt = member.prompt_metadata.get("compiled_provider_prompt")
+        compiled_prompt = (
+            CompiledProviderPromptV2.model_validate(stored_prompt)
+            if stored_prompt is not None
+            else None
+        )
+        stored_manifest = member.resolved_input_manifest
+        if stored_manifest is None:
+            stored_manifest = member.prompt_metadata.get("resolved_input_manifest")
+        input_manifest = (
+            ResolvedNodeInputManifestV2.model_validate(stored_manifest)
+            if stored_manifest is not None
+            else None
+        )
+        if (
+            node.workflow_id != task.workflow_id
+            or node.node_id != task.node_id
+            or (
+                input_manifest is not None
+                and (
+                    input_manifest.workflow_id != task.workflow_id
+                    or input_manifest.execution_id != task.execution_id
+                    or input_manifest.target_node_id != task.node_id
+                    or (
+                        member.run_intent_snapshot_id is not None
+                        and input_manifest.run_intent_snapshot_id != member.run_intent_snapshot_id
+                    )
+                )
+            )
+        ):
+            raise V2PersistenceError(
+                "provider_recovery_context_invalid",
+                "Provider recovery context does not match the accepted execution.",
+                stage="provider_recovery",
+            )
+        world_inputs = input_manifest.world_setting_inputs if input_manifest is not None else ()
+        if len(world_inputs) > 1:
+            raise V2PersistenceError(
+                "world_setting_binding_ambiguous",
+                "A target Node cannot resolve more than one World Setting Binding.",
+                stage="provider_recovery",
+            )
         intent_resolution = None
         if task.submission_intent_id is not None:
             intent_resolution = self._runtime.get_submission_intent(
@@ -292,7 +346,10 @@ class ProviderTaskRecoveryService:
             model_id=resolution.provider_model_id if resolution is not None else None,
             provider_id=resolution.provider_id if resolution is not None else None,
             model_resolution=resolution,
+            compiled_prompt=compiled_prompt,
             effective_parameters=effective_parameters,
+            input_manifest=input_manifest,
+            world_setting=world_inputs[0].context if world_inputs else None,
             seedance_input_audit=seedance_input_audit,
             execution_mode=execution_mode,
             semantic_extraction=semantic_extraction,
