@@ -70,8 +70,10 @@ export class PiModelAdapter implements AgentModelAdapter {
     emit: EventSink,
     budget?: RunBudget,
   ): Promise<Record<string, unknown>> {
+    signal.throwIfAborted();
     budget?.consumeTurn();
     const prepared = await prepareStructuredModelInput(request, this.python);
+    signal.throwIfAborted();
     const {
       credential,
       loadedSkills: skills,
@@ -203,6 +205,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     const toolChoice = toolChoiceForRequest(request);
     let transportAttempt = 0;
     const runAttempt = async (): Promise<void> => {
+      signal.throwIfAborted();
       transportAttempt += 1;
       const agent = new Agent({
         initialState: {
@@ -301,10 +304,17 @@ export class PiModelAdapter implements AgentModelAdapter {
         unsubscribe();
       }
     };
-    await runWithOneTransportRetry(runAttempt, {
-      deadlineEpochMs: Date.parse(request.deadline_at),
-      canRetry: () => modelSubmissions < maximumModelSubmissions,
-    });
+    try {
+      await runWithOneTransportRetry(runAttempt, {
+        deadlineEpochMs: Date.parse(request.deadline_at),
+        canRetry: () => modelSubmissions < maximumModelSubmissions,
+      });
+    } catch (error) {
+      // Cancellation retains the caller's reason instead of becoming a retry failure.
+      signal.throwIfAborted();
+      throw error;
+    }
+    signal.throwIfAborted();
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
     return {
       ...acceptedResult,
