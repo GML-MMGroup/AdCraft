@@ -164,9 +164,24 @@ class AgentCanvasProviderPromptCompiler:
             )
         _validate_editable_prompt_authority(node)
         if node.semantic_role == "scene":
+            scene_policy = PromptAssertionPolicyRegistry().resolve_for_video_audio(
+                "adcraft.agent_canvas.scene_board",
+                "1",
+                native_audio_required=False,
+                scene_asset_kind=(
+                    node.structured_content.get("scene_asset_kind")
+                    or node.parameters.get("scene_asset_kind")
+                ),
+            )
+            # The compiler's exact canonical block is trusted constraint text,
+            # not authored scene content. Keep it in the provider payload and
+            # its evidence checks, while validating every other character.
+            authored_scene_text = str(node.generation_prompt).replace(
+                scene_policy.assertion_block, "\n"
+            )
             violation = role_prompt_text_violation(
                 "scene_board",
-                str(node.generation_prompt),
+                authored_scene_text,
                 field_path="generation_prompt",
             )
             if violation is not None:
