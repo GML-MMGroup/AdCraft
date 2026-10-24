@@ -40,6 +40,7 @@ import {
 import type { LoadedSkill } from "./skills.js";
 import { intakeRepairPolicy } from "./prompts/intake-repair.js";
 import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
+import { roleBriefRepairPolicy } from "./prompts/role-brief-repair.js";
 import {
   brandFormRepairPolicy,
   brandFormSupplementalRepairPolicy,
@@ -1217,6 +1218,8 @@ function repairPayload(
     typeof currentUserInput === "string";
   const isTreatment = input.request.operation === "brand_treatment_step" &&
     input.request.contract_name === "CreativeTreatmentOutputV1";
+  const isRoleBrief = input.request.operation === "author_role_brief" &&
+    input.request.contract_name === "RoleCreativeBriefV2";
   const isBrandTreatmentReview = input.request.operation === "brand_treatment_review" &&
     input.request.validation_profile === "brand_treatment_review_sources_v1";
   const isSupplementalBrandForm = input.request.operation === "brand_slot_form" &&
@@ -1227,7 +1230,7 @@ function repairPayload(
     validation?.result,
     isBrandTreatmentReview ? 32 : 8,
   );
-  const malformedExcerpt = isTreatment && invalidValue === undefined && invalidContent
+  const malformedExcerpt = (isTreatment || isRoleBrief) && invalidValue === undefined && invalidContent
     ? JSON.stringify({
       content: invalidContent.slice(0, 8_192),
       truncated: invalidContent.length > 8_192,
@@ -1244,6 +1247,8 @@ function repairPayload(
             ? `${input.systemPrompt}\n\n${brandTreatmentReviewRepairPolicy}`
           : isTreatment
             ? `${input.systemPrompt}\n\n${treatmentRepairPolicy}`
+            : isRoleBrief
+              ? `${input.systemPrompt}\n\n${roleBriefRepairPolicy}`
             : isSupplementalBrandForm
               ? `${input.systemPrompt}\n\n${brandFormSupplementalRepairPolicy}`
               : isBrandForm
