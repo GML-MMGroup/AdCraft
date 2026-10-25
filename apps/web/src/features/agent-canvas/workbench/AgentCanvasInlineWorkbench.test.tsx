@@ -176,6 +176,42 @@ function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> 
   return { ...props, view };
 }
 
+function failedRuntime(node: CanvasNodeV2): NodeRuntimeV2 {
+  return {
+    node_id: node.node_id,
+    visible_status: "failed",
+    phase: null,
+    execution_id: "execution-accepted",
+    provider_task_id: null,
+    run_intent_snapshot_id: "intent-accepted",
+    parameter_compilation_snapshot_id: null,
+    effective_parameters: {},
+    normalizations: [],
+    omitted_optional_inputs: [],
+    waiting_for_node_ids: [],
+    blocked_by_node_ids: [],
+    attempt_no: 1,
+    updated_at: "2026-10-25T08:00:01Z",
+    error: {
+      code: "provider_generation_failed",
+      message: "429 SetLimitExceeded: Safe Experience Mode usage limit reached.",
+      retryable: false,
+    },
+  };
+}
+
+function failedAttempt(runtime: NodeRuntimeV2): NonNullable<CanvasNodeV2["latest_attempt"]> {
+  return {
+    execution_id: runtime.execution_id!,
+    member_id: "member-accepted",
+    run_intent_snapshot_id: runtime.run_intent_snapshot_id,
+    status: "failed",
+    created_at: "2026-10-25T08:00:00Z",
+    updated_at: runtime.updated_at,
+    error: runtime.error,
+  };
+}
+
 const descriptorVideoModel: ProviderModelSummaryV1 = {
   model_ref: "volcengine_ark:doubao-seedance-2-0-260128",
   provider_id: "volcengine_ark",
@@ -232,6 +268,153 @@ afterEach(() => {
 });
 
 describe("AgentCanvasInlineWorkbench", () => {
+  it.each(["image", "video"] as const)("shows a %s provider failure arriving after a run was accepted without retrying", async (type) => {
+    const node = makeNode(type);
+    const props = renderWorkbench(node);
+    fireEvent.click(screen.getByRole("button", { name: `Run ${type} node` }));
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    const runtime = failedRuntime(node);
+    const queuedNode = {
+      ...node,
+      latest_attempt: {
+        ...failedAttempt(runtime),
+        status: "queued" as const,
+        updated_at: "2026-10-25T08:00:00Z",
+        error: null,
+      },
+    };
+    props.view.rerender(<AgentCanvasInlineWorkbench {...props} node={queuedNode} workflow={makeWorkflow(queuedNode)} runtime={runtime} />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("SetLimitExceeded");
+    expect(alert.textContent).toMatch(/check.*usage limit/i);
+    expect(alert.textContent).not.toContain(runtime.error!.code);
+    expect(alert.querySelector("button")).toBeNull();
+    expect(node.status).toBe("draft");
+    expect(props.onRun).toHaveBeenCalledTimes(1);
+    expect(props.patchNode).not.toHaveBeenCalled();
+  });
+
+  it.each(["image", "video"] as const)("clears the previous %s failure when a newer runtime starts and succeeds", (type) => {
+    const original = makeNode(type);
+    const failed = failedRuntime(original);
+    const node = { ...original, latest_attempt: failedAttempt(failed), error: failed.error };
+    const props = renderWorkbench(node, { runtime: failed });
+    expect(screen.getByRole("alert").textContent).toContain("SetLimitExceeded");
+
+    const running: NodeRuntimeV2 = {
+      ...failed,
+      execution_id: "execution-next",
+      visible_status: "working",
+      phase: "running",
+      updated_at: "2026-10-25T08:00:02Z",
+      error: null,
+    };
+    props.view.rerender(<AgentCanvasInlineWorkbench {...props} runtime={running} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    props.view.rerender(<AgentCanvasInlineWorkbench {...props} runtime={{
+      ...running,
+      visible_status: "ready",
+      phase: null,
+      updated_at: "2026-10-25T08:00:03Z",
+    }} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it.each(["queued", "running", "succeeded", "cancelled"] as const)("ignores an older runtime failure after a newer attempt is %s", (status) => {
+    const original = makeNode("video");
+    const runtime = failedRuntime(original);
+    const node = {
+      ...original,
+      latest_attempt: {
+        ...failedAttempt(runtime),
+        execution_id: "execution-next",
+        status,
+        created_at: "2026-10-25T08:00:02Z",
+        updated_at: "2026-10-25T08:00:03Z",
+        error: null,
+      },
+    };
+    const props = renderWorkbench(node, { runtime });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("shows the latest regeneration failure while a Ready image retains its previous output", () => {
+    const original = makeNode("image", "ready");
+    const failed = failedRuntime(original);
+    const node = {
+      ...original,
+      output_asset_id: "previous-image",
+      latest_attempt: failedAttempt(failed),
+    };
+    const props = renderWorkbench(node, { runtime: {
+      ...failed,
+      visible_status: "ready",
+      phase: null,
+      error: null,
+    } });
+    expect(screen.getByRole("alert").textContent).toContain("SetLimitExceeded");
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("shows a newer failed attempt instead of the previous runtime failure", () => {
+    const original = makeNode("video");
+    const runtime = failedRuntime(original);
+    const node = {
+      ...original,
+      latest_attempt: {
+        ...failedAttempt(runtime),
+        execution_id: "execution-next",
+        created_at: "2026-10-25T08:00:02Z",
+        updated_at: "2026-10-25T08:00:03Z",
+        error: { code: "provider_delivery_failed", message: "The newer video could not be downloaded.", retryable: true },
+      },
+    };
+    renderWorkbench(node, { runtime });
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(node.latest_attempt.error.message);
+    expect(alert.textContent).not.toContain(runtime.error!.message);
+  });
+
+  it("shows a failed node error before a runtime snapshot is available", () => {
+    const original = makeNode("video", "failed");
+    const runtime = failedRuntime(original);
+    renderWorkbench({ ...original, error: runtime.error });
+    expect(screen.getByRole("alert").textContent).toContain("SetLimitExceeded");
+  });
+
+  it.each(["image", "video"] as const)("summarizes a wrapped %s quota rejection without rendering the provider payload", (type) => {
+    const node = makeNode(type);
+    const runtime = failedRuntime(node);
+    runtime.error = {
+      ...runtime.error!,
+      message: [
+        "media_api_failed:",
+        "user_action=The provider rate limit or quota was hit. Wait a moment and retry, or check your plan quota.",
+        "provider=volcengine",
+        "endpoint=https://provider.example/generations",
+        "status=429",
+        'response_body={"error":{"code":"SetLimitExceeded","message":"Safe Experience Mode usage limit reached for account sample-account-123."}}',
+        `payload=${JSON.stringify({ prompt: "Private campaign prompt ".repeat(200), model: "sample-model" })}`,
+      ].join("\n"),
+    };
+    const props = renderWorkbench(node, { runtime });
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("SetLimitExceeded");
+    expect(alert.textContent).toMatch(/check.*usage limit/i);
+    expect(alert.textContent!.length).toBeLessThan(400);
+    expect(alert.textContent).not.toContain("sample-account-123");
+    expect(alert.textContent).not.toContain("provider.example");
+    expect(alert.textContent).not.toContain("Private campaign prompt");
+    expect(alert.textContent).not.toContain("response_body=");
+    expect(alert.textContent).not.toContain("payload=");
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
   it("moves video audio generation to the footer and preserves the default without writing it", async () => {
     const node = { ...makeNode("video"), parameters: { duration_seconds: 8 } };
     const props = renderWorkbench(node, {
