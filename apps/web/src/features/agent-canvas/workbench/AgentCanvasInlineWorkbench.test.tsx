@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import { V2ApiError } from "../../../api/v2Client.ts";
+import { V2_AUTHORING_DRAFT_DISCARDED_EVENT } from "../../../api/v2AuthoringConflictEvents.ts";
 import { SaveIcon } from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
@@ -336,6 +337,147 @@ describe("AgentCanvasInlineWorkbench", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Provider request failed"));
     expect(screen.getByRole("alert").closest(".agent-node-workbench__image-feedback")).toBeTruthy();
     expect(screen.getByLabelText("Generation prompt")).toBeTruthy();
+  });
+
+  it.each(["Latest remote prompt", ""])("discards a conflicted prompt to authoritative value %j without writing on close", async (remotePrompt) => {
+    const patchNode = vi.fn().mockRejectedValueOnce(new V2ApiError({
+      status: 412, code: "workflow_state_conflict", message: "Workflow changed elsewhere.",
+      details: {}, violations: [], suggestedActions: [], payload: null,
+    })).mockResolvedValue(undefined);
+    const { view, ...props } = renderWorkbench(makeNode("image"), { patchNode });
+    const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "Discard my local prompt" } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("changed elsewhere"));
+    const remote = { ...props.node, generation_prompt: remotePrompt || null, revision: 2 };
+    view.rerender(<AgentCanvasInlineWorkbench {...props} node={remote} workflow={makeWorkflow(remote)} />);
+
+    fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: {
+      target: { resource: "workflow", id: "workflow-1" },
+      operationPath: "/workflows/workflow-1/nodes/image-node",
+      action: "discard",
+    } }));
+
+    expect(editor.value).toBe(remotePrompt);
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.blur(editor);
+    view.unmount();
+    await Promise.resolve();
+    expect(patchNode).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves new edits after globally discarding a conflicted prompt", async () => {
+    const patchNode = vi.fn().mockRejectedValueOnce(new V2ApiError({
+      status: 412, code: "workflow_state_conflict", message: "Workflow changed elsewhere.",
+      details: {}, violations: [], suggestedActions: [], payload: null,
+    })).mockResolvedValue(undefined);
+    const { view, ...props } = renderWorkbench(makeNode("image"), { patchNode });
+    const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "Discard my local prompt" } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    const remote = { ...props.node, generation_prompt: "Latest remote prompt", revision: 2 };
+    view.rerender(<AgentCanvasInlineWorkbench {...props} node={remote} workflow={makeWorkflow(remote)} />);
+    fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: {
+      target: { resource: "workflow", id: "workflow-1" },
+      operationPath: "/workflows/workflow-1/nodes/image-node",
+      action: "discard",
+    } }));
+
+    fireEvent.change(editor, { target: { value: "New creative direction" } });
+    fireEvent.blur(editor);
+
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(2));
+    expect(patchNode).toHaveBeenLastCalledWith("image-node", { generation_prompt: "New creative direction" }, { coalesce: true });
+    const saved = { ...remote, generation_prompt: "New creative direction", revision: 3 };
+    view.rerender(<AgentCanvasInlineWorkbench {...props} node={saved} workflow={makeWorkflow(saved)} />);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    view.unmount();
+    expect(patchNode).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves edits after discard while the previous conflict refresh is still pending", async () => {
+    let finishRefresh!: () => void;
+    const refreshPending = new Promise<void>((resolve) => { finishRefresh = resolve; });
+    const patchNode = vi.fn().mockRejectedValueOnce(new V2ApiError({
+      status: 412, code: "workflow_state_conflict", message: "Workflow changed elsewhere.",
+      details: {}, violations: [], suggestedActions: [], payload: null,
+    })).mockResolvedValue(undefined);
+    const { view, ...props } = renderWorkbench(makeNode("image"), {
+      patchNode, onWorkflowRefresh: vi.fn(() => refreshPending),
+    });
+    try {
+      const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+      fireEvent.change(editor, { target: { value: "Discard my local prompt" } });
+      fireEvent.blur(editor);
+      await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+      const remote = { ...props.node, generation_prompt: "Latest remote prompt", revision: 2 };
+      view.rerender(<AgentCanvasInlineWorkbench {...props} node={remote} workflow={makeWorkflow(remote)} />);
+      fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: {
+        target: { resource: "workflow", id: "workflow-1" },
+        operationPath: "/workflows/workflow-1/nodes/image-node",
+        action: "discard",
+      } }));
+
+      fireEvent.change(editor, { target: { value: "New direction during refresh" } });
+      fireEvent.blur(editor);
+
+      await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(2));
+      expect(patchNode).toHaveBeenLastCalledWith("image-node", { generation_prompt: "New direction during refresh" }, { coalesce: true });
+      await act(async () => { finishRefresh(); await refreshPending; });
+      const saved = { ...remote, generation_prompt: "New direction during refresh", revision: 3 };
+      view.rerender(<AgentCanvasInlineWorkbench {...props} node={saved} workflow={makeWorkflow(saved)} />);
+      expect(editor.value).toBe("New direction during refresh");
+      expect(screen.queryByRole("alert")).toBeNull();
+      view.unmount();
+      expect(patchNode).toHaveBeenCalledTimes(2);
+    } finally {
+      finishRefresh();
+    }
+  });
+
+  it("ignores a pending prompt save response after its local draft was discarded", async () => {
+    let finishSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { finishSave = resolve; });
+    const patchNode = vi.fn().mockReturnValueOnce(pendingSave).mockResolvedValue(undefined);
+    const { view, ...props } = renderWorkbench(makeNode("image"), { patchNode });
+    const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "Abandoned draft" } });
+    fireEvent.blur(editor);
+    expect(patchNode).toHaveBeenCalledTimes(1);
+    const remote = { ...props.node, generation_prompt: "Latest remote prompt", revision: 2 };
+    view.rerender(<AgentCanvasInlineWorkbench {...props} node={remote} workflow={makeWorkflow(remote)} />);
+    fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: {
+      target: { resource: "workflow", id: "workflow-1" },
+      operationPath: "/workflows/workflow-1/nodes/image-node",
+      action: "discard",
+    } }));
+
+    await act(async () => { finishSave(); await pendingSave; });
+
+    expect(editor.value).toBe("Latest remote prompt");
+    expect(patchNode).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(patchNode).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["other-workflow", "image-node"],
+    ["workflow-1", "other-node"],
+  ])("preserves local prompt edits when discard targets %s/%s", (workflowId, nodeId) => {
+    const { view, ...props } = renderWorkbench(makeNode("image"));
+    const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "Keep my local direction" } });
+
+    fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: {
+      target: { resource: "workflow", id: workflowId },
+      operationPath: `/workflows/${workflowId}/nodes/${nodeId}`,
+      action: "discard",
+    } }));
+
+    expect(editor.value).toBe("Keep my local direction");
+    view.unmount();
+    expect(props.patchNode).toHaveBeenCalledWith("image-node", { generation_prompt: "Keep my local direction" }, { coalesce: true });
   });
 
   it.each(["image", "text"] as const)("preserves %s prompt text and conflict recovery without adding status rows", async (type) => {

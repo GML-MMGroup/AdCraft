@@ -105,6 +105,7 @@ export function useAgentCanvasSession() {
   }
   const applyWorkflow = useCallback((next: AgentCanvasWorkflowV2) => {
     setAgentCanvasWorkflow((current) => {
+      if (!current || current.workflow_id !== next.workflow_id) return current;
       const merged = mergeAgentCanvasWorkflow(current, next);
       const pending = Array.from(
         pendingLayoutPositionsRef.current.get(merged.workflow_id)?.values() ?? [],
