@@ -793,6 +793,7 @@ def create_agent_canvas_runtime(
             timeout_seconds=30,
         ),
         events=event_repository,
+        media_facts_probe=V2MediaProbe(ffprobe_path=settings.ffprobe_path),
     )
     conversation_repository = AgentCanvasConversationRepository(
         database,
