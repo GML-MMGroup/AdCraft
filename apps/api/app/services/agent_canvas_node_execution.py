@@ -30,6 +30,7 @@ from app.schemas.agent_canvas_ad_media import (
 )
 from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
+    NodeExecutionLeaseV2,
     ResolvedModelExecutionV1,
     ResolvedModelExecutionV2,
 )
@@ -65,6 +66,7 @@ from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
 from app.services.agent_canvas_authoring_validation import require_node_runnable
+from app.services.agent_canvas_provider_task_checkpoint import provider_task_checkpoint
 from app.tools.mock_media_fixtures import (
     MockMediaFixtureError,
     deterministic_mock_media_bytes,
@@ -108,6 +110,7 @@ class NodeExecutionContext:
     world_setting: WorldSettingContextEnvelopeV2 | None = None
     execution_mode: CanvasExecutionModeV2 = "agent_assisted"
     semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
+    execution_lease: NodeExecutionLeaseV2 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -683,14 +686,7 @@ class MediaNodeExecutor:
             task_digest = hashlib.sha256(
                 f"{context.execution_id}:{context.node.node_id}:{result.remote_task_id}".encode()
             ).hexdigest()[:24]
-            if intent is not None:
-                intent = self._submission_intents.confirm_remote_task(
-                    intent,
-                    provider_task_id=f"task_{task_digest}",
-                    remote_task_id=result.remote_task_id,
-                    now=self._clock(),
-                )
-            return NodeExecutionOutcome(
+            outcome = NodeExecutionOutcome(
                 provider_task_id=f"task_{task_digest}",
                 remote_task_id=result.remote_task_id,
                 provider=result.provider,
@@ -703,6 +699,8 @@ class MediaNodeExecutor:
                 },
                 submission_intent_id=(intent.intent_id if intent is not None else None),
             )
+            self._checkpoint_provider_outcome(intent, context, outcome)
+            return outcome
         raise _error(
             result.error_code or "provider_generation_failed",
             result.error_message or "Provider generation failed.",
@@ -774,14 +772,7 @@ class MediaNodeExecutor:
             task_digest = hashlib.sha256(
                 f"{context.execution_id}:{context.node.node_id}:{result.remote_task_id}".encode()
             ).hexdigest()[:24]
-            if intent is not None:
-                intent = self._submission_intents.confirm_remote_task(
-                    intent,
-                    provider_task_id=f"task_{task_digest}",
-                    remote_task_id=result.remote_task_id,
-                    now=self._clock(),
-                )
-            return NodeExecutionOutcome(
+            outcome = NodeExecutionOutcome(
                 provider_task_id=f"task_{task_digest}",
                 remote_task_id=result.remote_task_id,
                 provider=result.provider,
@@ -795,6 +786,8 @@ class MediaNodeExecutor:
                 prompt_metadata=audit_payload,
                 submission_intent_id=(intent.intent_id if intent is not None else None),
             )
+            self._checkpoint_provider_outcome(intent, context, outcome)
+            return outcome
         raise _error(
             result.error_code or "provider_generation_failed",
             result.error_message or "Provider generation failed.",
@@ -803,6 +796,11 @@ class MediaNodeExecutor:
     def _prepare_submission_intent(self, context, request_payload):
         if self._submission_intents is None or context.model_resolution is None:
             return None
+        if context.execution_lease is None:
+            raise _error(
+                "provider_submission_lease_required",
+                "Paid provider submission requires an execution lease.",
+            )
         return self._submission_intents.prepare(
             workflow_id=context.node.workflow_id,
             execution_id=context.execution_id,
@@ -810,6 +808,20 @@ class MediaNodeExecutor:
             model_resolution=context.model_resolution,
             request_payload=request_payload,
             now=self._clock(),
+        )
+
+    def _checkpoint_provider_outcome(self, intent, context, outcome) -> None:
+        if intent is None:
+            return
+        lease = context.execution_lease
+        if lease is None:
+            raise _error("provider_submission_lease_required", "Provider submission has no lease.")
+        now = self._clock()
+        self._submission_intents.confirm_remote_task(
+            intent,
+            task=provider_task_checkpoint(context, outcome, lease, now=now),
+            lease=lease,
+            now=now,
         )
 
     def _handle_submission_error(self, intent, error: Exception) -> None:

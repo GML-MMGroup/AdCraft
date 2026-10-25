@@ -8,7 +8,12 @@ from datetime import datetime
 
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas_runtime import ResolvedModelExecutionV1, ResolvedModelExecutionV2
+from app.schemas.agent_canvas_runtime import (
+    CanvasProviderTaskV2,
+    NodeExecutionLeaseV2,
+    ResolvedModelExecutionV1,
+    ResolvedModelExecutionV2,
+)
 from app.schemas.agent_canvas_runtime_authority import ProviderSubmissionIntentV2
 
 
@@ -83,22 +88,11 @@ class ProviderSubmissionIntentService:
         self,
         intent: ProviderSubmissionIntentV2,
         *,
-        provider_task_id: str | None,
-        remote_task_id: str | None,
+        task: CanvasProviderTaskV2,
+        lease: NodeExecutionLeaseV2,
         now: datetime,
     ) -> ProviderSubmissionIntentV2:
-        confirmed = intent.model_copy(
-            update={
-                "provider_task_id": provider_task_id,
-                "remote_task_id": remote_task_id,
-                "state": "submitted",
-                "updated_at": now,
-            }
-        )
-        return self._runtime.update_submission_intent(
-            confirmed,
-            expected_state="prepared",
-        )
+        return self._runtime.checkpoint_provider_submission(intent, task, lease, now=now)
 
     def mark_outcome_unknown(
         self,

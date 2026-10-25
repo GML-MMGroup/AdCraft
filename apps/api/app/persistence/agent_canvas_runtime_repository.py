@@ -1067,15 +1067,7 @@ class AgentCanvasRuntimeRepository:
     def put_provider_task(self, task: CanvasProviderTaskV2, *, now: datetime) -> bool:
         """Persist one provider transition unless a newer terminal lease won."""
 
-        values = {
-            **task.model_dump(mode="json"),
-            "result_descriptor_json": json.dumps(task.result_descriptor, sort_keys=True),
-            "error_json": task.error.model_dump_json() if task.error else None,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat(),
-        }
-        values.pop("result_descriptor")
-        values.pop("error")
+        values = _provider_task_values(task, now=now)
         try:
             with self._database.engine.begin() as connection:
                 existing = (
@@ -1105,6 +1097,259 @@ class AgentCanvasRuntimeRepository:
         except SQLAlchemyError as error:
             raise _error("execution_persistence_failed", "Provider task storage failed.") from error
         return True
+
+    def checkpoint_provider_submission(
+        self,
+        intent: ProviderSubmissionIntentV2,
+        task: CanvasProviderTaskV2,
+        lease: NodeExecutionLeaseV2,
+        *,
+        now: datetime,
+    ) -> ProviderSubmissionIntentV2:
+        """Record a paid remote result even when its submitting worker lost ownership.
+
+        Only a current lease can change the member. An expired lease without a
+        successor may hand its task to recovery; cancellation or a newer owner
+        retains a cancelled task as evidence without scheduling publication.
+        """
+
+        if (
+            task.status != "submitted"
+            or not task.remote_task_id
+            or task.submission_intent_id != intent.intent_id
+            or (task.workflow_id, task.execution_id, task.node_id)
+            != (intent.workflow_id, intent.execution_id, intent.node_id)
+            or (lease.workflow_id, lease.execution_id, lease.node_id, lease.generation)
+            != (task.workflow_id, task.execution_id, task.node_id, task.lease_generation)
+        ):
+            raise _error(
+                "provider_submission_checkpoint_invalid", "Submission identity is invalid."
+            )
+        timestamp = now.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    intent_row = (
+                        connection.execute(
+                            select(AgentCanvasProviderSubmissionIntentRow).where(
+                                AgentCanvasProviderSubmissionIntentRow.intent_id == intent.intent_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if intent_row is None:
+                        raise _error(
+                            "provider_submission_intent_not_found",
+                            "Submission intent was not found.",
+                        )
+                    stored = _submission_intent(intent_row)
+                    if (
+                        stored.request_digest != intent.request_digest
+                        or stored.member_id != intent.member_id
+                        or (stored.workflow_id, stored.execution_id, stored.node_id)
+                        != (task.workflow_id, task.execution_id, task.node_id)
+                    ):
+                        raise _error(
+                            "provider_submission_intent_conflict",
+                            "Submission identity is immutable.",
+                        )
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasProviderTaskRow).where(
+                                AgentCanvasProviderTaskRow.task_id == task.task_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    recorded = None
+                    if existing is not None:
+                        recorded = _provider_task(existing)
+                        if (
+                            recorded.submission_intent_id != intent.intent_id
+                            or recorded.remote_task_id != task.remote_task_id
+                            or (recorded.workflow_id, recorded.execution_id, recorded.node_id)
+                            != (task.workflow_id, task.execution_id, task.node_id)
+                        ):
+                            raise _error(
+                                "provider_submission_intent_conflict",
+                                "Provider task identity is immutable.",
+                            )
+                    execution = self._execution_in_transaction(connection, task.execution_id)
+                    member_row = (
+                        connection.execute(
+                            select(AgentCanvasExecutionMemberRow).where(
+                                AgentCanvasExecutionMemberRow.member_id == stored.member_id,
+                                AgentCanvasExecutionMemberRow.execution_id == task.execution_id,
+                                AgentCanvasExecutionMemberRow.node_id == task.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if member_row is None:
+                        raise _error(
+                            "execution_member_not_found", "Execution member was not found."
+                        )
+                    member = _member(member_row)
+                    current = (
+                        connection.execute(
+                            select(AgentCanvasNodeLeaseRow).where(
+                                AgentCanvasNodeLeaseRow.execution_id == task.execution_id,
+                                AgentCanvasNodeLeaseRow.node_id == task.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    same_owner = (
+                        current is not None
+                        and int(current["generation"]) == lease.generation
+                        and str(current["owner_id"]) == lease.owner_id
+                    )
+                    current_lease = (
+                        same_owner
+                        and current["state"] == "claimed"
+                        and datetime.fromisoformat(str(current["expires_at"])) > now
+                    )
+                    expired_lease = (
+                        same_owner
+                        and current["state"] in {"claimed", "expired"}
+                        and datetime.fromisoformat(str(current["expires_at"])) <= now
+                    )
+                    remote_conflict = (
+                        stored.remote_task_id is not None
+                        and stored.remote_task_id != task.remote_task_id
+                        or stored.provider_task_id is not None
+                        and stored.provider_task_id != task.task_id
+                    )
+                    inactive = (
+                        execution.cancel_requested
+                        or execution.status in _TERMINAL_EXECUTION_STATES
+                        or member.state not in {"queued", "waiting", "running"}
+                        or member.attempt_no + 1 != stored.attempt_no
+                        or stored.state == "completed"
+                    )
+                    superseded = (
+                        remote_conflict
+                        or not (current_lease or expired_lease)
+                        or member.provider_task_id not in {None, task.task_id}
+                    )
+                    recoverable = not inactive and not superseded
+                    if recorded is not None:
+                        adopt_superseded = (
+                            recoverable
+                            and current_lease
+                            and recorded.status == "cancelled"
+                            and recorded.error is not None
+                            and recorded.error.code == "provider_submission_superseded"
+                            and lease.generation > recorded.lease_generation
+                        )
+                        if not adopt_superseded:
+                            # Preserve polled/terminal tasks. Only the actual
+                            # newer owner can adopt a superseded-response record
+                            # when provider idempotency returns the same task ID.
+                            connection.commit()
+                            return stored
+                    recorded = task
+                    if not recoverable:
+                        recorded = task.model_copy(
+                            update={
+                                "status": "cancelled",
+                                "next_poll_at": None,
+                                "error": CanvasNodeErrorV2(
+                                    code="provider_submission_cancelled"
+                                    if inactive
+                                    else "provider_submission_superseded",
+                                    message=(
+                                        "The remote submission was recorded "
+                                        "without scheduling publication."
+                                    ),
+                                    retryable=False,
+                                ),
+                            }
+                        )
+                    values = _provider_task_values(recorded, now=now)
+                    if existing is None:
+                        connection.execute(insert(AgentCanvasProviderTaskRow).values(**values))
+                    else:
+                        values.pop("created_at")
+                        values.pop("task_id")
+                        connection.execute(
+                            update(AgentCanvasProviderTaskRow)
+                            .where(AgentCanvasProviderTaskRow.task_id == task.task_id)
+                            .values(**values)
+                        )
+                    confirmed = stored
+                    if recoverable:
+                        confirmed = stored.model_copy(
+                            update={
+                                "provider_task_id": task.task_id,
+                                "remote_task_id": task.remote_task_id,
+                                "state": "submitted",
+                                "updated_at": now,
+                            }
+                        )
+                        connection.execute(
+                            update(AgentCanvasProviderSubmissionIntentRow)
+                            .where(
+                                AgentCanvasProviderSubmissionIntentRow.intent_id == stored.intent_id
+                            )
+                            .values(
+                                provider_task_id=task.task_id,
+                                remote_task_id=task.remote_task_id,
+                                state="submitted",
+                                updated_at=timestamp,
+                            )
+                        )
+                    if recoverable and current_lease:
+                        connection.execute(
+                            update(AgentCanvasExecutionMemberRow)
+                            .where(AgentCanvasExecutionMemberRow.member_id == member.member_id)
+                            .values(
+                                state="running",
+                                phase="waiting_provider",
+                                provider_task_id=task.task_id,
+                                error_json=None,
+                                updated_at=timestamp,
+                            )
+                        )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=task.workflow_id,
+                            execution_id=task.execution_id,
+                            node_id=task.node_id,
+                            transition_key=f"provider-submission:{task.task_id}:{lease.generation}",
+                            event_type="provider_task_submitted"
+                            if recoverable and current_lease
+                            else "provider_submission_recorded",
+                            created_at=timestamp,
+                            payload={
+                                "provider_task_id": task.task_id,
+                                "remote_task_id": task.remote_task_id,
+                                "status": recorded.status,
+                                "lease_generation": lease.generation,
+                                "model_resolution": task.result_descriptor.get("model_resolution"),
+                                "parameter_compilation_snapshot_id": task.result_descriptor.get(
+                                    "parameter_compilation_snapshot_id"
+                                ),
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return confirmed
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed", "Submission checkpoint storage failed."
+            ) from error
 
     def put_submission_intent(
         self,
@@ -1618,6 +1863,19 @@ def _member(row: RowMapping) -> CanvasExecutionMembershipV2:
         error=CanvasNodeErrorV2.model_validate_json(error_json) if error_json else None,
         updated_at=str(row["updated_at"]),
     )
+
+
+def _provider_task_values(task: CanvasProviderTaskV2, *, now: datetime) -> dict[str, object]:
+    values = {
+        **task.model_dump(mode="json"),
+        "result_descriptor_json": json.dumps(task.result_descriptor, sort_keys=True),
+        "error_json": task.error.model_dump_json() if task.error else None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+    }
+    values.pop("result_descriptor")
+    values.pop("error")
+    return values
 
 
 def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:
