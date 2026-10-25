@@ -24,6 +24,17 @@ const VIDEO_TOOLBAR_PARAMETERS = ["duration_seconds", "resolution", "aspect_rati
 function mediaExecutionError(node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) {
   const attempt = node.latest_attempt;
   if (runtime) {
+    // New queued work can retain the node's old timestamp and error. Hide that
+    // inherited failure until the independent projections align.
+    const inheritedError = !runtime.error || (
+      runtime.error.code === attempt?.error?.code
+      && runtime.error.message === attempt?.error?.message
+    );
+    if (attempt?.status === "failed"
+      && runtime.execution_id
+      && runtime.execution_id !== attempt.execution_id
+      && runtime.phase
+      && inheritedError) return null;
     // Runtime and Workflow refresh independently. A newer attempt can already
     // be running while the other projection still contains the previous error.
     const newerNode = Date.parse(node.updated_at) > Date.parse(runtime.updated_at);

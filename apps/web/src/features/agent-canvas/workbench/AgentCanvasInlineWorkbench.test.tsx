@@ -361,6 +361,69 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
+  it.each(["image", "video"] as const)("hides the previous %s failure when a new execution is queued with the old output still Ready", (type) => {
+    const original = makeNode(type, "ready");
+    const failed = failedRuntime(original);
+    const node = {
+      ...original,
+      output_asset_id: `previous-${type}`,
+      updated_at: "2026-10-25T08:00:00Z",
+      latest_attempt: failedAttempt(failed),
+    };
+    const props = renderWorkbench(node, { runtime: {
+      ...failed,
+      visible_status: "ready",
+      phase: null,
+      updated_at: node.updated_at,
+      error: null,
+    } });
+    expect(screen.getByRole("alert").textContent).toContain("SetLimitExceeded");
+
+    props.view.rerender(<AgentCanvasInlineWorkbench {...props} runtime={{
+      ...failed,
+      execution_id: "execution-next",
+      visible_status: "ready",
+      phase: "queued",
+      updated_at: node.updated_at,
+      error: null,
+    }} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(props.onRun).not.toHaveBeenCalled();
+    expect(props.patchNode).not.toHaveBeenCalled();
+  });
+
+  it.each(["image", "video"] as const)("hides the inherited %s error while a new execution is queued on a Failed node", (type) => {
+    const original = makeNode(type, "failed");
+    const failed = failedRuntime(original);
+    const node = {
+      ...original,
+      updated_at: failed.updated_at,
+      error: failed.error,
+      latest_attempt: failedAttempt(failed),
+    };
+    const props = renderWorkbench(node, { runtime: {
+      ...failed,
+      execution_id: "execution-next",
+      phase: "queued",
+    } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(props.onRun).not.toHaveBeenCalled();
+    expect(props.patchNode).not.toHaveBeenCalled();
+  });
+
+  it("keeps a distinct current execution error visible while its previous attempt is stale", () => {
+    const original = makeNode("video", "failed");
+    const failed = failedRuntime(original);
+    const node = { ...original, latest_attempt: failedAttempt(failed), error: failed.error };
+    renderWorkbench(node, { runtime: {
+      ...failed,
+      execution_id: "execution-next",
+      phase: "queued",
+      error: { code: "provider_delivery_failed", message: "The current video could not be downloaded.", retryable: true },
+    } });
+    expect(screen.getByRole("alert").textContent).toContain("The current video could not be downloaded.");
+  });
+
   it("shows a newer failed attempt instead of the previous runtime failure", () => {
     const original = makeNode("video");
     const runtime = failedRuntime(original);
