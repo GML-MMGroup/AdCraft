@@ -774,7 +774,7 @@ def create_agent_canvas_runtime(
         media_facts_probe=(
             deterministic_media_facts_probe
             if settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"
-            else None
+            else V2MediaProbe(ffprobe_path=settings.ffprobe_path)
         ),
         rendition_service=cover_renditions,
         on_version_published=project_cover_authority.consider_published_version,
@@ -786,7 +786,7 @@ def create_agent_canvas_runtime(
         commits=AgentCanvasGuidedProductRepository(workflow_repository, event_repository),
         compiler=ProductUploadMultiviewCompiler(
             ffmpeg=FfmpegTool(ffmpeg_path=settings.ffmpeg_path),
-            probe=V2MediaProbe(),
+            probe=V2MediaProbe(ffprobe_path=settings.ffprobe_path),
             staging_root=settings.media_data_dir / "v2" / "staging",
             max_total_bytes=64 * 1024 * 1024,
             max_total_pixels=80_000_000,
