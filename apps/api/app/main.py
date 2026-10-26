@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 AgentCanvasRuntimeFactory = Callable[[Settings], AgentCanvasRuntime]
 
 
+def _create_recovery_runtime(settings: Settings) -> AgentCanvasRuntime:
+    """Consume the model policy already initialized by persistence startup."""
+
+    return create_agent_canvas_runtime(settings, bootstrap_model_policy=False)
+
+
+def _create_live_recovery_runtime(_startup_settings: Settings) -> AgentCanvasRuntime:
+    """Use credentials hot-applied since the application lifespan began."""
+
+    return _create_recovery_runtime(get_settings())
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -40,12 +52,15 @@ def create_app(
     """Construct the HTTP application without touching persistence or media data."""
 
     resolved_settings = settings or get_settings()
+    recovery_runtime_factory = agent_canvas_runtime_factory
+    if recovery_runtime_factory is None and settings is None:
+        recovery_runtime_factory = _create_live_recovery_runtime
     application = FastAPI(
         title=resolved_settings.app_name,
         version=resolved_settings.app_version,
         lifespan=_lifespan(
             resolved_settings,
-            runtime_factory=agent_canvas_runtime_factory,
+            runtime_factory=recovery_runtime_factory,
         ),
     )
     trace_session = agent_model_trace_session_from_environment()
@@ -168,7 +183,7 @@ def _recover_agent_canvas_chat_turns(
 ) -> None:
     """Resume durable queued Agent Canvas turns after process restart."""
 
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         runtime.commands.recover_applying_plans()
         runtime.conversations.recover_pending_turns()
@@ -183,7 +198,7 @@ def _recover_agent_canvas_executions(
 ) -> None:
     """Resume persisted non-terminal Agent Canvas scheduler memberships."""
 
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         runtime.provider_recovery.recover_due_tasks()
         runtime.post_ready_effects.run_once()
@@ -258,7 +273,7 @@ def _recover_agent_canvas_continuations(
                         error,
                     )
 
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         runtime.continuation_worker.run_once()
         runtime.auto_run_dispatcher.run_once()
@@ -271,7 +286,7 @@ def _recover_agent_canvas_prompt_preparations(
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
 ) -> int:
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         prompt_preparation_worker = getattr(runtime, "prompt_preparation_worker", None)
         if prompt_preparation_worker is None:
@@ -314,7 +329,7 @@ def _recover_agent_canvas_guided_media_resumes(
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
 ) -> None:
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         runtime.guided_media_resume_worker.run_once()
     finally:
@@ -352,7 +367,7 @@ def _recover_agent_canvas_provider_tasks(
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
 ) -> None:
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         runtime.provider_recovery.recover_due_tasks()
         runtime.post_ready_effects.run_once()
@@ -369,7 +384,7 @@ def _recover_agent_canvas_editing_exports(
 ) -> None:
     """Resume persisted non-terminal Agent Canvas Editing exports."""
 
-    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    runtime = (runtime_factory or _create_recovery_runtime)(settings)
     try:
         runtime.editing_exports.resume_active()
     finally:
