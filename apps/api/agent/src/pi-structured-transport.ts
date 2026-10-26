@@ -637,6 +637,8 @@ export async function executeOpenAICompletion(
         : {}),
     });
   } finally {
+    // Aggregation can stop on its own idle timeout while the HTTP iterator is pending.
+    controller.abort();
     clearTimeout(timer);
     options.signal.removeEventListener("abort", abortFromCaller);
   }
@@ -1035,7 +1037,9 @@ export async function aggregateStreamingJsonCompletion(
     try {
       const close = iterator.return?.();
       if (close !== undefined) {
-        if (stallError !== undefined) {
+        if (streamController.signal.aborted) {
+          // Async generators queue return() behind a pending next(). Cancellation
+          // must not wait for a provider iterator that has stopped responding.
           void close.catch(() => undefined);
         } else {
           await close;

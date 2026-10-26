@@ -33,7 +33,7 @@ from app.schemas.agent_canvas_guided_interactions import (
 )
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.v2_persistence import V2EventInsert
-from app.services.agent_canvas_assets import AgentCanvasAssetService
+from app.services.agent_canvas_assets import AgentCanvasAssetService, MediaFactsProbe
 from app.services.product_upload_multiview_compiler import (
     ProductUploadMultiviewCompilationError,
     ProductUploadMultiviewCompiler,
@@ -54,6 +54,7 @@ class GuidedProductInputCommitService:
         commits: AgentCanvasGuidedProductRepository,
         compiler: ProductUploadMultiviewCompiler,
         events: EventRepository,
+        media_facts_probe: MediaFactsProbe | None = None,
         continuation_writer: Callable[..., None] | None = None,
     ) -> None:
         self._assets = assets
@@ -62,6 +63,7 @@ class GuidedProductInputCommitService:
         self._commits = commits
         self._compiler = compiler
         self._events = events
+        self._media_facts_probe = media_facts_probe or V2MediaProbe()
         self._continuation_writer = continuation_writer
 
     def set_continuation_writer(self, continuation_writer: Callable[..., None]) -> None:
@@ -402,7 +404,7 @@ class GuidedProductInputCommitService:
 
     def _compiler_input(self, version):
         path = self._assets.resolve_asset_version_path(version.asset_id, version.version_id)
-        facts = V2MediaProbe()(path, "image")
+        facts = self._media_facts_probe(path, "image")
         if facts.error or facts.width is None or facts.height is None:
             raise V2PersistenceError(
                 "guided_product_asset_unreadable",
