@@ -24,6 +24,9 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_working_document_repository import (
     AgentWorkingDocumentRepository,
 )
@@ -36,12 +39,16 @@ from app.persistence.agent_canvas_capability_proposal_repository import (
 )
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.brand_decision_repository import BrandDecisionRepository
 from app.persistence.errors import V2PersistenceError
+from app.services.brand_decision_document import BrandDecisionDocumentService
+from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
 )
+from app.schemas.brand_professional_mode import BrandJourneyStateV1, BrandTreatmentDocumentV1
 from app.schemas.agent_canvas_conversation import (
     ChatTimelineListResponseV2,
     ChatTurnAcceptedV2,
@@ -133,6 +140,9 @@ from app.services.agent_run_context_registry import (
 )
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.agent_canvas_nodes import AgentCanvasNodeService
+from app.services.agent_canvas_presentation import (
+    presentation_stream_id as derive_presentation_stream_id,
+)
 from app.services.agent_canvas_requirement_projection import (
     AgentCanvasRequirementProjectionService,
     requirement_projection_digest,
@@ -180,6 +190,7 @@ from app.services.agent_canvas_requirements import (
     character_occurrences_for_authoring,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.advertising_production_readiness import advertising_production_is_ready
 from app.services.authoritative_workflow_context import (
     AuthoritativeWorkflowContextProjector,
 )
@@ -271,6 +282,8 @@ class VideoAgentGateway(Protocol):
         context: RolePromptPreparationContextV2,
         *,
         request_identity: str,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[..., None] | None = None,
     ) -> RoleCreativeBriefV2: ...
 
     def answer_workflow_conversation(
@@ -387,6 +400,8 @@ class DeterministicVideoAgentGateway:
         context: RolePromptPreparationContextV2,
         *,
         request_identity: str,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> RoleCreativeBriefV2:
         del request_identity
         brief = deterministic_role_brief(context)
@@ -526,7 +541,7 @@ class PiVideoAgentGateway:
         model_resolution: ModelResolutionService,
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
         on_provider_waiting: Callable[..., object] | None = None,
-        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
+        on_presentation: Callable[..., None] | None = None,
     ) -> None:
         self._durable_runner = durable_runner
         self._timeout_seconds = timeout_seconds
@@ -609,6 +624,8 @@ class PiVideoAgentGateway:
         context: RolePromptPreparationContextV2,
         *,
         request_identity: str,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> RoleCreativeBriefV2:
         completed = self._run_structured(
             operation="author_role_brief",
@@ -621,6 +638,9 @@ class PiVideoAgentGateway:
                 "node_revision": context.node_revision,
                 "role_variant": context.role_variant,
             },
+            presentation_channel="node_prompt" if presentation_stream_id else None,
+            presentation_stream_id=presentation_stream_id,
+            on_presentation=on_presentation,
         )
         brief = RoleCreativeBriefV2.model_validate(completed.value)
         if not brief.root.editable_prompt or not brief.root.editable_prompt.strip():
@@ -814,6 +834,9 @@ class PiVideoAgentGateway:
         contract,
         identity_fields: dict[str, str | int],
         parent_run_id: str | None = None,
+        presentation_channel: Literal["assistant", "node_prompt"] | None = None,
+        presentation_stream_id: str | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> PiStructuredRunResult:
         operation_definition = self._operation_registry.resolve(operation)
         validate_video_agent_operation_context(operation, context)
@@ -865,6 +888,7 @@ class PiVideoAgentGateway:
                     if context.scene_environment_projection is not None
                     else None
                 ),
+                "scene_projection_required": context.scene_projection_required,
             }
         elif validation_profile == "proposal_candidate_count_v1":
             validation_context = {
@@ -880,6 +904,7 @@ class PiVideoAgentGateway:
             agent_name="video_agent",
             operation=operation,
             model_ref=resolution.model_ref,
+            thinking_mode=getattr(resolution, "thinking_mode", None),
             context=context,
             contract_name=contract.__name__,
             contract_schema=contract.model_json_schema(),
@@ -915,7 +940,23 @@ class PiVideoAgentGateway:
             },
         )
         if operation in {"decide_turn_intent", "decide_next_action", "author_decision_bundle"}:
-            request = request.model_copy(update={"presentation_channel": "assistant"})
+            request = request.model_copy(
+                update={
+                    "presentation_channel": "assistant",
+                    "presentation_stream_id": (
+                        derive_presentation_stream_id(context.workflow_id, turn_id)
+                        if isinstance(turn_id, str)
+                        else None
+                    ),
+                }
+            )
+        elif presentation_channel is not None:
+            request = request.model_copy(
+                update={
+                    "presentation_channel": presentation_channel,
+                    "presentation_stream_id": presentation_stream_id,
+                }
+            )
         if operation == "decide_turn_intent":
             schema_bytes = len(
                 json.dumps(
@@ -965,7 +1006,14 @@ class PiVideoAgentGateway:
             identity_fields=identity_fields,
             model_ref=resolution.model_ref,
             on_dispatch_owned=on_dispatch_owned,
-            on_presentation=self._on_presentation,
+            on_presentation=(
+                on_presentation
+                or (
+                    (lambda event: self._on_presentation(event, context.workflow_id))
+                    if self._on_presentation is not None
+                    else None
+                )
+            ),
         )
         return _completed_structured_run(result, model_ref=resolution.model_ref)
 
@@ -1378,8 +1426,11 @@ class AgentConversationService:
         model_selection: ModelSelectionService | None = None,
         requirements: AgentCanvasRequirementService | None = None,
         production_journey: GuidedProductionJourneyService | None = None,
+        brand_interaction_resumer: Callable[[str, str], object] | None = None,
+        progressive_storyboard_advance: Callable[[str], object] | None = None,
     ) -> None:
         self._workflows = workflows
+        self._brand_decisions = BrandDecisionRepository(workflows.database)
         self._conversations = conversations
         self._nodes = nodes
         self._gateway = gateway
@@ -1395,12 +1446,18 @@ class AgentConversationService:
         )
         self._run_nodes = run_nodes
         self._asset_resolver = asset_resolver
+        self._brand_interaction_resumer = brand_interaction_resumer
+        self._progressive_storyboard_advance = progressive_storyboard_advance
         self._session_actions = GuidanceSessionActionService()
         self._continuation_outbox = continuation_outbox or (
             AgentCanvasContinuationOutboxRepository(
                 workflows.database,
                 EventRepository(workflows.database),
             )
+        )
+        self._prompt_preparation_dispatches = AgentCanvasPromptPreparationDispatchRepository(
+            workflows.database,
+            EventRepository(workflows.database),
         )
         submission_kwargs = {
             "reference_snapshot": lambda workflow_id, reference: (
@@ -1486,6 +1543,7 @@ class AgentConversationService:
         mentioned_node_ids: tuple[str, ...] = (),
         mentioned_image_asset_ids: tuple[str, ...] = (),
         video_skill_run_id: str | None = None,
+        response_locale: str | None = None,
     ) -> ChatTurnAcceptedV2:
         self._workflows.get_workflow(workflow_id)
         current_session = self._conversations.get_guidance_session_or_none(workflow_id)
@@ -1548,6 +1606,7 @@ class AgentConversationService:
             mentioned_node_ids=mentioned_node_ids,
             mentioned_image_asset_ids=mentioned_image_asset_ids,
             video_skill_run_id=video_skill_run_id,
+            response_locale=response_locale,
             idempotency_key=idempotency_key,
         )
 
@@ -1750,13 +1809,15 @@ class AgentConversationService:
         mentioned_asset_ids = tuple(
             str(item) for item in turn.request.get("mentioned_image_asset_ids") or ()
         )
+        requested_response_locale = str(turn.request.get("response_locale") or "").strip() or None
+        current_response_locale = requested_response_locale or (
+            existing_session.response_locale if existing_session is not None else "und"
+        )
         requirements = self._requirements.get_current_revision(turn.workflow_id)
         workflow_context = self._workflow_context.project(
             turn.workflow_id,
             conversation_id=turn.conversation_id,
-            response_locale=(
-                existing_session.response_locale if existing_session is not None else "und"
-            ),
+            response_locale=current_response_locale,
         )
         intent = self._turn_intents.decide(
             TurnIntentContextV2(
@@ -1775,9 +1836,7 @@ class AgentConversationService:
                     turn.workflow_id,
                     mentioned_node_ids=mentioned_node_ids,
                 ),
-                current_response_locale=(
-                    existing_session.response_locale if existing_session is not None else "und"
-                ),
+                current_response_locale=current_response_locale,
                 workflow_context=workflow_context,
                 style_skill_catalog=StyleSkillConsultationResolver(
                     self._video_skills, self._conversations
@@ -1794,6 +1853,39 @@ class AgentConversationService:
             ),
             turn_id=turn_id,
         )
+
+        brand_journey = self._brand_journey_for_workflow(turn.workflow_id)
+
+        def complete_message(
+            message: str | None,
+            *,
+            metadata: Mapping[str, object] | None = None,
+        ) -> ChatTurnV2:
+            assistant_metadata: dict[str, object] = {}
+            if intent.mode != "ordinary_conversation":
+                assistant_metadata["intent_mode"] = intent.mode
+                assistant_metadata["response_locale"] = intent.response_locale
+            if metadata:
+                assistant_metadata.update(metadata)
+            if (
+                brand_journey is not None
+                and brand_journey.stage != "production"
+                and intent.brief_effect == "none"
+                and intent.mode in {"ordinary_conversation", "guided_production"}
+                and intent.requirement_patch is None
+                and not intent.explicit_elements
+                and intent.requested_capability is None
+                and not mentioned_node_ids
+                and not mentioned_asset_ids
+            ):
+                assistant_metadata["brand_context_effect"] = "none"
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                message,
+                assistant_metadata=assistant_metadata,
+            )
+
         requirement_changed = False
         if intent.requirement_patch is not None or intent.explicit_elements:
             applied = self._requirements.apply_user_turn_patch(
@@ -1846,11 +1938,9 @@ class AgentConversationService:
                 intent,
                 workflow_context=workflow_context,
             )
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 reply.message,
-                assistant_metadata={
+                metadata={
                     "answer_kind": reply.answer_kind,
                     "ordinary_intent_kind": ordinary_intent.intent_kind,
                     **(
@@ -1869,6 +1959,46 @@ class AgentConversationService:
                     ),
                 },
             )
+        if (
+            intent.mode == "guided_production"
+            and existing_session is None
+            and not advertising_production_is_ready(intent, session_exists=False)
+        ):
+            return complete_message(
+                intent.assistant_message
+                or "Please tell me which product or service this advertisement is for and who it should reach.",
+                metadata={"production_readiness": intent.production_readiness},
+            )
+        if intent.mode == "guided_production":
+            if brand_journey is not None and brand_journey.stage != "production":
+                response = complete_message(
+                    self._brand_gate_message(
+                        intent.response_locale,
+                        workflow_id=turn.workflow_id,
+                        journey=brand_journey,
+                    ),
+                )
+                # The generic guided session is intentionally kept at its
+                # intake stage while Brand Professional Mode owns its own
+                # authoritative journey.  After a Brand form is submitted,
+                # that generic session still exists but has no open
+                # interaction.  Resume the Brand journey in that state too;
+                # otherwise a subsequent "continue" only repeats the gate
+                # message and never publishes the next form/card.
+                if self._brand_interaction_resumer is not None and (
+                    existing_session is None or existing_session.interaction is None
+                ):
+                    try:
+                        self._brand_interaction_resumer(
+                            turn.workflow_id,
+                            intent.response_locale,
+                        )
+                    except Exception:  # noqa: BLE001 - the gate message remains durable and retryable.
+                        logger.exception(
+                            "Brand guided interaction initialization failed.",
+                            extra={"workflow_id": turn.workflow_id},
+                        )
+                return response
         session = existing_session
         if session is None:
             decisions = tuple(
@@ -1906,12 +2036,17 @@ class AgentConversationService:
             requirements,
             response_locale=session.response_locale,
         )
+        duration_interaction = (
+            session.interaction
+            if session.interaction is not None
+            and session.interaction.content == duration_questionnaire
+            else None
+        )
         if (
             intent.mode == "guided_production"
-            and requirement_changed
             and not requirements.ledger.unresolved_conflicts
             and session.journey.stage == "intake"
-            and session.awaiting is None
+            and (session.awaiting is None or duration_interaction is not None)
             and duration_questionnaire is not None
         ):
             duration_evidence = JourneyEvidenceV2(
@@ -1936,17 +2071,25 @@ class AgentConversationService:
             return self._conversations.complete_turn_with_clarification(
                 turn_id,
                 expected_session_revision=session.revision,
-                journey=duration_journey,
+                journey=session.journey if duration_interaction is not None else duration_journey,
                 assistant_message="Choose the total advertisement duration to continue.",
                 transition_key=(
                     f"intake-duration:{turn_id}:requirements:{requirements.revision_id}"
                 ),
                 questionnaire=duration_questionnaire,
-                checkpoint_id=f"duration:{turn_id}",
+                checkpoint_id=(
+                    duration_interaction.checkpoint_id
+                    if duration_interaction is not None
+                    else f"duration:{turn_id}"
+                ),
                 interaction_title="Choose production duration",
                 interaction_context=(
                     "Confirm the total duration before time-dependent authoring begins."
                 ),
+                assistant_metadata={
+                    "intent_mode": intent.mode,
+                    "response_locale": intent.response_locale,
+                },
             )
         clarification_required = bool(requirements.ledger.unresolved_conflicts) or (
             intent.mode == "guided_production"
@@ -1987,11 +2130,13 @@ class AgentConversationService:
                 transition_key=(
                     f"intake-clarification:{turn_id}:requirements:{requirements.revision_id}"
                 ),
+                assistant_metadata={
+                    "intent_mode": intent.mode,
+                    "response_locale": intent.response_locale,
+                },
             )
         if requirements.ledger.unresolved_conflicts:
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 intent.assistant_message or "Please clarify the conflicting campaign requirements.",
             )
         if (
@@ -2000,7 +2145,7 @@ class AgentConversationService:
             and intent.assistant_message is not None
             and session.journey.stage == "intake"
         ):
-            return self._complete_turn(turn_id, turn.workflow_id, intent.assistant_message)
+            return complete_message(intent.assistant_message)
         if (
             intent.mode == "guided_production"
             and session.journey.stage == "intake"
@@ -2045,13 +2190,35 @@ class AgentConversationService:
             stage=session.journey.stage,
             stage_revision=session.journey.stage_revision,
         ):
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 "Please complete the current guided interaction before continuing production.",
             )
         journey_capability = None
+        journey_internal_checkpoint = False
         if intent.mode == "guided_production":
+            active_capabilities = tuple(
+                dict.fromkeys(
+                    (
+                        *self._continuation_outbox.list_nonterminal_capability_ids(
+                            turn.workflow_id
+                        ),
+                        *self._conversations.list_active_materialization_capability_ids(
+                            turn.workflow_id
+                        ),
+                    )
+                )
+            )
+            if active_capabilities:
+                return complete_message(
+                    "The current creative step is still processing and will continue automatically."
+                )
+            if session.journey.stage_status == "failed" and self._recover_failed_prompt_preparation(
+                turn.workflow_id,
+                stage=session.journey.stage,
+            ):
+                return complete_message(
+                    "Retrying prompt preparation for the current Draft. The existing Storyboard content will be preserved."
+                )
             if session.journey.stage == "intake":
                 session = self._journey.apply_evidence(
                     turn.workflow_id,
@@ -2074,6 +2241,15 @@ class AgentConversationService:
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
                     if session.awaiting is None:
+                        if (
+                            session.journey.stage == "storyboard_grids"
+                            and self._progressive_storyboard_advance is not None
+                        ):
+                            progressed = self._progressive_storyboard_advance(turn.workflow_id)
+                            if progressed:
+                                return complete_message(
+                                    "Storyboard progression resumed; the next Draft is being prepared."
+                                )
                         if session.journey.stage == "character":
                             admitted = self._journey.ensure_character_decision_authority(
                                 turn.workflow_id,
@@ -2083,6 +2259,18 @@ class AgentConversationService:
                             )
                             if admitted is not None:
                                 return admitted
+                        if session.creative_authority is None:
+                            # Asynchronous materialisation or prompt progress
+                            # can advance the Guidance session revision after
+                            # the authority-choice actions were projected. Do
+                            # not strand the user behind a stale action (or
+                            # expose guidance_orphaned_stall); republish the
+                            # typed authority choice against the current
+                            # session revision. complete_message() also
+                            # supersedes the stale pending actions atomically.
+                            return complete_message(
+                                "Choose who supplies the next creative direction."
+                            )
                         raise V2PersistenceError(
                             "guidance_orphaned_stall",
                             "Guidance cannot wait without current typed awaiting authority.",
@@ -2104,20 +2292,22 @@ class AgentConversationService:
                     # with the same notice. Re-publishing it on each poll only
                     # spams the timeline; finish this poll silently until the
                     # user resolves the nodes or sends a new message.
-                    return self._complete_turn(turn_id, turn.workflow_id, None)
-                return self._complete_turn(turn_id, turn.workflow_id, message)
+                    return complete_message(None)
+                return complete_message(message)
             if journey_action.action == "complete":
-                return self._complete_turn(
-                    turn_id,
-                    turn.workflow_id,
+                return complete_message(
                     "Guided production is complete.",
                 )
-            if journey_action.action != "invoke_capability":
+            if journey_action.action not in {
+                "invoke_capability",
+                "invoke_internal_checkpoint",
+            }:
                 raise V2PersistenceError(
                     "journey_transition_invalid",
                     "The current journey action cannot be dispatched.",
                     stage="agent_conversation_service",
                 )
+            journey_internal_checkpoint = journey_action.action == "invoke_internal_checkpoint"
             journey_capability = journey_action.capability_id
 
         open_proposals = self._conversations.list_open_proposals(turn.workflow_id)
@@ -2152,9 +2342,7 @@ class AgentConversationService:
         )
         if intent.mode in {"targeted_authoring", "quick_media"}:
             if intent.requested_capability is None:
-                return self._complete_turn(
-                    turn_id,
-                    turn.workflow_id,
+                return complete_message(
                     intent.assistant_message or "Choose a creative capability to continue.",
                 )
             command = self._capability_policy.validate_next_action(
@@ -2175,10 +2363,14 @@ class AgentConversationService:
                 ),
                 policy,
             )
+            if journey_internal_checkpoint:
+                command = command.model_copy(
+                    update={
+                        "definition": self._capability_policy.internal_script_checkpoint_definition()
+                    }
+                )
         if command.command.action in {"ask_user", "reply"}:
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 command.command.message or "Please provide more direction.",
             )
         if command.command.action == "author_decision_bundle":
@@ -2198,9 +2390,7 @@ class AgentConversationService:
                 source_turn_id=turn_id,
                 draft=draft,
             )
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 f"Decision Bundle ready: {bundle.title}",
             )
         if command.command.action == "finish":
@@ -2212,9 +2402,7 @@ class AgentConversationService:
                     delivery="ready",
                 ),
             )
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
+            return complete_message(
                 command.command.message or "Guided production is complete.",
             )
         reference_plan = self._reference_planner.plan(
@@ -2241,7 +2429,11 @@ class AgentConversationService:
                 action=session.journey.active_action,
                 capability_id=command.command.capability_id,
                 publication_kind=(
-                    "proposal" if intent.mode == "guided_production" else "internal_document"
+                    "internal_document"
+                    if journey_internal_checkpoint
+                    else "proposal"
+                    if intent.mode == "guided_production"
+                    else "internal_document"
                 ),
                 requirement_revision=requirements,
             ),
@@ -2267,12 +2459,81 @@ class AgentConversationService:
                 SourceTurnReplyPublicationV1(
                     content=intent.assistant_message,
                     response_locale=intent.response_locale,
+                    intent_mode=intent.mode,
                 )
                 if intent.assistant_message is not None
                 else None
             ),
+            publication_kind=("internal_document" if journey_internal_checkpoint else "proposal"),
+            journey_stage=(session.journey.stage if journey_internal_checkpoint else None),
         )
         return self._conversations.get_turn(turn_id)
+
+    def _recover_failed_prompt_preparation(self, workflow_id: str, *, stage: str) -> bool:
+        """Requeue one exhausted transient Draft prompt after an explicit Continue."""
+
+        if stage != "storyboard_grids":
+            return False
+        recovered = False
+        now = datetime.now(timezone.utc)
+        for dispatch in self._prompt_preparation_dispatches.list_for_workflow(workflow_id):
+            if dispatch.status != "failed" or dispatch.last_error_code not in {
+                "agent_runtime_unavailable",
+                "agent_provider_transport_failed",
+                "agent_provider_timeout",
+                "prompt_preparation_failed",
+            }:
+                continue
+            try:
+                node = self._workflows.get_node(workflow_id, dispatch.node_id)
+            except V2PersistenceError:
+                continue
+            if (
+                node.creative_role != "storyboard_sequence"
+                or node.prompt_preparation.operation_id != dispatch.operation_id
+            ):
+                continue
+            self._prompt_preparation_dispatches.requeue_failed_for_recovery(
+                dispatch.dispatch_id,
+                next_attempt_at=now,
+                now=now,
+                node_revision=dispatch.node_revision,
+                operation_id=dispatch.operation_id,
+                context_digest=dispatch.context_digest,
+                source_snapshot=dispatch.source_snapshot or None,
+            )
+            recovered = True
+        return recovered
+
+    def _brand_journey_for_workflow(self, workflow_id: str) -> BrandJourneyStateV1 | None:
+        project_id = self._brand_decisions.project_id_for_workflow(workflow_id)
+        if project_id is None:
+            return None
+        brand_id = self._brand_decisions.get_brand_id_by_project(project_id)
+        if brand_id is None:
+            return None
+        return self._brand_decisions.get_journey(brand_id)
+
+    def _brand_gate_message(
+        self,
+        response_locale: str,
+        *,
+        workflow_id: str,
+        journey: BrandJourneyStateV1,
+    ) -> str:
+        if journey.stage == "treatment":
+            project_id = self._brand_decisions.project_id_for_workflow(workflow_id)
+            brand_id = (
+                self._brand_decisions.get_brand_id_by_project(project_id) if project_id else None
+            )
+            if brand_id is not None:
+                document = BrandDecisionDocumentService(self._workflows.database).read(brand_id)
+                selected = {step.step_key for step in document.treatment_steps}
+                if set(TREATMENT_SUBSTEP_ORDER).issubset(selected):
+                    return _treatment_review_gate_message(document, response_locale)
+        if response_locale.lower().startswith("zh"):
+            return "好的，我们先完成品牌信息与品牌专业模式，再开始广告创作。请先回答当前品牌问题。"
+        return "Let’s complete the brand information and Brand Professional Mode before starting ad production. Please answer the current brand question first."
 
     def _apply_targeted_authoring_command(
         self,
@@ -3130,6 +3391,47 @@ class AgentConversationService:
             self._workflows.database,
             EventRepository(self._workflows.database),
         ).publish(envelope, result)
+
+
+def _treatment_review_gate_message(document: BrandTreatmentDocumentV1, response_locale: str) -> str:
+    if not document.complete:
+        if response_locale.lower().startswith("zh"):
+            return (
+                "八项创意方案已全部选择，但最终方案仍缺少必填内容。请点击输入框上方的"
+                "“打开最终审阅”，查看缺失项并补齐后再确认。已选方案会保留；"
+                "发送“继续”不会自动补写或锁定方案。"
+            )
+        return (
+            "All eight Treatment choices are saved, but the document is missing required content. "
+            'Open "Review treatment" above the message box to inspect and complete the missing '
+            "sections before confirming. Your choices are preserved; a continuation message does "
+            "not fill in or lock the Treatment."
+        )
+    if document.review is None:
+        if response_locale.lower().startswith("zh"):
+            return (
+                "八项创意方案已全部选择，但最终评估结果尚不可用。请点击输入框上方的"
+                "“打开最终审阅”，查看已保存的方案及评估状态。无需重复回答声音问题；"
+                "发送“继续”不会自动重试评估或锁定方案。"
+            )
+        return (
+            "All eight Treatment choices are saved, but the final assessment is not available. "
+            'Open "Review treatment" above the message box to inspect the saved document and '
+            "assessment status. You do not need to answer the sound question again. A continuation "
+            "message does not retry the assessment or lock the Treatment."
+        )
+    if response_locale.lower().startswith("zh"):
+        return (
+            "八项创意方案已全部选择，最终审阅已完成。请点击输入框上方的“打开最终审阅”，"
+            "查看完整方案和执行限制，再点击“确认并锁定创意方案”。锁定后才会进入节点创作；"
+            "发送“继续”不会代替你确认或重新生成方案。"
+        )
+    return (
+        'All eight Treatment choices and the final assessment are complete. Open "Review treatment" '
+        "above the message box, review the full document and execution limitations, then explicitly "
+        "confirm and lock the Treatment to begin node authoring. A continuation message does not "
+        "confirm or regenerate the Treatment."
+    )
 
 
 def _guidance_state_action_continuation(

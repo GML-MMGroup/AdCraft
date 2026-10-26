@@ -88,6 +88,7 @@ import {
 } from "./workflowNormalizers";
 import type { CanvasRuntimeEventsResponse, CanvasRuntimeSnapshot } from "../workflow/canvasRuntime.ts";
 import { assertV1WorkflowId } from "./v1WorkflowGuard";
+import { notifyProviderConfigurationChanged } from "./providerConfigurationEvents.ts";
 import type {
   ModelDefaultsPatchRequestV1,
   ModelDefaultsResponseV1,
@@ -353,25 +354,31 @@ export const api = {
     return request<ProviderConnectionStatusV1>(`/providers/${encodeURIComponent(providerId)}`);
   },
 
-  updateProviderCredentials(providerId: string, requestBody: ProviderCredentialUpdateRequestV1) {
-    return request<ProviderCredentialUpdateResponseV1>(
+  async updateProviderCredentials(providerId: string, requestBody: ProviderCredentialUpdateRequestV1) {
+    const response = await request<ProviderCredentialUpdateResponseV1>(
       `/providers/${encodeURIComponent(providerId)}/credentials`,
       { method: "PUT", body: JSON.stringify(requestBody) },
     );
+    notifyProviderConfigurationChanged("all");
+    return response;
   },
 
-  testProviderCredential(providerId: string, requestBody: ProviderCredentialTestRequestV1) {
-    return request<ProviderCredentialTestResponseV1>(
+  async testProviderCredential(providerId: string, requestBody: ProviderCredentialTestRequestV1) {
+    const response = await request<ProviderCredentialTestResponseV1>(
       `/providers/${encodeURIComponent(providerId)}/credentials/test`,
       { method: "POST", body: JSON.stringify(requestBody) },
     );
+    notifyProviderConfigurationChanged("all");
+    return response;
   },
 
-  syncProviderModels(providerId: string) {
-    return request<ProviderModelSyncResponseV1>(
+  async syncProviderModels(providerId: string) {
+    const response = await request<ProviderModelSyncResponseV1>(
       `/providers/${encodeURIComponent(providerId)}/models/sync`,
       { method: "POST" },
     );
+    notifyProviderConfigurationChanged("all");
+    return response;
   },
 
   listProviderModels(query: ProviderModelQueryV1 = {}) {
@@ -389,11 +396,13 @@ export const api = {
     return request<ModelDefaultsResponseV1>("/model-defaults");
   },
 
-  patchModelDefaults(requestBody: ModelDefaultsPatchRequestV1) {
-    return request<ModelDefaultsResponseV1>("/model-defaults", {
+  async patchModelDefaults(requestBody: ModelDefaultsPatchRequestV1) {
+    const response = await request<ModelDefaultsResponseV1>("/model-defaults", {
       method: "PATCH",
       body: JSON.stringify(requestBody),
     });
+    notifyProviderConfigurationChanged("defaults");
+    return response;
   },
 
   health() {

@@ -96,5 +96,4 @@ export const CHARACTER_DESIGNER_MOTION_PROGRAM: AgentRoleMotionProgram = {
   workingEntryTimeMs: 160,
   workingIntro: createTracks(true),
   working: createTracks(false),
-  waiting: [],
 };

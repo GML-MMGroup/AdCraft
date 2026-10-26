@@ -1,0 +1,695 @@
+"""Brand Treatment lock handoff into the existing intent-planning path.
+
+On the treatment-lock receipt this service maps locked Campaign and AdSpec
+decisions into a WorkflowV2PlanFromPromptRequest and invokes the existing
+WorkflowV2Service.plan_from_prompt. Locked constraints travel as explicit
+request context so the existing intent planner owns validation.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from math import ceil
+import re
+import unicodedata
+
+from sqlalchemy import select, text as sql_text
+from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.persistence.brand_decision_repository import BrandDecisionRepository
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
+from app.persistence.database import V2Database
+from app.persistence.errors import V2PersistenceError
+from app.persistence.event_repository import EventRepository
+from app.persistence.models import (
+    AgentCanvasGuidanceSessionRow,
+    AgentCanvasRequirementLedgerRevisionRow,
+    AgentCanvasWorkflowRow,
+    BrandRow,
+    BrandJourneyRow,
+    ProjectRow,
+)
+from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
+from app.services.brand_decision_document import BrandDecisionDocumentService
+from app.schemas.agent_canvas_requirements import (
+    AspectRatioControlPatchV1,
+    AudioModeControlPatchV1,
+    CharacterCountControlPatchV1,
+    CharacterOccurrencePatchV1,
+    DurationSecondsControlPatchV1,
+    ProductCountControlPatchV1,
+    SceneCountControlPatchV1,
+    RequirementElementPresencePatchV1,
+    RequirementDirectivePatchV1,
+    RequirementPatchV1,
+    StoryboardSequenceCountControlPatchV1,
+    VideoSegmentCountControlPatchV1,
+)
+from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
+from app.services.agent_canvas_requirements import AgentCanvasRequirementService
+from app.services.agent_canvas_storyboard_sequence_windows import (
+    StoryboardSequenceWindowPlanner,
+)
+from app.services.workflow_v2 import WorkflowV2Service
+from app.services.brand_question_context import BrandQuestionContextService
+
+
+@dataclass(frozen=True)
+class BrandHandoffResult:
+    workflow_id: str | None
+    clarified: bool = False
+
+
+def reviewed_inventory_patch(
+    document: BrandTreatmentDocumentV1,
+) -> tuple[RequirementPatchV1, tuple[RequirementElementPresencePatchV1, ...]]:
+    """Project only reviewed typed facts; unknown historical inventory stays unresolved."""
+    if document.review is None:
+        return RequirementPatchV1(), ()
+    inventory = document.review.production_requirements
+    controls = []
+    elements = []
+    occurrences = None
+    if inventory.character_count is not None:
+        source = inventory.character_sources[0].quote
+        controls.append(
+            CharacterCountControlPatchV1(value=inventory.character_count, source_quote=source)
+        )
+        elements.append(
+            RequirementElementPresencePatchV1(
+                element_kind="character",
+                presence="include" if inventory.character_count else "exclude",
+                source_quote=source,
+            )
+        )
+        occurrences = tuple(
+            CharacterOccurrencePatchV1(
+                occurrence_index=index,
+                role=item.label,
+                identity_summary=item.summary,
+                presence="include",
+                source_quote=item.sources[0].quote,
+            )
+            for index, item in enumerate(inventory.characters, 1)
+        )
+    if inventory.scene_presence != "unspecified":
+        source = inventory.scene_sources[0].quote
+        controls.append(SceneCountControlPatchV1(value=len(inventory.scenes), source_quote=source))
+        elements.append(
+            RequirementElementPresencePatchV1(
+                element_kind="scene",
+                presence=inventory.scene_presence,
+                source_quote=source,
+            )
+        )
+    if inventory.prop_presence != "unspecified":
+        elements.append(
+            RequirementElementPresencePatchV1(
+                element_kind="prop",
+                presence=inventory.prop_presence,
+                source_quote=inventory.prop_sources[0].quote,
+            )
+        )
+    return RequirementPatchV1(
+        controls_to_set=tuple(controls), character_occurrences_to_set=occurrences
+    ), tuple(elements)
+
+
+class BrandProductionHandoffService:
+    """Create the V2 workflow from locked brand decisions."""
+
+    def __init__(
+        self,
+        database: V2Database,
+        workflow_service: WorkflowV2Service | None = None,
+    ) -> None:
+        self._database = database
+        self._workflows = workflow_service
+        self._repository = BrandDecisionRepository(database)
+
+    def handoff(self, brand_id: str) -> BrandHandoffResult:
+        """Build the planning request from locked decisions and create the workflow."""
+
+        if self._workflows is None:
+            raise V2PersistenceError(
+                "brand_production_handoff_unavailable",
+                "Workflow planning is unavailable for this handoff.",
+                stage="brand_production_handoff",
+            )
+
+        values = self._repository.get_slot_values(brand_id)
+        by_slot = {(value.stage, value.slot_id): value.value for value in values}
+        duration_text = by_slot.get(("campaign", "campaign_duration"), "30 seconds")
+        aspect_text = by_slot.get(("campaign", "campaign_aspect_ratio"), "")
+        current_controls = self._current_hard_controls(
+            self._repository.workflow_id_for_brand(brand_id)
+        )
+        platform = by_slot.get(("campaign", "campaign_platform"), "")
+        goal = by_slot.get(("campaign", "campaign_goal"), "")
+        audience = by_slot.get(("brand-memory", "brand_audience"), "")
+        personality = by_slot.get(("brand-memory", "brand_personality"), "")
+        avoid = by_slot.get(("brand-memory", "brand_avoid"), "")
+        positioning = by_slot.get(("brand-memory", "brand_positioning"), "")
+        adspec = self._repository.get_adspec(brand_id)
+        locked_items: list[str] = []
+        if adspec is not None:
+            locked_items = [item.item_text for item in adspec.items if item.state == "locked"]
+        treatment_lines = self._treatment_lines(brand_id)
+        product_context = BrandQuestionContextService(self._database).read(brand_id)
+        brand_name = self._brand_name(brand_id)
+        prompt_parts = [
+            f"Product: {by_slot.get(('brand-memory', 'brand_product_identity'), brand_name)}.",
+            f"Advertising focus: {by_slot.get(('brand-memory', 'brand_product_focus'), '')}.",
+            f"Brand: {brand_name}.",
+            f"Brand positioning: {positioning}." if positioning else "",
+            f"Target audience: {audience}." if audience else "",
+            f"Brand personality: {personality}." if personality else "",
+            f"Campaign goal: {goal}." if goal else "",
+            f"Platform: {platform}." if platform else "",
+            "Locked decisions: " + "; ".join(locked_items) if locked_items else "",
+            "Avoid: " + avoid if avoid else "",
+            "Treatment:",
+            *treatment_lines,
+        ]
+        prompt = "\n".join(part for part in prompt_parts if part).strip()
+        extracted_duration = _extract_duration_seconds(duration_text)
+        duration = (
+            extracted_duration
+            if extracted_duration is not None
+            else int(current_controls.get("duration_seconds", 30))
+        )
+        extracted_aspect = _extract_aspect_ratio(aspect_text)
+        aspect = extracted_aspect or current_controls.get("aspect_ratio")
+        request_kwargs: dict[str, object] = {
+            "prompt": prompt[:4000],
+            "product_name": brand_name or None,
+            "duration_seconds": duration,
+            "metadata": {
+                "brand_mode": True,
+                "brand_id": brand_id,
+                "brand_product_context": product_context.payload,
+            },
+        }
+        if aspect is not None:
+            request_kwargs["aspect_ratio"] = aspect
+        request = WorkflowV2PlanFromPromptRequest(**request_kwargs)
+        workflow = self._workflows.plan_from_prompt(request)
+        if isinstance(workflow, object) and hasattr(workflow, "workflow_id"):
+            return BrandHandoffResult(workflow_id=workflow.workflow_id)
+        return BrandHandoffResult(workflow_id=None, clarified=True)
+
+    def prepare_guided_production(self, workflow_id: str, brand_id: str) -> None:
+        """Project locked Brand decisions into the existing guided journey.
+
+        Brand Professional Mode owns intake until treatment is locked. The
+        generic journey must then receive a canonical Requirement Ledger
+        revision before its first typed advance; otherwise it has no product
+        or media authority and can enqueue an orphaned capability command.
+        Workflows created by older fixtures may not have a ledger yet, so the
+        projection is intentionally a no-op when that durable authority is
+        absent.
+        """
+
+        with self._database.engine.connect() as connection:
+            document = BrandDecisionDocumentService(self._database).frozen_in_transaction(
+                connection, brand_id
+            )
+        if document is not None:
+            try:
+                with self._database.engine.begin() as connection:
+                    connection.exec_driver_sql("BEGIN IMMEDIATE")
+                    self.prepare_reviewed_in_transaction(
+                        connection, workflow_id, brand_id, document
+                    )
+            except SQLAlchemyError as error:
+                raise V2PersistenceError(
+                    "brand_handoff_persistence_failed",
+                    "Brand production handoff could not be saved.",
+                ) from error
+            return
+        requirements = AgentCanvasRequirementService(
+            self._database,
+            AgentCanvasRequirementRepository(self._database),
+            EventRepository(self._database),
+        )
+        try:
+            current = requirements.get_current_revision(workflow_id)
+        except V2PersistenceError as error:
+            if error.code == "requirement_ledger_not_found":
+                return
+            raise
+
+        values = self._repository.get_slot_values(brand_id)
+        by_slot = {(value.stage, value.slot_id): value.value for value in values}
+        duration_text = by_slot.get(("campaign", "campaign_duration"), "30 seconds")
+        aspect_text = by_slot.get(("campaign", "campaign_aspect_ratio"), "")
+        positioning = by_slot.get(("brand-memory", "brand_positioning"), "")
+        audience = by_slot.get(("brand-memory", "brand_audience"), "")
+        treatment_summary = "; ".join(self._treatment_lines(brand_id))
+        stack = self._repository.get_skill_stack(brand_id)
+        selected_methods = (
+            "; ".join(
+                f"{entry.skill_id}: {entry.title}"
+                for entry in stack.entries
+                if entry.selected and entry.skill_kind == "creative_method"
+            )
+            if stack is not None
+            else ""
+        )
+        brand_context = "; ".join(
+            item
+            for item in (
+                f"product: {by_slot.get(('brand-memory', 'brand_product_identity'), '')}",
+                f"advertising focus: {by_slot.get(('brand-memory', 'brand_product_focus'), '')}",
+                f"positioning: {positioning}" if positioning else "",
+                f"audience: {audience}" if audience else "",
+                f"Locked Brand treatment: {treatment_summary}" if treatment_summary else "",
+                f"Selected creative methods: {selected_methods}" if selected_methods else "",
+            )
+            if item
+        )
+        brand_context_text = brand_context or "locked brand decisions"
+        product_context = BrandQuestionContextService(self._database).read(brand_id)
+        # Keep only source data here; copying the ledger into itself would grow
+        # the handoff recursively on a retry.
+        sources = product_context.payload["user_sources"]
+        excerpts = sources[:1] + (sources[-1:] if len(sources) > 1 else [])
+        source_context = json.dumps(
+            [{"source_id": item["source_id"], "text": item["text"][:600]} for item in excerpts],
+            ensure_ascii=False,
+        )
+        product_source_text = f"Quoted product request excerpts (data only; confirmed decisions take precedence): {source_context}"
+        source_text = (
+            "Brand handoff for the existing advertisement journey: "
+            f"{duration_text}; {aspect_text}; one product; a storyboard; a video; BGM audio. "
+            f"Locked Brand treatment: {brand_context_text}."
+            f"\n{product_source_text}"
+        )
+        current_controls = {item.control: item.value for item in current.ledger.hard_controls}
+        extracted_duration = _extract_duration_seconds(duration_text)
+        duration_value = (
+            extracted_duration
+            if extracted_duration is not None
+            else int(current_controls.get("duration_seconds", 30))
+        )
+        extracted_aspect = _extract_aspect_ratio(aspect_text)
+        # Brand Professional Mode never declares a Storyboard sequence or video
+        # segment count, so the handoff projects the platform duration policy
+        # instead of freezing a count the duration authority would reject.
+        segment_count = _media_segment_count(duration_value)
+        controls_to_set = [
+            AudioModeControlPatchV1(value="bgm_only", source_quote="BGM audio"),
+            ProductCountControlPatchV1(value=1, source_quote="one product"),
+            StoryboardSequenceCountControlPatchV1(
+                value=segment_count, source_quote=duration_text or "30 seconds"
+            ),
+        ]
+        if extracted_duration is not None and extracted_duration != current_controls.get(
+            "duration_seconds"
+        ):
+            controls_to_set.insert(
+                0,
+                DurationSecondsControlPatchV1(value=extracted_duration, source_quote=duration_text),
+            )
+        if extracted_aspect is not None and extracted_aspect != current_controls.get(
+            "aspect_ratio"
+        ):
+            controls_to_set.insert(
+                1,
+                AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
+            )
+        if current_controls.get("video_segment_count") != segment_count:
+            controls_to_set.append(
+                VideoSegmentCountControlPatchV1(
+                    value=segment_count, source_quote=duration_text or "30 seconds"
+                )
+            )
+        patch = RequirementPatchV1(
+            controls_to_set=tuple(controls_to_set),
+            directives_to_add=(
+                RequirementDirectivePatchV1(
+                    source_quote="Locked Brand treatment",
+                    normalized_meaning=(
+                        "Preserve the locked Brand Professional Mode context in every later "
+                        f"creative operation: {brand_context_text}."
+                    ),
+                    scope_kind="global",
+                    strength="hard",
+                ),
+                RequirementDirectivePatchV1(
+                    source_quote="Quoted product request excerpts",
+                    normalized_meaning=product_source_text,
+                    scope_kind="global",
+                    strength="preference",
+                ),
+            ),
+        )
+        requirements.apply_user_turn_patch(
+            workflow_id,
+            expected_revision_no=current.revision_no,
+            source_turn_id=f"brand-handoff:{brand_id}",
+            user_input=source_text,
+            patch=patch,
+            explicit_elements=(
+                RequirementElementPresencePatchV1(
+                    element_kind="product", presence="include", source_quote="one product"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="storyboard", presence="include", source_quote="a storyboard"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="video", presence="include", source_quote="a video"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="audio", presence="include", source_quote="BGM audio"
+                ),
+            ),
+        )
+
+    def production_context(self, workflow_id: str) -> BrandTreatmentDocumentV1 | None:
+        project_id = self._repository.project_id_for_workflow(workflow_id)
+        brand_id = self._repository.get_brand_id_by_project(project_id) if project_id else None
+        if brand_id is None:
+            return None
+        with self._database.engine.connect() as connection:
+            journey = self._repository.get_journey_in_transaction(connection, brand_id)
+            if journey is None or journey.stage != "production":
+                return None
+            return BrandDecisionDocumentService(self._database).frozen_in_transaction(
+                connection, brand_id
+            )
+
+    def recover_locked_intake_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+    ) -> bool:
+        """Admit a historical empty Brand intake inside an explicit Guidance command."""
+        from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
+
+        journey_json = connection.execute(
+            select(AgentCanvasGuidanceSessionRow.journey_state_json).where(
+                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+            )
+        ).scalar_one_or_none()
+        if (
+            journey_json is None
+            or GuidedProductionJourneyV2.model_validate_json(journey_json).stage != "intake"
+        ):
+            return False
+        brand_id = connection.execute(
+            select(BrandRow.brand_id)
+            .join(ProjectRow, ProjectRow.project_id == BrandRow.project_id)
+            .join(
+                AgentCanvasWorkflowRow, AgentCanvasWorkflowRow.project_id == ProjectRow.project_id
+            )
+            .join(BrandJourneyRow, BrandJourneyRow.brand_id == BrandRow.brand_id)
+            .where(
+                AgentCanvasWorkflowRow.workflow_id == workflow_id,
+                ProjectRow.mode == "brand",
+                BrandJourneyRow.stage == "production",
+            )
+        ).scalar_one_or_none()
+        if brand_id is None:
+            return False
+        document = BrandDecisionDocumentService(self._database).frozen_in_transaction(
+            connection, brand_id
+        )
+        if document is None:
+            return False
+        admitted = self.prepare_reviewed_in_transaction(connection, workflow_id, brand_id, document)
+        if admitted:
+            BrandGuidedInteractionBridge(self._database).close_brand_interactions_in_transaction(
+                connection, workflow_id
+            )
+        return admitted
+
+    def prepare_reviewed_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        brand_id: str,
+        document: BrandTreatmentDocumentV1,
+    ) -> bool:
+        """Commit requirements and journey admission under the same writer fence."""
+        from app.persistence.brand_production_admission_repository import (
+            BrandProductionAdmissionRepository,
+        )
+
+        self._prepare_reviewed_document(connection, workflow_id, brand_id, document)
+        return BrandProductionAdmissionRepository(self._database).admit_in_transaction(
+            connection, workflow_id, brand_id, document
+        )
+
+    def publish_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        document: BrandTreatmentDocumentV1,
+    ) -> None:
+        """Publish the existing typed next-action command without runtime cognition."""
+        from app.persistence.agent_canvas_conversation_repository import (
+            AgentCanvasConversationRepository,
+        )
+        from app.persistence.agent_canvas_guidance_authority_repository import (
+            GuidanceAdvanceAuthoritySnapshotRepository,
+            require_guidance_advance_eligible,
+        )
+        from app.schemas.agent_canvas_guidance import GuidanceAdvanceRequestV1
+        from app.services.agent_canvas_guidance_advance import plan_guidance_advance
+
+        requirements = AgentCanvasRequirementRepository(self._database)
+        snapshot = GuidanceAdvanceAuthoritySnapshotRepository(requirements).read_in_transaction(
+            connection, workflow_id
+        )
+        require_guidance_advance_eligible(snapshot)
+        plan = plan_guidance_advance(
+            snapshot,
+            GuidanceAdvanceRequestV1(precondition=snapshot.precondition),
+            idempotency_key=f"brand-production:{workflow_id}:{document.content_digest}",
+        )
+        AgentCanvasConversationRepository(
+            self._database, EventRepository(self._database)
+        ).create_guidance_advance_delivery(
+            plan,
+            connection=connection,
+        )
+
+    def _prepare_reviewed_document(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        brand_id: str,
+        document: BrandTreatmentDocumentV1,
+    ) -> None:
+        identity = f"brand-handoff:{brand_id}:{document.content_digest}"
+        if self._reviewed_handoff_applied(connection, workflow_id, identity):
+            return
+        requirements = AgentCanvasRequirementService(
+            self._database,
+            AgentCanvasRequirementRepository(self._database),
+            EventRepository(self._database),
+        )
+        current = AgentCanvasRequirementRepository(self._database).get_current_in_transaction(
+            connection, workflow_id
+        )
+        slots = {
+            value.slot_id: value.value
+            for value in (*document.brand_profile.values, *document.campaign_brief.values)
+        }
+        duration_text = slots["campaign_duration"]
+        aspect_text = slots["campaign_aspect_ratio"]
+        controls = {control.control: control.value for control in current.ledger.hard_controls}
+        extracted_duration = _extract_duration_seconds(duration_text)
+        duration = (
+            extracted_duration
+            if extracted_duration is not None
+            else int(controls.get("duration_seconds", 30))
+        )
+        extracted_aspect = _extract_aspect_ratio(aspect_text)
+        segments = _media_segment_count(duration)
+        audio_mode = controls.get("audio_mode", "bgm_only")
+        product_count = controls.get("product_count", 1)
+        source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
+        inventory_patch, inventory_elements = reviewed_inventory_patch(document)
+        source += "\n" + "\n".join(
+            section.text
+            for step in document.treatment_steps
+            if step.structured_detail
+            for section in step.structured_detail.sections
+        )
+        controls_to_set = [
+            AudioModeControlPatchV1(value=audio_mode, source_quote=f"audio {audio_mode}"),
+            ProductCountControlPatchV1(
+                value=product_count, source_quote=f"product count {product_count}"
+            ),
+            StoryboardSequenceCountControlPatchV1(value=segments, source_quote=duration_text),
+        ]
+        if extracted_duration is not None and extracted_duration != controls.get(
+            "duration_seconds"
+        ):
+            controls_to_set.insert(
+                0,
+                DurationSecondsControlPatchV1(value=extracted_duration, source_quote=duration_text),
+            )
+        if extracted_aspect is not None and extracted_aspect != controls.get("aspect_ratio"):
+            controls_to_set.insert(
+                1,
+                AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
+            )
+        if controls.get("video_segment_count") != segments:
+            controls_to_set.append(
+                VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text)
+            )
+        requirements.apply_user_turn_patch_in_transaction(
+            connection,
+            workflow_id,
+            expected_revision_no=current.revision_no,
+            source_turn_id=identity,
+            user_input=source,
+            patch=RequirementPatchV1(
+                controls_to_set=tuple((*controls_to_set, *inventory_patch.controls_to_set)),
+                directives_to_add=(
+                    RequirementDirectivePatchV1(
+                        source_quote=f"Reviewed Brand document {document.content_digest}",
+                        normalized_meaning=f"Execute reviewed Brand Treatment {document.content_digest}. The typed brand_decisions context contains the authoritative full decisions; do not invent a replacement story or contradict its constraints.",
+                        scope_kind="global",
+                        strength="hard",
+                    ),
+                ),
+                character_occurrences_to_set=inventory_patch.character_occurrences_to_set,
+            ),
+            explicit_elements=(
+                RequirementElementPresencePatchV1(
+                    element_kind="product",
+                    presence="include",
+                    source_quote=f"product count {product_count}",
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="storyboard", presence="include", source_quote="storyboard"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="video", presence="include", source_quote="video"
+                ),
+                RequirementElementPresencePatchV1(
+                    element_kind="audio",
+                    presence="exclude" if audio_mode == "none" else "include",
+                    source_quote=f"audio {audio_mode}",
+                ),
+                *inventory_elements,
+            ),
+        )
+
+    def _reviewed_handoff_applied(
+        self, connection: Connection, workflow_id: str, identity: str
+    ) -> bool:
+        return (
+            connection.execute(
+                select(AgentCanvasRequirementLedgerRevisionRow.revision_id)
+                .where(
+                    AgentCanvasRequirementLedgerRevisionRow.workflow_id == workflow_id,
+                    AgentCanvasRequirementLedgerRevisionRow.source_turn_id == identity,
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            is not None
+        )
+
+    def locked_prohibited_elements(self, brand_id: str) -> tuple[str, ...]:
+        return self._repository.locked_prohibited_elements(brand_id)
+
+    def _current_hard_controls(self, workflow_id: str | None) -> dict[str, object]:
+        if workflow_id is None:
+            return {}
+        requirements = AgentCanvasRequirementService(
+            self._database,
+            AgentCanvasRequirementRepository(self._database),
+            EventRepository(self._database),
+        )
+        try:
+            revision = requirements.get_current_revision(workflow_id)
+        except V2PersistenceError as error:
+            if error.code == "requirement_ledger_not_found":
+                return {}
+            raise
+        return {control.control: control.value for control in revision.ledger.hard_controls}
+
+    def _treatment_lines(self, brand_id: str) -> list[str]:
+        try:
+            with self._database.engine.connect() as connection:
+                rows = connection.execute(
+                    sql_text(
+                        "SELECT step_key, selected_label, detail_text "
+                        "FROM brand_treatment_steps WHERE brand_id = :brand_id "
+                        "ORDER BY confirmed_at"
+                    ),
+                    {"brand_id": brand_id},
+                ).all()
+        except Exception as error:  # noqa: BLE001 - narrow table read
+            raise V2PersistenceError(
+                "brand_decision_persistence_failed",
+                "Treatment read failed.",
+                stage="brand_production_handoff",
+            ) from error
+        return [f"{row[0]}: {row[1]}" + (f" - {row[2]}" if row[2] else "") for row in rows]
+
+    def _brand_name(self, brand_id: str) -> str:
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    sql_text("SELECT name FROM brands WHERE brand_id = :brand_id"),
+                    {"brand_id": brand_id},
+                ).first()
+        except Exception as error:  # noqa: BLE001 - narrow table read
+            raise V2PersistenceError(
+                "brand_decision_persistence_failed",
+                "Brand read failed.",
+                stage="brand_production_handoff",
+            ) from error
+        return str(row[0]) if row else ""
+
+
+def _extract_duration_seconds(text: str) -> int | None:
+    normalized = unicodedata.normalize("NFKC", text)
+    values = {int(value) for value in re.findall(r"\d+", normalized)}
+    if len(values) != 1:
+        return None
+    return max(1, min(values.pop(), 300))
+
+
+def _media_segment_count(duration_seconds: int) -> int:
+    """Split a duration into the platform's bounded media segment count."""
+
+    return max(
+        1,
+        ceil(duration_seconds / StoryboardSequenceWindowPlanner.MAX_SEQUENCE_DURATION_SECONDS),
+    )
+
+
+def _extract_aspect_ratio(value: str) -> str | None:
+    normalized = unicodedata.normalize("NFKC", value)
+    allowed = {"16:9", "9:16", "1:1", "4:3", "3:4"}
+    values = {
+        f"{int(match.group(1))}:{int(match.group(2))}"
+        for match in re.finditer(r"(\d{1,2})\s*[:：xX×/]\s*(\d{1,2})", normalized)
+    }
+    allowed_values = values.intersection(allowed)
+    return next(iter(allowed_values)) if len(allowed_values) == 1 else None
+
+
+def check_locked_elements(text: str, prohibited: tuple[str, ...]) -> None:
+    """Deterministic locked-item text check with a stable error code."""
+
+    lowered = text.lower()
+    for element in prohibited:
+        if element.strip() and element.strip().lower() in lowered:
+            raise V2PersistenceError(
+                "brand_locked_item_violation",
+                f"Prepared prompt contains locked prohibited element: {element}",
+                stage="brand_locked_item_check",
+            )

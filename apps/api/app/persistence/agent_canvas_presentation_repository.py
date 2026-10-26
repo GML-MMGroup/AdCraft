@@ -13,11 +13,13 @@ from app.persistence.errors import V2PersistenceError
 from app.persistence.models import PresentationStreamChunkRow, PresentationStreamRow
 from app.schemas.agent_canvas_presentation import (
     PresentationStreamEventV1,
+    PresentationStreamListItemV1,
     PresentationStreamMetadataV1,
     SafePresentationDeltaV1,
 )
 
-MAX_PRESENTATION_CHUNKS = 512
+# Live reasoning batches at about 4 chunks/s, so 2048 covers ~8 minutes.
+MAX_PRESENTATION_CHUNKS = 2_048
 MAX_PRESENTATION_BYTES = 1_048_576
 MAX_PRESENTATION_CHUNK_BYTES = 4_096
 PRESENTATION_COALESCE_WINDOW = timedelta(milliseconds=100)
@@ -115,6 +117,43 @@ class PresentationStreamRepository:
             )
         return _metadata(row)
 
+    def list_recent(self, workflow_id: str, limit: int) -> tuple[PresentationStreamListItemV1, ...]:
+        """List workflow-owned streams newest first within a bounded limit."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(PresentationStreamRow)
+                        .where(PresentationStreamRow.workflow_id == workflow_id)
+                        .order_by(
+                            PresentationStreamRow.created_at.desc(),
+                            PresentationStreamRow.stream_id.desc(),
+                        )
+                        .limit(limit)
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _error(
+                "presentation_stream_unavailable", "Presentation stream storage failed."
+            ) from exc
+        return tuple(
+            PresentationStreamListItemV1(
+                stream_id=row["stream_id"],
+                stream_kind=row["stream_kind"],
+                generation_id=row["generation_id"],
+                turn_id=row.get("turn_id"),
+                node_id=row.get("node_id"),
+                node_revision=row.get("node_revision"),
+                status=row["status"],
+                created_at=row["created_at"],
+                terminal_at=row.get("terminal_at"),
+            )
+            for row in rows
+        )
+
     def append_event(
         self,
         event: PresentationStreamEventV1,
@@ -170,6 +209,7 @@ class PresentationStreamRepository:
                     if (
                         previous.event_type == "delta"
                         and previous.generation_id == delta.generation_id
+                        and previous.segment == delta.segment
                         and age <= PRESENTATION_COALESCE_WINDOW
                         and len(combined.encode("utf-8")) <= MAX_PRESENTATION_CHUNK_BYTES
                     ):
@@ -206,6 +246,7 @@ class PresentationStreamRepository:
                     node_id=delta.node_id,
                     node_revision=delta.node_revision,
                     response_locale=delta.response_locale,
+                    segment=delta.segment,
                     delta=delta.text,
                 )
                 connection.execute(
@@ -441,7 +482,13 @@ class PresentationStreamRepository:
                     connection.commit()
                     return PresentationStreamEventV1.model_validate_json(existing["event_json"])
                 _ensure_open_generation(stream, event.generation_id)
-                count, total = _chunk_limits(connection, event.stream_id)
+                # Retention limits bound text only; lifecycle events must always
+                # land so a full stream can still commit, fail, or reset.
+                count, total = (
+                    _chunk_limits(connection, event.stream_id)
+                    if event.event_type == "delta"
+                    else (0, 0)
+                )
                 if count >= MAX_PRESENTATION_CHUNKS or total + byte_size > MAX_PRESENTATION_BYTES:
                     raise _error(
                         "presentation_stream_backpressure_exceeded",
@@ -574,6 +621,8 @@ def _metadata(row: dict[str, object]) -> PresentationStreamMetadataV1:
             "authoritative_id": row.get("authoritative_id"),
             "content_digest": row.get("content_digest"),
             "error_code": row.get("error_code"),
+            "created_at": row.get("created_at"),
+            "terminal_at": row.get("terminal_at"),
         }
     )
 

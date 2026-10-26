@@ -90,7 +90,6 @@ describe("Character Designer character study", () => {
       expect(track.options.iterations).toBe(Infinity);
       expect(pose(track.keyframes[0])).toEqual(pose(track.keyframes.at(-1)!));
     }
-    expect(program.waiting).toEqual([]);
   });
 
   it("keeps the pencil visible through every drawing and return pose", () => {

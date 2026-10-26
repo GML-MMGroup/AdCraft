@@ -9,6 +9,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_guided_product import GuidedProductSourceActionV1
+from app.schemas.brand_professional_mode import BrandFormSubmitV1, BrandFormV1
 from app.schemas.language import BCP47Tag
 
 
@@ -137,7 +138,7 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     occurrence_count: int | None = Field(default=None, ge=1, le=32)
     character_phase: Literal["main"] | None = None
     capability_id: str = Field(min_length=1, max_length=80)
-    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=12)
     allow_custom: Literal[True] = True
     allow_exclusion: bool
 
@@ -145,6 +146,14 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     def validate_option_ids(self) -> "GuidedConceptChoiceV2":
         if len({option.option_id for option in self.options}) != len(self.options):
             raise ValueError("Guided concept option IDs must be unique.")
+        if (
+            not self.capability_id.startswith("brand_hypothesis")
+            and not self.capability_id.startswith("brand_treatment")
+            and len(self.options) > 6
+        ):
+            # Only Brand hypothesis and Treatment cards may grow past six
+            # options through the "Other" input; every other card keeps 3-6.
+            raise ValueError("Only Brand hypothesis and Treatment choices may exceed six options.")
         if sum(option.recommended for option in self.options) != 1:
             raise ValueError("A guided concept requires exactly one recommended option.")
         scope_values = (
@@ -183,7 +192,8 @@ GuidedInteractionContentV1: TypeAlias = Annotated[
     | GuidedProductSourceQuestionV1
     | GuidedReferenceSourceQuestionV1
     | GuidedConceptChoiceV2
-    | GuidedMediaReviewV1,
+    | GuidedMediaReviewV1
+    | BrandFormV1,
     Field(discriminator="content_kind"),
 ]
 
@@ -193,6 +203,7 @@ GuidedInteractionKindV1 = Literal[
     "reference_source",
     "concept_choice",
     "media_review",
+    "brand_form",
 ]
 GuidedInteractionStatusV1 = Literal["open", "submitted", "closed", "superseded"]
 GuidedInteractionActionV1 = Literal[
@@ -239,6 +250,7 @@ class GuidedInteractionV1(_GuidedInteractionModel):
             "reference_source": "reference_source",
             "concept_choice": "concept_choice",
             "media_review": "media_review",
+            "brand_form": "brand_form",
         }[self.kind]
         if self.content.content_kind != expected_content:
             raise ValueError("Guided interaction kind does not match its content.")
@@ -360,7 +372,8 @@ GuidedInteractionSubmitRequestV1: TypeAlias = Annotated[
     | GuidedProductSourceSubmitV1
     | GuidedReferenceSourceSubmitV1
     | GuidedConceptSubmitV2
-    | GuidedMediaReviewSubmitV1,
+    | GuidedMediaReviewSubmitV1
+    | BrandFormSubmitV1,
     Field(discriminator="submission_kind"),
 ]
 
@@ -391,6 +404,7 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
         "product_source",
         "reference_source",
         "media_review",
+        "brand_form",
         "manual_node_run",
         "milestone_idle",
     ]
@@ -415,6 +429,7 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
             "product_source",
             "reference_source",
             "media_review",
+            "brand_form",
         }
         if self.kind in interaction_kinds:
             if (

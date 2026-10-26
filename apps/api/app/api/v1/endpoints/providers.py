@@ -39,7 +39,10 @@ from app.services.provider_credentials import (
     ProviderConnectionService,
     ProviderConnectionSnapshot,
 )
-from app.services.provider_model_catalog import ProviderModelCatalogService
+from app.services.provider_model_catalog import (
+    ProviderModelCatalogService,
+    image_resolution_capabilities,
+)
 
 
 router = APIRouter(tags=["providers"], route_class=ProviderSettingsRoute)
@@ -193,6 +196,7 @@ def sync_provider_models(
         provider_id=result.provider_id,
         sync_run_id=result.sync_run_id,
         catalog_revision=result.catalog_revision,
+        discovery_mode=result.discovery_mode,
     )
 
 
@@ -217,6 +221,11 @@ def list_models(
                 availability=model.availability,
                 unavailable_reason=model.unavailable_reason,
                 catalog_revision=model.catalog_revision,
+                image_resolution_capabilities=(
+                    image_resolution_capabilities(model.capability_metadata)
+                    if model.capability == "image"
+                    else None
+                ),
                 **_adapter_response_fields(model.capability_metadata),
             )
             for model in service.list_models(
@@ -233,6 +242,16 @@ def list_models(
 def _adapter_response_fields(metadata: dict[str, object]) -> dict[str, object]:
     profile = metadata.get("adapter_profile")
     if not isinstance(profile, dict):
+        registration = metadata.get("version_registration")
+        if isinstance(registration, dict):
+            state = registration.get("state")
+            return {
+                "conformance_status": {"approved": "compatible", "rejected": "revoked"}.get(
+                    state, "unverified"
+                ),
+                "release_tier": "compatible",
+                "transport_kind": "pi_native_openai_compatible",
+            }
         return {}
     fields: dict[str, object] = {}
     for key in (
@@ -264,6 +283,7 @@ def get_model_defaults(
     return ModelDefaultsResponseV1(
         defaults={key: record.model_ref for key, record in records.items()},
         modes={key: record.selection_mode for key, record in records.items()},
+        thinking_modes={key: record.thinking_mode for key, record in records.items()},
         revisions={key: record.revision for key, record in records.items()},
     )
 
@@ -282,6 +302,7 @@ def update_model_defaults(
         service.set_defaults(
             payload.defaults,
             modes=payload.modes,
+            **({"thinking_modes": payload.thinking_modes} if payload.thinking_modes else {}),
             now=datetime.now(timezone.utc).isoformat(),
         )
     except ValueError as error:

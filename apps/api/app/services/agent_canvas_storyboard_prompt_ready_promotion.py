@@ -14,7 +14,11 @@ from app.persistence.agent_canvas_storyboard_prompt_ready_promotion_repository i
 )
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import AgentCanvasWorkflowV2, CanvasNodeV2
+from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
+    CanvasBindingSourceNodeV2,
+    CanvasNodeV2,
+)
 from app.schemas.agent_canvas_guided_checkpoint import (
     GuidedCheckpointOriginV1,
     guided_checkpoint_id,
@@ -185,6 +189,34 @@ class StoryboardPromptReadyPromotionService:
                 operation_id=preparation.operation_id,
                 expected_node_revision=node.revision,
             )
+        storyboard_node_ids = {item.node_id for item in storyboard_preparations}
+        frontier = list(storyboard_node_ids)
+        visited = set(storyboard_node_ids)
+        while frontier:
+            target_node_id = frontier.pop()
+            for binding in workflow.bindings:
+                if not binding.enabled or binding.target_node_id != target_node_id:
+                    continue
+                if not isinstance(binding.source, CanvasBindingSourceNodeV2):
+                    continue
+                source_node_id = binding.source.node_id
+                if source_node_id in visited:
+                    continue
+                visited.add(source_node_id)
+                frontier.append(source_node_id)
+                source_node = nodes.get(source_node_id)
+                if source_node is None or source_node_id in storyboard_node_ids:
+                    continue
+                if source_node.status != "draft":
+                    continue
+                preparation = source_node.prompt_preparation
+                if preparation.status != "ready" or not preparation.operation_id:
+                    continue
+                selected[source_node_id] = StoryboardPromptPreparationPairV1(
+                    node_id=source_node_id,
+                    operation_id=preparation.operation_id,
+                    expected_node_revision=source_node.revision,
+                )
         return tuple(sorted(selected.values(), key=lambda item: (item.node_id, item.operation_id)))
 
     def _guided_anchor_node_ids(

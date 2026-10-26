@@ -135,6 +135,7 @@ class CanvasNodePatchRequestV2(_AgentCanvasModel):
 class ProjectCreateRequestV2(_AgentCanvasModel):
     name: str = Field(min_length=1)
     description: str = ""
+    mode: Literal["creation", "brand"] = "creation"
     video_skill_id: str | None = None
     video_skill_version: str | None = None
 

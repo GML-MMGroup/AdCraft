@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n/useTranslation";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { ChevronDownIcon, ChevronRightIcon } from "../../../icons.tsx";
@@ -8,11 +9,12 @@ export interface DecisionDockFrameProps {
   context?: string;
   pending: boolean;
   issue: DecisionDockIssue | null;
-  footerSummary?: string;
+  footerSummary?: ReactNode;
   submitLabel?: string;
   submitDisabled?: boolean;
   onSubmit?: () => void;
   showSubmitBar?: boolean;
+  className?: string;
   children: ReactNode;
 }
 
@@ -26,8 +28,13 @@ export function DecisionDockFrame({
   submitDisabled = false,
   onSubmit,
   showSubmitBar = true,
+  className,
   children,
 }: DecisionDockFrameProps) {
+  // Keep the standalone dock usable in isolation (including its component
+  // tests); the application-level LocaleProvider still overrides this
+  // fallback when the dock is rendered inside the product.
+  const t = useTranslation("en-US");
   const issueRef = useRef<HTMLDivElement>(null);
   const actionLocked = pending || submitDisabled;
 
@@ -36,7 +43,7 @@ export function DecisionDockFrame({
   }, [issue]);
 
   return (
-    <article className="agent-chat__decision-dock" aria-label={title} aria-busy={pending}>
+    <article className={`agent-chat__decision-dock${className ? ` ${className}` : ""}`} aria-label={title} aria-busy={pending}>
       <header className="agent-chat__decision-dock-header">
         <strong>{title}</strong>
         {context ? <p>{context}</p> : null}
@@ -52,7 +59,7 @@ export function DecisionDockFrame({
           <strong>{issue.summary}</strong>
           {issue.detail ? (
             <details>
-              <summary>Technical details</summary>
+              <summary>{t("Technical details")}</summary>
               <code>{issue.detail}</code>
             </details>
           ) : null}
@@ -63,13 +70,13 @@ export function DecisionDockFrame({
           <span>{footerSummary}</span>
           <button
             type="button"
-            disabled={submitDisabled}
+            disabled={actionLocked}
             aria-disabled={actionLocked}
             onClick={() => {
               if (!actionLocked) onSubmit?.();
             }}
           >
-            {pending ? "Submitting" : submitLabel}
+            {pending ? t("Submitting") : submitLabel === "Submit" ? t("Submit") : submitLabel}
           </button>
         </footer>
       ) : null}

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n/useTranslation";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import type { ProjectV2Summary } from "../../types-v2";
 import { resolveV2ProjectCoverSummary } from "../../projects/v2ProjectCover";
@@ -15,6 +16,7 @@ function RecentProjectCard({ project, index, onOpenProject }: {
   index: number;
   onOpenProject: Props["onOpenProject"];
 }) {
+  const t = useTranslation();
   const cover = project.cover_state === "ready" ? resolveV2ProjectCoverSummary(project.cover) : null;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const source = cover?.mediaPath;
@@ -23,7 +25,7 @@ function RecentProjectCard({ project, index, onOpenProject }: {
     <button
       type="button"
       className="recent-card recent-card--project"
-      aria-label={`Open ${project.name}`}
+      aria-label={t("Open {name}", { name: project.name })}
       data-project-id={project.project_id}
       data-reveal-item
       style={{ "--home-reveal-delay": `${170 + index * 70}ms` } as CSSProperties}
@@ -39,7 +41,7 @@ function RecentProjectCard({ project, index, onOpenProject }: {
           onError={() => setFailedUrl(source)}
         />
       ) : (
-        <span className="recent-card__missing">{failed ? "Cover unavailable" : "No cover yet"}</span>
+        failed ? <span className="recent-card__missing">{t("Cover unavailable")}</span> : null
       )}
       <div className="recent-card__caption">
         <h3 data-home-typography-region="cardTitle">{project.name}</h3>
@@ -52,6 +54,7 @@ function RecentProjectCard({ project, index, onOpenProject }: {
 }
 
 export function HomeRecentProjects({ onOpenProject, onCreateProject, loadingContent }: Props) {
+  const t = useTranslation();
   const { projects, loading, error, refresh } = useRecentProjects();
   return (
     <>
@@ -59,15 +62,15 @@ export function HomeRecentProjects({ onOpenProject, onCreateProject, loadingCont
       <div className="recent-strip" data-reveal-item style={{ "--home-reveal-delay": "100ms" } as CSSProperties}>
         {error && (
           <div className="home-recent-state" role="alert">
-            <p>Recent projects could not be refreshed.</p>
-            <button type="button" className="home-recent-action" disabled={loading} onClick={refresh}>Retry</button>
+            <p>{t("Recent projects could not be refreshed.")}</p>
+            <button type="button" className="home-recent-action" disabled={loading} onClick={refresh}>{t("Retry")}</button>
           </div>
         )}
         {projects?.map((project, index) => <RecentProjectCard key={project.project_id} project={project} index={index} onOpenProject={onOpenProject} />)}
         {projects?.length === 0 && !error && !loading && (
           <div className="home-recent-state">
-            <p>No recent projects</p>
-            <button type="button" className="home-recent-action" onClick={onCreateProject}>Create project</button>
+            <p>{t("No recent projects")}</p>
+            <button type="button" className="home-recent-action" onClick={onCreateProject}>{t("Create project")}</button>
           </div>
         )}
       </div>

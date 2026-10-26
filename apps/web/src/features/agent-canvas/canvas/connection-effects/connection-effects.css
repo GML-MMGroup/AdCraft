@@ -1,0 +1,23 @@
+/* Preserve the existing geometry, selection width, hit targets and arrowheads. */
+.agent-canvas-board .canvas-colored-connection .react-flow__edge-path {
+  stroke: var(--connection-color);
+}
+.agent-canvas-board .react-flow__edge:hover .canvas-colored-connection .react-flow__edge-path,
+.agent-canvas-board .react-flow__edge.selected .canvas-colored-connection .react-flow__edge-path,
+.agent-canvas-board .react-flow__edge.is-node-related .canvas-colored-connection .react-flow__edge-path {
+  stroke: var(--connection-color);
+}
+.agent-canvas-board .agent-canvas-connection-line { stroke: #deddd8; }
+.canvas-connection-spark, .canvas-connection-pulse { pointer-events: none; }
+.canvas-connection-spark path, .canvas-connection-pulse path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.canvas-connection-spark__core { stroke: var(--connection-color); stroke-width: 1.6; }
+.canvas-connection-spark__glow { stroke: var(--connection-color); stroke-width: 5; opacity: .3; filter: blur(3px); }
+.canvas-connection-spark__halo { fill: none; stroke: var(--connection-color); stroke-width: 1; opacity: .75; }
+.canvas-connection-pulse { position: absolute; inset: 0; z-index: 11; overflow: visible; }
+.canvas-connection-pulse path { stroke: var(--connection-color); stroke-dasharray: 13 100; animation: canvas-connection-border 850ms cubic-bezier(.22,.65,.28,1) both; }
+.canvas-connection-pulse__core { stroke-width: 1.8; }
+.canvas-connection-pulse__glow { stroke-width: 9; filter: blur(5px); }
+.canvas-connection-pulse__ring { fill: none; stroke: var(--connection-color); stroke-width: 1; transform-box: fill-box; transform-origin: center; animation: canvas-connection-ring 550ms cubic-bezier(.23,1,.32,1) both; }
+@keyframes canvas-connection-border { 0% { stroke-dashoffset: 9; opacity: .8; } 55% { opacity: .55; } 100% { stroke-dashoffset: -100; opacity: 0; } }
+@keyframes canvas-connection-ring { from { transform: scale(.9); opacity: .9; } to { transform: scale(2.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .canvas-connection-pulse { display: none; } }

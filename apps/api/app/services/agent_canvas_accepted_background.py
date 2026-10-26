@@ -26,6 +26,7 @@ class AcceptedBackgroundOperation(str, Enum):
     GUIDED_INTERACTION_SUBMIT = "guided_interaction_submit"
     GUIDED_MEDIA_CONFIRMATION_RESUME = "guided_media_confirmation_resume"
     CANVAS_RUN_RESUME = "canvas_run_resume"
+    BRAND_INTERACTION_PUBLISH = "brand_interaction_publish"
 
 
 class AcceptedBackgroundResourceType(str, Enum):

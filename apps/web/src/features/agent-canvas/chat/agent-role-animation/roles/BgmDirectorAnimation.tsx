@@ -170,7 +170,6 @@ export const BGM_DIRECTOR_MOTION_PROGRAM: AgentRoleMotionProgram = {
     scoreNoteTrack("score-note-4", 0.57),
     scoreNoteTrack("score-note-5", 0.72),
   ],
-  waiting: [],
 };
 
 interface BgmDirectorAnimationProps {

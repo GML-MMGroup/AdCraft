@@ -56,6 +56,50 @@ from app.schemas.agent_working_documents import (
 )
 
 
+def _compact_storyboard_text(value: object, limit: int) -> str:
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    if limit < 8:
+        return text[:limit]
+    head = (limit - 5) // 2
+    tail = limit - 5 - head
+    return f"{text[:head]} ... {text[-tail:]}"
+
+
+def _compact_storyboard_segment(segment: object) -> dict[str, object]:
+    if not isinstance(segment, dict):
+        raise ValueError("Storyboard sequence context segment is invalid.")
+    return {
+        "sequence_id": segment["sequence_id"],
+        "order": segment["order"],
+        "start_seconds": segment["start_seconds"],
+        "end_seconds": segment["end_seconds"],
+        "narrative_goal": _compact_storyboard_text(segment["narrative_goal"], 1_024),
+        "start_state": _compact_storyboard_text(segment["start_state"], 512),
+        "end_state": _compact_storyboard_text(segment["end_state"], 512),
+        "continuity_from_previous": (
+            _compact_storyboard_text(segment["continuity_from_previous"], 512)
+            if segment.get("continuity_from_previous") is not None
+            else None
+        ),
+        "terminal_policy": segment.get("terminal_policy"),
+    }
+
+
+def _compact_storyboard_row(row: object) -> dict[str, object]:
+    if not isinstance(row, dict):
+        raise ValueError("Storyboard sequence context row is invalid.")
+    return {
+        "shot_index": row["shot_index"],
+        "sequence_id": row["sequence_id"],
+        "panel_index": row["panel_index"],
+        "content_beat": _compact_storyboard_text(row["content_beat"], 384),
+        "anchor_aliases": row.get("anchor_aliases", []),
+        "camera_description": _compact_storyboard_text(row["camera_description"], 384),
+    }
+
+
 class AgentWorkingDocumentService:
     """Apply typed Agent patches while preserving Canvas authority boundaries."""
 
@@ -496,6 +540,42 @@ class AgentWorkingDocumentService:
                 "Agent document context exceeds the bounded explanation limit.",
             )
         return result
+
+    @staticmethod
+    def compact_storyboard_sequence_context_from_document(
+        document: AgentWorkingDocumentV2,
+        selector: str,
+    ) -> AgentDocumentContextExcerptV2:
+        """Build a small sequence-only excerpt for a frozen role context.
+
+        Storyboard prompt preparation already carries the full brand and
+        requirement projections.  Including the document's global parameters
+        and planned-node registry as well can push the detached Stage context
+        over its 64KB persistence bound.  Keep the exact document identity and
+        all nine rows, but bound prose fields and omit metadata that the
+        storyboard role projector does not consume.
+        """
+
+        excerpt = AgentWorkingDocumentService.bounded_context_from_document(
+            document,
+            selector,
+        )
+        if document.kind != "storyboard_production_plan":
+            return excerpt
+        sequence = excerpt.content.get("segments", [])[0]
+        rows = excerpt.content.get("rows", [])
+        compact_content = {
+            "segments": [_compact_storyboard_segment(sequence)],
+            "rows": [_compact_storyboard_row(row) for row in rows],
+        }
+        return AgentDocumentContextExcerptV2(
+            document_id=excerpt.document_id,
+            document_kind=excerpt.document_kind,
+            revision=excerpt.revision,
+            content_digest=excerpt.content_digest,
+            selector=excerpt.selector,
+            content=compact_content,
+        )
 
     def _require_scope(self, workflow_id: str, guidance_session_id: str) -> None:
         self._require_agent_canvas(workflow_id)

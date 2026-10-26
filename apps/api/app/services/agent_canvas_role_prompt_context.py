@@ -15,6 +15,7 @@ from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_role_prompt_preparation import (
     CharacterIdentityAuthorityProjectionV1,
+    ProductIdentityAuthorityProjectionV1,
     ResolvedNodeParameterV2,
     RoleBoundTextControlV2,
     RoleBindingSnapshotV2,
@@ -27,6 +28,10 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
 from app.services.agent_canvas_video_representation import resolve_video_representation_mode
+from app.services.brand_production_context import (
+    BrandProductionContextBudgetError,
+    project_brand_production_context,
+)
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
 
 
@@ -152,6 +157,8 @@ class RolePromptContextProjector:
         context_blocks: tuple[RolePromptContextBlockV2, ...] = (),
         character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
         scene_environment_projection: SceneEnvironmentProjectionV1 | None = None,
+        product_identity_projection: ProductIdentityAuthorityProjectionV1 | None = None,
+        allow_uninitialized_scene: bool = False,
     ) -> RolePromptPreparationContextV2:
         if stage_context.workflow_id != node.workflow_id:
             raise _error(
@@ -213,20 +220,21 @@ class RolePromptContextProjector:
         projected_bindings = bindings
         projected_world_view = world_view_projection
         if role_variant == "scene_board":
-            if scene_environment_projection is None:
+            if scene_environment_projection is None and not allow_uninitialized_scene:
                 raise _error(
                     "scene_environment_projection_invalid",
                     "Scene prompt context requires typed environment authority.",
                 )
-            if (
-                scene_environment_projection.entity_references
-                or scene_environment_projection.action_references
-            ):
-                raise _error(
-                    "scene_environment_projection_invalid",
-                    "Scene prompt context must be environment-only.",
-                )
-            selected_direction = scene_environment_projection.environment_identity
+            if scene_environment_projection is not None:
+                if (
+                    scene_environment_projection.entity_references
+                    or scene_environment_projection.action_references
+                ):
+                    raise _error(
+                        "scene_environment_projection_invalid",
+                        "Scene prompt context must be environment-only.",
+                    )
+                selected_direction = scene_environment_projection.environment_identity
             projected_bindings = tuple(
                 binding
                 for binding in bindings
@@ -284,7 +292,17 @@ class RolePromptContextProjector:
             if is_video_role
             else None
         )
+        try:
+            brand_decisions = project_brand_production_context(
+                stage_context.brand_decisions, role=role_variant
+            )
+        except BrandProductionContextBudgetError as error:
+            raise _error(
+                "node_prompt_context_too_large",
+                "The role-specific Brand context exceeds its safe input budget.",
+            ) from error
         return RolePromptPreparationContextV2(
+            brand_decisions=brand_decisions,
             workflow_id=node.workflow_id,
             node_id=node.node_id,
             node_revision=node.revision,
@@ -295,6 +313,12 @@ class RolePromptContextProjector:
             character_phase=character_phase,
             character_identity_projection=character_identity_projection,
             scene_environment_projection=scene_environment_projection,
+            product_identity_projection=product_identity_projection,
+            scene_projection_required=not (
+                role_variant == "scene_board"
+                and scene_environment_projection is None
+                and allow_uninitialized_scene
+            ),
             requirement_facts=projected_requirements,
             document_revisions=document_revisions,
             selected_direction=selected_direction,
@@ -628,10 +652,41 @@ def character_identity_projection_from_node(
 
 def scene_environment_projection_from_node(
     node: CanvasNodeV2,
-) -> SceneEnvironmentProjectionV1:
+    *,
+    allow_uninitialized_seed: bool = False,
+    prefer_persisted: bool = False,
+) -> SceneEnvironmentProjectionV1 | None:
     """Project typed environment fields without parsing narrative text."""
 
+    if prefer_persisted:
+        persisted = node.metadata.get("scene_environment_projection")
+        if isinstance(persisted, dict):
+            try:
+                projection = SceneEnvironmentProjectionV1.model_validate(persisted)
+            except ValidationError as error:
+                raise _error(
+                    "scene_environment_projection_invalid",
+                    "Scene Main persisted environment authority is invalid.",
+                ) from error
+            if projection.source_node_id != node.node_id:
+                raise _error(
+                    "scene_environment_projection_invalid",
+                    "Scene Main persisted environment authority has the wrong source.",
+                )
+            return projection
+
     content = node.structured_content
+    if (
+        allow_uninitialized_seed
+        and node.output_asset_id is None
+        and not node.metadata.get("prompt_recipe_id")
+        and node.prompt_preparation.brief_digest is None
+        and not isinstance(content.get("panels"), list)
+        and not content.get("explicit_entity_reference_ids")
+        and not content.get("action_references")
+        and content.get("no_narrative_progression") is not False
+    ):
+        return None
     identity = _required_text(content.get("scene_identity")) or _required_text(node.summary_prompt)
     summary = _required_text(content.get("environment_summary")) or identity
     if not identity or not summary:
@@ -656,28 +711,56 @@ def scene_environment_projection_from_node(
                     )
                 )
     if not views:
-        views = [
-            SceneEnvironmentViewV1(
-                view_or_zone=f"Environment view {index}",
-                spatial_details=summary,
-                allowed_environment_elements=(),
-            )
-            for index in range(1, 10)
-        ]
+        raise _error(
+            "scene_environment_projection_invalid",
+            "Authored Scene source lacks explicit environment views.",
+        )
+    lighting = _required_text(content.get("lighting"))
+    materials = _required_text(content.get("materials"))
+    if lighting is None or materials is None:
+        raise _error(
+            "scene_environment_projection_invalid",
+            "Authored Scene source lacks explicit lighting or materials.",
+        )
+    spatial_logic = summary
+    first_view = views[0]
+    suffix = f" View: {first_view.view_or_zone}."
+    if first_view.spatial_details.endswith(suffix):
+        spatial_logic = first_view.spatial_details[: -len(suffix)].rstrip()
+    atmosphere = summary
+    if spatial_logic and summary.startswith(spatial_logic):
+        atmosphere = summary[len(spatial_logic) :].strip() or spatial_logic
     return SceneEnvironmentProjectionV1.build(
         source_node_id=node.node_id,
         source_node_revision=node.revision,
         environment_identity=identity,
-        spatial_logic=summary,
-        lighting=_required_text(content.get("lighting")) or "Accepted environment lighting.",
-        materials=_required_text(content.get("materials")) or "Accepted environment materials.",
-        atmosphere=summary,
+        spatial_logic=spatial_logic,
+        lighting=lighting,
+        materials=materials,
+        atmosphere=atmosphere,
         views=tuple(views[:9]),
         entity_references=tuple(
             str(item) for item in content.get("explicit_entity_reference_ids", ())
         ),
         action_references=tuple(str(item) for item in content.get("action_references", ())),
         environment_only=content.get("no_narrative_progression") is not False,
+    )
+
+
+def product_identity_projection_from_node(
+    node: CanvasNodeV2,
+) -> ProductIdentityAuthorityProjectionV1 | None:
+    """Project only explicit structured Product Main identity authority."""
+
+    subject_identity = _required_text(node.structured_content.get("subject_identity"))
+    design_summary = _required_text(node.structured_content.get("design_summary"))
+    if subject_identity is None or design_summary is None:
+        return None
+    return ProductIdentityAuthorityProjectionV1.build(
+        source_node_id=node.node_id,
+        source_node_revision=node.revision,
+        subject_identity=subject_identity,
+        design_summary=design_summary,
     )
 
 

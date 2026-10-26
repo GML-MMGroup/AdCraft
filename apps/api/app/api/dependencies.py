@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from dataclasses import fields
 
 from fastapi import Depends, HTTPException
 
@@ -36,6 +37,7 @@ from app.services.workflow_nodes import WorkflowNodeExecutionService
 from app.services.workflow_plan import AdWorkflowPlanService
 from app.services.workflow_quality_review import WorkflowQualityReviewService
 from app.services.workflow_working_versions import WorkflowWorkingVersionService
+from app.services.workflow_model_calls import WorkflowModelCallError, WorkflowModelCallStore
 from app.services.v1_workflow_authority import (
     V1WorkflowAuthorityBoundary,
     V1WorkflowAuthorityError,
@@ -118,6 +120,35 @@ def get_workflow_working_version_service() -> WorkflowWorkingVersionService:
     return WorkflowWorkingVersionService(settings=get_settings())
 
 
+def get_workflow_model_call_store(
+    settings: Settings = Depends(get_settings),
+) -> Iterator[WorkflowModelCallStore]:
+    """Build the read-only model-call store without exposing runtime credentials."""
+
+    secrets = tuple(
+        value
+        for field in fields(settings)
+        if ("api_key" in field.name or "internal_token" in field.name)
+        and isinstance(value := getattr(settings, field.name), str)
+        and value
+    )
+    try:
+        yield WorkflowModelCallStore(settings.media_data_dir, secrets=secrets)
+    except WorkflowModelCallError as error:
+        raise HTTPException(
+            error.status_code,
+            detail={"code": error.code, "message": "Agent model call record is unavailable."},
+        ) from error
+    except (OSError, ValueError):
+        raise HTTPException(
+            503,
+            detail={
+                "code": "agent_model_call_unavailable",
+                "message": "Agent model call storage is unavailable.",
+            },
+        ) from None
+
+
 def get_v1_workflow_authority_boundary(
     settings: Settings = Depends(get_settings),
 ) -> Iterator[V1WorkflowAuthorityBoundary]:
@@ -189,7 +220,18 @@ def get_provider_model_catalog_service(
         if settings.openrouter_api_key
         else None
     )
-    service = ProviderModelCatalogService(repository, openrouter_adapter=openrouter_adapter)
+    from app.services.provider_model_discovery import SiliconFlowCatalogAdapter
+
+    siliconflow_adapter = (
+        SiliconFlowCatalogAdapter(
+            api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url
+        )
+        if settings.siliconflow_api_key
+        else None
+    )
+    service = ProviderModelCatalogService(
+        repository, openrouter_adapter=openrouter_adapter, siliconflow_adapter=siliconflow_adapter
+    )
     try:
         yield service
     finally:

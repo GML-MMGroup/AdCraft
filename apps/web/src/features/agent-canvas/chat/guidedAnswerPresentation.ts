@@ -15,11 +15,70 @@ export interface GuidedAnswerBubbleV1 {
   sequence: number;
 }
 
+export type PendingGuidedQuestion = Pick<GuidedAnswerBubbleV1,
+  "bubble_id" | "interaction_id" | "question_id" | "label">;
+
+/** Current questions come from the authoritative interaction, not a submitted
+ * answer or local cache. Accepted/optimistic answer pairs own their question so
+ * refreshes and submission rollback cannot leave duplicate question bubbles. */
+export function projectPendingGuidedQuestions(
+  interaction: GuidedInteractionV1 | null,
+  answers: readonly GuidedAnswerBubbleV1[],
+): PendingGuidedQuestion[] {
+  if (!interaction || !["open", "submitted"].includes(interaction.status)) return [];
+  const content = interaction.content;
+  const questions = content.content_kind === "concept_choice"
+    ? [{ question_id: content.action_id, label: interaction.title || interaction.context || "Decision" }]
+    : content.content_kind === "questionnaire"
+      ? content.questions.map((question) => ({ question_id: question.question_id, label: question.prompt }))
+      : [];
+  const answered = new Set(answers
+    .filter((answer) => answer.interaction_id === interaction.interaction_id)
+    .map((answer) => answer.question_id));
+  return questions.filter((question) => !answered.has(question.question_id)).map((question) => ({
+    ...question,
+    interaction_id: interaction.interaction_id,
+    bubble_id: `guided-question:${interaction.interaction_id}:${question.question_id}`,
+  }));
+}
+
 export function buildGuidedAnswerBubbles(
   interaction: GuidedInteractionV1,
   request: GuidedInteractionSubmitRequestV1,
   anchorSequence: number,
 ): GuidedAnswerBubbleV1[] {
+  if (
+    interaction.content.content_kind === "concept_choice"
+    && request.submission_kind === "concept_choice"
+  ) {
+    const selectedOption = request.option_id
+      ? interaction.content.options.find((option) => option.option_id === request.option_id)
+      : null;
+    const customText = request.custom_text?.trim() || null;
+    let value: string | null = null;
+    if (request.action === "custom") {
+      value = customText;
+    } else if (selectedOption) {
+      value = selectedOption.title;
+    } else if (request.action === "defer") {
+      value = "Deferred";
+    } else if (request.action === "exclude") {
+      value = "Excluded";
+    } else if (request.action === "delegate") {
+      value = "Delegated";
+    }
+    if (!value) return [];
+
+    return [{
+      bubble_id: `guided-answer:${interaction.interaction_id}:concept-choice`,
+      interaction_id: interaction.interaction_id,
+      question_id: interaction.content.action_id,
+      label: interaction.title || interaction.context || "Decision",
+      value,
+      sequence: anchorSequence + 0.01,
+    }];
+  }
+
   if (
     interaction.content.content_kind !== "questionnaire"
     || request.submission_kind !== "questionnaire"
@@ -116,9 +175,25 @@ export function projectGuidedAnswerBubbles(
   items: ChatTimelineItemV2[],
 ): GuidedAnswerBubbleV1[] {
   const bubblesById = new Map<string, GuidedAnswerBubbleV1>();
+  // Repaired Brand history is appended without renumbering server cursors.
+  // Place its display bubbles at their original time among the existing messages.
+  const brandHistory = items.filter((item): item is ChatMessageV2 => item.item_type === "message"
+    && typeof item.metadata?.brand_decision_log_id === "string"
+    && parseGuidedAnswerBubbles(item).length > 0)
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.sequence - b.sequence);
+  const brandItems = new Set<ChatTimelineItemV2>(brandHistory);
+  const anchors = items.filter((item) => !brandItems.has(item));
+  const displaySequences = new Map<ChatTimelineItemV2, number>();
+  brandHistory.forEach((item, index) => {
+    const next = anchors.find((anchor) => "created_at" in anchor
+      && Date.parse(anchor.created_at) > Date.parse(item.created_at));
+    if (!next) return;
+    const previousSequence = Math.max(0, ...anchors.filter((anchor) => anchor.sequence < next.sequence).map((anchor) => anchor.sequence));
+    displaySequences.set(item, previousSequence + (next.sequence - previousSequence) * (index + 1) / (brandHistory.length + 1));
+  });
   items.forEach((item) => {
     parseGuidedAnswerBubbles(item).forEach((bubble) => {
-      bubblesById.set(bubble.bubble_id, bubble);
+      bubblesById.set(bubble.bubble_id, { ...bubble, sequence: displaySequences.get(item) ?? bubble.sequence });
     });
   });
   return [...bubblesById.values()].sort((left, right) => left.sequence - right.sequence);

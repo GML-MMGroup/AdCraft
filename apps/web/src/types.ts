@@ -1,4 +1,4 @@
-export type RouteName = "home" | "projects" | "assets" | "trash" | "workflow" | "api-space";
+export type RouteName = "home" | "projects/new" | "projects" | "assets" | "trash" | "workflow" | "api-space";
 
 export type AppNavigateOptions = {
   projectId?: string | null;

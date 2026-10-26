@@ -38,7 +38,6 @@ from app.schemas.agent_canvas_production_journey import (
 )
 from app.schemas.agent_working_documents import (
     AgentWorkingDocumentV2,
-    StoryboardNarrativeSegmentV2,
     StoryboardPlanGlobalParametersV2,
     StoryboardProductionPlanContentV3,
     StoryboardSegmentMaterializationV3,
@@ -49,6 +48,7 @@ from app.services.agent_canvas_production_journey import (
     parse_production_journey,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.agent_canvas_storyboard_sequences import timing_seed_segments
 from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 
@@ -355,31 +355,7 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
             aspect_ratio=constraints.get("aspect_ratio", "16:9"),
             explicit_sequence_count=constraints.get("storyboard_sequence_count"),
         )
-        segments = tuple(
-            StoryboardNarrativeSegmentV2(
-                sequence_id=f"sequence-{window.order}",
-                order=window.order,
-                start_seconds=window.start_seconds,
-                end_seconds=window.end_seconds,
-                narrative_goal=(
-                    f"Sequence {window.order} local narrative direction "
-                    f"({window.start_seconds:g}-{window.end_seconds:g}s)."
-                ),
-                start_state=("Opening state" if window.order == 1 else "Continue prior sequence."),
-                end_state=(
-                    "Close the authored direction."
-                    if window.order == len(authority_plan.windows)
-                    else "Hand off to the next sequence."
-                ),
-                continuity_from_previous=(
-                    None if window.order == 1 else "Continue from the prior sequence."
-                ),
-                terminal_policy=(
-                    "close" if window.order == len(authority_plan.windows) else "continue"
-                ),
-            )
-            for window in authority_plan.windows
-        )
+        segments = timing_seed_segments(authority_plan)
         try:
             return StoryboardProductionPlanContentV3(
                 creative_direction_snapshot_id=envelope.style_projection.get(

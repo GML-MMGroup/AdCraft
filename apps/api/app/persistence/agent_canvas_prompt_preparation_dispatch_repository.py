@@ -14,13 +14,17 @@ import json
 from hashlib import sha256
 from typing import Any
 
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, exists, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import aliased
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_prompt_preparation_progress import (
+    append_prompt_preparation_progress,
+)
 from app.persistence.models import (
     AgentCanvasBindingRow,
     AgentCanvasNodeRow,
@@ -43,6 +47,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 APPLICABLE_NODE_TYPES = frozenset({"text", "script", "image", "video", "audio"})
 NON_TERMINAL_STATUSES = ("waiting_user", "queued", "leased")
+EXCLUSIVE_ROLE_VARIANTS = frozenset({"storyboard_grid", "video_segment"})
 
 
 class AgentCanvasPromptPreparationDispatchRepository:
@@ -722,7 +727,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 AgentCanvasPromptPreparationOutboxRow.created_at.asc(),
                                 AgentCanvasPromptPreparationOutboxRow.dispatch_id.asc(),
                             )
-                            .limit(batch_limit)
+                            .limit(max(batch_limit * 8, 64))
                         ).mappings()
                     )
                     exhausted_rows = list(
@@ -743,6 +748,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     )
                     rows = [*exhausted_rows, *runnable_rows]
                     claimed: list[PromptPreparationDispatchV1] = []
+                    leased_row = aliased(AgentCanvasPromptPreparationOutboxRow)
                     for row in rows:
                         current_attempt = int(row["attempt_count"])
                         if current_attempt >= int(row["max_attempts"]):
@@ -799,6 +805,55 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 )
                                 terminalized.append(_dispatch_from_row(failed_row))
                             continue
+                        leased_conflict = connection.execute(
+                            select(
+                                exists(
+                                    select(1)
+                                    .select_from(leased_row)
+                                    .where(
+                                        leased_row.dispatch_id != row["dispatch_id"],
+                                        leased_row.workflow_id == row["workflow_id"],
+                                        leased_row.status == "leased",
+                                        leased_row.lease_expires_at > now_value,
+                                        (
+                                            leased_row.role_variant.in_(EXCLUSIVE_ROLE_VARIANTS)
+                                            if row["role_variant"] not in EXCLUSIVE_ROLE_VARIANTS
+                                            else True
+                                        ),
+                                    )
+                                )
+                            )
+                        ).scalar_one()
+                        if leased_conflict:
+                            continue
+                        upstream_pending = connection.execute(
+                            select(
+                                exists(
+                                    select(1)
+                                    .select_from(
+                                        AgentCanvasPromptPreparationOutboxRow,
+                                        AgentCanvasBindingRow,
+                                    )
+                                    .where(
+                                        AgentCanvasPromptPreparationOutboxRow.dispatch_id
+                                        != row["dispatch_id"],
+                                        AgentCanvasPromptPreparationOutboxRow.workflow_id
+                                        == row["workflow_id"],
+                                        AgentCanvasPromptPreparationOutboxRow.status.in_(
+                                            ("queued", "leased")
+                                        ),
+                                        AgentCanvasBindingRow.workflow_id == row["workflow_id"],
+                                        AgentCanvasBindingRow.target_node_id == row["node_id"],
+                                        AgentCanvasBindingRow.source_kind == "node_output",
+                                        AgentCanvasBindingRow.source_node_id
+                                        == AgentCanvasPromptPreparationOutboxRow.node_id,
+                                        AgentCanvasBindingRow.enabled.is_(True),
+                                    )
+                                )
+                            )
+                        ).scalar_one()
+                        if upstream_pending:
+                            continue
                         generation = int(row["lease_generation"]) + 1
                         changed = connection.execute(
                             update(AgentCanvasPromptPreparationOutboxRow)
@@ -840,6 +895,8 @@ class AgentCanvasPromptPreparationDispatchRepository:
                             created_at=timestamp,
                         )
                         claimed.append(dispatch)
+                        if len(claimed) >= batch_limit:
+                            break
                     connection.commit()
                     if _terminalized_out is not None:
                         _terminalized_out.extend(terminalized)
@@ -1293,6 +1350,141 @@ class AgentCanvasPromptPreparationDispatchRepository:
             raise
         except SQLAlchemyError as error:
             raise _persistence_error() from error
+
+    def requeue_failed_for_recovery(
+        self,
+        dispatch_id: str,
+        *,
+        next_attempt_at: datetime,
+        now: datetime,
+        node_revision: int | None = None,
+        operation_id: str | None = None,
+        context_digest: str | None = None,
+        source_snapshot: Mapping[str, object] | None = None,
+    ) -> PromptPreparationDispatchV1:
+        """Reopen one exhausted transient dispatch after an explicit recovery.
+
+        The normal worker retry budget remains strict.  This separate recovery
+        seam is used only after a user-visible post-commit failure, and resets
+        the per-recovery attempt counter while preserving the dispatch identity
+        and current-node snapshot fence.
+        """
+
+        timestamp = _utc(now)
+        available = _utc(next_attempt_at)
+        if available < timestamp:
+            raise _error(
+                "prompt_preparation_dispatch_retry_invalid",
+                "Retry time cannot precede the current time.",
+            )
+        try:
+            with self._database.engine.begin() as connection:
+                row = _select_one(connection, dispatch_id)
+                if row is None:
+                    raise _not_found()
+                if (
+                    node_revision is not None
+                    or operation_id is not None
+                    or context_digest is not None
+                    or source_snapshot is not None
+                ):
+                    _assert_current_node_identity(
+                        connection,
+                        row,
+                        node_revision=node_revision,
+                        operation_id=operation_id,
+                        context_digest=context_digest,
+                        source_snapshot=source_snapshot,
+                    )
+                if row["status"] == "queued":
+                    return _dispatch_from_row(row)
+                if row["status"] != "failed":
+                    raise _error(
+                        "prompt_preparation_dispatch_state_conflict",
+                        "Only a failed prompt-preparation dispatch can be recovered.",
+                    )
+                if str(row["last_error_code"] or "") not in {
+                    "agent_runtime_unavailable",
+                    "agent_provider_transport_failed",
+                    "agent_provider_timeout",
+                    "prompt_preparation_failed",
+                }:
+                    raise _error(
+                        "prompt_preparation_dispatch_not_recoverable",
+                        "This prompt-preparation failure requires a new authoring operation.",
+                    )
+                values = {
+                    "status": "queued",
+                    "attempt_count": 0,
+                    "available_at": _iso(available),
+                    "lease_owner": None,
+                    "lease_expires_at": None,
+                    "last_error_code": None,
+                    "last_error_message": None,
+                    "updated_at": _iso(timestamp),
+                    "terminal_at": None,
+                }
+                changed = connection.execute(
+                    update(AgentCanvasPromptPreparationOutboxRow)
+                    .where(
+                        AgentCanvasPromptPreparationOutboxRow.dispatch_id == dispatch_id,
+                        AgentCanvasPromptPreparationOutboxRow.status == "failed",
+                    )
+                    .values(**values)
+                )
+                if changed.rowcount != 1:
+                    raise _error(
+                        "prompt_preparation_dispatch_state_conflict",
+                        "Prompt-preparation dispatch changed before recovery.",
+                    )
+                result = _dispatch_from_row({**row, **values})
+                self._append_event(
+                    connection,
+                    result,
+                    event_type="node_prompt_preparation_queued",
+                    transition_key=(
+                        f"prompt-dispatch:{dispatch_id}:explicit-recovery:"
+                        f"{int(row['attempt_count'])}:lease:{int(row['lease_generation'])}"
+                    ),
+                    created_at=timestamp,
+                )
+                return result
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def refresh_completed_references_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        node: CanvasNodeV2,
+        binding_digest: str | None,
+        now: datetime,
+    ) -> None:
+        """Re-pin a completed dispatch to the Node's current input lineage.
+
+        Ready prompts are never re-authored automatically (user rule,
+        2026-10-19). When only upstream references change, the completed
+        dispatch keeps its operation and context but records the current
+        source snapshot so terminal identity checks stay consistent.
+        """
+
+        connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.workflow_id == node.workflow_id,
+                AgentCanvasPromptPreparationOutboxRow.node_id == node.node_id,
+                AgentCanvasPromptPreparationOutboxRow.operation_id
+                == node.prompt_preparation.operation_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "completed",
+            )
+            .values(
+                binding_digest=binding_digest,
+                source_snapshot_json=_json(_source_snapshot_for_node(connection, node, ())),
+                updated_at=_iso(_utc(now)),
+            )
+        )
 
     def reconcile_node_terminal_in_transaction(
         self,
@@ -1819,6 +2011,13 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 },
             ),
         )
+        append_prompt_preparation_progress(
+            connection,
+            self._events,
+            dispatch,
+            transition_key=transition_key,
+            created_at=created_at,
+        )
 
     def _project_terminal_failure_in_transaction(
         self,
@@ -1925,7 +2124,8 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 node_id=str(dispatch_row["node_id"]),
                 event_type="node_prompt_preparation_failed",
                 transition_key=(
-                    f"prompt-node:{dispatch_row['node_id']}:{dispatch_row['operation_id']}:failed"
+                    f"prompt-node:{dispatch_row['node_id']}:{dispatch_row['operation_id']}:"
+                    f"failed:{failed_preparation.attempt_no}"
                 ),
                 created_at=timestamp,
                 payload={

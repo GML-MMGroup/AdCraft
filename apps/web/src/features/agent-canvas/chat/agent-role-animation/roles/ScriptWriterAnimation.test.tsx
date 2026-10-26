@@ -119,6 +119,5 @@ describe("ScriptWriterAnimation", () => {
     expect(useAgentRoleMotion).toHaveBeenCalledWith(
       expect.objectContaining({ current: container.querySelector("svg") }), "working", SCRIPT_WRITER_MOTION_PROGRAM,
     );
-    expect(SCRIPT_WRITER_MOTION_PROGRAM.waiting).toEqual([]);
   });
 });

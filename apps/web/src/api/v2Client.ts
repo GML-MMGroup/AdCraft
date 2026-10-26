@@ -1,3 +1,4 @@
+import type { BrandTreatmentEdit, BrandTreatmentStepResultV1 } from "../features/agent-canvas/brand/brandDecisions";
 import type {
   AgentCanvasChatMessageRequestV2,
   AgentCanvasChatTurnRetryRequestV2,
@@ -7,6 +8,7 @@ import type {
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasGuidedActionApplyRequestV2,
   GuidedInteractionAcceptedV1,
+  GuidedInteractionContentV1,
   GuidedInteractionSubmitRequestV1,
   GuidedReferenceCandidateListResponseV2,
   GuidedReferenceCandidateScopeV2,
@@ -166,6 +168,13 @@ import {
   normalizeWorkflowAssetListResponseV2,
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
+import type {
+  BrandDecisionLogEntryV1,
+  BrandDecisionPanelV1,
+  BrandInspectionConversationTurnV1,
+  BrandJourneyStateV1,
+  BrandSkillSelectionRequest,
+} from "../features/agent-canvas/brand/brandDecisions.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasChatTimelineV2,
@@ -173,6 +182,7 @@ import {
   normalizeDecisionBundleV2,
   normalizeGuidedSessionStateV2,
   normalizeGuidedInteractionAcceptedV1,
+  normalizeGuidedBrandFormV1,
   normalizeGuidedReferenceCandidateListResponseV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
@@ -203,6 +213,15 @@ import {
   normalizeProjectAssetUploadResponseV2,
   normalizeProviderModelCapabilityListV2,
 } from "../features/agent-canvas/model/normalizers.ts";
+import {
+  normalizeBrandJourneyStateV1,
+  normalizeBrandCreativeMethods,
+  normalizeBrandDecisionPanelV1,
+  normalizeBrandOptionCardV1,
+  normalizeBrandInspectionConversation,
+  normalizeBrandInspectionDecisionLog,
+  normalizeBrandInspectionTraces,
+} from "../features/agent-canvas/brand/brandDecisionNormalizers.ts";
 import { v2EtagStore, type V2AuthoringResource } from "./v2EtagStore.ts";
 
 const API_V2_BASE = "/api/v2";
@@ -606,6 +625,134 @@ export const v2Api = {
     );
   },
 
+  brandDecisions(workflowId: string): Promise<BrandDecisionPanelV1> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/decisions?${query.toString()}`,
+      {},
+      normalizeBrandDecisionPanelV1,
+    );
+  },
+
+  brandCreativeMethodSkills() {
+    return requestV2("/brand/creative-method-skills", {}, normalizeBrandCreativeMethods);
+  },
+
+  brandSelectSkills(workflowId: string, body: BrandSkillSelectionRequest): Promise<BrandDecisionPanelV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-skills`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      normalizeBrandDecisionPanelV1,
+    );
+  },
+
+  brandInspectionConversation(workflowId: string): Promise<BrandInspectionConversationTurnV1[]> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/inspection/conversation?${query.toString()}`,
+      {},
+      normalizeBrandInspectionConversation,
+    );
+  },
+
+  brandInspectionDecisionLog(workflowId: string): Promise<BrandDecisionLogEntryV1[]> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/inspection/decision-log?${query.toString()}`,
+      {},
+      normalizeBrandInspectionDecisionLog,
+    );
+  },
+
+  brandInspectionTraces(workflowId: string): Promise<unknown[]> {
+    const query = new URLSearchParams({ workflow_id: workflowId });
+    return requestV2(
+      `/brand/inspection/traces?${query.toString()}`,
+      {},
+      normalizeBrandInspectionTraces,
+    );
+  },
+
+  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"] | Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }>> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
+      { method: "POST" },
+      (payload) => payload === null ? null
+        : typeof payload === "object" && payload !== null && "content_kind" in payload && payload.content_kind === "brand_form"
+          ? normalizeGuidedBrandFormV1(payload)
+          : normalizeBrandOptionCardV1(payload),
+    );
+  },
+
+  brandSelectSlot(
+    workflowId: string,
+    body: {
+      card_id: string;
+      option_id: string;
+      value_text: string;
+      provenance?: "user_confirmed" | "agent_recommended";
+    },
+  ): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-slot`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
+  brandSelectHypothesis(workflowId: string, hypothesisId: string): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-hypothesis`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hypothesis_id: hypothesisId }),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
+  brandSelectTreatment(
+    workflowId: string,
+    body: {
+      card_id: string;
+      option_id: string;
+      selected_label: string;
+      detail?: string;
+    },
+  ): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/select-treatment`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
+  brandEditTreatment(workflowId: string, step: BrandTreatmentStepResultV1["step_key"], body: BrandTreatmentEdit): Promise<BrandDecisionPanelV1> {
+    return requestV2(`/brand/decisions/${encodeURIComponent(workflowId)}/treatment-steps/${encodeURIComponent(step)}`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, normalizeBrandDecisionPanelV1);
+  },
+
+  brandLockTreatment(workflowId: string, contentDigest: string): Promise<BrandJourneyStateV1> {
+    return requestV2(
+      `/brand/decisions/${encodeURIComponent(workflowId)}/lock-treatment`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true, content_digest: contentDigest }),
+      },
+      normalizeBrandJourneyStateV1,
+    );
+  },
+
   agentCanvasExecutionSettings(
     workflowId: string,
   ): Promise<V2EtaggedResponse<AgentExecutionSettingsV2>> {
@@ -852,6 +999,20 @@ export const v2Api = {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/creative-session`,
       { signal: options.signal },
+      normalizeGuidedSessionStateV2,
+    );
+  },
+
+  updateAgentCanvasCreativeSessionLocale(
+    workflowId: string,
+    request: { expected_revision: number; response_locale: string },
+  ): Promise<GuidedSessionStateV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/creative-session/locale`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
       normalizeGuidedSessionStateV2,
     );
   },

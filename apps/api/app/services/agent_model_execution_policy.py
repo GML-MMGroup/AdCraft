@@ -41,7 +41,7 @@ def resolve_agent_model_execution_policy(
     reasoning_control = _enum(
         capability_metadata,
         "reasoning_control",
-        {"provider_default", "enable_thinking", "reasoning_effort", "none"},
+        {"provider_default", "enable_thinking", "ark_thinking", "reasoning_effort", "none"},
     )
     structured_transport = _enum(
         capability_metadata,
@@ -76,11 +76,11 @@ def resolve_agent_model_execution_policy(
         raise _mismatch("The selected model does not support streamed tool calls.")
     if reasoning_control == "none" and thinking_format != "none":
         raise _mismatch("A disabled reasoning policy cannot select a thinking format.")
-    if reasoning_control == "enable_thinking" and not supports_reasoning_controls:
+    if reasoning_control in {"enable_thinking", "ark_thinking"} and not supports_reasoning_controls:
         raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
     if reasoning_control == "reasoning_effort" and not supports_reasoning_controls:
         raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
-    if reasoning_control not in {"none", "enable_thinking", "reasoning_effort"}:
+    if reasoning_control not in {"none", "enable_thinking", "ark_thinking", "reasoning_effort"}:
         raise _mismatch("The selected model uses an unsupported reasoning control.")
     if reasoning_control == "reasoning_effort" and (
         capability_metadata.get("enable_thinking") is not None
@@ -89,17 +89,23 @@ def resolve_agent_model_execution_policy(
         raise _mismatch("Reasoning-effort models cannot declare legacy thinking fields.")
 
     enable_thinking = (
-        operation_policy.enable_thinking if reasoning_control == "enable_thinking" else False
+        operation_policy.enable_thinking
+        if reasoning_control in {"enable_thinking", "ark_thinking"}
+        else False
     )
-    thinking_budget_tokens = operation_policy.thinking_budget_tokens if enable_thinking else None
+    thinking_budget_tokens = (
+        operation_policy.thinking_budget_tokens
+        if enable_thinking and reasoning_control == "enable_thinking"
+        else None
+    )
     reasoning_mode = (
         operation_policy.reasoning_mode
-        if reasoning_control in {"enable_thinking", "reasoning_effort"}
+        if reasoning_control in {"enable_thinking", "ark_thinking", "reasoning_effort"}
         else "low"
     )
     reasoning_effort = None
     if reasoning_control == "reasoning_effort":
-        reasoning_effort = "low" if operation_policy.reasoning_mode == "low" else "medium"
+        reasoning_effort = "minimal" if operation_policy.reasoning_mode == "low" else "medium"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,

@@ -15,6 +15,7 @@ import {
   nodeActionableFailure,
 } from "../chat/actionableFailure.ts";
 import type { RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export function ScriptWorkbench({
   node,
@@ -25,6 +26,7 @@ export function ScriptWorkbench({
   modelsError,
   modelResolution,
   promptEditorRef,
+  preparingPrompt = false,
 }: {
   node: CanvasNodeV2;
   status: CanvasNodeStatusV2;
@@ -34,7 +36,9 @@ export function ScriptWorkbench({
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
+  preparingPrompt?: boolean;
 }) {
+  const t = useTranslation("en-US");
   const canRun = status === "draft" || status === "failed";
   const isWorking = status === "working";
   const editorDisabled = draft.pending || isWorking;
@@ -46,12 +50,13 @@ export function ScriptWorkbench({
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer agent-node-workbench__composer--script">
         <FourLinePromptEditor
-          ariaLabel={canRun ? "Script prompt" : "Script content"}
+          ariaLabel={canRun ? t("Script prompt") : t("Script content")}
           value={canRun ? draft.prompt : draft.textContent}
+          preparing={canRun && preparingPrompt}
           disabled={editorDisabled}
           placeholder={canRun
-            ? "Describe the script the Script Writer should create."
-            : "Write or refine the completed script."}
+            ? t("Describe the script the Script Writer should create.")
+            : t("Write or refine the completed script.")}
           onChange={(event) => {
             if (canRun) draft.setPrompt(event.currentTarget.value);
             else draft.setTextContent(event.currentTarget.value);
@@ -65,7 +70,7 @@ export function ScriptWorkbench({
         <div className="agent-node-workbench__composer-actions">
           <div
             className="agent-node-workbench__options agent-node-workbench__options--inline"
-            aria-label="Script generation options"
+            aria-label={t("Script generation options")}
           >
             <CanvasModelPicker
               models={models}
@@ -83,15 +88,15 @@ export function ScriptWorkbench({
             type="button"
             className="agent-node-workbench__run"
             aria-label={isWorking
-              ? "Script node is working"
+              ? t("Script node is working")
               : canRun
-                ? retryingExecution ? "Retry script node" : regenerating ? "Regenerate script node" : "Run script node"
-                : "Save script node"}
+                ? retryingExecution ? t("Retry script node") : regenerating ? t("Regenerate script node") : t("Run script node")
+                : t("Save script node")}
             title={isWorking
-              ? "Script generation is in progress"
+              ? t("Script generation is in progress")
               : canRun
-                ? retryingExecution ? "Retry script" : regenerating ? "Regenerate script" : "Run script"
-                : "Save script"}
+                ? retryingExecution ? t("Retry script") : regenerating ? t("Regenerate script") : t("Run script")
+                : t("Save script")}
             disabled={editorDisabled || (canRun && !draft.prompt.trim())}
             onClick={() => void (canRun ? draft.run() : draft.save())}
           >

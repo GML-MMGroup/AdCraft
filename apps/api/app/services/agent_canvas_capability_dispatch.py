@@ -21,6 +21,7 @@ from app.persistence.agent_canvas_conversation_repository import (
 )
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
+    operation_envelope_digest,
 )
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -63,6 +64,7 @@ class SourceTurnReplyPublicationV1(BaseModel):
 
     content: str = Field(min_length=1, max_length=2_000)
     response_locale: BCP47Tag
+    intent_mode: str | None = None
 
     @field_validator("content", mode="before")
     @classmethod
@@ -279,6 +281,11 @@ class CapabilityDispatchService:
                             "response_locale": source_reply.response_locale,
                             "presentation_key": f"source-reply:{envelope_id}",
                             "dispatch_identity": envelope_id,
+                            **(
+                                {"intent_mode": source_reply.intent_mode}
+                                if source_reply.intent_mode is not None
+                                else {}
+                            ),
                         },
                     )
                 connection.execute(
@@ -461,6 +468,7 @@ def _validate_existing_source_reply(
         or str(row["speaker"]) != "adcraft_video_agent"
         or str(row["content"]) != source_reply.content
         or metadata.get("response_locale") != source_reply.response_locale
+        or metadata.get("intent_mode") != source_reply.intent_mode
     ):
         raise V2PersistenceError(
             "capability_source_reply_conflict",
@@ -545,7 +553,7 @@ def _retry_snapshot_json(
         root_turn_id=source_turn.turn_id,
         operation="capability_command",
         envelope_id=envelope.envelope_id,
-        envelope_digest=hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest(),
+        envelope_digest=operation_envelope_digest(envelope),
         requirement_revision_id=envelope.requirement_revision_id,
         requirement_digest=envelope.requirement_digest,
         node_revisions=node_revisions,

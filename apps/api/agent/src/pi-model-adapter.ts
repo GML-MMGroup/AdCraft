@@ -11,6 +11,7 @@ import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 import type {
   AgentRunRequest,
   AgentRuntimeEvent,
+  AgentPresentationDeltaV1,
 } from "./generated/agent-runtime.js";
 import type { RunBudget } from "./run-budget.js";
 import type { AgentModelAdapter, EventSink } from "./runtime.js";
@@ -30,13 +31,19 @@ import {
   AgentOperationFailure,
   runWithOneTransportRetry,
 } from "./operation-recovery.js";
-import { PiStructuredTransportRouter } from "./pi-structured-transport.js";
+import {
+  PiStructuredTransportRouter,
+  presentationAnswerKeyForOperation,
+  type PresentationSegment,
+} from "./pi-structured-transport.js";
+import { workflowModelCallCapture, observeWorkflowAssistantStream } from "./workflow-model-calls.js";
 import { getPromptDescriptor } from "./prompts/registry.js";
 import {
   toolsForOperation,
   type AgentToolName,
 } from "./registry.js";
 import type { LoadedSkill } from "./skills.js";
+import { buildWorkflowModelCallSkillContext } from "./workflow-model-calls.js";
 import {
   contractSchemaForRequest,
   prepareStructuredModelInput,
@@ -77,6 +84,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     let modelSubmissions = 0;
     const maximumModelSubmissions = credential.execution_policy.max_model_submissions;
     const maximumStructuredAttempts = 1 + credential.execution_policy.structured_repair_limit;
+    const onPresentation = presentationSinkForRequest(request, credential, emit);
     const submitStructured = async (
       params: Readonly<Record<string, unknown>>,
       attempt: number,
@@ -112,7 +120,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       return result;
     };
     if (
-      isNonStreamingStructuredTransport(
+      isStructuredTransport(
         credential.execution_policy.structured_transport,
       )
     ) {
@@ -125,6 +133,10 @@ export class PiModelAdapter implements AgentModelAdapter {
         loadedSkills: skills,
         traceClient: this.python,
         signal,
+        ...(onPresentation ? { onPresentation } : {}),
+        ...(onPresentation
+          ? { presentationAnswerKey: presentationAnswerKeyForOperation(request.operation) }
+          : {}),
         submit: submitStructured,
       });
       return {
@@ -235,12 +247,35 @@ export class PiModelAdapter implements AgentModelAdapter {
           if (replay) {
             return replayedAssistantMessageStream(traceContext, traceRequest, stage);
           }
-          const source = modelStreamForCredential(
+          const capture = workflowModelCallCapture(
+            this.python,
+            credential,
+            request,
+            stage,
+            "pi_assistant_events",
+            skills,
+          );
+          const source = observeWorkflowAssistantStream(modelStreamForCredential(
             selectedModel as Model<"openai-completions">,
             context,
-            streamOptions,
+            {
+              ...streamOptions,
+              onPayload: async (payload, payloadModel) => {
+                const replacement = await streamOptions.onPayload?.(payload, payloadModel);
+                capture?.begin({
+                  agent_request: request, system_prompt: systemPrompt, user_prompt: userPrompt,
+                  output_schema: schema, loaded_skills: skills,
+                  skill_context: buildWorkflowModelCallSkillContext(request, skills),
+                  provider_request: replacement ?? payload,
+                  provider: credential.provider, model_ref: credential.model_ref,
+                  base_url: credential.base_url, execution_policy: credential.execution_policy,
+                  stream_options: { ...streamOptions, apiKey: undefined, signal: undefined },
+                });
+                return replacement;
+              },
+            },
             credential,
-          );
+          ), capture);
           return credential.trace_mode === "live_record"
             ? recordedAssistantMessageStream(traceContext, traceRequest, stage, source)
             : source;
@@ -315,13 +350,14 @@ export function providerForCredential(credential: AgentCredentialSnapshot): stri
   return credential.transport_kind === "litellm_chat" ? "litellm" : credential.provider;
 }
 
-export function isNonStreamingStructuredTransport(
+export function isStructuredTransport(
   transport: AgentCredentialSnapshot["execution_policy"]["structured_transport"],
 ): boolean {
   return (
     transport === "non_streaming_tool_call" ||
     transport === "non_streaming_json_object" ||
-    transport === "non_streaming_json_schema"
+    transport === "non_streaming_json_schema" ||
+    transport === "streaming_json_object"
   );
 }
 
@@ -439,6 +475,44 @@ export function acceptedStructuredValue(
     throw new Error("agent_structured_output_invalid");
   }
   return { ...value } as Record<string, unknown>;
+}
+
+function presentationSinkForRequest(
+  request: AgentRunRequest,
+  credential: AgentRuntimeTransportSource,
+  emit: EventSink,
+): ((segment: PresentationSegment, text: string, attempt: number) => void) | undefined {
+  if (
+    credential.execution_policy.structured_transport !== "streaming_json_object" ||
+    !request.presentation_stream_id ||
+    !request.presentation_channel
+  ) {
+    return undefined;
+  }
+  const streamId = request.presentation_stream_id;
+  const channel = request.presentation_channel;
+  const context = request.context as unknown as Readonly<Record<string, unknown>>;
+  const auditMetadata = request.audit_metadata;
+  const workflowId =
+    (typeof context.workflow_id === "string" ? context.workflow_id : undefined) ??
+    (typeof auditMetadata?.workflow_id === "string" ? auditMetadata.workflow_id : undefined) ??
+    request.run_id;
+  return (segment, text, attempt) => {
+    const payload: AgentPresentationDeltaV1 = {
+      channel,
+      workflow_id: workflowId,
+      generation_id: request.run_id,
+      stream_id: streamId,
+      segment,
+      text,
+      attempt,
+    };
+    try {
+      void emit(event(request, 0, "presentation_delta", payload)).catch(() => undefined);
+    } catch {
+      // Presentation delivery is best effort and must not affect the run.
+    }
+  };
 }
 
 export function structuredToolParameters(

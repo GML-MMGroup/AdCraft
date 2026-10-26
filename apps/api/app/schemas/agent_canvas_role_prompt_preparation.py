@@ -16,6 +16,7 @@ from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
+from app.schemas.brand_production_context import BrandProductionContextV1
 
 
 RolePromptVariantV2 = Literal[
@@ -102,6 +103,7 @@ class _RoleBriefModel(_RolePromptModel):
     )
 
     editable_prompt: str | None = Field(default=None, max_length=32_768)
+    style_description: str | None = Field(default=None, min_length=1, max_length=4_096)
 
 
 class RoleBindingSnapshotV2(_RolePromptModel):
@@ -295,6 +297,29 @@ class SceneEnvironmentProjectionV1(_RolePromptModel):
         return self
 
 
+class ProductIdentityAuthorityProjectionV1(_RolePromptModel):
+    """Frozen identity authority projected from one Product Main node."""
+
+    source_node_id: str = Field(min_length=1, max_length=160)
+    source_node_revision: int = Field(ge=1)
+    subject_identity: str = Field(min_length=1, max_length=4_096)
+    design_summary: str = Field(min_length=1, max_length=8_192)
+    projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+    @classmethod
+    def build(cls, **values: object) -> "ProductIdentityAuthorityProjectionV1":
+        payload = dict(values)
+        payload.pop("projection_digest", None)
+        return cls.model_validate({**payload, "projection_digest": _projection_digest(payload)})
+
+    @model_validator(mode="after")
+    def validate_projection_digest(self) -> "ProductIdentityAuthorityProjectionV1":
+        payload = self.model_dump(mode="json", exclude={"projection_digest"})
+        if self.projection_digest != _projection_digest(payload):
+            raise ValueError("Product identity projection digest does not match its payload.")
+        return self
+
+
 class RolePromptViolationV1(_RolePromptModel):
     """Safe role-contract diagnostics without matched prompt text."""
 
@@ -310,6 +335,7 @@ class RolePromptViolationV1(_RolePromptModel):
 
 
 class RolePromptPreparationContextV2(_RolePromptModel):
+    brand_decisions: BrandProductionContextV1 | None = None
     workflow_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
     node_revision: int = Field(ge=1)
@@ -320,6 +346,12 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     character_phase: CharacterAuthoringPhaseV1 | None = None
     character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None
     scene_environment_projection: SceneEnvironmentProjectionV1 | None = None
+    product_identity_projection: ProductIdentityAuthorityProjectionV1 | None = None
+    # Initial Scene Main authoring is allowed to establish the first typed
+    # environment projection.  Derivative Scene roles must carry an existing
+    # projection so their prompt is validated against frozen environment
+    # authority.
+    scene_projection_required: bool = True
     requirement_facts: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     selected_direction: str | None = Field(default=None, max_length=8_192)
@@ -395,9 +427,18 @@ class RolePromptPreparationContextV2(_RolePromptModel):
         elif self.role_variant == "scene_board":
             if self.character_identity_projection is not None:
                 raise ValueError("Scene context cannot carry Character identity projection.")
+            if self.product_identity_projection is not None:
+                raise ValueError("Scene context cannot carry Product identity projection.")
+        elif self.role_variant == "product_multiview":
+            if (
+                self.character_identity_projection is not None
+                or self.scene_environment_projection is not None
+            ):
+                raise ValueError("Product context cannot carry an unrelated projection.")
         elif (
             self.character_identity_projection is not None
             or self.scene_environment_projection is not None
+            or self.product_identity_projection is not None
         ):
             raise ValueError("Role context carries a projection for an unrelated role.")
         if self.role_variant == "video_segment":

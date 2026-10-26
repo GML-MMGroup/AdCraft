@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from hashlib import sha256
+import logging
 from typing import Any
 
 from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
@@ -32,6 +34,9 @@ from app.schemas.agent_working_documents import StoryboardProductionPlanContentV
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
 class CapabilityMaterializationPlanCompiler:
     """Compile one immutable plan without I/O, clocks, or external execution."""
 
@@ -39,10 +44,16 @@ class CapabilityMaterializationPlanCompiler:
         self,
         envelope: ProposalApplicationEnvelopeV1,
         normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
+        *,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None = None,
     ) -> CapabilityDraftBundleV1:
         """Compile the canonical draft bundle used to prepare authority documents."""
 
-        return CapabilityDraftBundleBuilder().build(envelope, normalization)
+        return CapabilityDraftBundleBuilder().build(
+            envelope,
+            normalization,
+            reference_nodes=reference_nodes,
+        )
 
     def compile(
         self,
@@ -53,8 +64,13 @@ class CapabilityMaterializationPlanCompiler:
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
         prompt_context: StageAuthoringContextV1 | None = None,
         reference_source_admission: bool = False,
+        reference_nodes: Mapping[str, CanvasNodeV2] | None = None,
     ) -> MaterializationPlanV1:
-        bundle = self.compile_draft_bundle(envelope, normalization)
+        bundle = self.compile_draft_bundle(
+            envelope,
+            normalization,
+            reference_nodes=reference_nodes,
+        )
         nodes = bundle.nodes
         bindings = bundle.bindings
         preparations = tuple(
@@ -68,7 +84,22 @@ class CapabilityMaterializationPlanCompiler:
             # same detached context that the transaction persists.  Keeping
             # the bundle's pre-context identity here would make the Node row,
             # dispatch row, and immutable plan disagree during commit.
-            _, frozen_context_digest = detached_context_payload(prompt_context)
+            try:
+                _, frozen_context_digest = detached_context_payload(prompt_context)
+            except ValueError as error:
+                context_payload = prompt_context.model_dump(mode="json")
+                _LOGGER.error(
+                    "Prompt preparation context exceeded its bound: workflow_id=%s "
+                    "capability_id=%s total_bytes=%s field_bytes=%s",
+                    envelope.workflow_id,
+                    envelope.capability_id,
+                    len(prompt_context.model_dump_json().encode("utf-8")),
+                    {
+                        key: len(str(value).encode("utf-8"))
+                        for key, value in context_payload.items()
+                    },
+                )
+                raise error
             normalized_nodes: list[CanvasNodeV2] = []
             preparation_by_node = {item.node_id: item for item in preparations}
             normalized_preparations: list[NodePromptPreparationIntentV1] = []

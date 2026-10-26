@@ -23,7 +23,8 @@ describe("HomeRecentProjects", () => {
     state.projects = ["a", "b", "c", "d"].map(fixture); state.loading = false;
     const view = render(<HomeRecentProjects {...callbacks} />);
     for (const p of state.projects) { fireEvent.click(screen.getByRole("button", { name: `Open ${p.name}` })); expect(callbacks.onOpenProject).toHaveBeenLastCalledWith(p.project_id); }
-    expect(screen.getAllByText("No cover yet")).toHaveLength(4);
+    expect(screen.queryByText("No cover yet")).toBeNull();
+    expect(view.container.querySelectorAll(".recent-card__missing")).toHaveLength(0);
     expect(view.container.querySelectorAll("time[datetime='2026-09-07T00:00:00Z']")).toHaveLength(4);
     expect(view.container.querySelectorAll(".recent-card[data-reveal-item]")).toHaveLength(4);
     expect(screen.queryByRole("button", { name: "View all" })).toBeNull();

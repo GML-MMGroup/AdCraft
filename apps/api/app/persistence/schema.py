@@ -51,6 +51,19 @@ def upgrade_v2_schema(database: V2Database) -> str:
     return revision
 
 
+def v2_schema_head_revision() -> str:
+    """Return the single Alembic head revision shipped with this checkout."""
+
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(_ALEMBIC_INI_PATH))
+    config.set_main_option("script_location", str(_ALEMBIC_SCRIPT_LOCATION))
+    head = ScriptDirectory.from_config(config).get_current_head()
+    if head is None:
+        raise _schema_error()
+    return head
+
+
 def current_v2_schema_revision(database: V2Database) -> str | None:
     """Return the current Alembic revision for an explicit V2 database."""
 

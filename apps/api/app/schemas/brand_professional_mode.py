@@ -1,0 +1,527 @@
+"""Contracts for the Brand Professional Mode decision journey."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.brand_treatment_detail import TreatmentDetailV1, TreatmentSectionV1
+
+BrandMode = Literal["creation", "brand"]
+BrandStage = Literal[
+    "brand-memory",
+    "campaign",
+    "hypothesis",
+    "adspec",
+    "skill-stack",
+    "treatment",
+    "production",
+]
+BrandTreatmentSubstep = Literal[
+    "hook",
+    "story",
+    "character",
+    "scene",
+    "visual",
+    "camera",
+    "editing",
+    "sound",
+]
+BrandCapabilityId = Literal[
+    "brand-strategy",
+    "creative-strategy",
+    "creative-treatment",
+]
+SlotProvenance = Literal["user_confirmed", "agent_recommended"]
+AdSpecItemState = Literal["locked", "open", "variable"]
+SkillStackKind = Literal["creative_method", "audiovisual_style"]
+
+
+class _BrandModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class BrandSlotValueV1(_BrandModel):
+    """One persisted slot value with decision provenance."""
+
+    slot_id: str = Field(min_length=1, max_length=80)
+    stage: BrandStage
+    value: str = Field(min_length=1, max_length=2000)
+    kind: Literal["fact", "constraint", "preference", "assumption"] = "fact"
+    provenance: SlotProvenance
+    confirmed_at: datetime | None = None
+
+
+class BrandShortOptionV1(_BrandModel):
+    """One short option label with an optional collapsed explanation."""
+
+    option_id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=48)
+    why: str | None = Field(default=None, max_length=240)
+    detail: TreatmentDetailV1 | None = None
+
+
+class BrandOptionCardV1(_BrandModel):
+    """Short options for one slot question or Brand hypothesis/Treatment card."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    stage: BrandStage
+    stage_revision: int = Field(ge=1)
+    target_slot_id: str | None = Field(default=None, max_length=80)
+    question: str = Field(min_length=1, max_length=400)
+    # Models always author exactly three options, so the published JSON schema
+    # stays 3..3. Only persisted hypothesis/Treatment cards grow (to 12) when
+    # the user asks for more options through the "Other" input.
+    options: tuple[BrandShortOptionV1, ...] = Field(
+        min_length=3,
+        max_length=12,
+        json_schema_extra={"maxItems": 3},
+    )
+
+    @model_validator(mode="after")
+    def validate_option_count(self) -> "BrandOptionCardV1":
+        if self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3:
+            raise ValueError(
+                "Brand slot, AdSpec, and Skill stack cards require exactly three options."
+            )
+        return self
+
+
+class BrandFormOptionV1(_BrandModel):
+    """One recommendation or the explicit custom answer option in a form row."""
+
+    option_id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=160)
+    why: str | None = Field(default=None, max_length=240)
+
+
+class BrandFormRowV1(_BrandModel):
+    """One single-select Brand Memory or Campaign form row."""
+
+    question_id: str = Field(min_length=1, max_length=120)
+    slot_id: str = Field(min_length=1, max_length=80)
+    prompt: str = Field(min_length=1, max_length=400)
+    options: tuple[BrandFormOptionV1, ...] = Field(min_length=4, max_length=64)
+    custom_option_id: str = Field(min_length=1, max_length=80)
+    required: bool = True
+
+    @model_validator(mode="after")
+    def validate_options(self) -> "BrandFormRowV1":
+        option_ids = tuple(option.option_id for option in self.options)
+        if len(set(option_ids)) != len(option_ids):
+            raise ValueError("Brand form option IDs must be unique.")
+        if option_ids.count(self.custom_option_id) != 1:
+            raise ValueError("Brand form must expose exactly one custom option.")
+        if sum(option.option_id != self.custom_option_id for option in self.options) < 3:
+            raise ValueError("Brand form must expose at least three recommendations.")
+        return self
+
+
+class BrandFormV1(_BrandModel):
+    """Complete foundation-stage form projected to the frontend."""
+
+    content_kind: Literal["brand_form"] = "brand_form"
+    form_id: str = Field(min_length=1, max_length=160)
+    stage: Literal["brand-memory", "campaign"]
+    revision: int = Field(ge=1)
+    response_locale: str = Field(min_length=1, max_length=35)
+    context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    title: str = Field(min_length=1, max_length=160)
+    instructions: str = Field(min_length=1, max_length=1_024)
+    rows: tuple[BrandFormRowV1, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_rows(self) -> "BrandFormV1":
+        question_ids = tuple(row.question_id for row in self.rows)
+        slot_ids = tuple(row.slot_id for row in self.rows)
+        if len(set(question_ids)) != len(question_ids) or len(set(slot_ids)) != len(slot_ids):
+            raise ValueError("Brand form row identifiers must be unique.")
+        return self
+
+
+class BrandFormAnswerV1(_BrandModel):
+    """One explicit answer from a foundation form row."""
+
+    question_id: str = Field(min_length=1, max_length=120)
+    selected_option_id: str = Field(min_length=1, max_length=80)
+    custom_text: str | None = Field(default=None, min_length=1, max_length=2_048)
+
+
+class BrandFormAnswerIntentV1(_BrandModel):
+    """Structured interpretation of one custom form answer."""
+
+    question_id: str = Field(min_length=1, max_length=120)
+    intent: Literal["answer", "request_more_options"]
+
+
+class BrandCardCustomIntentV1(_BrandModel):
+    """Interpretation of custom text typed into a Brand hypothesis or Treatment card."""
+
+    intent: Literal["answer", "request_more_options"]
+    direction: str | None = Field(default=None, min_length=1, max_length=240)
+
+
+class BrandFormSubmitV1(_BrandModel):
+    """Atomic confirmation payload for one foundation form."""
+
+    submission_kind: Literal["brand_form"] = "brand_form"
+    form_id: str = Field(min_length=1, max_length=160)
+    expected_interaction_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    answers: tuple[BrandFormAnswerV1, ...] = Field(min_length=1, max_length=32)
+    confirm: Literal[True] = True
+
+
+class BrandSlotEvidenceV1(_BrandModel):
+    """Private evidence for a semantic slot update or conflict clarification."""
+
+    stage: Literal["brand-memory", "campaign"]
+    slot_id: str = Field(min_length=1, max_length=80)
+    source_id: str = Field(min_length=1, max_length=160)
+    source_quote: str = Field(min_length=1, max_length=2000)
+
+
+class BrandQuestionImpactV1(_BrandModel):
+    reason: str = Field(min_length=1, max_length=400)
+    affected_decision: Literal[
+        "creative_hypothesis",
+        "brand_positioning",
+        "visual_execution",
+        "product_presentation",
+        "campaign_message",
+        "delivery",
+    ]
+    basis_slot_ids: tuple[str, ...] = Field(min_length=1, max_length=4)
+
+
+class BrandStrategyOutputV1(_BrandModel):
+    """Structured output of the brand-strategy capability."""
+
+    slot_values: tuple[BrandSlotValueV1, ...] = Field(default=(), max_length=32)
+    slot_evidence: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=32)
+    clarifications: tuple[BrandSlotEvidenceV1, ...] = Field(default=(), max_length=1)
+    question_card: BrandOptionCardV1 | None = None
+    form_cards: tuple[BrandOptionCardV1, ...] = Field(default=(), max_length=32)
+    form_answer_intents: tuple[BrandFormAnswerIntentV1, ...] = Field(default=(), max_length=32)
+    card_custom_intent: BrandCardCustomIntentV1 | None = None
+    question_impact: BrandQuestionImpactV1 | None = None
+
+
+class CreativeHypothesisCandidateV1(_BrandModel):
+    """One candidate creative hypothesis."""
+
+    candidate_id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=48)
+    insight: str = Field(min_length=1, max_length=800)
+    mechanism: str = Field(min_length=1, max_length=300)
+    hypothesis: str = Field(min_length=1, max_length=1200)
+    product_role: str = Field(min_length=1, max_length=300)
+    hook_mechanism: str = Field(min_length=1, max_length=300)
+    why: str | None = Field(default=None, max_length=240)
+
+
+class CreativeStrategyOutputV1(_BrandModel):
+    """Structured output of the creative-strategy capability."""
+
+    # The MVP shows the user exactly three directions; the contract is exact so a
+    # model that diverges internally cannot publish a 2- or 4-option card.
+    candidates: tuple[CreativeHypothesisCandidateV1, ...] = Field(min_length=3, max_length=3)
+
+
+class TreatmentCandidateV1(BrandShortOptionV1):
+    detail: TreatmentDetailV1
+
+
+class CreativeTreatmentStepOutputV1(_BrandModel):
+    """Three options for one treatment sub-step."""
+
+    step_key: BrandTreatmentSubstep
+    question: str = Field(min_length=1, max_length=400)
+    options: tuple[TreatmentCandidateV1, ...] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def complete_candidates(self) -> "CreativeTreatmentStepOutputV1":
+        if len({option.option_id for option in self.options}) != len(self.options):
+            raise ValueError("Treatment option IDs must be unique.")
+        for option in self.options:
+            option.detail.validate_step(self.step_key)
+        return self
+
+
+class CreativeTreatmentOutputV1(_BrandModel):
+    """Structured output of the creative-treatment capability."""
+
+    step: CreativeTreatmentStepOutputV1
+
+
+class AdSpecItemV1(_BrandModel):
+    """One AdSpec line with its decision state."""
+
+    item_key: str = Field(min_length=1, max_length=80)
+    item_text: str = Field(min_length=1, max_length=2400)
+    state: AdSpecItemState = "open"
+
+
+class AdSpecStateV1(_BrandModel):
+    """Locked / open / variable view of the confirmed AdSpec."""
+
+    items: tuple[AdSpecItemV1, ...] = Field(min_length=1, max_length=64)
+
+
+class SkillStackEntryV1(_BrandModel):
+    """One skill inside the confirmed skill stack."""
+
+    skill_kind: SkillStackKind
+    skill_id: str = Field(min_length=1, max_length=120)
+    title: str = Field(min_length=1, max_length=160)
+    selected: bool = True
+    version: str | None = Field(default=None, min_length=1, max_length=80)
+    reason: str | None = Field(default=None, min_length=1, max_length=600)
+
+
+class BrandSkillReferenceV1(_BrandModel):
+    skill_id: str = Field(min_length=1, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+
+
+class BrandSkillRecommendationV1(BrandSkillReferenceV1):
+    reason: str = Field(min_length=1, max_length=600)
+
+
+class BrandSkillRecommendationsV1(_BrandModel):
+    creative_methods: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=1, max_length=7)
+    audiovisual_styles: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=3, max_length=3)
+
+
+class BrandCreativeMethodV1(BrandSkillReferenceV1):
+    skill_kind: Literal["creative_method"] = "creative_method"
+    title: str
+    summary: str
+
+
+class BrandCreativeMethodCatalogV1(_BrandModel):
+    items: tuple[BrandCreativeMethodV1, ...]
+
+
+class BrandSkillSelectionRequestV1(_BrandModel):
+    """Save a user draft or explicitly confirm it; never infer choices from prose."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    expected_stage_revision: int = Field(ge=1)
+    creative_methods: tuple[BrandSkillReferenceV1, ...] = Field(min_length=1, max_length=7)
+    audiovisual_style: BrandSkillReferenceV1
+    confirm: bool = False
+
+
+class SkillStackV1(_BrandModel):
+    """Confirmed creative method and audiovisual style skills."""
+
+    entries: tuple[SkillStackEntryV1, ...] = Field(default=(), max_length=64)
+
+
+class TreatmentStepResultV1(_BrandModel):
+    """One confirmed treatment sub-step."""
+
+    step_key: BrandTreatmentSubstep
+    selected_label: str = Field(min_length=1, max_length=160)
+    detail: str = Field(default="", max_length=2000)
+    confirmed_at: datetime
+    structured_detail: TreatmentDetailV1 | None = None
+
+
+class BrandJourneyStateV1(_BrandModel):
+    """Deterministic brand journey projection."""
+
+    policy_version: Literal["brand_professional_v1"] = "brand_professional_v1"
+    stage: BrandStage = "brand-memory"
+    treatment_substep: BrandTreatmentSubstep | None = None
+    stage_revision: int = Field(default=1, ge=1)
+    stage_status: Literal["ready", "working", "waiting_user", "completed"] = "ready"
+
+
+class BrandBriefSummaryV1(_BrandModel):
+    values: tuple[BrandSlotValueV1, ...] = ()
+    inherited_values: tuple[BrandSlotValueV1, ...] = ()
+    unresolved_fields: tuple[str, ...] = ()
+
+
+class BrandAssetReferenceV1(_BrandModel):
+    """Review-only metadata; the live target Binding remains input authority."""
+
+    binding_id: str
+    workflow_id: str
+    target_node_id: str
+    asset_id: str
+    version_id: str
+    display_name: str
+    input_role: str
+
+
+class BrandTreatmentSourceV1(_BrandModel):
+    step_key: BrandTreatmentSubstep
+    section_key: str = Field(min_length=1, max_length=80)
+    quote: str = Field(min_length=1, max_length=400)
+
+
+class BrandProductionElementV1(_BrandModel):
+    label: str = Field(min_length=1, max_length=80)
+    summary: str = Field(min_length=1, max_length=400)
+    sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
+
+
+class BrandProductionRequirementsV1(_BrandModel):
+    character_count: int | None = Field(default=None, ge=0, le=32)
+    characters: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
+    character_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+    prop_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
+    prop_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+    scene_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
+    scenes: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
+    scene_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+
+    @model_validator(mode="after")
+    def grounded_inventory(self) -> "BrandProductionRequirementsV1":
+        if self.character_count is not None and (
+            self.character_count != len(self.characters) or not self.character_sources
+        ):
+            raise ValueError("Resolved character count requires matching inventory and sources.")
+        if self.prop_presence != "unspecified" and not self.prop_sources:
+            raise ValueError("Resolved prop presence requires sources.")
+        if self.scene_presence != "unspecified" and not self.scene_sources:
+            raise ValueError("Resolved scene presence requires sources.")
+        if (self.scene_presence == "include" and not self.scenes) or (
+            self.scene_presence == "exclude" and self.scenes
+        ):
+            raise ValueError("Scene inventory must agree with its presence decision.")
+        return self
+
+
+class BrandTreatmentFindingV1(_BrandModel):
+    code: Literal[
+        "lighting_consistency",
+        "timing_consistency",
+        "continuity",
+        "brand_alignment",
+        "sound_execution",
+        "other",
+    ]
+    severity: Literal["info", "warning"]
+    message: str = Field(min_length=1, max_length=400)
+    sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
+
+
+class BrandTreatmentReviewOutputV1(_BrandModel):
+    production_requirements: BrandProductionRequirementsV1
+    findings: tuple[BrandTreatmentFindingV1, ...] = Field(default=(), max_length=8)
+
+
+class BrandTreatmentReviewV1(BrandTreatmentReviewOutputV1):
+    source_content_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BrandTreatmentDocumentV1(_BrandModel):
+    schema_version: Literal["2"] = "2"
+    brand_profile: BrandBriefSummaryV1
+    campaign_brief: BrandBriefSummaryV1
+    selected_hypothesis: CreativeHypothesisCandidateV1 | None = None
+    adspec: AdSpecStateV1 | None = None
+    skill_stack: SkillStackV1 | None = None
+    treatment_steps: tuple[TreatmentStepResultV1, ...] = ()
+    product_presentation: tuple[TreatmentSectionV1, ...] = ()
+    authorized_asset_references: tuple[BrandAssetReferenceV1, ...] = ()
+    complete: bool = False
+    missing_sections: tuple[str, ...] = ()
+    content_digest: str = ""
+    execution_limitations: tuple[str, ...] = ("sound_effects_and_mixing_not_automated",)
+    review: BrandTreatmentReviewV1 | None = None
+
+
+class BrandDecisionPanelV1(_BrandModel):
+    """Read model behind the frontend decision panel."""
+
+    project_id: str
+    workflow_id: str
+    mode: BrandMode
+    journey: BrandJourneyStateV1
+    brand_name: str
+    slot_values: tuple[BrandSlotValueV1, ...] = Field(default=(), max_length=128)
+    open_card: BrandOptionCardV1 | None = None
+    open_form: BrandFormV1 | None = None
+    hypotheses: tuple[CreativeHypothesisCandidateV1, ...] = Field(default=(), max_length=8)
+    selected_hypothesis_id: str | None = None
+    adspec: AdSpecStateV1 | None = None
+    skill_stack: SkillStackV1 | None = None
+    treatment_steps: tuple[TreatmentStepResultV1, ...] = Field(default=(), max_length=8)
+    treatment_locked: bool = False
+    brand_profile: BrandBriefSummaryV1 | None = None
+    campaign_brief: BrandBriefSummaryV1 | None = None
+    treatment_document: BrandTreatmentDocumentV1 | None = None
+
+
+class BrandDecisionLogEntryV1(_BrandModel):
+    """One immutable decision log record."""
+
+    log_id: str
+    stage: BrandStage
+    action: Literal[
+        "select",
+        "reject",
+        "fusion",
+        "recommend",
+        "edit",
+        "confirm",
+        "lock",
+    ]
+    target_type: str = Field(min_length=1, max_length=60)
+    target_id: str | None = None
+    detail: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class BrandInspectionConversationTurnV1(_BrandModel):
+    """One full conversation turn for developer inspection."""
+
+    turn_id: str
+    role: Literal["user", "assistant", "system"]
+    text: str = ""
+    selected_option_ids: tuple[str, ...] = Field(default=(), max_length=8)
+    created_at: datetime
+
+
+class BrandSlotActionRequestV1(_BrandModel):
+    """User selection for one open option card."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    option_id: str = Field(min_length=1, max_length=80)
+    value_text: str = Field(min_length=1, max_length=2000)
+    provenance: SlotProvenance = "user_confirmed"
+
+
+class BrandHypothesisActionRequestV1(_BrandModel):
+    """User selection of one creative hypothesis candidate."""
+
+    hypothesis_id: str = Field(min_length=1, max_length=80)
+
+
+class BrandTreatmentActionRequestV1(_BrandModel):
+    """User selection for one open treatment option card."""
+
+    card_id: str = Field(min_length=1, max_length=120)
+    option_id: str = Field(min_length=1, max_length=80)
+    selected_label: str = Field(min_length=1, max_length=160)
+    detail: str = Field(default="", max_length=2000)
+
+
+class BrandTreatmentEditRequestV1(_BrandModel):
+    expected_stage_revision: int = Field(ge=1)
+    selected_label: str = Field(min_length=1, max_length=160)
+    detail: TreatmentDetailV1
+
+
+class BrandLockActionRequestV1(_BrandModel):
+    """Treatment lock request; accepted only after all eight sub-steps."""
+
+    confirm: bool = True
+    content_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")

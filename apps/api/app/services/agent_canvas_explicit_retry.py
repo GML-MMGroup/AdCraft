@@ -8,6 +8,7 @@ _EXPLICIT_RETRYABLE_ERRORS = frozenset(
         "agent_provider_timeout",
         "agent_provider_transport_failed",
         "agent_structured_output_invalid",
+        "agent_runtime_unavailable",
     }
 )
 

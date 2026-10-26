@@ -30,6 +30,8 @@
 
 ## 📰 News
 
+- **[2026-10-16]** 🎬 Brand Professional mode is now live.
+- **[2026-09-16]** ⚙️ Improved the deployment workflow and creation pipeline stability.
 - **[2026-08-28]** ✨ Added Style Skill capabilities and optimized Agent conversation node generation.
 - **[2026-08-19]** 🚀 Strengthened and stabilized the Agent-guided creative workflow, alongside a visual refresh of the AdCraft frontend homepage.
 - **[2026-08-04]** ✨ Agent Canvas received a major upgrade, improving the interaction experience and introducing progressive AI-guided creation.
@@ -74,6 +76,10 @@ It's not just a one-shot video generator. AdCraft organizes the whole ad-making 
 
 <div align="center">
   <img src="./assets/home-page.png" alt="AdCraft Home Page" width="95%" />
+  <br/><br/>
+  <img src="./assets/brand-mode-selection.png" alt="AdCraft creation mode selection" width="95%" />
+  <br/><br/>
+  <img src="./assets/brand-professional-workflow.png" alt="AdCraft Brand Professional workflow" width="95%" />
   <br/><br/>
   <img src="./assets/demo.png" alt="AdCraft Agent Canvas Workflow" width="95%" />
 </div>

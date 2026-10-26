@@ -65,6 +65,7 @@ from app.services.agent_canvas_capability_reference_planner import CapabilityRef
 from app.services.agent_canvas_next_action_context import (
     assemble_capability_policy_context,
 )
+from app.services.agent_canvas_next_action_dispatch import NextActionDispatchService
 from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
 )
@@ -139,6 +140,10 @@ class DurableNextActionExecutionService:
         self._workflows = workflows
         self._conversations = conversations
         self._outbox = outbox
+        self._next_action_dispatch = NextActionDispatchService(
+            workflows.database,
+            conversations.events,
+        )
         self._capability_dispatch = capability_dispatch
         self._envelopes = AgentCanvasOperationEnvelopeRepository(workflows.database)
         self._next_action = NextActionExecutionService(gateway)
@@ -225,6 +230,25 @@ class DurableNextActionExecutionService:
                     stage="next_action_execution",
                 )
             lease_guard()
+            resumed_session = self._conversations.get_guidance_session(envelope.workflow_id)
+            if (
+                resumed_session.status == "active"
+                and resumed_session.journey.stage != "intake"
+                and resumed_session.journey.active_action is None
+                and resumed_session.journey.suspended_action is None
+                and resumed_session.awaiting is None
+            ):
+                # Reference recovery completes the previously committed
+                # materialization, but it is not itself the successor Journey
+                # action. Queue that action from the recovered authority so a
+                # scene/product/character handoff cannot strand the Journey in
+                # a working stage with no proposal or checkpoint.
+                self._next_action_dispatch.dispatch(
+                    turn,
+                    session_id=resumed_session.session_id,
+                    expected_session_revision=resumed_session.revision,
+                    objective=resumed_session.goal.summary,
+                )
             message = "The selected reference is applied and authoring has resumed."
             self._conversations.complete_turn(
                 envelope.next_action_turn_id,
@@ -392,21 +416,6 @@ class DurableNextActionExecutionService:
                 assistant_message=message,
             )
             return ValidatedNextActionV1(command=command)
-
-    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
-        """Return whether this exact agent notice was already published once.
-
-        Stage notices must fire once per stage, not once per next_action poll;
-        see the matching guard in agent_canvas_conversation.
-        """
-
-        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
-        return any(
-            entry.entry_type == "message"
-            and entry.speaker == "adcraft_video_agent"
-            and entry.content.strip() == message.strip()
-            for entry in timeline.items
-        )
 
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         policy = self._policy.evaluate(
@@ -577,6 +586,21 @@ class DurableNextActionExecutionService:
             assistant_message=command.command.message,
         )
         return command
+
+    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
+        """Return whether this exact agent notice was already published once.
+
+        Stage notices must fire once per stage, not once per next_action poll;
+        see the matching guard in agent_canvas_conversation.
+        """
+
+        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
+        return any(
+            entry.entry_type == "message"
+            and entry.speaker == "adcraft_video_agent"
+            and entry.content.strip() == message.strip()
+            for entry in timeline.items
+        )
 
     def _reconcile_editing_failure(
         self,

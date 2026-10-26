@@ -8,8 +8,9 @@ import json
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.models import (
@@ -24,6 +25,8 @@ from app.schemas.provider_models import ModelParameterMatrixV1, ProviderAdapterP
 
 _DEFAULT_KEYS = frozenset({"agent", "text", "image", "video", "audio"})
 _DEFAULT_SELECTION_MODES = frozenset({"automatic", "explicit"})
+_DEFAULT_THINKING_MODE_KEYS = frozenset({"agent", "text"})
+_DEFAULT_THINKING_MODES = frozenset({"disabled", "enabled"})
 _INITIAL_SELECTION_MODES = {
     key: ("automatic" if key == "audio" else "explicit") for key in _DEFAULT_KEYS
 }
@@ -65,6 +68,7 @@ class ModelDefaultRecord:
     revision: int
     updated_at: str
     selection_mode: str = "explicit"
+    thinking_mode: str = "enabled"
 
 
 @dataclass(frozen=True)
@@ -214,7 +218,10 @@ class ProviderModelRepository:
                     else:
                         connection.execute(
                             update(ProviderModelRow)
-                            .where(ProviderModelRow.model_ref == model["model_ref"])
+                            .where(
+                                ProviderModelRow.model_ref == model["model_ref"],
+                                ProviderModelRow.source != "configured",
+                            )
                             .values(**values)
                         )
                 rows = (
@@ -232,6 +239,80 @@ class ProviderModelRepository:
             raise RuntimeError("provider_model_persistence_failed") from error
         by_ref = {_model_from_row(row).model_ref: _model_from_row(row) for row in rows}
         return tuple(by_ref[model["model_ref"]] for model in normalized)
+
+    def insert_configured_model(
+        self, *, provider_id: str, model: Mapping[str, Any], updated_at: str
+    ) -> ProviderModelRecord:
+        """Insert or promote an unsupported discovery; never replace reviewed policy."""
+        values = _normalized_model(provider_id, model)
+        if values["source"] != "configured":
+            raise ValueError("model_version_not_configured")
+        try:
+            with self._database.engine.begin() as connection:
+                _ensure_connection(connection, provider_id, updated_at)
+                statement = sqlite_insert(ProviderModelRow).values(
+                    **values, catalog_revision=1, created_at=updated_at, updated_at=updated_at
+                )
+                result = connection.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[ProviderModelRow.model_ref],
+                        set_={
+                            **values,
+                            "catalog_revision": ProviderModelRow.catalog_revision + 1,
+                            "updated_at": updated_at,
+                        },
+                        where=(ProviderModelRow.source == "discovered")
+                        & (ProviderModelRow.availability == "unsupported"),
+                    )
+                )
+                if result.rowcount != 1:
+                    raise ValueError("model_version_exists")
+                row = (
+                    connection.execute(
+                        _model_select().where(ProviderModelRow.model_ref == values["model_ref"])
+                    )
+                    .mappings()
+                    .one()
+                )
+        except IntegrityError as error:
+            raise ValueError("model_version_exists") from error
+        return _model_from_row(row)
+
+    def review_configured_model(
+        self,
+        *,
+        model_ref: str,
+        expected_revision: int,
+        metadata: Mapping[str, Any],
+        approved: bool,
+        updated_at: str,
+    ) -> ProviderModelRecord:
+        """Compare and swap review metadata without touching execution history."""
+        _assert_no_secret_values(metadata)
+        with self._database.engine.begin() as connection:
+            result = connection.execute(
+                update(ProviderModelRow)
+                .where(
+                    ProviderModelRow.model_ref == model_ref,
+                    ProviderModelRow.source == "configured",
+                    ProviderModelRow.catalog_revision == expected_revision,
+                )
+                .values(
+                    capability_metadata_json=_json_dump(dict(metadata)),
+                    availability="available" if approved else "unavailable",
+                    unavailable_reason=None if approved else "model_version_review_rejected",
+                    catalog_revision=expected_revision + 1,
+                    updated_at=updated_at,
+                )
+            )
+            if result.rowcount != 1:
+                raise ValueError("model_version_conflict")
+            row = (
+                connection.execute(_model_select().where(ProviderModelRow.model_ref == model_ref))
+                .mappings()
+                .one()
+            )
+        return _model_from_row(row)
 
     def get_model(self, model_ref: str) -> ProviderModelRecord:
         try:
@@ -281,14 +362,20 @@ class ProviderModelRepository:
         values: Mapping[str, str],
         *,
         modes: Mapping[str, str] | None = None,
+        thinking_modes: Mapping[str, str] | None = None,
         updated_at: str,
     ) -> dict[str, ModelDefaultRecord]:
         mode_updates = dict(modes or {})
-        affected_keys = set(values).union(mode_updates)
+        thinking_mode_updates = dict(thinking_modes or {})
+        affected_keys = set(values).union(mode_updates).union(thinking_mode_updates)
         if not affected_keys or not affected_keys.issubset(_DEFAULT_KEYS):
             raise ValueError("model_default_update_invalid")
         if not set(mode_updates.values()).issubset(_DEFAULT_SELECTION_MODES):
             raise ValueError("model_default_mode_invalid")
+        if not set(thinking_mode_updates).issubset(_DEFAULT_THINKING_MODE_KEYS):
+            raise ValueError("model_default_thinking_mode_unsupported")
+        if not set(thinking_mode_updates.values()).issubset(_DEFAULT_THINKING_MODES):
+            raise ValueError("model_default_thinking_mode_invalid")
         try:
             with self._database.engine.begin() as connection:
                 known = _model_capabilities(connection, values.values())
@@ -318,12 +405,17 @@ class ProviderModelRepository:
                         if current is not None
                         else _INITIAL_SELECTION_MODES[default_key],
                     )
+                    thinking_mode = thinking_mode_updates.get(
+                        default_key,
+                        str(current["thinking_mode"]) if current is not None else "enabled",
+                    )
                     if current is None:
                         connection.execute(
                             insert(ModelDefaultRow).values(
                                 default_key=default_key,
                                 model_ref=model_ref,
                                 selection_mode=selection_mode,
+                                thinking_mode=thinking_mode,
                                 revision=1,
                                 updated_at=updated_at,
                             )
@@ -335,6 +427,7 @@ class ProviderModelRepository:
                             .values(
                                 model_ref=model_ref,
                                 selection_mode=selection_mode,
+                                thinking_mode=thinking_mode,
                                 revision=int(current["revision"]) + 1,
                                 updated_at=updated_at,
                             )
@@ -465,6 +558,7 @@ class ProviderModelRepository:
                             ProviderModelRow.provider_id,
                             ProviderModelRow.provider_model_id,
                             ProviderModelRow.capability_metadata_json,
+                            ProviderModelRow.source,
                         ).where(ProviderModelRow.model_ref == model_ref)
                     )
                     .mappings()
@@ -622,6 +716,41 @@ class ProviderModelRepository:
             raise RuntimeError("provider_model_persistence_failed") from error
         return _conformance_from_row(row) if row is not None else None
 
+    def current_conformances(self, model_ref: str) -> tuple[ProviderModelConformanceRunRecord, ...]:
+        """Read the latest attempt per operation, including incomplete/revoked attempts."""
+
+        ranked = (
+            select(
+                ProviderModelConformanceRunRow.conformance_run_id,
+                func.row_number()
+                .over(
+                    partition_by=ProviderModelConformanceRunRow.operation,
+                    order_by=(
+                        ProviderModelConformanceRunRow.started_at.desc(),
+                        ProviderModelConformanceRunRow.conformance_run_id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .where(ProviderModelConformanceRunRow.model_ref == model_ref)
+            .subquery()
+        )
+        with self._database.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    _conformance_select()
+                    .join(
+                        ranked,
+                        ranked.c.conformance_run_id
+                        == ProviderModelConformanceRunRow.conformance_run_id,
+                    )
+                    .where(ranked.c.rank == 1)
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(_conformance_from_row(row) for row in rows)
+
 
 def _ensure_connection(connection: Any, provider_id: str, updated_at: str) -> None:
     exists = connection.execute(
@@ -758,6 +887,7 @@ def _default_select():
         ModelDefaultRow.default_key,
         ModelDefaultRow.model_ref,
         ModelDefaultRow.selection_mode,
+        ModelDefaultRow.thinking_mode,
         ModelDefaultRow.revision,
         ModelDefaultRow.updated_at,
     )
@@ -832,6 +962,7 @@ def _default_from_row(row: RowMapping) -> ModelDefaultRecord:
         default_key=str(row["default_key"]),
         model_ref=str(row["model_ref"]),
         selection_mode=str(row["selection_mode"]),
+        thinking_mode=str(row["thinking_mode"]),
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
     )
@@ -889,7 +1020,9 @@ def _profile_matches(
 ) -> bool:
     try:
         metadata = json.loads(str(row["capability_metadata_json"]))
-        profile = metadata["adapter_profile"]
+        profile = metadata.get("adapter_profile")
+        if profile is None and row["source"] == "configured":
+            profile = {**metadata, "model_ref": model_ref}
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
     return isinstance(profile, Mapping) and all(

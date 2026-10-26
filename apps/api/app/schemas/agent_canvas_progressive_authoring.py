@@ -17,6 +17,8 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
+from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.schemas.brand_production_context import BrandProductionContextV1
 
 
 class _ProgressiveAuthoringModel(BaseModel):
@@ -59,6 +61,7 @@ class GuidedQuestionnaireV1(_ProgressiveAuthoringModel):
 
 
 class StageAuthoringContextV1(_ProgressiveAuthoringModel):
+    brand_decisions: BrandProductionContextV1 | BrandTreatmentDocumentV1 | None = None
     workflow_id: str = Field(min_length=1, max_length=160)
     session_id: str = Field(min_length=1, max_length=160)
     session_revision: int = Field(ge=1)

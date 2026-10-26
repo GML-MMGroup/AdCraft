@@ -127,6 +127,23 @@ class V2AgentCredentialBroker:
             )
         record = self._record(model_ref)
         self._validate_model(record)
+        from app.services.configured_agent_conformance import (
+            require_configured_operation,
+            requires_operation_evidence,
+        )
+
+        if requires_operation_evidence(record):
+            try:
+                require_configured_operation(
+                    record,
+                    operation,
+                    self._current_conformance(model_ref=model_ref, operation=operation),
+                )
+            except ValueError as error:
+                raise AgentCredentialError(
+                    str(error),
+                    "The selected Agent model requires current operation conformance evidence.",
+                ) from error
         metadata = record.capability_metadata
         adapter_profile = _agent_adapter_profile(record)
         openrouter_routing = _openrouter_routing_policy(record, adapter_profile)
@@ -488,7 +505,11 @@ def _agent_adapter_profile(record: ProviderModelRecord) -> ProviderAdapterProfil
             release_tier="default",
             conformance_status="compatible",
             adapter_revision="pi-openai-compatible-v1",
-            capability_revision=f"catalog-{record.catalog_revision}",
+            capability_revision=str(
+                record.capability_metadata.get(
+                    "capability_revision", f"catalog-{record.catalog_revision}"
+                )
+            ),
         )
     try:
         profile = ProviderAdapterProfileV1.model_validate(raw_profile)

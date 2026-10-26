@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TypeAlias
 
@@ -198,6 +199,21 @@ class AgentCanvasOperationEnvelopeRepository:
             )
         _validate_storyboard_envelope(envelope)
         return envelope
+
+
+def operation_envelope_digest(envelope: OperationEnvelopeV1) -> str:
+    """Fingerprint immutable content independently of nested mapping order."""
+
+    return hashlib.sha256(_canonical_json(envelope).encode("utf-8")).hexdigest()
+
+
+def matches_operation_envelope_digest(envelope: OperationEnvelopeV1, expected: str) -> bool:
+    """Accept canonical identity or an exactly matching historical fingerprint."""
+
+    return (
+        expected == operation_envelope_digest(envelope)
+        or expected == hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest()
+    )
 
 
 def _canonical_json(envelope: OperationEnvelopeV1) -> str:

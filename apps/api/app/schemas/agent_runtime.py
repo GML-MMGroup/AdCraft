@@ -249,6 +249,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
+        "ark_thinking",
         "reasoning_effort",
         "none",
     ]
@@ -283,6 +284,11 @@ class AgentModelExecutionPolicyV1(_StrictModel):
 
     @model_validator(mode="after")
     def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if self.reasoning_control == "ark_thinking" and (
+            self.thinking_budget_tokens is not None
+            or self.enable_thinking != (self.reasoning_mode == "deep")
+        ):
+            raise ValueError("Ark thinking policy requires a mode toggle without a numeric budget.")
         if self.json_object_fallback_certified and (
             not self.model_ref.startswith("openrouter:")
             or self.structured_transport != "non_streaming_json_schema"
@@ -371,6 +377,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
+        "ark_thinking",
         "reasoning_effort",
         "none",
     ]
@@ -451,6 +458,7 @@ class AgentRunRequest(_StrictModel):
     validation_context: dict[str, Any] = Field(default_factory=dict)
     audit_metadata: dict[str, Any] = Field(default_factory=dict)
     presentation_channel: Literal["assistant", "node_prompt"] | None = None
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
 
 
 def canonical_agent_run_request_digest(request: AgentRunRequest) -> str:
@@ -535,6 +543,8 @@ class AgentPresentationDeltaV1(_StrictModel):
     """Explicit user-visible text emitted only through an approved channel."""
 
     channel: Literal["assistant", "node_prompt"]
+    segment: Literal["reasoning", "answer"] = "answer"
+    stream_id: str | None = Field(default=None, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     generation_id: str = Field(min_length=1, max_length=160)
     turn_id: str | None = Field(default=None, max_length=160)
@@ -542,6 +552,7 @@ class AgentPresentationDeltaV1(_StrictModel):
     node_revision: int | None = Field(default=None, ge=1)
     text: str = Field(min_length=1, max_length=4_096)
     response_locale: str | None = Field(default=None, max_length=35)
+    attempt: int = Field(default=1, ge=1, le=32)
 
     @model_validator(mode="after")
     def validate_text(self) -> "AgentPresentationDeltaV1":

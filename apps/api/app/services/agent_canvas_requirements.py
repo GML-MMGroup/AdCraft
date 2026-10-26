@@ -10,10 +10,14 @@ from uuid import uuid4
 
 from pydantic import TypeAdapter
 from sqlalchemy import insert, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
+)
+from app.persistence.agent_canvas_guided_interaction_rebase import (
+    rebase_open_guided_interactions_in_transaction,
 )
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -195,6 +199,7 @@ class AgentCanvasRequirementService:
                             workflow_id,
                             revision.ledger,
                             now,
+                            events=self._events,
                         )
                         _supersede_stale_proposals(
                             connection,
@@ -253,76 +258,19 @@ class AgentCanvasRequirementService:
         explicit_elements: tuple[RequirementElementPresencePatchV1, ...] = (),
         editable_directive_ids: tuple[str, ...] = (),
     ) -> RequirementApplicationResultV1:
-        _validate_model_sources(user_input, patch, explicit_elements)
-        if not set(patch.directive_ids_to_supersede) <= set(editable_directive_ids):
-            raise V2PersistenceError(
-                "requirement_directive_not_found",
-                "A superseded Requirement directive is not editable in this turn.",
-                stage="agent_canvas_requirement_service",
-            )
-        now = datetime.now(timezone.utc).isoformat()
         try:
-            with self._database.engine.connect() as connection:
+            with self._database.engine.begin() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
-                try:
-                    current = self._repository.get_current_in_transaction(
-                        connection,
-                        workflow_id,
-                    )
-                    if current.revision_no != expected_revision_no:
-                        raise V2PersistenceError(
-                            "requirement_revision_conflict",
-                            "The Requirement Ledger revision is stale.",
-                            stage="agent_canvas_requirement_service",
-                        )
-                    next_ledger, delta = _apply_user_patch(
-                        connection,
-                        workflow_id=workflow_id,
-                        current=current,
-                        source_turn_id=source_turn_id,
-                        patch=patch,
-                        explicit_elements=explicit_elements,
-                    )
-                    revision = self._repository.append_in_transaction(
-                        connection,
-                        workflow_id=workflow_id,
-                        expected_revision_no=expected_revision_no,
-                        next_ledger=next_ledger,
-                        source_kind="user_turn",
-                        source_turn_id=source_turn_id,
-                        created_at=now,
-                    )
-                    changed = revision.revision_id != current.revision_id
-                    if changed:
-                        update_requirement_compatibility_projection_in_transaction(
-                            connection,
-                            workflow_id,
-                            revision.ledger,
-                            now,
-                        )
-                        _supersede_stale_proposals(
-                            connection,
-                            workflow_id,
-                            revision.revision_id,
-                            now,
-                        )
-                        self._append_update_event(
-                            connection,
-                            workflow_id=workflow_id,
-                            revision=revision,
-                            source_kind="user_turn",
-                            delta=delta,
-                            created_at=now,
-                        )
-                    connection.commit()
-                    return RequirementApplicationResultV1(
-                        revision=revision,
-                        delta=delta,
-                        changed=changed,
-                    )
-                except BaseException:
-                    connection.rollback()
-                    raise
+                return self.apply_user_turn_patch_in_transaction(
+                    connection,
+                    workflow_id,
+                    expected_revision_no=expected_revision_no,
+                    source_turn_id=source_turn_id,
+                    user_input=user_input,
+                    patch=patch,
+                    explicit_elements=explicit_elements,
+                    editable_directive_ids=editable_directive_ids,
+                )
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -331,6 +279,72 @@ class AgentCanvasRequirementService:
                 "Requirement Ledger persistence failed.",
                 stage="agent_canvas_requirement_service",
             ) from error
+
+    def apply_user_turn_patch_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        *,
+        expected_revision_no: int,
+        source_turn_id: str,
+        user_input: str,
+        patch: RequirementPatchV1,
+        explicit_elements: tuple[RequirementElementPresencePatchV1, ...] = (),
+        editable_directive_ids: tuple[str, ...] = (),
+    ) -> RequirementApplicationResultV1:
+        """Apply validated requirements within the caller's authority transaction."""
+
+        _validate_model_sources(user_input, patch, explicit_elements)
+        if not set(patch.directive_ids_to_supersede) <= set(editable_directive_ids):
+            raise V2PersistenceError(
+                "requirement_directive_not_found",
+                "A superseded Requirement directive is not editable in this turn.",
+                stage="agent_canvas_requirement_service",
+            )
+        now = datetime.now(timezone.utc).isoformat()
+        current = self._repository.get_current_in_transaction(connection, workflow_id)
+        if current.revision_no != expected_revision_no:
+            raise V2PersistenceError(
+                "requirement_revision_conflict",
+                "The Requirement Ledger revision is stale.",
+                stage="agent_canvas_requirement_service",
+            )
+        next_ledger, delta = _apply_user_patch(
+            connection,
+            workflow_id=workflow_id,
+            current=current,
+            source_turn_id=source_turn_id,
+            patch=patch,
+            explicit_elements=explicit_elements,
+        )
+        revision = self._repository.append_in_transaction(
+            connection,
+            workflow_id=workflow_id,
+            expected_revision_no=expected_revision_no,
+            next_ledger=next_ledger,
+            source_kind="user_turn",
+            source_turn_id=source_turn_id,
+            created_at=now,
+        )
+        changed = revision.revision_id != current.revision_id
+        if changed:
+            update_requirement_compatibility_projection_in_transaction(
+                connection,
+                workflow_id,
+                revision.ledger,
+                now,
+                events=self._events,
+            )
+            _supersede_stale_proposals(connection, workflow_id, revision.revision_id, now)
+            self._append_update_event(
+                connection,
+                workflow_id=workflow_id,
+                revision=revision,
+                source_kind="user_turn",
+                delta=delta,
+                created_at=now,
+            )
+        return RequirementApplicationResultV1(revision=revision, delta=delta, changed=changed)
 
     def _append_update_event(
         self,
@@ -885,6 +899,7 @@ def update_requirement_compatibility_projection_in_transaction(
     updated_at: str,
     *,
     advance_session_revision: bool = True,
+    events: EventRepository | None = None,
 ) -> None:
     session = (
         connection.execute(
@@ -932,6 +947,25 @@ def update_requirement_compatibility_projection_in_transaction(
             .where(AgentCanvasGuidanceSessionRow.session_id == session["session_id"])
             .values(**values)
         )
+        if advance_session_revision and events is not None:
+            previous_revision = int(session["revision"])
+            next_revision = previous_revision + 1
+            checkpoint_json = (
+                str(session["current_checkpoint_json"])
+                if session["current_checkpoint_json"] is not None
+                else None
+            )
+            rebase_open_guided_interactions_in_transaction(
+                connection,
+                events,
+                workflow_id=workflow_id,
+                session_id=str(session["session_id"]),
+                previous_session_revision=previous_revision,
+                next_session_revision=next_revision,
+                previous_checkpoint_json=checkpoint_json,
+                next_checkpoint_json=checkpoint_json,
+                updated_at=updated_at,
+            )
     duration = controls.get("duration_seconds")
     memory_values = {
         "duration_format": str(duration) if duration is not None else "",

@@ -117,6 +117,28 @@ class AgentCanvasRuntimeRepository:
                     return VideoParameterCompilationSnapshotV2.model_validate_json(
                         str(existing["snapshot_json"])
                     )
+                owned = (
+                    connection.execute(
+                        select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
+                            AgentCanvasVideoParameterCompilationSnapshotRow.member_id
+                            == snapshot.member_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if owned is not None:
+                    # One immutable compilation owns each execution member.  A
+                    # retry that recompiles the same frozen Node revision must
+                    # reuse that authority instead of failing the Node.
+                    if not _owns_same_compilation(owned, snapshot):
+                        raise _error(
+                            "parameter_compilation_snapshot_conflict",
+                            "Parameter compilation snapshot content is immutable.",
+                        )
+                    return VideoParameterCompilationSnapshotV2.model_validate_json(
+                        str(owned["snapshot_json"])
+                    )
                 connection.execute(
                     insert(AgentCanvasVideoParameterCompilationSnapshotRow).values(
                         snapshot_id=snapshot.snapshot_id,
@@ -1659,6 +1681,26 @@ def _submission_intent_values(intent: ProviderSubmissionIntentV2) -> dict[str, o
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_canvas_runtime_repository")
+
+
+def _owns_same_compilation(
+    row: RowMapping,
+    snapshot: VideoParameterCompilationSnapshotV2,
+) -> bool:
+    """Report whether one stored member compilation freezes the same Node revision."""
+
+    return (
+        str(row["workflow_id"]) == snapshot.workflow_id
+        and str(row["execution_id"]) == snapshot.execution_id
+        and str(row["member_id"]) == snapshot.member_id
+        and str(row["node_id"]) == snapshot.node_id
+        and _snapshot_node_revision(row) == snapshot.node_revision
+    )
+
+
+def _snapshot_node_revision(row: RowMapping) -> int:
+    payload = json.loads(str(row["snapshot_json"]))
+    return int(payload["node_revision"])
 
 
 def _json_digest(value: object) -> str:

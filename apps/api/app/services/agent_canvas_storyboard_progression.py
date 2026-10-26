@@ -10,6 +10,9 @@ import json
 from types import SimpleNamespace
 from sqlalchemy.engine import Connection
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
@@ -30,6 +33,7 @@ from app.schemas.agent_canvas_ad_media import (
     VisualStyleContractV2,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -40,6 +44,7 @@ from app.schemas.agent_canvas_production_closure import (
     StoryboardFanoutNodePlanV1,
     StoryboardFanoutPlanV1,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_working_documents import (
     StoryboardNodeRecordV2,
     StoryboardPlannedNodeV3,
@@ -87,6 +92,7 @@ class ProgressiveStoryboardReadyService:
         self,
         *,
         workflows: AgentCanvasWorkflowRepository,
+        conversations=None,
         authoring: StoryboardSequenceAuthoringService,
         gateway: VideoAgentGateway,
         receipts: AgentCanvasProductionClosureRepository | None = None,
@@ -98,6 +104,7 @@ class ProgressiveStoryboardReadyService:
         on_storyboard_pipeline_prepared: StoryboardPipelinePreparedCallback | None = None,
     ) -> None:
         self._workflows = workflows
+        self._conversations = conversations
         self._authoring = authoring
         self._gateway = gateway
         self._receipts = receipts
@@ -107,8 +114,16 @@ class ProgressiveStoryboardReadyService:
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
+        self._prompt_dispatches = (
+            AgentCanvasPromptPreparationDispatchRepository(
+                workflows.database,
+                events,
+            )
+            if events is not None
+            else None
+        )
 
-    def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> None:
+    def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> tuple[str, ...]:
         """Continue the committed Plan through the existing topology and journey owners."""
 
         document_ids = {result.document_id for result in outcome.document_results}
@@ -124,13 +139,59 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_progression",
             )
         plan = plans[0]
-        self.materialize_planned_drafts(
+        created = self.materialize_planned_drafts(
             workflow_id=outcome.workflow_id,
             plan_document_id=plan.document_id,
             expected_plan_revision=plan.revision,
+            limit=1,
         )
-        if self._on_storyboard_pipeline_prepared is not None:
-            self._on_storyboard_pipeline_prepared(outcome.workflow_id, plan.document_id)
+        return created
+
+    def advance_after_prompt_ready(self, workflow_id: str, node_id: str) -> tuple[str, ...]:
+        """Publish the next planned Storyboard Draft after one prompt is ready."""
+
+        workflow = self._workflows.get_workflow(workflow_id)
+        current = next((node for node in workflow.nodes if node.node_id == node_id), None)
+        if (
+            current is None
+            or current.creative_role not in {"storyboard_sequence", "storyboard_video"}
+            or current.prompt_preparation.status != "ready"
+        ):
+            return ()
+        plan_document_id = current.metadata.get("source_agent_document_id")
+        if not isinstance(plan_document_id, str) or not plan_document_id:
+            return ()
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(workflow_id).items
+                if item.document_id == plan_document_id
+            ),
+            None,
+        )
+        if plan is None:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Storyboard Draft progression requires the current accepted Plan.",
+                stage="storyboard_progression",
+            )
+        created = self.materialize_planned_drafts(
+            workflow_id=workflow_id,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=plan.revision,
+            limit=1,
+        )
+        if created:
+            return created
+        if self._conversations is None:
+            return ()
+        session = self._conversations.get_guidance_session(workflow_id)
+        if (
+            self._on_storyboard_pipeline_prepared is not None
+            and session.journey.stage == "storyboard_grids"
+        ):
+            self._on_storyboard_pipeline_prepared(workflow_id, plan.document_id)
+        return ()
 
     def materialize_planned_drafts(
         self,
@@ -138,6 +199,7 @@ class ProgressiveStoryboardReadyService:
         workflow_id: str,
         plan_document_id: str,
         expected_plan_revision: int,
+        limit: int | None = None,
     ) -> tuple[str, ...]:
         """Publish accepted Plan topology without claiming a visual anchor."""
 
@@ -190,10 +252,24 @@ class ProgressiveStoryboardReadyService:
         )
         if not members:
             return ()
+        if limit is not None:
+            if limit < 1:
+                raise ValueError("Storyboard Draft materialization limit must be positive.")
+            members = members[:limit]
+        # The progressive path publishes a visible Draft first.  Its prompt
+        # is authored by the durable prompt worker after publication, rather
+        # than being copied from the in-memory fan-out plan.
+        members = tuple((_pending_prompt_node(node), bindings) for node, bindings in members)
         next_content = _append_planned_nodes(
             content,
             plan_document_id=plan_document_id,
             planned=tuple(node for node, _ in members),
+        )
+        prompt_contexts = self._prompt_contexts_for_members(
+            workflow_id=workflow_id,
+            plan=plan,
+            source_grid=source_grid,
+            members=members,
         )
         with self._workflows.database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -205,6 +281,7 @@ class ProgressiveStoryboardReadyService:
                         node,
                         bindings,
                         expected_revision=revision,
+                        prompt_context=prompt_contexts.get(node.node_id),
                     )
                 self._authoring.commit_plan_content_in_transaction(
                     connection,
@@ -221,6 +298,73 @@ class ProgressiveStoryboardReadyService:
                 connection.rollback()
                 raise
         return tuple(node.node_id for node, _ in members)
+
+    def _prompt_contexts_for_members(self, *, workflow_id, plan, source_grid, members):
+        if self._prompt_dispatches is None:
+            return {}
+        operation_id = source_grid.prompt_preparation.operation_id
+        if not operation_id:
+            return {}
+        dispatch = self._prompt_dispatches.get_by_node_operation(
+            workflow_id, source_grid.node_id, operation_id
+        )
+        if dispatch is None or not dispatch.context_json:
+            raise V2PersistenceError(
+                "storyboard_prompt_context_missing",
+                "Progressive Storyboard Draft has no frozen prompt context.",
+                stage="storyboard_progression",
+            )
+        base = StageAuthoringContextV1.model_validate(dispatch.context_json)
+        content = _plan_content(plan.content)
+        excerpts = base.working_document_excerpts
+        if len(excerpts) != 1:
+            raise V2PersistenceError(
+                "storyboard_prompt_context_invalid",
+                "Progressive Storyboard Draft requires one frozen working-document excerpt.",
+                stage="storyboard_progression",
+            )
+        source_excerpt = excerpts[0]
+        contexts = {}
+        for node, _ in members:
+            sequence_id = node.metadata.get("source_sequence_id")
+            segment = next(item for item in content.segments if item.sequence_id == sequence_id)
+            rows = [
+                row.model_dump(mode="json")
+                for row in content.rows
+                if row.sequence_id == sequence_id
+            ]
+            document_content = dict(source_excerpt.content)
+            document_content["segments"] = [segment.model_dump(mode="json")]
+            document_content["rows"] = rows
+            if node.creative_role == "storyboard_video":
+                global_parameters = dict(document_content.get("global_parameters", {}))
+                global_parameters["total_duration_seconds"] = float(
+                    segment.end_seconds - segment.start_seconds
+                )
+                document_content["global_parameters"] = global_parameters
+            contexts[node.node_id] = base.model_copy(
+                update={
+                    "requirement_facts": (
+                        {
+                            **base.requirement_facts,
+                            "duration_seconds": float(segment.end_seconds - segment.start_seconds),
+                        }
+                        if node.creative_role == "storyboard_video"
+                        else base.requirement_facts
+                    ),
+                    "working_document_excerpts": (
+                        source_excerpt.model_copy(
+                            update={
+                                "selector": f"sequence:{sequence_id}",
+                                "revision": plan.revision,
+                                "content_digest": plan.content_digest,
+                                "content": document_content,
+                            }
+                        ),
+                    ),
+                }
+            )
+        return contexts
 
     def preflight_fanout(
         self,
@@ -1266,13 +1410,10 @@ class ProgressiveStoryboardReadyService:
             created_at=now,
             updated_at=now,
         )
-        element_bindings = tuple(
-            binding
-            for binding in workflow.bindings
-            if binding.target_node_id == grid.node_id
-            and binding.metadata.get("storyboard_reference_purpose") != "sequence_visual_anchor"
-            and _grid_source_role(binding, {node.node_id: node for node in workflow.nodes})
-            in {"character_turnaround", "scene_board"}
+        element_bindings = _canonical_grid_reference_bindings(
+            workflow=workflow,
+            grid_node_id=grid.node_id,
+            exclude_visual_anchor=True,
         )
         bound_source_ids = {
             binding.source.source_node_id
@@ -1389,16 +1530,17 @@ def _later_grid_bindings(
 ) -> tuple[CanvasBindingV2, ...]:
     now = target.created_at
     nodes = {node.node_id: node for node in workflow.nodes}
-    copied: list[CanvasBindingV2] = []
-    source_roles: list[str] = []
+    candidates: list[tuple[int, CanvasBindingV2, str]] = []
     for binding in workflow.bindings:
         if binding.target_node_id != grid_one.node_id:
             continue
         source_role = _grid_source_role(binding, nodes)
         if source_role not in {"character_turnaround", "scene_board"}:
             continue
-        copied.append(binding)
-        source_roles.append(source_role)
+        candidates.append((len(candidates), binding, source_role))
+    copied = list(_select_canonical_singleton_bindings(candidates, nodes))
+    source_roles = [_grid_source_role(binding, nodes) for binding in copied]
+    source_roles = [role for role in source_roles if role is not None]
     self_policy = AgentCanvasRoleReferencePolicyService()
     self_policy.require(
         "storyboard_grid_n",
@@ -1425,7 +1567,7 @@ def _later_grid_bindings(
             input_role="image_reference",
             order=len(bindings),
             metadata={
-                "semantic_reference_role": "style_composition_reference",
+                "semantic_reference_role": "style_reference",
                 "storyboard_reference_purpose": "sequence_visual_anchor",
             },
             created_at=now,
@@ -1433,6 +1575,99 @@ def _later_grid_bindings(
         )
     )
     return tuple(bindings)
+
+
+def _canonical_grid_reference_bindings(
+    *,
+    workflow,
+    grid_node_id: str,
+    exclude_visual_anchor: bool,
+) -> tuple[CanvasBindingV2, ...]:
+    """Return one authoritative binding for each singleton Grid reference role.
+
+    Older/real authoring paths can bind both a Scene Main node and its Scene
+    Multi-view derivative to Grid 1.  Both nodes are semantically
+    ``scene_board`` references, but the closed role policy permits one.  Keep
+    all character occurrences while selecting the preferred derivative for
+    singleton roles such as the scene board.
+    """
+
+    nodes = {node.node_id: node for node in workflow.nodes}
+    candidates: list[tuple[int, CanvasBindingV2, str]] = []
+    for index, binding in enumerate(workflow.bindings):
+        if binding.target_node_id != grid_node_id:
+            continue
+        if (
+            exclude_visual_anchor
+            and binding.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor"
+        ):
+            continue
+        source_role = _grid_source_role(binding, nodes)
+        if source_role in {"character_turnaround", "scene_board"}:
+            candidates.append((index, binding, source_role))
+    selected = _select_canonical_singleton_bindings(candidates, nodes)
+    return tuple(
+        binding
+        for binding in selected
+        if _grid_source_role(binding, nodes) in {"character_turnaround", "scene_board"}
+    )
+
+
+def _select_canonical_singleton_bindings(
+    candidates: list[tuple[int, CanvasBindingV2, str]],
+    nodes: dict[str, CanvasNodeV2],
+) -> tuple[CanvasBindingV2, ...]:
+    """Select singleton reference roles without dropping character occurrences."""
+
+    selected: list[tuple[int, CanvasBindingV2, str]] = []
+    seen_singletons: set[str] = set()
+    singleton_roles = {"scene_board"}
+    for index, binding, source_role in candidates:
+        if source_role not in singleton_roles:
+            selected.append((index, binding, source_role))
+            continue
+        existing_index = next(
+            (
+                position
+                for position, (_existing_index, _existing_binding, existing_role) in enumerate(
+                    selected
+                )
+                if existing_role == source_role
+            ),
+            None,
+        )
+        if existing_index is None:
+            selected.append((index, binding, source_role))
+            seen_singletons.add(source_role)
+            continue
+        _existing_index, existing_binding, _ = selected[existing_index]
+        existing_node = nodes.get(_binding_source_node_id(existing_binding))
+        candidate_node = nodes.get(_binding_source_node_id(binding))
+        if _is_preferred_reference_node(candidate_node) and not _is_preferred_reference_node(
+            existing_node
+        ):
+            selected[existing_index] = (index, binding, source_role)
+    selected.sort(key=lambda item: item[0])
+    return tuple(binding for _index, binding, _role in selected)
+
+
+def _binding_source_node_id(binding: CanvasBindingV2) -> str:
+    return (
+        binding.source.source_node_id
+        if binding.source.kind == "node_output"
+        else str(binding.source.node_id)
+    )
+
+
+def _is_preferred_reference_node(node: CanvasNodeV2 | None) -> bool:
+    if node is None:
+        return False
+    structured = node.structured_content
+    return bool(
+        structured.get("scene_asset_kind") == "multi_view"
+        or structured.get("asset_kind") == "multi_view"
+        or node.metadata.get("prepared_derivative_prompt") is not None
+    )
 
 
 def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) -> str | None:
@@ -1463,6 +1698,7 @@ def _video_identity_nodes(workflow) -> tuple[tuple[str, object], ...]:
     """Return the canonical guided identity set in provider order."""
 
     selected: list[tuple[str, object]] = []
+    singleton_candidates: dict[str, tuple[int, object]] = {}
     for node in workflow.nodes:
         role = None
         if node.creative_role == "product" and (
@@ -1480,8 +1716,31 @@ def _video_identity_nodes(workflow) -> tuple[tuple[str, object], ...]:
         elif node.creative_role == "scene":
             role = "scene_board"
         if role is not None:
-            selected.append((role, node))
+            if role in {"product_multiview", "scene_board"}:
+                existing = singleton_candidates.get(role)
+                if existing is None or (
+                    _is_preferred_reference_node(node)
+                    and not _is_preferred_reference_node(existing[1])
+                ):
+                    singleton_candidates[role] = (len(selected), node)
+            else:
+                selected.append((role, node))
+    for role, (_position, node) in singleton_candidates.items():
+        selected.append((role, node))
+    selected.sort(key=lambda item: _video_identity_order(item[0], item[1], workflow))
     return tuple(selected)
+
+
+def _video_identity_order(role: str, node: object, workflow) -> tuple[int, str]:
+    """Keep provider reference order stable after singleton deduplication."""
+
+    order = {
+        "product_multiview": 0,
+        "prop": 1,
+        "character_turnaround": 2,
+        "scene_board": 3,
+    }
+    return (order.get(role, 99), getattr(node, "node_id", ""))
 
 
 def _video_semantic_reference_role(source_role: str) -> str:
@@ -1910,6 +2169,22 @@ def _seed_presentation(prompt: str) -> EditablePromptProjectionV1:
         source="deterministic_projection",
         revision=1,
         prompt_digest=f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}",
+    )
+
+
+def _pending_prompt_node(node: CanvasNodeV2) -> CanvasNodeV2:
+    """Return a visible Draft whose prompt is owned by the prompt worker."""
+
+    return node.model_copy(
+        update={
+            "generation_prompt": None,
+            "prompt_presentation": None,
+            "prompt_preparation": NodePromptPreparationV1(
+                status="queued",
+                attempt_no=0,
+                updated_at=node.updated_at,
+            ),
+        }
     )
 
 

@@ -28,6 +28,7 @@ from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_canvas_guidance import GuidanceAdvancePreconditionV1
+from app.schemas.language import BCP47Tag
 
 
 class _ConversationModel(BaseModel):
@@ -48,6 +49,7 @@ class ChatMessageRequestV2(_ConversationModel):
     mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
     mentioned_image_asset_ids: tuple[str, ...] = Field(default=(), max_length=16)
     video_skill_run_id: str | None = Field(default=None, max_length=160)
+    response_locale: BCP47Tag | None = None
 
 
 class ChatTurnAcceptedV2(_ConversationModel):
@@ -267,7 +269,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
     ]
     capability_id: CapabilityIdV1
     proposal_card_schema_version: int = Field(default=1, ge=1, exclude=True)
-    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=3)
+    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=6)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),
         max_length=64,

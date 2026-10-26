@@ -70,6 +70,8 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     && preparationStatus !== undefined
     && preparationStatus !== "ready"
     && preparationStatus !== "not_applicable";
+  const preparingGenerationPrompt = requiresPreparedPrompt
+    && (preparationStatus === "queued" || preparationStatus === "working");
 
   return (
     <NodeWorkbenchShell
@@ -81,6 +83,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           node={node}
           onWorkflowRefresh={onWorkflowRefresh}
           onRevise={() => promptEditorRef.current?.focus()}
+          hideActiveStatus={preparingGenerationPrompt}
         />
       ) : null}
       {node.node_type === "text" ? (
@@ -93,6 +96,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelsError={providerModelsError}
           modelResolution={modelResolution}
           promptEditorRef={promptEditorRef}
+          preparingPrompt={preparingGenerationPrompt}
         />
       ) : null}
       {node.node_type === "script" ? (
@@ -105,6 +109,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelsError={providerModelsError}
           modelResolution={modelResolution}
           promptEditorRef={promptEditorRef}
+          preparingPrompt={preparingGenerationPrompt}
         />
       ) : null}
       {["image", "video", "audio"].includes(node.node_type) ? (
@@ -120,6 +125,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           onOpenAssets={onOpenAssets}
           onUploadReferences={onUploadReferences}
           promptEditorRef={promptEditorRef}
+          preparingPrompt={preparingGenerationPrompt}
         />
       ) : null}
       {node.node_type === "editing" ? (

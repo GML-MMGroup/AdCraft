@@ -1,5 +1,6 @@
 import { useId } from "react";
 import ambientMusicIcon from "./arcticons--ambient-music-mod.svg";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export function VideoAudioToggle({
   checked,
@@ -10,13 +11,14 @@ export function VideoAudioToggle({
   disabledReason: string | null;
   onChange: (checked: boolean) => void;
 }) {
+  const t = useTranslation("en-US");
   const tooltipId = useId();
   const disabled = disabledReason !== null;
   return (
     <span className="agent-node-workbench__audio-toggle">
       <button
         type="button"
-        aria-label="Generate audio"
+        aria-label={t("Generate audio")}
         aria-pressed={checked}
         aria-describedby={tooltipId}
         disabled={disabled}
@@ -31,7 +33,7 @@ export function VideoAudioToggle({
         />
       </button>
       <span id={tooltipId} role="tooltip" className="agent-node-workbench__audio-tooltip">
-        {disabledReason ?? (checked ? "关闭视频音频生成" : "开启视频音频生成")}
+        {disabledReason ?? (checked ? t("关闭视频音频生成") : t("开启视频音频生成"))}
       </span>
     </span>
   );

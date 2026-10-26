@@ -57,7 +57,6 @@ describe("QuickMediaAnimation", () => {
       "lightning-active",
       ...MEDIA_PARTS,
     ]);
-    expect(QUICK_MEDIA_MOTION_PROGRAM.waiting).toEqual([]);
     const [lightning, ...mediaTracks] = QUICK_MEDIA_MOTION_PROGRAM.working;
     for (const track of QUICK_MEDIA_MOTION_PROGRAM.working) {
       expect(track.options.duration).toBe(3_600);

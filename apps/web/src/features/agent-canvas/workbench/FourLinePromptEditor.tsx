@@ -1,15 +1,19 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEventHandler } from "react";
 import type { FocusEventHandler } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 const FOUR_LINE_HEIGHT = 88;
+const PREPARING_CHARACTER_DELAY = 150;
+const PREPARING_HOLD_DELAY = 900;
 
 export function FourLinePromptEditor({
   ariaLabel,
   value,
   disabled = false,
   placeholder,
+  preparing = false,
   onChange,
   onBlur,
   editorRef: providedEditorRef,
@@ -18,12 +22,33 @@ export function FourLinePromptEditor({
   value: string;
   disabled?: boolean;
   placeholder?: string;
+  preparing?: boolean;
   onChange: ChangeEventHandler<HTMLTextAreaElement>;
   onBlur?: FocusEventHandler<HTMLTextAreaElement>;
   editorRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
+  const t = useTranslation("en-US");
+  const preparingPromptText = t("Prompt is being prepared...");
   const internalEditorRef = useRef<HTMLTextAreaElement>(null);
   const editorRef = providedEditorRef ?? internalEditorRef;
+  const [preparingText, setPreparingText] = useState("");
+
+  useEffect(() => {
+    if (!preparing || value.trim()) {
+      setPreparingText("");
+      return undefined;
+    }
+
+    const delay = preparingText.length < preparingPromptText.length
+      ? PREPARING_CHARACTER_DELAY
+      : PREPARING_HOLD_DELAY;
+    const timer = window.setTimeout(() => {
+      setPreparingText((current) => current.length < preparingPromptText.length
+        ? preparingPromptText.slice(0, current.length + 1)
+        : "");
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [preparing, preparingText, preparingPromptText, value]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -47,16 +72,26 @@ export function FourLinePromptEditor({
     return () => editor.removeEventListener("wheel", onWheel);
   }, [editorRef]);
 
+  const showPreparingPrompt = preparing && !value.trim();
+
   return (
-    <textarea
-      ref={editorRef}
-      className="agent-node-workbench__four-line-editor"
-      aria-label={ariaLabel}
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      onChange={onChange}
-      onBlur={onBlur}
-    />
+    <span className="agent-node-workbench__editor-shell">
+      {showPreparingPrompt ? (
+        <span className="agent-node-workbench__preparing-prompt" aria-hidden="true">
+          {preparingText}
+        </span>
+      ) : null}
+      <textarea
+        ref={editorRef}
+        className="agent-node-workbench__four-line-editor"
+        aria-label={ariaLabel}
+        aria-busy={showPreparingPrompt}
+        value={value}
+        disabled={disabled}
+        placeholder={showPreparingPrompt ? undefined : placeholder}
+        onChange={onChange}
+        onBlur={onBlur}
+      />
+    </span>
   );
 }

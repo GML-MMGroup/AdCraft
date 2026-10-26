@@ -15,6 +15,8 @@ from app.persistence.agent_canvas_continuation_repository import (
 )
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
+    matches_operation_envelope_digest,
+    operation_envelope_digest,
 )
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -28,6 +30,10 @@ from app.schemas.agent_canvas_conversation import (
 from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
 from app.services.agent_canvas_explicit_retry import explicit_turn_retryable
+from app.schemas.agent_canvas_retry_repair import (
+    RetryEnvelopeDigestRepairReceiptV1,
+    RetryEnvelopeDigestRepairV1,
+)
 
 
 class ChatTurnRetryService:
@@ -119,6 +125,46 @@ class ChatTurnRetryService:
         request: ChatTurnRetryRequestV1,
     ) -> tuple[ChatTurnV2, dict[str, object]]:
         """Validate frozen retry authority without creating a retry Turn."""
+
+        return self._validate(workflow_id, turn_id, request)
+
+    def repair_legacy_envelope_digest(
+        self,
+        workflow_id: str,
+        turn_id: str,
+        *,
+        expected_snapshot_digest: str,
+        expected_envelope_digest: str,
+    ) -> RetryEnvelopeDigestRepairReceiptV1:
+        """Operator-only repair; never enqueue work or relax other frozen authority."""
+
+        from app.persistence.agent_canvas_retry_repair_repository import (
+            RetryEnvelopeDigestRepairRepository,
+        )
+
+        command = RetryEnvelopeDigestRepairV1(
+            workflow_id=workflow_id,
+            turn_id=turn_id,
+            expected_snapshot_digest=expected_snapshot_digest,
+            expected_envelope_digest=expected_envelope_digest,
+        )
+        return RetryEnvelopeDigestRepairRepository(
+            self._conversations.database, self._conversations.events
+        ).repair(command, validate=self._validate_digest_repair)
+
+    def _validate_digest_repair(
+        self, workflow_id: str, turn_id: str, request: ChatTurnRetryRequestV1, digest: str
+    ) -> ChatTurnV2:
+        return self._validate(workflow_id, turn_id, request, repair_envelope_digest=digest)[0]
+
+    def _validate(
+        self,
+        workflow_id: str,
+        turn_id: str,
+        request: ChatTurnRetryRequestV1,
+        *,
+        repair_envelope_digest: str | None = None,
+    ) -> tuple[ChatTurnV2, dict[str, object]]:
 
         source = self._conversations.get_turn(turn_id)
         if source.workflow_id != workflow_id:
@@ -225,10 +271,13 @@ class ChatTurnRetryService:
         ):
             raise _stale_error()
         envelope = self._envelopes.get(snapshot.envelope_id)
-        if (
-            envelope.workflow_id != workflow_id
-            or hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest()
-            != snapshot.envelope_digest
+        if repair_envelope_digest is not None and (
+            operation_envelope_digest(envelope) != repair_envelope_digest
+            or matches_operation_envelope_digest(envelope, snapshot.envelope_digest)
+        ):
+            raise _stale_error()
+        if envelope.workflow_id != workflow_id or not matches_operation_envelope_digest(
+            envelope, repair_envelope_digest or snapshot.envelope_digest
         ):
             raise _stale_error()
         if isinstance(envelope, CapabilityCommandEnvelopeV2):

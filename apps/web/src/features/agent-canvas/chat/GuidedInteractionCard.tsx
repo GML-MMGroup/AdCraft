@@ -3,6 +3,8 @@ import type {
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
 import { ConceptChoiceDecisionDock } from "./ConceptChoiceDecisionDock.tsx";
+import { BrandFormInteraction } from "./BrandFormInteraction.tsx";
+import type { BrandFormAnswers } from "./BrandFormInteraction.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 import { MediaReviewDecisionDock } from "./MediaReviewDecisionDock.tsx";
 import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
@@ -13,10 +15,13 @@ import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 export interface GuidedInteractionCardProps {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  disabled?: boolean;
   issue?: DecisionDockIssue | null;
   selectedConceptOptionId?: string | null;
   referenceOccurrenceLabel?: string | null;
   onSelectConceptOption?: (optionId: string) => void;
+  brandFormAnswers?: BrandFormAnswers;
+  onBrandFormAnswersChange?: (answers: BrandFormAnswers) => void;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   pendingProductMainHandoff?: ProductMainHandoff | null;
   onClearProductMainHandoff?: () => void;
@@ -26,10 +31,13 @@ export interface GuidedInteractionCardProps {
 export function GuidedInteractionCard({
   interaction,
   pending,
+  disabled = false,
   issue = null,
   selectedConceptOptionId = null,
   referenceOccurrenceLabel = null,
   onSelectConceptOption,
+  brandFormAnswers,
+  onBrandFormAnswersChange,
   onSubmit,
   pendingProductMainHandoff = null,
   onClearProductMainHandoff,
@@ -49,12 +57,28 @@ export function GuidedInteractionCard({
     );
   }
 
+  if (interaction.content.content_kind === "brand_form") {
+    return (
+      <BrandFormInteraction
+        key={interaction.interaction_id}
+        interaction={interaction}
+        pending={pending}
+        disabled={disabled}
+        issue={issue}
+        answers={brandFormAnswers}
+        onAnswersChange={onBrandFormAnswersChange}
+        onSubmit={onSubmit}
+      />
+    );
+  }
+
   if (interaction.content.content_kind === "concept_choice") {
     return (
       <ConceptChoiceDecisionDock
         key={interaction.interaction_id}
         interaction={interaction}
         pending={pending}
+        disabled={disabled}
         issue={issue}
         selectedOptionId={selectedConceptOptionId}
         onSelectOption={onSelectConceptOption ?? (() => undefined)}

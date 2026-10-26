@@ -506,6 +506,20 @@ def _guidance_advance_blocker(
             },
         )
     if post_ready is None:
+        if (
+            session.journey.stage == "editing"
+            and session.journey.stage_status == "ready"
+            and action is None
+            and session.journey.suspended_action is None
+            and session.completion.editing_preparation == "prepared"
+            and session.completion.editing_node_id is not None
+            and session.completion.preparation_receipt_id is not None
+        ):
+            return V2PersistenceError(
+                "guidance_advance_not_available",
+                "Editing preparation is complete. Export remains an explicit action.",
+                stage="guidance_advance_service",
+            )
         return None
     details = {
         "checkpoint_id": post_ready.get("checkpoint_id"),

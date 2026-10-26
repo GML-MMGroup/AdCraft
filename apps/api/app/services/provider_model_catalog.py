@@ -13,7 +13,7 @@ from app.persistence.provider_model_repository import (
     ProviderModelRecord,
     ProviderModelRepository,
 )
-from app.schemas.provider_models import ProviderAdapterProfileV1
+from app.schemas.provider_models import ImageResolutionCapabilitiesV1, ProviderAdapterProfileV1
 from app.services.openrouter_policy import build_openrouter_routing_policy
 from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
 
@@ -46,6 +46,7 @@ class CatalogSyncResult:
     provider_id: str
     status: str
     catalog_revision: int | None
+    discovery_mode: str = "static_manifest"
 
 
 GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
@@ -55,6 +56,84 @@ GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
     "4:3": "2304x1728",
     "3:4": "1728x2304",
 }
+
+
+def image_resolution_capabilities(
+    metadata: Mapping[str, object],
+) -> ImageResolutionCapabilitiesV1:
+    """Project provider-specific image dimensions into one public contract."""
+
+    profile = metadata.get("adapter_profile")
+    matrix = profile.get("parameter_matrix") if isinstance(profile, Mapping) else None
+    descriptors = matrix.get("descriptors") if isinstance(matrix, Mapping) else None
+    allowed_values: dict[str, tuple[str, ...]] = {}
+    if isinstance(descriptors, list):
+        for descriptor in descriptors:
+            if not isinstance(descriptor, Mapping) or not isinstance(descriptor.get("name"), str):
+                continue
+            values = descriptor.get("allowed_values")
+            if isinstance(values, list):
+                allowed_values[str(descriptor["name"])] = tuple(
+                    str(value) for value in values if isinstance(value, str)
+                )
+
+    raw_sizes = metadata.get("supported_sizes_by_aspect_ratio")
+    sizes_by_aspect_ratio = (
+        {
+            str(ratio): str(size)
+            for ratio, size in raw_sizes.items()
+            if isinstance(ratio, str) and isinstance(size, str)
+        }
+        if isinstance(raw_sizes, Mapping)
+        else {}
+    )
+    aspect_ratios = allowed_values.get("aspect_ratio", ())
+    if not aspect_ratios:
+        raw_ratios = metadata.get("supported_aspect_ratios")
+        aspect_ratios = (
+            tuple(str(value) for value in raw_ratios if isinstance(value, str))
+            if isinstance(raw_ratios, list)
+            else tuple(sizes_by_aspect_ratio)
+        )
+    size_options = allowed_values.get("size", ())
+    if not size_options:
+        size_options = tuple(
+            dict.fromkeys(
+                sizes_by_aspect_ratio[ratio]
+                for ratio in aspect_ratios
+                if ratio in sizes_by_aspect_ratio
+            )
+        )
+    resolution_options = allowed_values.get("resolution", ())
+    supported_parameters = metadata.get("supported_parameters")
+    parameter_names = (
+        frozenset(str(value) for value in supported_parameters if isinstance(value, str))
+        if isinstance(supported_parameters, list)
+        else frozenset(allowed_values)
+    )
+    modes = []
+    if "size" in parameter_names or size_options:
+        modes.append("size")
+    if resolution_options and aspect_ratios:
+        modes.append("resolution_with_aspect_ratio")
+    raw_bounds = metadata.get("pixel_bounds")
+    pixel_bounds = (
+        (int(raw_bounds[0]), int(raw_bounds[1]))
+        if isinstance(raw_bounds, list)
+        and len(raw_bounds) == 2
+        and all(isinstance(value, int) for value in raw_bounds)
+        else None
+    )
+    raw_defaults = metadata.get("default_parameters")
+    return ImageResolutionCapabilitiesV1(
+        parameter_modes=tuple(modes),
+        size_options=size_options,
+        resolution_options=resolution_options,
+        aspect_ratio_options=aspect_ratios,
+        sizes_by_aspect_ratio=sizes_by_aspect_ratio,
+        pixel_bounds=pixel_bounds,
+        default_parameters=(dict(raw_defaults) if isinstance(raw_defaults, Mapping) else {}),
+    )
 
 
 def _adapter_profile(
@@ -426,8 +505,33 @@ _TRUSTED_MANIFESTS = (
             "supports_streaming": True,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
             "thinking_format": "zai",
             "reasoning_control": "enable_thinking",
+            "structured_transport": "non_streaming_json_object",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="glm-5-2-260617",
+        display_name="GLM-5.2",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "capability_revision": "volcengine-ark-glm-5-2-260617-agent-v2",
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
+            "thinking_format": "none",
+            "reasoning_control": "ark_thinking",
             "structured_transport": "non_streaming_json_object",
             "default_max_output_tokens": 8192,
         },
@@ -466,17 +570,18 @@ _TRUSTED_MANIFESTS = (
             "adapter_id": "volcengine_ark-pi-agent-v1",
             "adapter_revision": "volcengine_ark-pi-agent-v1",
             "transport_kind": "pi_native_openai_compatible",
-            "capability_revision": "volcengine-ark-doubao-seed-2-1-pro-260628-agent-v1",
+            "capability_revision": "volcengine-ark-doubao-seed-2-1-pro-260628-agent-v2",
             "provider_protocol": "openai_compatible",
             "accepted_input_types": ["text"],
             "supports_structured_output": True,
             "supports_tool_calls": False,
-            "supports_streaming": False,
+            "supports_streaming": True,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
             "thinking_format": "none",
             "reasoning_control": "reasoning_effort",
-            "structured_transport": "non_streaming_json_object",
+            "structured_transport": "streaming_json_object",
             "default_max_output_tokens": 8192,
         },
     ),
@@ -539,19 +644,23 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
-        provider_model_id="doubao-seedream-5-0-260128",
-        display_name="Doubao Seedream 5.0",
+        provider_model_id="doubao-seedream-5-0-pro-260628",
+        display_name="Doubao Seedream 5.0 Pro",
         capability="image",
         capability_metadata={
+            "omit_sequential_image_generation": True,
             "accepted_input_types": ["text", "image"],
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
-                "volcengine_ark:doubao-seedream-5-0-260128",
+                "volcengine_ark:doubao-seedream-5-0-pro-260628",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -567,6 +676,9 @@ _TRUSTED_MANIFESTS = (
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
@@ -587,6 +699,9 @@ _TRUSTED_MANIFESTS = (
             "max_references": 4,
             "reference_limits": {"image": 4, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
@@ -599,20 +714,20 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-0-mini-260615",
+        display_name="Doubao Seedance 2.0 Mini",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-mini-260615")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
         provider_model_id="doubao-seedance-2-0-260128",
         display_name="Doubao Seedance 2.0",
         capability="video",
         capability_metadata=_video_capability_metadata(
             _ark_video_profile("volcengine_ark:doubao-seedance-2-0-260128")
-        ),
-    ),
-    TrustedModelManifest(
-        provider_id="volcengine_ark",
-        provider_model_id="doubao-seedance-2-0-mini-260128",
-        display_name="Doubao Seedance 2.0 Mini",
-        capability="video",
-        capability_metadata=_video_capability_metadata(
-            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-mini-260128")
         ),
     ),
     TrustedModelManifest(
@@ -851,10 +966,13 @@ _TRUSTED_MANIFESTS = (
 _RETIRED_MODEL_REFS = frozenset(
     {
         "volcengine_ark:doubao-seed-2-0-mini-260428",
+        "volcengine_ark:doubao-seedream-5-0-250128",
+        "volcengine_ark:doubao-seedream-5-0-260128",
         "openai:gpt-image-2",
     }
 )
 _BLOCKING_RETIRED_DEFAULT_REFS = frozenset({"openai:gpt-image-2"})
+_CREDENTIAL_INDEPENDENT_SELECTION_REFS = frozenset({"openrouter:openai/gpt-image-2"})
 
 
 class StaticProviderCatalogAdapter:
@@ -871,10 +989,32 @@ class StaticProviderCatalogAdapter:
         )
 
 
+def compatible_version_manifests(provider_id: str) -> tuple[TrustedModelManifest, ...]:
+    """Only model-independent native families may serve as version templates."""
+    return tuple(
+        manifest
+        for manifest in _TRUSTED_MANIFESTS
+        if manifest.provider_id == provider_id
+        and manifest.model_ref not in _RETIRED_MODEL_REFS
+        and (
+            (provider_id in {"siliconflow", "volcengine_ark"} and manifest.capability == "text")
+            or (provider_id == "volcengine_ark" and manifest.capability in {"image", "video"})
+        )
+    )
+
+
+def is_reserved_model_identity(model_ref: str) -> bool:
+    """Configured versions cannot resurrect retired IDs or replace code-owned ones."""
+    return model_ref in _RETIRED_MODEL_REFS or any(
+        manifest.model_ref == model_ref for manifest in _TRUSTED_MANIFESTS
+    )
+
+
 class OpenRouterCatalogAdapter:
     """Confirm the two trusted OpenRouter slugs from bounded metadata reads."""
 
     provider_id = "openrouter"
+    discovery_mode = "remote"
     _APPROVED_BASE_URL = "https://openrouter.ai/api/v1"
     _TEXT_MODEL_ID = "openai/gpt-5.6-sol"
     _IMAGE_MODEL_ID = "openai/gpt-image-2"
@@ -968,6 +1108,7 @@ class ProviderModelCatalogService:
         *,
         adapters: tuple[ProviderCatalogAdapter, ...] | None = None,
         openrouter_adapter: ProviderCatalogAdapter | None = None,
+        siliconflow_adapter: ProviderCatalogAdapter | None = None,
         capability_available: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._repository = repository
@@ -983,6 +1124,10 @@ class ProviderModelCatalogService:
             )
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
+        if siliconflow_adapter is not None:
+            if siliconflow_adapter.provider_id != "siliconflow":
+                raise ValueError("provider_not_supported")
+            self._adapters["siliconflow"] = siliconflow_adapter
         if openrouter_adapter is not None:
             if openrouter_adapter.provider_id != "openrouter":
                 raise ValueError("provider_not_supported")
@@ -1008,6 +1153,12 @@ class ProviderModelCatalogService:
             raise ValueError("model_catalog_sync_failed") from exc
 
         models = self._project_models(provider_id, visible_model_ids)
+        configured_refs = {
+            model.model_ref
+            for model in self._repository.list_models(provider_id=provider_id)
+            if model.source == "configured"
+        }
+        models = [model for model in models if model["model_ref"] not in configured_refs]
         persisted = self._repository.upsert_models(
             provider_id=provider_id,
             models=models,
@@ -1028,6 +1179,9 @@ class ProviderModelCatalogService:
             provider_id=provider_id,
             status="succeeded",
             catalog_revision=revision,
+            discovery_mode=getattr(
+                self._adapters[provider_id], "discovery_mode", "static_manifest"
+            ),
         )
 
     def reconcile_trusted_models(
@@ -1118,6 +1272,12 @@ class ProviderModelCatalogService:
             for manifest in _TRUSTED_MANIFESTS
             if manifest.provider_id == provider_id
         }
+        existing_built_ins = {
+            model.provider_model_id: model
+            for model in self._repository.list_models(provider_id=provider_id)
+            if model.source == "built_in"
+        }
+        static_discovery = isinstance(self._adapters.get(provider_id), StaticProviderCatalogAdapter)
         models: list[dict[str, Any]] = []
         for provider_model_id in sorted(visible_model_ids):
             manifest = trusted.get(provider_model_id)
@@ -1144,23 +1304,49 @@ class ProviderModelCatalogService:
                     }
                 )
                 continue
+            previous = existing_built_ins.get(provider_model_id)
+            if (
+                static_discovery
+                and previous is not None
+                and previous.unavailable_reason == "provider_model_not_visible"
+            ):
+                models.append(
+                    _trusted_projection(
+                        manifest,
+                        available=False,
+                        unavailable_reason="provider_model_not_visible",
+                    )
+                )
+                continue
             models.append(
                 _trusted_projection(
                     manifest,
                     available=self._capability_is_available(
                         manifest.provider_id,
                         manifest.capability,
-                    ),
+                    )
+                    or manifest.model_ref in _CREDENTIAL_INDEPENDENT_SELECTION_REFS,
                 )
             )
-        previously_known = {
-            model.provider_model_id
-            for model in self._repository.list_models(provider_id=provider_id)
-            if model.source == "built_in"
-        }
+        previously_known = set(existing_built_ins)
         for provider_model_id in sorted(previously_known.difference(visible_model_ids)):
             manifest = trusted.get(provider_model_id)
             if manifest is None:
+                model_ref = f"{provider_id}:{provider_model_id}"
+                if model_ref in _RETIRED_MODEL_REFS:
+                    previous = self._repository.get_model(model_ref)
+                    models.append(
+                        {
+                            "model_ref": model_ref,
+                            "provider_model_id": provider_model_id,
+                            "display_name": previous.display_name,
+                            "capability": previous.capability,
+                            "capability_metadata": previous.capability_metadata,
+                            "source": "built_in",
+                            "availability": "deprecated",
+                            "unavailable_reason": "model_retired",
+                        }
+                    )
                 continue
             if manifest.model_ref in _RETIRED_MODEL_REFS:
                 models.append(
@@ -1233,10 +1419,12 @@ class ProviderModelCatalogService:
         defaults: Mapping[str, str],
         *,
         modes: Mapping[str, str] | None = None,
+        thinking_modes: Mapping[str, str] | None = None,
         now: str,
     ) -> dict[str, ModelDefaultRecord]:
         mode_updates = dict(modes or {})
-        if not defaults and not mode_updates:
+        thinking_mode_updates = dict(thinking_modes or {})
+        if not defaults and not mode_updates and not thinking_mode_updates:
             raise ValueError("model_default_update_invalid")
         for default_key, model_ref in defaults.items():
             try:
@@ -1252,8 +1440,18 @@ class ProviderModelCatalogService:
                 raise ValueError("model_default_mode_invalid")
             if selection_mode == "automatic" and default_key != "audio":
                 raise ValueError("model_automatic_policy_unsupported")
+        for default_key, thinking_mode in thinking_mode_updates.items():
+            if default_key not in {"agent", "text"}:
+                raise ValueError("model_default_thinking_mode_unsupported")
+            if thinking_mode not in {"disabled", "enabled"}:
+                raise ValueError("model_default_thinking_mode_invalid")
         try:
-            return self._repository.set_defaults(defaults, modes=mode_updates, updated_at=now)
+            return self._repository.set_defaults(
+                defaults,
+                modes=mode_updates,
+                thinking_modes=thinking_mode_updates,
+                updated_at=now,
+            )
         except ValueError as exc:
             if str(exc) == "model_default_capability_invalid":
                 raise ValueError("model_capability_mismatch") from exc
@@ -1290,7 +1488,29 @@ class ProviderModelCatalogService:
         )
         if not credential_managed:
             return model
-        available = self._capability_is_available(model.provider_id, model.capability)
+        from app.services.configured_agent_conformance import (
+            configured_operation_status,
+            requires_operation_evidence,
+        )
+        from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
+
+        if requires_operation_evidence(model):
+            operations = VideoAgentOperationRegistry().names()
+            if not any(
+                evidence.operation in operations
+                and configured_operation_status(model, evidence.operation, evidence)
+                in {"compatible", "certified"}
+                for evidence in self._repository.current_conformances(model.model_ref)
+            ):
+                return replace(
+                    model,
+                    availability="unavailable",
+                    unavailable_reason="model_conformance_required",
+                )
+        available = (
+            model.model_ref in _CREDENTIAL_INDEPENDENT_SELECTION_REFS
+            or self._capability_is_available(model.provider_id, model.capability)
+        )
         availability = "available" if available else "unavailable"
         unavailable_reason = None if available else "provider_credentials_missing"
         if model.availability == availability and model.unavailable_reason == unavailable_reason:

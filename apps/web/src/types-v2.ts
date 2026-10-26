@@ -124,6 +124,7 @@ export interface ProjectV2Summary {
   cover_updated_at?: string | null;
   cover?: ProjectCoverV2 | null;
   project_version: number;
+  mode?: "creation" | "brand";
   updated_at: string;
 }
 
@@ -3075,7 +3076,8 @@ export interface EditingVideoEntryV2 {
   binding_id: string | null;
   asset_id: string | null;
   enabled: boolean;
-  timeline_start_seconds?: number;
+  /** Null or omitted lets the timeline determine the clip position. */
+  timeline_start_seconds?: number | null;
   trim_start_seconds: number;
   trim_end_seconds: number | null;
   volume: number;
@@ -3101,7 +3103,8 @@ export interface EditingManifestV2 {
   bgm: EditingBgmEntryV2 | null;
   output: EditingOutputSettingsV2;
   manifest_revision: number;
-  timeline_duration_seconds?: number;
+  /** Null or omitted derives the timeline duration from source media. */
+  timeline_duration_seconds?: number | null;
 }
 
 export interface EditingSkippedInputV2 {
@@ -3159,6 +3162,7 @@ export interface EditingNodeContentV2 {
 export interface AgentCanvasProjectCreateRequestV2 {
   name: string;
   description?: string;
+  mode?: "creation" | "brand";
   video_skill_id?: string | null;
   video_skill_version?: string | null;
 }
@@ -3308,6 +3312,7 @@ export interface AgentCanvasChatMessageRequestV2 {
   mentioned_node_ids: string[];
   mentioned_image_asset_ids: string[];
   video_skill_run_id: string | null;
+  response_locale?: string | null;
 }
 
 export type GuidanceOutputKindV2 = "text" | "script" | "image" | "video" | "audio";
@@ -3527,6 +3532,7 @@ export type GuidedInteractionKindV1 =
   | "clarification_questionnaire"
   | "product_source"
   | "concept_choice"
+  | "brand_form"
   | "media_review"
   | "reference_source";
 export type GuidedInteractionStatusV1 = "open" | "submitted" | "closed" | "superseded";
@@ -3639,6 +3645,17 @@ export interface GuidedReferenceSourceQuestionV1 {
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
   | {
+      content_kind: "brand_form";
+      form_id: string;
+      stage: "brand-memory" | "campaign";
+      revision: number;
+      response_locale: string;
+      context_digest: string;
+      title: string;
+      instructions: string;
+      rows: GuidedBrandFormRowV1[];
+    }
+  | {
       content_kind: "product_source";
       input_kind: "main" | "multiview";
       question_id: string;
@@ -3672,6 +3689,23 @@ export type GuidedInteractionContentV1 =
     }
   | GuidedReferenceSourceQuestionV1;
 
+export interface GuidedBrandFormOptionV1 {
+  option_id: string;
+  label: string;
+  why: string | null;
+}
+
+export interface GuidedBrandFormRowV1 {
+  question_id: string;
+  slot_id: string;
+  prompt: string;
+  options: GuidedBrandFormOptionV1[];
+  custom_option_id: string;
+  required: boolean;
+  /** Unconfirmed draft evidence; never an implicit option selection. */
+  prefill_value?: string | null;
+}
+
 export interface GuidedInteractionV1 {
   interaction_id: string;
   workflow_id: string;
@@ -3701,6 +3735,18 @@ export type GuidedInteractionSubmitRequestV1 =
         | { answer_kind: "custom"; question_id: string; value: string }
         | { answer_kind: "skip"; question_id: string }
       >;
+    }
+  | {
+      submission_kind: "brand_form";
+      form_id: string;
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      confirm: true;
+      answers: Array<{
+        question_id: string;
+        selected_option_id: string;
+        custom_text?: string;
+      }>;
     }
   | {
       submission_kind: "product_source";
@@ -3757,7 +3803,7 @@ export interface GuidanceAwaitingV1 {
   workflow_id: string;
   session_id: string;
   checkpoint_id: string;
-  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "reference_source" | "manual_node_run" | "milestone_idle";
+  kind: "clarification" | "concept_selection" | "product_source" | "brand_form" | "media_review" | "reference_source" | "manual_node_run" | "milestone_idle";
   requires_user_action: boolean;
   resume_policy: "submit_interaction" | "node_terminal" | "next_user_message" | "explicit_resume";
   interaction_id: string | null;

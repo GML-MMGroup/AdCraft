@@ -1,14 +1,16 @@
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from app.api.protected_media import ProtectedMediaFiles
 
 from app.api.v1.router import api_router as api_v1_router
 from app.api.internal.router import router as internal_agent_router
+from app.api.internal.model_calls import router as internal_model_calls_router
 from app.api.v2.persistence import v2_persistence_exception_handler
 from app.api.v2.router import api_router as api_v2_router
 from app.api.v2.endpoints.agent_canvas import AgentCanvasRuntime, create_agent_canvas_runtime
@@ -63,13 +65,14 @@ def create_app(
         application.dependency_overrides[get_settings] = lambda: resolved_settings
     application.mount(
         "/media",
-        StaticFiles(directory=resolved_settings.media_data_dir, check_dir=False),
+        ProtectedMediaFiles(directory=resolved_settings.media_data_dir, check_dir=False),
         name="media",
     )
     application.add_exception_handler(V2PersistenceError, v2_persistence_exception_handler)
     application.include_router(api_v1_router, prefix="/api/v1")
     application.include_router(api_v2_router, prefix="/api/v2")
     application.include_router(internal_agent_router)
+    application.include_router(internal_model_calls_router)
     return application
 
 
@@ -229,13 +232,52 @@ def _recover_agent_canvas_continuations(
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
 ) -> None:
+    concurrency = max(1, settings.agent_canvas_prompt_preparation_concurrency)
+    recovery_kwargs = {"runtime_factory": runtime_factory} if runtime_factory is not None else {}
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        recoveries = [
+            executor.submit(
+                _recover_agent_canvas_prompt_preparations,
+                settings,
+                **recovery_kwargs,
+            )
+            for _ in range(concurrency)
+        ]
+        for recovery in recoveries:
+            try:
+                recovery.result()
+            except BaseException as error:  # noqa: BLE001 - later slots must remain available.
+                if isinstance(error, Exception):
+                    logger.error(
+                        "Agent Canvas prompt-preparation recovery slot failed.",
+                        exc_info=(type(error), error, error.__traceback__),
+                    )
+                else:
+                    logger.error(
+                        "Agent Canvas prompt-preparation recovery slot failed: %s",
+                        error,
+                    )
+
+    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    try:
+        runtime.continuation_worker.run_once()
+        runtime.auto_run_dispatcher.run_once()
+    finally:
+        runtime.database.dispose()
+
+
+def _recover_agent_canvas_prompt_preparations(
+    settings: Settings,
+    *,
+    runtime_factory: AgentCanvasRuntimeFactory | None = None,
+) -> int:
     runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
     try:
         prompt_preparation_worker = getattr(runtime, "prompt_preparation_worker", None)
-        if prompt_preparation_worker is not None:
-            prompt_preparation_worker.run_once()
-        runtime.continuation_worker.run_once()
-        runtime.auto_run_dispatcher.run_once()
+        if prompt_preparation_worker is None:
+            return 0
+        cycle = prompt_preparation_worker.run_once()
+        return int(getattr(cycle, "claimed", 0))
     finally:
         runtime.database.dispose()
 

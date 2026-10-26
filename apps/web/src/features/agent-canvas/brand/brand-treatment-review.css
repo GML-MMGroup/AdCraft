@@ -1,0 +1,10 @@
+.brand-treatment-review { width: min(900px, 92vw); max-height: 86dvh; padding: 24px; border: 1px solid #444; border-radius: 12px; background: #151515; color: #eee; overflow: auto; }
+.brand-treatment-review::backdrop { background: rgb(0 0 0 / 65%); }
+.brand-treatment-review header { display: flex; align-items: center; justify-content: space-between; }
+.brand-treatment-review section, .brand-treatment-review article { border-top: 1px solid #383838; padding-block: 16px; }
+.brand-treatment-review p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.brand-treatment-review pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.brand-treatment-review label { display: block; margin-block: 12px; }
+.brand-treatment-review input:not([type="checkbox"]), .brand-treatment-review textarea { display: block; width: 100%; color: inherit; background: #222; border: 1px solid #555; padding: 8px; }
+.brand-treatment-review button { padding: 8px 12px; margin: 6px 8px 6px 0; }
+.brand-treatment-review [role="alert"] { color: #f2bda8; }

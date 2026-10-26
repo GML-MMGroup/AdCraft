@@ -18,9 +18,11 @@ from app.schemas.agent_canvas_ad_media import (
     CharacterDesignAssetContentV2,
     CompiledProviderPromptV2,
     ProviderReferenceInstructionV1,
+    ResolvedAdReferenceV2,
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
+    StoryboardPanelV2,
     VideoSegmentContentV2,
     VisualStyleContractV2,
     resolve_visual_style,
@@ -310,18 +312,13 @@ class AgentCanvasProviderPromptCompiler:
             if isinstance(structured, CharacterDesignAssetContentV2)
             else None
         )
-        body = _render_content(structured)
+        body = _render_content(structured, generation_prompt=node.generation_prompt or "")
         reference_identities = _render_reference_identities(
             reference_bundle,
             target_semantic_role=node.semantic_role,
         )
         references = "\n".join(
-            (
-                f"- Image {index}: binding={item.binding_id}; asset={item.asset_id}; "
-                f"media={item.media_type}; semantic_reference_role="
-                f"{item.semantic_reference_role or 'unspecified'}; "
-                f"url={item.access_descriptor.media_url}"
-            )
+            f"- Image {index}: {_reference_description(item, node.semantic_role)}"
             for index, item in enumerate(reference_bundle.references, start=1)
         )
         try:
@@ -346,7 +343,11 @@ class AgentCanvasProviderPromptCompiler:
                 "provider_reference_instruction_invalid",
                 "Guided reference semantics are invalid for provider delivery.",
             ) from error
-        storyboard_anchor_clause = _storyboard_visual_anchor_clause(reference_bundle)
+        storyboard_anchor_clause = (
+            _storyboard_visual_anchor_clause(reference_bundle)
+            if node.semantic_role == "storyboard_sequence"
+            else ""
+        )
         is_video = node.semantic_role in {"storyboard_video", "general_video"}
         style_clause = (
             f"Authoritative target output style ({style.source}):\n{style.style_prompt}"
@@ -552,6 +553,65 @@ def _registration(
     )
 
 
+def _is_storyboard_style_anchor(
+    reference: ResolvedAdReferenceV2, target_semantic_role: str
+) -> bool:
+    return (
+        target_semantic_role == "storyboard_sequence"
+        and reference.storyboard_reference_purpose == "sequence_visual_anchor"
+    )
+
+
+def _reference_description(
+    reference: ResolvedAdReferenceV2,
+    target_semantic_role: str,
+) -> str:
+    if _is_storyboard_style_anchor(reference, target_semantic_role):
+        return (
+            "Previous storyboard grid, style only: palette, rendering medium, texture, and "
+            "lighting. Do not reuse its panels."
+        )
+    semantic_role = reference.semantic_reference_role
+    if semantic_role == "storyboard_visual_reference":
+        return (
+            "Storyboard grid for this segment: follow its panel order, composition, action, "
+            "and timing. Do not show the grid itself."
+        )
+    if semantic_role == "subject_reference":
+        if reference.source_semantic_role == "product":
+            return (
+                "Product reference: preserve the exact shape, proportions, materials, colors, and "
+                "marks. Do not reproduce any multi-view layout."
+            )
+        if reference.source_semantic_role == "prop":
+            return "Prop reference: preserve the exact shape, materials, and colors."
+        if reference.source_identity_facts.get("character_asset_kind") == "turnaround":
+            return (
+                "Character turnaround sheet: use it only for this character's face, hair, "
+                "wardrobe, body shape, and proportions. Do not reproduce the sheet layout or "
+                "repeat the character."
+            )
+        return (
+            "Character identity reference: use it only for face, hair, wardrobe, body shape, "
+            "and proportions."
+        )
+    if semantic_role == "environment_reference":
+        return (
+            "Scene reference: use it only for spatial layout, materials, lighting, and "
+            "atmosphere. Do not reproduce any multi-view grid layout."
+        )
+    if semantic_role == "product_reference":
+        return (
+            "Product reference: preserve the exact shape, proportions, materials, colors, and "
+            "marks. Do not reproduce any multi-view layout."
+        )
+    if semantic_role == "prop_reference":
+        return "Prop reference: preserve the exact shape, materials, and colors."
+    if semantic_role in {"style_reference", "style_composition_reference"}:
+        return "Style reference: use it only for palette, rendering medium, texture, and lighting."
+    return "Additional reference image."
+
+
 def _storyboard_visual_anchor_clause(reference_bundle: AdReferenceBundleV2) -> str:
     anchors = tuple(
         (index, item)
@@ -567,10 +627,16 @@ def _storyboard_visual_anchor_clause(reference_bundle: AdReferenceBundleV2) -> s
         )
     index, _ = anchors[0]
     return (
-        f"Image {index} is the authoritative sequence visual anchor. Preserve its "
-        "character identity, product identity, environment, palette, composition "
-        "language, and rendering style while following only this Node's own nine-panel "
-        "storyboard prompt."
+        f"Image {index} is a style-only reference for palette, rendering medium, "
+        "linework, texture, and lighting treatment. It is not a storyboard to edit "
+        "or continue by retaining its panels. Generate all nine panels anew from the "
+        "current Node's own nine-panel text, including each panel's content, action, "
+        "composition, and camera. Do not copy, trace, or reuse the reference's panel "
+        "images, narrative events, actions, poses, camera angles, shot compositions, or panel order. "
+        "Do not import its subjects, objects, or locations unless the current text "
+        "or separate subject/environment references require them. Resolve any conflict "
+        "about panel content in favor of the current text; use separate bound character "
+        "and scene references for identity and environment continuity."
     )
 
 
@@ -630,7 +696,7 @@ def _style_from_projection(
     return resolve_visual_style()
 
 
-def _render_content(structured: object) -> str:
+def _render_content(structured: object, *, generation_prompt: str = "") -> str:
     if isinstance(structured, SceneDesignBoardContentV2):
         return "\n".join(
             [
@@ -663,8 +729,7 @@ def _render_content(structured: object) -> str:
                 *[
                     (
                         f"{frame_positions[panel.panel_index - 1]} content: "
-                        f"{panel.beat}; {panel.composition}; "
-                        f"{panel.camera}; {panel.subject_action}; "
+                        f"{_render_storyboard_panel(panel, generation_prompt=generation_prompt)}; "
                         f"continuity={panel.continuity_from_previous}"
                     )
                     for panel in structured.panels
@@ -699,6 +764,24 @@ def _render_content(structured: object) -> str:
     if structured is None:
         return ""
     return json.dumps(structured.model_dump(mode="json"), sort_keys=True)
+
+
+def _render_storyboard_panel(panel: StoryboardPanelV2, *, generation_prompt: str) -> str:
+    """Render each exact panel detail once without rewriting the saved creative prompt."""
+
+    projected_row = f"Panel {panel.panel_index}: {panel.beat}; camera: {panel.camera}."
+    already_projected = projected_row in generation_prompt
+    projected_values = {panel.beat, panel.camera} if already_projected else set()
+    details = list(
+        dict.fromkeys(
+            value
+            for value in (panel.beat, panel.composition, panel.camera, panel.subject_action)
+            if value not in projected_values
+        )
+    )
+    if already_projected:
+        details.insert(0, f"Use Panel {panel.panel_index} in the creative prompt")
+    return "; ".join(details)
 
 
 def _provider_parameters(semantic_role: str) -> dict[str, str | int | float | bool]:
@@ -741,6 +824,7 @@ def _render_reference_identities(
         }
         for reference in reference_bundle.references
         if reference.source_identity_facts
+        and not _is_storyboard_style_anchor(reference, target_semantic_role)
     ]
     if not identities and not reference_bundle.references:
         return ""

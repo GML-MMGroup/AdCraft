@@ -77,7 +77,6 @@ export const WORLD_SETTING_MOTION_PROGRAM: AgentRoleMotionProgram = {
       },
     },
   ],
-  waiting: [],
 };
 
 // Simplified offline from Natural Earth 1:110m land data (public domain).

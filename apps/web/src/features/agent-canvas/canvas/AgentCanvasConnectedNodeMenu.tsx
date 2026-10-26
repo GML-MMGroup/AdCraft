@@ -16,6 +16,7 @@ import {
   connectionRuleForPair,
 } from "./connectionPolicy.ts";
 import "./AgentCanvasConnectedNodeMenu.css";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 interface AgentCanvasConnectedNodeMenuProps {
   anchorNode: CanvasNodeV2;
@@ -34,6 +35,7 @@ export function AgentCanvasConnectedNodeMenu({
   onSelect,
   onClose,
 }: AgentCanvasConnectedNodeMenuProps) {
+  const t = useTranslation("en-US");
   const [selectedRoles, setSelectedRoles] = useState<
     Partial<Record<CanvasNodeTypeV2, CanvasBindingInputRoleV2>>
   >({});
@@ -48,20 +50,20 @@ export function AgentCanvasConnectedNodeMenu({
       <button
         type="button"
         className="agent-canvas-connected-menu__backdrop"
-        aria-label="Close connected node menu"
+        aria-label={t("Close connected node menu")}
         onClick={onClose}
       />
       <div
         className="agent-canvas-connected-menu"
         role="menu"
-        aria-label={`Add ${direction} node`}
+        aria-label={t("Add {direction} node", { direction })}
         style={{
           left: `min(${Math.max(12, point.x)}px, calc(100vw - 228px))`,
           top: `min(${Math.max(12, point.y)}px, calc(100vh - 320px))`,
         }}
       >
         <span className="agent-canvas-connected-menu__eyebrow">
-          {direction === "upstream" ? "Add input" : "Add output"}
+          {direction === "upstream" ? t("Add input") : t("Add output")}
         </span>
         {compatibleTypes.length ? compatibleTypes.map((nodeType) => {
           const sourceType = direction === "downstream" ? anchorNode.node_type : nodeType;
@@ -74,7 +76,7 @@ export function AgentCanvasConnectedNodeMenu({
               <button
                 type="button"
                 role="menuitem"
-                aria-label={`Create connected ${AGENT_CANVAS_NODE_LABELS[nodeType]} node`}
+                aria-label={t("Create connected {type} node", { type: AGENT_CANVAS_NODE_LABELS[nodeType] })}
                 onClick={() => onSelect(nodeType, selectedRole)}
               >
                 <AgentCanvasNodeIcon nodeType={nodeType} />
@@ -100,7 +102,7 @@ export function AgentCanvasConnectedNodeMenu({
             </div>
           );
         }) : (
-          <p>No compatible {direction} node types.</p>
+          <p>{t("No compatible {direction} node types.", { direction })}</p>
         )}
       </div>
     </>

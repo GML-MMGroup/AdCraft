@@ -1,7 +1,7 @@
 import type { AgentCapabilityIdV2 } from "../../../types-v2.ts";
 import { AgentCapabilityIcon } from "./AgentCapabilityIcon.tsx";
 import type { AgentRoleMotionState } from "./agent-role-animation/types.ts";
-import { useAgentRoleVisual } from "./agent-role-animation/useAgentRoleVisual.ts";
+import { roleVisualMode, useAgentRoleVisual } from "./agent-role-animation/useAgentRoleVisual.ts";
 import { retryRoleVisual } from "./agent-role-animation/agentRoleVisualResource.ts";
 
 const AGENT_CAPABILITY_ROLE_CLASSES: Record<AgentCapabilityIdV2, string> = {
@@ -43,7 +43,7 @@ export function AgentCapabilityIdentity({
       {visual.error ? <button type="button" className="agent-chat__identity-retry"
         aria-label={`Retry ${displayName} icon`} disabled={visual.retryAvailable === false}
         title={visual.retryAvailable === false ? "Icon unavailable. Reload the page to try again." : "Retry role icon"}
-        onClick={() => retryRoleVisual(capabilityId, state === "idle" ? "bitmap" : "animated")}>↻</button> : null}
+        onClick={() => retryRoleVisual(capabilityId, roleVisualMode(state))}>↻</button> : null}
     </div>
   );
 }

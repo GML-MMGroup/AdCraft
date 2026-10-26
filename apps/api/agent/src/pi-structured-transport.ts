@@ -5,7 +5,14 @@ import OpenAI from "openai";
 import {
   chatCompletionChunkFailure,
   normalizeChatCompletionChunk,
+  sanitizeChatCompletionChunk,
 } from "./chat-completion-chunk-normalizer.js";
+import {
+  buildWorkflowModelCallSkillContext,
+  workflowModelCallCapture,
+  modelCallFailure,
+  type WorkflowModelCallClient,
+} from "./workflow-model-calls.js";
 import type {
   AgentRunRequest,
   AgentModelTraceStreamingChunkV1,
@@ -14,7 +21,9 @@ import type {
 } from "./generated/agent-runtime.js";
 import {
   AgentOperationFailure,
+  isProviderBalanceFailure,
   isProviderTimeoutFailure,
+  PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
 } from "./operation-recovery.js";
 import {
   isAcceptanceReplaySource,
@@ -29,9 +38,17 @@ import {
   type AgentModelTraceClient,
 } from "./model-trace.js";
 import type { LoadedSkill } from "./skills.js";
+import { intakeRepairPolicy } from "./prompts/intake-repair.js";
+import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
+import {
+  brandFormRepairPolicy,
+  brandFormSupplementalRepairPolicy,
+  brandTreatmentReviewRepairPolicy,
+} from "./prompts/brand-form-repair.js";
 
 
 interface StructuredCompletionRequestBase {
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly model: string;
   readonly messages: ReadonlyArray<Readonly<Record<string, unknown>>>;
   readonly max_tokens: number;
@@ -125,8 +142,34 @@ export type StructuredCompletionExecutor = (
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly idleTimeoutMs?: number;
+    readonly onChunk?: (chunk: unknown) => void;
+    readonly onPresentation?: (segment: PresentationSegment, text: string) => void;
+    readonly presentationAnswerKey?: string | null;
+    readonly attempt?: number;
+    readonly attemptStage?: ModelAttemptStage;
   },
 ) => Promise<StructuredCompletionResponse>;
+
+export type PresentationSegment = "reasoning" | "answer";
+
+// Live answer extraction is currently disabled for every operation; only
+// reasoning streams live. A chat turn can span several Agent calls and the
+// engine may author the final message, and node prompts are rendered by the
+// engine from structured brief fields, so neither `assistant_message` nor
+// `editable_prompt` is reliably the text the user ends up seeing. Python
+// publishes the committed text as the answer instead.
+export const PRESENTATION_ANSWER_KEYS: Readonly<Record<string, string>> = Object.freeze({});
+
+export function presentationAnswerKeyForOperation(operation: string): string | null {
+  return PRESENTATION_ANSWER_KEYS[operation] ?? null;
+}
+
+export type PresentationDeltaSink = (
+  segment: PresentationSegment,
+  text: string,
+  attempt: number,
+) => void;
 
 interface StructuredValidationResult {
   readonly status: string;
@@ -134,15 +177,17 @@ interface StructuredValidationResult {
   readonly result?: Readonly<Record<string, unknown>>;
 }
 
-interface StructuredTransportRunInput {
+export interface StructuredTransportRunInput {
   readonly credential: AgentRuntimeTransportSource;
   readonly request: AgentRunRequest;
   readonly systemPrompt: string;
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
   readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
-  readonly traceClient?: AgentModelTraceClient;
+  readonly traceClient?: AgentModelTraceClient & WorkflowModelCallClient;
   readonly signal: AbortSignal;
+  readonly onPresentation?: PresentationDeltaSink;
+  readonly presentationAnswerKey?: string | null;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
     attempt: number,
@@ -189,8 +234,13 @@ export class PiStructuredTransportRouter {
       );
     }
     const startedAt = this.#now().toISOString();
+    const presentationAttempt = { value: 0 };
     const primaryRequest = buildPrimaryStructuredCompletionRequest(input);
-    const primary = await this.#executeWithRetry(primaryRequest, input);
+    const primary = await this.#executeWithRetry(
+      primaryRequest,
+      input,
+      () => ++presentationAttempt.value,
+    );
     let structuredAttempts = 1;
     const validationAttempts: AgentStructuredValidationAttemptAuditV1[] = [];
     let value = primaryValue(input, primary.response);
@@ -266,9 +316,10 @@ export class PiStructuredTransportRouter {
     }
     structuredAttempts = 2;
     const repair = await this.#executeOnce(
-      repairPayload(input, validation, value),
+      repairPayload(input, validation, value, primary.response.choices?.[0]?.message?.content),
       input,
       "structured_repair",
+      ++presentationAttempt.value,
     );
     value = repairContent(repair.response);
     if (value === undefined) {
@@ -343,9 +394,10 @@ export class PiStructuredTransportRouter {
   async #executeWithRetry(
     request: StructuredCompletionRequest,
     input: StructuredTransportRunInput,
+    nextAttempt: () => number,
   ): Promise<CompletionAttempt> {
     try {
-      return await this.#executeOnce(request, input, "initial");
+      return await this.#executeOnce(request, input, "initial", nextAttempt());
     } catch (error) {
       if (isAgentModelTraceFailure(error)) throw error;
       if (isCertifiedJsonObjectCapabilityFallback(error, input)) {
@@ -353,6 +405,7 @@ export class PiStructuredTransportRouter {
           jsonObjectCapabilityFallbackRequest(request),
           input,
           "capability_fallback",
+          nextAttempt(),
         );
         return { ...fallback, capabilityFallbackCount: 1 };
       }
@@ -363,7 +416,12 @@ export class PiStructuredTransportRouter {
         throw normalizeTransportFailure(error, input.signal);
       }
       await this.#sleep(250);
-      const retry = await this.#executeOnce(request, input, "transport_retry");
+      const retry = await this.#executeOnce(
+        withRetryReasoning(request, input.credential.execution_policy),
+        input,
+        "transport_retry",
+        nextAttempt(),
+      );
       return { ...retry, retryCount: 1 };
     }
   }
@@ -372,6 +430,7 @@ export class PiStructuredTransportRouter {
     request: StructuredCompletionRequest,
     input: StructuredTransportRunInput,
     stage: ModelAttemptStage,
+    attempt: number,
   ): Promise<CompletionAttempt> {
     const startedAt = this.#now().toISOString();
     const timeoutMs = modelAttemptTimeoutMs(
@@ -399,6 +458,28 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
+    const capture = workflowModelCallCapture(
+      input.traceClient, input.credential, input.request, stage,
+      request.stream ? "sdk_stream_chunks" : "sdk_response",
+      input.loadedSkills ?? [],
+    );
+    capture?.begin({
+      agent_request: input.request, system_prompt: input.systemPrompt,
+      user_prompt: input.userPrompt, output_schema: input.schema,
+      loaded_skills: input.loadedSkills ?? [], provider_request: request,
+      skill_context: buildWorkflowModelCallSkillContext(input.request, input.loadedSkills ?? []),
+      provider: input.credential.provider, model_ref: input.credential.model_ref,
+      execution_policy: input.credential.execution_policy, effective_timeout_ms: timeoutMs,
+      transport_options: { timeout_ms: timeoutMs, max_retries: 0, max_output_bytes: input.request.policy?.max_output_bytes ?? 262_144 },
+      ...(!isAcceptanceReplaySource(input.credential) ? { base_url: input.credential.base_url } : {}),
+    });
+    const presentationEnabled = Boolean(
+      input.onPresentation &&
+      input.request.presentation_stream_id &&
+      input.request.presentation_channel &&
+      input.credential.execution_policy.structured_transport === "streaming_json_object" &&
+      request.stream,
+    );
     try {
       const response = isAcceptanceReplaySource(input.credential)
         ? await claimAgentModelTraceOutcome(
@@ -415,7 +496,22 @@ export class PiStructuredTransportRouter {
           signal: input.signal,
           timeoutMs,
           maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
+          idleTimeoutMs: 90_000,
+          ...(capture ? { onChunk: (chunk: unknown) => capture.chunk(chunk) } : {}),
+          ...(presentationEnabled
+            ? {
+              onPresentation: (segment: PresentationSegment, text: string) => {
+                input.onPresentation?.(segment, text, attempt);
+              },
+            }
+            : {}),
+          ...(presentationEnabled && input.presentationAnswerKey !== undefined
+            ? { presentationAnswerKey: input.presentationAnswerKey }
+            : {}),
+          attempt,
+          attemptStage: stage,
         });
+      capture?.finish({ response });
       await recordAgentModelTraceOutcome(
         {
           ...input,
@@ -441,6 +537,7 @@ export class PiStructuredTransportRouter {
         attemptStage: stage,
       };
     } catch (error) {
+      capture?.finish({ error: modelCallFailure(error) }, true, false);
       if (isAgentModelTraceFailure(error)) throw error;
       const normalized = normalizeTransportFailure(
         error,
@@ -494,6 +591,10 @@ export async function executeOpenAICompletion(
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
     readonly maxOutputBytes?: number;
+    readonly idleTimeoutMs?: number;
+    readonly onChunk?: (chunk: unknown) => void;
+    readonly onPresentation?: (segment: PresentationSegment, text: string) => void;
+    readonly presentationAnswerKey?: string | null;
   },
 ): Promise<StructuredCompletionResponse> {
   const client = new OpenAI({
@@ -523,10 +624,258 @@ export async function executeOpenAICompletion(
     return await aggregateStreamingJsonCompletion(stream as AsyncIterable<unknown>, {
       signal: controller.signal,
       maxOutputBytes: options.maxOutputBytes ?? 262_144,
+      ...(options.idleTimeoutMs !== undefined
+        ? { idleTimeoutMs: options.idleTimeoutMs }
+        : {}),
+      ...(options.onChunk ? { onChunk: options.onChunk } : {}),
+      ...(options.onPresentation
+        ? { onPresentation: options.onPresentation }
+        : {}),
+      ...(options.presentationAnswerKey !== undefined
+        ? { answerKey: options.presentationAnswerKey }
+        : {}),
     });
   } finally {
+    // Aggregation can stop on its own idle timeout while the HTTP iterator is pending.
+    controller.abort();
     clearTimeout(timer);
     options.signal.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+// Time-led batching keeps live typing smooth while bounding per-event envelope
+// overhead against the runtime stream byte budget.
+const PRESENTATION_FLUSH_INTERVAL_MS = 250;
+const PRESENTATION_FLUSH_CHARACTERS = 1024;
+
+class PresentationBatcher {
+  readonly #emit: (segment: PresentationSegment, text: string) => void;
+  readonly #buffers: Record<PresentationSegment, string> = {
+    reasoning: "",
+    answer: "",
+  };
+  readonly #timers: Partial<Record<PresentationSegment, ReturnType<typeof setTimeout>>> = {};
+
+  constructor(emit: (segment: PresentationSegment, text: string) => void) {
+    this.#emit = emit;
+  }
+
+  push(segment: PresentationSegment, text: string): void {
+    if (text.length === 0) return;
+    this.#buffers[segment] += text;
+    if (this.#timers[segment] === undefined) {
+      this.#timers[segment] = setTimeout(
+        () => this.flush(segment),
+        PRESENTATION_FLUSH_INTERVAL_MS,
+      );
+    }
+    if (Array.from(this.#buffers[segment]).length >= PRESENTATION_FLUSH_CHARACTERS) {
+      this.flush(segment);
+    }
+  }
+
+  flush(segment: PresentationSegment): void {
+    const timer = this.#timers[segment];
+    if (timer !== undefined) clearTimeout(timer);
+    delete this.#timers[segment];
+    const text = this.#buffers[segment];
+    this.#buffers[segment] = "";
+    if (text.length === 0) return;
+    let part = "";
+    for (const character of text) {
+      const candidate = part + character;
+      if (Buffer.byteLength(candidate, "utf8") > 4096 && part.length > 0) {
+        this.#safeEmit(segment, part);
+        part = character;
+      } else {
+        part = candidate;
+      }
+    }
+    if (part.length > 0) this.#safeEmit(segment, part);
+  }
+
+  flushAll(): void {
+    this.flush("reasoning");
+    this.flush("answer");
+  }
+
+  #safeEmit(segment: PresentationSegment, text: string): void {
+    try {
+      this.#emit(segment, text);
+    } catch {
+      // Presentation is best effort and cannot affect structured parsing.
+    }
+  }
+}
+
+class AnswerStringScanner {
+  readonly #answerKey: string;
+  readonly #onText: (text: string) => void;
+  #state:
+    | "normal"
+    | "key_string"
+    | "key_escape"
+    | "after_key"
+    | "after_colon"
+    | "skip_value_string"
+    | "skip_value_escape"
+    | "answer_string"
+    | "answer_escape"
+    | "answer_unicode" = "normal";
+  #keyText = "";
+  #keyCandidate = "";
+  #answerUnicode = "";
+  #pendingHighSurrogate: number | undefined;
+  #found = false;
+
+  constructor(answerKey: string, onText: (text: string) => void) {
+    this.#answerKey = answerKey;
+    this.#onText = onText;
+  }
+
+  feed(content: string): void {
+    for (const character of content) this.#consume(character);
+  }
+
+  #consume(character: string): void {
+    switch (this.#state) {
+      case "normal":
+        if (character === '"') {
+          this.#keyText = "";
+          this.#state = "key_string";
+        }
+        return;
+      case "key_string":
+        if (character === '"') {
+          this.#keyCandidate = decodeJsonString(this.#keyText);
+          this.#state = "after_key";
+        } else if (character === "\\") {
+          this.#keyText += character;
+          this.#state = "key_escape";
+        } else {
+          this.#keyText += character;
+        }
+        return;
+      case "key_escape":
+        this.#keyText += character;
+        this.#state = character === "u" ? "key_string" : "key_string";
+        return;
+      case "after_key":
+        if (/\s/.test(character)) return;
+        if (character === ":") {
+          this.#state = "after_colon";
+        } else {
+          this.#state = "normal";
+          this.#consume(character);
+        }
+        return;
+      case "after_colon":
+        if (/\s/.test(character)) return;
+        if (character !== '"') {
+          this.#state = "normal";
+          this.#consume(character);
+          return;
+        }
+        if (!this.#found && this.#keyCandidate === this.#answerKey) {
+          this.#found = true;
+          this.#answerUnicode = "";
+          this.#pendingHighSurrogate = undefined;
+          this.#state = "answer_string";
+        } else {
+          this.#state = "skip_value_string";
+        }
+        return;
+      case "skip_value_string":
+        if (character === "\\") this.#state = "skip_value_escape";
+        else if (character === '"') this.#state = "normal";
+        return;
+      case "skip_value_escape":
+        this.#state = "skip_value_string";
+        return;
+      case "answer_string":
+        if (character === '"') {
+          this.#flushPendingHighSurrogate();
+          this.#state = "normal";
+        } else if (character === "\\") {
+          this.#state = "answer_escape";
+        } else {
+          this.#flushPendingHighSurrogate();
+          this.#emit(character);
+        }
+        return;
+      case "answer_escape":
+        if (character === "u") {
+          this.#answerUnicode = "";
+          this.#state = "answer_unicode";
+          return;
+        }
+        this.#flushPendingHighSurrogate();
+        const escaped = ({
+          '"': '"',
+          "\\": "\\",
+          "/": "/",
+          b: "\b",
+          f: "\f",
+          n: "\n",
+          r: "\r",
+          t: "\t",
+        } as Record<string, string>)[character];
+        if (escaped !== undefined) this.#emit(escaped);
+        this.#state = "answer_string";
+        return;
+      case "answer_unicode":
+        this.#answerUnicode += character;
+        if (this.#answerUnicode.length < 4) return;
+        const codeUnit = Number.parseInt(this.#answerUnicode, 16);
+        if (Number.isNaN(codeUnit)) {
+          this.#state = "answer_string";
+          return;
+        }
+        if (this.#pendingHighSurrogate !== undefined) {
+          if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+            this.#emit(String.fromCodePoint(
+              0x10000 + ((this.#pendingHighSurrogate - 0xd800) << 10) + codeUnit - 0xdc00,
+            ));
+            this.#pendingHighSurrogate = undefined;
+          } else {
+            this.#emit(String.fromCharCode(this.#pendingHighSurrogate));
+            this.#pendingHighSurrogate = undefined;
+            this.#consumeUnicodeCodeUnit(codeUnit);
+          }
+        } else {
+          this.#consumeUnicodeCodeUnit(codeUnit);
+        }
+        this.#answerUnicode = "";
+        this.#state = "answer_string";
+        return;
+    }
+  }
+
+  #consumeUnicodeCodeUnit(codeUnit: number): void {
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      this.#pendingHighSurrogate = codeUnit;
+    } else {
+      this.#emit(String.fromCharCode(codeUnit));
+    }
+  }
+
+  #flushPendingHighSurrogate(): void {
+    if (this.#pendingHighSurrogate !== undefined) {
+      this.#emit(String.fromCharCode(this.#pendingHighSurrogate));
+      this.#pendingHighSurrogate = undefined;
+    }
+  }
+
+  #emit(text: string): void {
+    if (text.length > 0) this.#onText(text);
+  }
+}
+
+function decodeJsonString(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw;
   }
 }
 
@@ -535,11 +884,29 @@ export async function aggregateStreamingJsonCompletion(
   options: {
     readonly signal: AbortSignal;
     readonly maxOutputBytes: number;
+    readonly idleTimeoutMs?: number;
     readonly now?: () => Date;
+    readonly onChunk?: (chunk: unknown) => void;
+    readonly onPresentation?: (segment: PresentationSegment, text: string) => void;
+    readonly answerKey?: string | null;
   },
 ): Promise<StructuredCompletionResponse> {
   const now = options.now ?? (() => new Date());
   const iterator = stream[Symbol.asyncIterator]();
+  const streamController = new AbortController();
+  const abortFromCaller = () => streamController.abort(options.signal.reason);
+  options.signal.addEventListener("abort", abortFromCaller, { once: true });
+  if (options.signal.aborted) streamController.abort(options.signal.reason);
+  const idleTimeoutMs = Math.max(1, options.idleTimeoutMs ?? 90_000);
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let stallError: Error | undefined;
+  const resetIdleTimer = () => {
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      stallError = streamingStallFailure();
+      streamController.abort();
+    }, idleTimeoutMs);
+  };
   let content = "";
   let responseBytes = 0;
   let responseActivityObserved = false;
@@ -549,10 +916,30 @@ export async function aggregateStreamingJsonCompletion(
   let providerTraceId: string | null = null;
   let terminal = false;
   const normalizedChunks: AgentModelTraceStreamingChunkV1[] = [];
+  const presentationBatcher = options.onPresentation
+    ? new PresentationBatcher(options.onPresentation)
+    : undefined;
+  const answerScanner =
+    presentationBatcher !== undefined && options.answerKey
+      ? new AnswerStringScanner(options.answerKey, (text) => {
+        presentationBatcher.push("answer", text);
+      })
+      : undefined;
   try {
+    resetIdleTimer();
     while (true) {
-      const item = await abortableNext(iterator, options.signal);
+      let item: IteratorResult<unknown>;
+      try {
+        item = await abortableNext(iterator, streamController.signal);
+      } catch (error) {
+        if (stallError !== undefined) throw stallError;
+        throw error;
+      }
+      if (stallError !== undefined) throw stallError;
       if (item.done) break;
+      try {
+        options.onChunk?.(sanitizeChatCompletionChunk(item.value));
+      } catch { /* Diagnostic observers cannot affect parsing. */ }
       responseActivityObserved = true;
       const observedAt = now().toISOString();
       lastActivityAt = observedAt;
@@ -577,6 +964,10 @@ export async function aggregateStreamingJsonCompletion(
           firstContentAt = observedAt;
         }
         content += parsed.content;
+        answerScanner?.feed(parsed.content);
+      }
+      if (parsed.reasoningContent !== null && parsed.reasoningContent.length > 0) {
+        presentationBatcher?.push("reasoning", parsed.reasoningContent);
       }
       if (parsed.content !== null || parsed.finishReason !== null) {
         normalizedChunks.push({
@@ -591,6 +982,13 @@ export async function aggregateStreamingJsonCompletion(
         finishReason = parsed.finishReason;
         terminal = true;
       }
+      if (
+        (parsed.content !== null && parsed.content.length > 0) ||
+        parsed.reasoningContentPresent ||
+        parsed.finishReason !== null
+      ) {
+        resetIdleTimer();
+      }
     }
     if (!terminal) {
       throw chatCompletionChunkFailure(
@@ -604,6 +1002,7 @@ export async function aggregateStreamingJsonCompletion(
         "stream_content_missing",
       );
     }
+    presentationBatcher?.flushAll();
     const completedAt = now().toISOString();
     return {
       id: providerTraceId,
@@ -631,12 +1030,32 @@ export async function aggregateStreamingJsonCompletion(
     }
     throw error;
   } finally {
+    presentationBatcher?.flushAll();
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    options.signal.removeEventListener("abort", abortFromCaller);
     try {
-      await iterator.return?.();
+      const close = iterator.return?.();
+      if (close !== undefined) {
+        if (streamController.signal.aborted) {
+          // Async generators queue return() behind a pending next(). Cancellation
+          // must not wait for a provider iterator that has stopped responding.
+          void close.catch(() => undefined);
+        } else {
+          await close;
+        }
+      }
     } catch {
       // Stream cleanup cannot replace the authoritative transport outcome.
     }
   }
+}
+
+function streamingStallFailure(): Error {
+  return Object.assign(new Error("Agent provider stream stalled."), {
+    name: "TimeoutError",
+    code: "agent_provider_timeout",
+    stall_detected: true,
+  });
 }
 
 async function abortableNext(
@@ -792,20 +1211,57 @@ function repairPayload(
   input: StructuredTransportRunInput,
   validation: StructuredValidationResult | undefined,
   invalidValue: Readonly<Record<string, unknown>> | undefined,
+  invalidContent?: string | null,
 ): StructuredCompletionRequest {
-  const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
+  const currentUserInput = "user_input" in input.request.context
+    ? input.request.context.user_input : undefined;
+  const isIntake = input.request.operation === "decide_turn_intent" &&
+    input.request.contract_name === "CompactTurnIntentDecisionV3" &&
+    typeof currentUserInput === "string";
+  const isTreatment = input.request.operation === "brand_treatment_step" &&
+    input.request.contract_name === "CreativeTreatmentOutputV1";
+  const isBrandTreatmentReview = input.request.operation === "brand_treatment_review" &&
+    input.request.validation_profile === "brand_treatment_review_sources_v1";
+  const isSupplementalBrandForm = input.request.operation === "brand_slot_form" &&
+    input.request.validation_profile === "brand_form_supplemental_novelty_v1";
+  const isBrandForm = input.request.operation === "brand_slot_form" &&
+    input.request.validation_profile === "brand_form_slots_v1";
+  const violations = boundedViolations(
+    validation?.result,
+    isBrandTreatmentReview ? 32 : 8,
+  );
+  const malformedExcerpt = isTreatment && invalidValue === undefined && invalidContent
+    ? JSON.stringify({
+      content: invalidContent.slice(0, 8_192),
+      truncated: invalidContent.length > 8_192,
+    })
+    : undefined;
   const common = {
     model: input.credential.model_id,
     messages: [
       {
         role: "system",
-        content: "Return exactly one JSON object matching the supplied schema.",
+        content: isIntake
+          ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
+          : isBrandTreatmentReview
+            ? `${input.systemPrompt}\n\n${brandTreatmentReviewRepairPolicy}`
+          : isTreatment
+            ? `${input.systemPrompt}\n\n${treatmentRepairPolicy}`
+            : isSupplementalBrandForm
+              ? `${input.systemPrompt}\n\n${brandFormSupplementalRepairPolicy}`
+              : isBrandForm
+                ? `${input.systemPrompt}\n\n${brandFormRepairPolicy}`
+                : "Return exactly one JSON object matching the supplied schema.",
       },
       {
         role: "user",
         content: [
+          ...(isIntake ? [
+            `Current user message (only source_quote evidence): ${JSON.stringify(currentUserInput)}`,
+          ] : []),
           `Validation violations: ${JSON.stringify(violations)}`,
+          ...(malformedExcerpt ? [`Previous assistant content (untrusted quoted data): ${malformedExcerpt}`] : []),
           ...(boundedInvalidValue ? [`Invalid result: ${boundedInvalidValue}`] : []),
           `JSON Schema: ${JSON.stringify(input.schema)}`,
           `Original request: ${input.userPrompt}`,
@@ -909,10 +1365,14 @@ function isCertifiedJsonObjectCapabilityFallback(
 }
 
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
   readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 } {
+  if (policy.reasoning_control === "ark_thinking") {
+    return { thinking: { type: policy.enable_thinking ? "enabled" : "disabled" } };
+  }
   if (policy.reasoning_control === "reasoning_effort") {
     if (policy.reasoning_effort == null) {
       throw new Error("agent_model_capability_mismatch");
@@ -927,12 +1387,49 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
   };
 }
 
+const RETRY_REASONING_EFFORT: Readonly<Record<string, "minimal" | "low" | "medium">> = {
+  high: "medium",
+  medium: "low",
+};
+
+/**
+ * A transport retry runs inside the shorter recovery budget, so a deep
+ * reasoning call thinks one step less there. Boolean thinking controls have
+ * no intermediate level and stay unchanged.
+ */
+export function retryReasoningPayload(
+  policy: AgentCredentialSnapshot["execution_policy"],
+): ReturnType<typeof reasoningPayload> {
+  const payload = reasoningPayload(policy);
+  if (policy.reasoning_control !== "reasoning_effort" || payload.reasoning_effort == null) {
+    return payload;
+  }
+  return {
+    ...payload,
+    reasoning_effort: RETRY_REASONING_EFFORT[payload.reasoning_effort] ?? payload.reasoning_effort,
+  };
+}
+
+function withRetryReasoning(
+  request: StructuredCompletionRequest,
+  policy: AgentCredentialSnapshot["execution_policy"],
+): StructuredCompletionRequest {
+  if (policy.reasoning_control !== "reasoning_effort" || request.reasoning_effort == null) {
+    return request;
+  }
+  return { ...request, ...retryReasoningPayload(policy) };
+}
+
 function repairReasoningPayload(
   policy: AgentCredentialSnapshot["execution_policy"],
 ): {
+  readonly thinking?: { readonly type: "disabled" };
   readonly enable_thinking?: boolean;
   readonly reasoning_effort?: "minimal";
 } {
+  if (policy.reasoning_control === "ark_thinking") {
+    return { thinking: { type: "disabled" } };
+  }
   if (policy.reasoning_control === "reasoning_effort") {
     return { reasoning_effort: "minimal" };
   }
@@ -969,14 +1466,21 @@ function repairContent(
 
 function parseObject(value: string | undefined | null) {
   if (!value) return undefined;
+  const candidate = fencedJsonContent(value) ?? value.trim();
+  if (!candidate) return undefined;
   try {
-    const parsed: unknown = JSON.parse(value);
+    const parsed: unknown = JSON.parse(candidate);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Readonly<Record<string, unknown>>)
       : undefined;
   } catch {
     return undefined;
   }
+}
+
+function fencedJsonContent(value: string): string | undefined {
+  const match = value.trim().match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i);
+  return match?.[1]?.trim() || undefined;
 }
 
 function acceptedValue(
@@ -1149,10 +1653,13 @@ function roleViolationCategory(
     : undefined;
 }
 
-function boundedViolations(result: Readonly<Record<string, unknown>> | undefined) {
+function boundedViolations(
+  result: Readonly<Record<string, unknown>> | undefined,
+  maxViolations = 8,
+) {
   const candidate = result?.violations;
   if (!Array.isArray(candidate)) return [];
-  return candidate.slice(0, 8).flatMap((item) => {
+  return candidate.slice(0, maxViolations).flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const violation = item as Readonly<Record<string, unknown>>;
     const code = boundedViolationText(violation.code, 160);
@@ -1260,6 +1767,15 @@ function normalizeTransportFailure(
       attemptMetadata,
     );
   }
+  if (isProviderBalanceFailure(error)) {
+    return new AgentOperationFailure(
+      "agent_provider_insufficient_balance",
+      PROVIDER_INSUFFICIENT_BALANCE_MESSAGE,
+      false,
+      stage,
+      attemptMetadata,
+    );
+  }
   if (error instanceof AgentOperationFailure) return error;
   return new AgentOperationFailure(
     "agent_provider_transport_failed",
@@ -1276,10 +1792,11 @@ function providerTimeout(
   recoveryAllowed = false,
   manualRetryable = false,
 ): AgentOperationFailure {
+  const stallDetected = isStallDetected(attemptMetadata);
   const retryable = manualRetryable ||
     (recoveryAllowed &&
       stage === "initial" &&
-      attemptMetadata?.response_activity_observed === false &&
+      (attemptMetadata?.response_activity_observed === false || stallDetected) &&
       (attemptMetadata?.effective_timeout_ms ?? 0) > 0);
   return new AgentOperationFailure(
     "agent_provider_timeout",
@@ -1299,7 +1816,7 @@ function failureMetadata(
   error?: unknown,
 ): AgentTransportAttemptMetadataV1 {
   const shape = safeFailureShape(error);
-  return {
+  const metadata: AgentTransportAttemptMetadataV1 = {
     provider: input.credential.provider,
     model_ref: input.credential.model_ref,
     structured_transport: input.credential.execution_policy.structured_transport,
@@ -1337,6 +1854,18 @@ function failureMetadata(
     ...(shape.providerTraceId ? { provider_trace_id: shape.providerTraceId } : {}),
     ...safeActivityTimes(error),
   };
+  if (isStallDetected(error)) {
+    Object.assign(metadata, { stall_detected: true });
+  }
+  return metadata;
+}
+
+function isStallDetected(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      (error as { readonly stall_detected?: unknown }).stall_detected === true,
+  );
 }
 
 function safeResponseBytes(error: unknown): number | null {

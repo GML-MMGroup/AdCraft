@@ -129,7 +129,6 @@ export const STORYBOARD_ARTIST_MOTION_PROGRAM: AgentRoleMotionProgram = {
       actionStrokeTrack(`${panel}-active-action-stroke`, index, transform)
     )),
   ],
-  waiting: [],
 };
 
 interface PanelContentProps {

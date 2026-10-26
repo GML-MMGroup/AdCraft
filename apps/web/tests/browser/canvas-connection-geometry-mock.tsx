@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ReactFlow, type Connection, type Edge, type IsValidConnection } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "../../src/features/agent-canvas/canvas/connection-effects/connection-effects.css";
 
 import { AgentCanvasNodeRenderer, type AgentCanvasFlowNode } from "../../src/features/agent-canvas/canvas/AgentCanvasNode.tsx";
 import { AgentCanvasEdge } from "../../src/features/agent-canvas/canvas/AgentCanvasEdge.tsx";

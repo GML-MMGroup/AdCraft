@@ -15,6 +15,7 @@
   background: #0a0a0a;
 }
 
+
 .agent-canvas-board {
   position: relative;
   min-width: 0;
@@ -25,6 +26,14 @@
 
 .agent-canvas-page.is-chat-collapsed {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.agent-canvas-page.is-brand-mode {
+  grid-template-columns: var(--brand-panel-width, 300px) minmax(0, 1fr) 390px;
+}
+
+.agent-canvas-page.is-brand-mode.is-chat-collapsed {
+  grid-template-columns: var(--brand-panel-width, 300px) minmax(0, 1fr);
 }
 
 .agent-canvas-page.is-chat-collapsed .agent-canvas-board {
@@ -927,12 +936,12 @@
 
 :root .agent-canvas-overlay.agent-canvas-overlay--assets {
   position: fixed;
-  inset: 18px;
+  inset: 0;
   box-sizing: border-box;
   display: grid;
   place-items: center;
-  padding: 52px 12px 12px;
-  background: rgb(0 0 0 / 48%);
+  padding: 18px;
+  background: transparent;
   border: 0;
   box-shadow: none;
   backdrop-filter: none;
@@ -1165,6 +1174,10 @@
   .agent-canvas-page {
     grid-template-columns: minmax(0, 1fr) 330px;
   }
+
+  .agent-canvas-page.is-brand-mode.is-chat-collapsed {
+    grid-template-columns: var(--brand-panel-width, 300px) minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 900px) {
@@ -1188,3 +1201,36 @@
   }
 
 }
+
+/* Brand-only navigation follows the actual decision-panel edge. */
+body:has(.agent-canvas-page.is-brand-mode) .floating-rail--global { display: none; }
+.agent-canvas-page.is-brand-mode .floating-rail--brand {
+  position: absolute;
+  top: 12px;
+  left: calc(var(--brand-panel-width, 300px) + 12px);
+  width: max-content;
+  display: flex;
+  transform: none;
+}
+.floating-rail--brand .tooltip {
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.floating-rail--brand .rail-item:hover .tooltip { transform: translateX(-50%); }
+.brand-panel-shell { position: relative; min-width: 0; min-height: 0; }
+.brand-panel-shell .brand-decision-panel { height: 100%; }
+.brand-panel-shell.is-resizing { user-select: none; }
+.brand-panel-resize {
+  position: absolute; z-index: 5; top: 0; right: 0; bottom: 0;
+  width: 9px; cursor: ew-resize; touch-action: none;
+}
+.brand-panel-resize::after {
+  content: ""; position: absolute; top: 50%; right: 3px;
+  width: 2px; height: 48px; border-radius: 2px;
+  background: #707070; opacity: 0; transform: translateY(-50%);
+  transition: opacity 140ms ease;
+}
+.brand-panel-resize:hover::after, .brand-panel-resize:focus-visible::after,
+.brand-panel-shell.is-resizing .brand-panel-resize::after { opacity: 1; }
+.brand-panel-resize:focus-visible { outline: 1px solid #a3a3a3; outline-offset: -1px; }
