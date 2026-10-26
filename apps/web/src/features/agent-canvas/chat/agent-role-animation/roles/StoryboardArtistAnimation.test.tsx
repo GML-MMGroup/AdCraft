@@ -439,14 +439,28 @@ describe("StoryboardArtistAnimation", () => {
     expect(opacityAt(panel1, 0.04)).toBeGreaterThan(0);
     expect(opacityAt(panel9, 0.04)).toBe(0);
 
+    let minimumFocusCount = Number.POSITIVE_INFINITY;
+    let maximumFocusCount = Number.NEGATIVE_INFINITY;
+    let minimumFocusProgress = 0;
+    let maximumFocusProgress = 0;
     for (let sample = -20_000; sample <= 20_000; sample += 1) {
       const progress = ((sample / 20_000) % 1 + 1) % 1;
       const focusCount = tracks.filter((track) => (
         opacityAt(track, progress) > 0.000_001
       )).length;
-      expect(focusCount).toBeGreaterThanOrEqual(1);
-      expect(focusCount).toBeLessThanOrEqual(2);
+      if (focusCount < minimumFocusCount) {
+        minimumFocusCount = focusCount;
+        minimumFocusProgress = progress;
+      }
+      if (focusCount > maximumFocusCount) {
+        maximumFocusCount = focusCount;
+        maximumFocusProgress = progress;
+      }
     }
+    expect(minimumFocusCount, `Minimum focus at progress ${minimumFocusProgress}`)
+      .toBeGreaterThanOrEqual(1);
+    expect(maximumFocusCount, `Maximum focus at progress ${maximumFocusProgress}`)
+      .toBeLessThanOrEqual(2);
   });
 
   it("uses one yellow sequence while reserving the center frame for still states", () => {

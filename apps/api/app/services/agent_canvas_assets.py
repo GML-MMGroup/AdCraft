@@ -399,6 +399,7 @@ class AgentCanvasAssetService:
         require_native_audio: bool = False,
         publication_intent_id: str | None = None,
         before_object_publish: PreparedObjectCallback | None = None,
+        accepted_node_revision: int | None = None,
     ) -> PreparedNodeResultV2:
         """Prepare verified bytes without publishing product Asset metadata."""
 
@@ -415,6 +416,9 @@ class AgentCanvasAssetService:
         storage_key = self._storage.content_storage_key(checksum, extension)
         workflow = self._workflows.get_workflow(workflow_id)
         node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        node_revision = accepted_node_revision
+        if node_revision is None:
+            node_revision = node.revision if node is not None else 1
         metadata = {
             **dict(publication_metadata or {}),
             "display_name": Path(filename).stem,
@@ -433,7 +437,7 @@ class AgentCanvasAssetService:
                 workflow_id=workflow_id,
                 node_id=node_id,
                 execution_id=execution_id,
-                node_revision=(node.revision if node is not None else 1),
+                node_revision=node_revision,
             ).model_dump(mode="json"),
         }
         planned = PreparedNodeResultV2(
