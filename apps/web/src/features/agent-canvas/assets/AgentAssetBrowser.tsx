@@ -7,6 +7,7 @@ import {
 
 import {
   AssetsIcon,
+  CloseIcon,
   ImageIcon,
   MuteIcon,
   PlusIcon,
@@ -45,6 +46,7 @@ export interface AgentAssetBrowserProps {
   onCreateReadySourceNode: (
     selection: AgentAssetSourceNodeSelection,
   ) => Promise<void> | void;
+  onClose?: () => void;
   onUploadComplete?: () => Promise<void> | void;
   onClose?: () => void;
 }
@@ -113,6 +115,7 @@ export function AgentAssetBrowser({
   uploadMetadata,
   onAddReferences,
   onCreateReadySourceNode,
+  onClose,
   onUploadComplete,
   onClose,
 }: AgentAssetBrowserProps) {
@@ -237,6 +240,34 @@ export function AgentAssetBrowser({
             <h2>{t("Assets")}</h2>
             <p>{t("Attach references or place ready media on the canvas.")}</p>
           </div>
+        </div>
+        <div className="agent-asset-browser__header-actions">
+          {scope === "project" ? (
+            <label className={`agent-asset-browser__upload${uploading ? " is-busy" : ""}`}>
+              <UploadIcon aria-hidden="true" />
+              <span>{uploading ? "Uploading" : "Upload"}</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*"
+                multiple
+                aria-label="Upload project media"
+                disabled={uploading}
+                onChange={handleUpload}
+              />
+            </label>
+          ) : null}
+          {onClose ? (
+            <button
+              type="button"
+              className="agent-asset-browser__close"
+              aria-label="Close assets"
+              title="Close assets"
+              onClick={onClose}
+            >
+              <CloseIcon />
+            </button>
+          ) : null}
         </div>
       </header>
 

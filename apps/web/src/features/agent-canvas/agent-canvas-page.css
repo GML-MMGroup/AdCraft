@@ -930,28 +930,6 @@
   backdrop-filter: blur(22px);
 }
 
-.agent-canvas-overlay__close {
-  position: absolute;
-  z-index: 4;
-  top: 16px;
-  right: 16px;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  place-items: center;
-  color: #53566b;
-  background: rgb(255 255 255 / 72%);
-  border: 1px solid rgb(98 101 129 / 15%);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.agent-canvas-overlay__close svg {
-  width: 16px;
-  height: 16px;
-}
-
 .agent-canvas-overlay .agent-asset-browser {
   height: 100%;
 }

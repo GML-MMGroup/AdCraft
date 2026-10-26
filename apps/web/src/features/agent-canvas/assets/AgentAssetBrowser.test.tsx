@@ -94,6 +94,21 @@ describe("AgentAssetBrowser", () => {
 
   afterEach(() => cleanup());
 
+  it("renders the close action in the asset header", () => {
+    const onClose = vi.fn();
+    render(
+      <AgentAssetBrowser
+        workflowId="workflow-1"
+        onAddReferences={vi.fn()}
+        onCreateReadySourceNode={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Close assets" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("copies selected files before resetting the native upload input", async () => {
     fixture.uploadAgentCanvasAsset.mockResolvedValue({ workflow_id: "workflow-1", asset: projectAsset("uploaded", "image") });
     render(<AgentAssetBrowser workflowId="workflow-1" onAddReferences={vi.fn()} onCreateReadySourceNode={vi.fn()} />);

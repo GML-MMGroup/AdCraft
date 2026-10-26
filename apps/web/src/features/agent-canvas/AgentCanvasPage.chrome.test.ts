@@ -4,6 +4,24 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("AgentCanvasPage chrome", () => {
+  it("keeps the asset close action inside the panel and supports standard dismiss gestures", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const assetSource = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/assets/AgentAssetBrowser.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('window.addEventListener("keydown", handleKeyDown)');
+    expect(source).toContain('if (event.key !== "Escape") return;');
+    expect(source).toContain("if (event.target === event.currentTarget) closeAssets();");
+    expect(source).toContain("onClose={closeAssets}");
+    expect(source).not.toContain("agent-canvas-overlay__close");
+    expect(assetSource).toContain('className="agent-asset-browser__close"');
+  });
+
   it("hides the React Flow attribution panel", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
