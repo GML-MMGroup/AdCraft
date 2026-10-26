@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -35,7 +36,6 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRunRequestV2,
     CanvasRunSkippedNodeV2,
     CanvasRuntimeSnapshotV2,
-    CanvasProviderTaskV2,
     EffectiveMediaParameterSnapshotV2,
     NodeExecutionLeaseV2,
     NodeRuntimeV2,
@@ -66,6 +66,7 @@ from app.services.agent_canvas_node_execution import (
     NodeExecutionDispatcher,
     NodeExecutionOutcome,
 )
+from app.services.agent_canvas_provider_task_checkpoint import provider_task_checkpoint
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
@@ -1550,7 +1551,7 @@ class DynamicCanvasScheduler:
         context: NodeExecutionContext,
     ) -> tuple[NodeExecutionOutcome, NodeExecutionLeaseV2]:
         return self._leases.guard(lease).run_with_latest_lease(
-            lambda: self._execute_member(context)
+            lambda: self._execute_member(replace(context, execution_lease=lease))
         )
 
     def _complete_member(
@@ -1565,40 +1566,30 @@ class DynamicCanvasScheduler:
         execution_id = lease.execution_id
         node_id = lease.node_id
         if outcome.provider_task_id is not None:
+            try:
+                checkpoint = self._runtime.get_provider_task(outcome.provider_task_id)
+            except V2PersistenceError as error:
+                if error.code != "provider_task_not_found":
+                    raise
+            else:
+                if (
+                    checkpoint.workflow_id != workflow_id
+                    or checkpoint.execution_id != execution_id
+                    or checkpoint.node_id != node_id
+                    or checkpoint.submission_intent_id != outcome.submission_intent_id
+                    or checkpoint.remote_task_id != outcome.remote_task_id
+                ):
+                    raise V2PersistenceError(
+                        "provider_submission_intent_conflict",
+                        "The durable provider task does not match this outcome.",
+                        stage="agent_canvas_scheduler",
+                    )
+                # The executor already committed this handoff. Polling or
+                # cancellation may have advanced it; never reset that state.
+                self._runtime.complete_lease(lease, now=now)
+                return
             self._runtime.put_provider_task(
-                CanvasProviderTaskV2(
-                    task_id=outcome.provider_task_id,
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    node_id=node_id,
-                    submission_intent_id=outcome.submission_intent_id,
-                    provider=outcome.provider or "configured",
-                    remote_task_id=outcome.remote_task_id,
-                    status="submitted",
-                    lease_generation=lease.generation,
-                    next_poll_at=now,
-                    recovery_deadline=now + timedelta(hours=1),
-                    result_descriptor={
-                        **(outcome.result_descriptor or {}),
-                        **(
-                            {
-                                "parameter_compilation_snapshot_id": (
-                                    context.effective_parameters.parameter_compilation_snapshot_id
-                                ),
-                                "requested_parameters": (context.effective_parameters.requested),
-                                "effective_parameters": (context.effective_parameters.effective),
-                            }
-                            if context.effective_parameters is not None
-                            and context.effective_parameters.parameter_compilation_snapshot_id
-                            else {}
-                        ),
-                        **(
-                            {"model_resolution": context.model_resolution.model_dump(mode="json")}
-                            if context.model_resolution is not None
-                            else {}
-                        ),
-                    },
-                ),
+                provider_task_checkpoint(context, outcome, lease, now=now),
                 now=now,
             )
             member = next(
@@ -1840,6 +1831,21 @@ class DynamicCanvasScheduler:
             for item in self._runtime.list_members(lease.execution_id)
             if item.node_id == lease.node_id
         )
+        if getattr(error, "code", None) == "stale_execution_lease":
+            if member.state in {"succeeded", "failed", "skipped_dependency", "cancelled"}:
+                return
+            if any(
+                task.node_id == lease.node_id
+                and task.lease_generation == lease.generation
+                and task.submission_intent_id is not None
+                and task.remote_task_id
+                for task in self._runtime.list_provider_tasks(
+                    execution_id=lease.execution_id, statuses=("submitted", "waiting", "recovering")
+                )
+            ):
+                # Its paid result was checkpointed after natural expiry. A
+                # recovery worker must claim it rather than fail the member.
+                return
         if self._result_committer is not None:
             failure_key = f"{lease.execution_id}:{lease.node_id}:{lease.generation}:failed"
             failure_digest = hashlib.sha256(detail.model_dump_json().encode()).hexdigest()
