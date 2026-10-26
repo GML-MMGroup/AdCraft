@@ -636,6 +636,8 @@ export async function executeOpenAICompletion(
         : {}),
     });
   } finally {
+    // Aggregation can stop on its own idle timeout while the HTTP iterator is pending.
+    controller.abort();
     clearTimeout(timer);
     options.signal.removeEventListener("abort", abortFromCaller);
   }
