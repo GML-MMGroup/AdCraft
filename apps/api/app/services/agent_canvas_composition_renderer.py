@@ -162,7 +162,7 @@ class AgentCanvasCompositionRenderer:
 
         snapshot = V2MediaToolchainCapabilityService(self._settings).snapshot()
         return {
-            "contract": "agent-canvas-composition-renderer-v2",
+            "contract": "agent-canvas-composition-renderer-v3",
             "ffmpeg_fingerprint": snapshot.ffmpeg_fingerprint,
             "ffprobe_fingerprint": snapshot.ffprobe_fingerprint,
             "video_encoder": self._encoder or snapshot.selected_video_encoder,
@@ -333,9 +333,12 @@ class AgentCanvasCompositionRenderer:
                 "alimiter=limit=0.95[amixed]"
             )
             audio_label = "[amixed]"
+        # concat switches to a microsecond time base. Restore the final cadence
+        # after padding/trimming so the encoder retains the last sample's duration.
         filters.append(
             f"[vcat]tpad=stop_mode=add:stop_duration={timeline_duration:.6f},"
-            f"trim=duration={timeline_duration:.6f},setpts=PTS-STARTPTS[vout]"
+            f"trim=duration={timeline_duration:.6f},setpts=PTS-STARTPTS,"
+            f"fps={fps:.6f}[vout]"
         )
         filters.append(
             f"{audio_label}apad=pad_dur={timeline_duration:.6f},"
