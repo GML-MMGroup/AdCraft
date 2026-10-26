@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { videoAgentBasePolicy } from "./agents.js";
+import { nativeVideoAudioPolicy } from "./audio-policy.js";
 import { listOperationDescriptors } from "../registry.js";
 
 const shotDirectionPolicy = [
@@ -25,8 +26,12 @@ export interface PromptDescriptor {
 
 const descriptors = Object.freeze(
   listOperationDescriptors().map((operation) => {
+    const needsAudioPolicy = operation.operation === "author_role_brief" || [
+      "script_authoring", "storyboard_design", "video_direction", "bgm_direction",
+    ].includes(operation.capability_id ?? "");
     const systemPrompt = [
       videoAgentBasePolicy,
+      ...(needsAudioPolicy ? [nativeVideoAudioPolicy] : []),
       instructionForOperation(operation.operation),
       localeInstructionForOperation(operation.operation),
       `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
@@ -212,6 +217,7 @@ function instructionForOperation(operation: string): string {
     return [
       "Author only the typed creative brief for the current role variant.",
       "Return one localized editable_prompt in the same structured response as the typed brief.",
+      "Keep summaries and typed fields concise; do not repeat long scene, character or style descriptions across fields. Put complete executable direction in editable_prompt, preserving approved spoken lines verbatim with their speaker, language and timing. Return complete JSON within the output budget.",
       "For visual roles, return style_description as concise role-local aesthetics derived from the frozen global and current-role advice; include those aesthetics in editable_prompt. For video_segment use target_style. Advisory examples illustrate technique only: never copy their subjects, actions, or full guidance into the brief or provider prompt. Keep approved story and role boundaries authoritative.",
       "Do not request a translation operation or a second model submission.",
       "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",

@@ -30,6 +30,7 @@ from app.schemas.agent_canvas_conversation import (
 from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
 from app.services.agent_canvas_explicit_retry import explicit_turn_retryable
+from app.services.agent_canvas_retry_fingerprint import journey_fingerprint
 from app.schemas.agent_canvas_retry_repair import (
     RetryEnvelopeDigestRepairReceiptV1,
     RetryEnvelopeDigestRepairV1,
@@ -224,12 +225,16 @@ class ChatTurnRetryService:
         except ValueError as error:
             raise _stale_error() from error
         current_session_revision = session.revision if session is not None else 0
+        has_journey_fingerprint = (
+            snapshot.journey_node_revisions is not None
+            and snapshot.journey_binding_digest is not None
+        )
         if (
             request.expected_workflow_revision != workflow.revision
             or request.expected_session_revision != current_session_revision
             or snapshot.workflow_id != workflow_id
             or snapshot.conversation_id != source.conversation_id
-            or snapshot.workflow_revision != workflow.revision
+            or (not has_journey_fingerprint and snapshot.workflow_revision != workflow.revision)
             or snapshot.session_revision != current_session_revision
         ):
             raise _stale_error()
@@ -245,9 +250,24 @@ class ChatTurnRetryService:
             raise _stale_error()
 
         current_nodes = {node.node_id: node.revision for node in workflow.nodes}
-        if any(
+        if has_journey_fingerprint:
+            journey_node_revisions, journey_binding_digest = journey_fingerprint(
+                workflow.nodes, workflow.bindings
+            )
+            if (
+                snapshot.journey_node_revisions != journey_node_revisions
+                or snapshot.journey_binding_digest != journey_binding_digest
+                or snapshot.node_revisions != journey_node_revisions
+            ):
+                raise _stale_error()
+        elif any(
             current_nodes.get(str(node_id)) != revision
             for node_id, revision in snapshot.node_revisions.items()
+        ):
+            raise _stale_error()
+        if snapshot.referenced_node_revisions is not None and any(
+            current_nodes.get(str(node_id)) != revision
+            for node_id, revision in snapshot.referenced_node_revisions.items()
         ):
             raise _stale_error()
 
@@ -322,10 +342,17 @@ class ChatTurnRetryService:
         request: ChatTurnRetryRequestV1,
     ) -> tuple[ChatTurnV2, dict[str, object]]:
         session_revision = session.revision if session is not None else 0
+        has_journey_fingerprint = (
+            snapshot.get("journey_node_revisions") is not None
+            and snapshot.get("journey_binding_digest") is not None
+        )
         if (
             request.expected_workflow_revision != workflow_revision
             or request.expected_session_revision != session_revision
-            or snapshot.get("workflow_revision") != workflow_revision
+            or (
+                not has_journey_fingerprint
+                and snapshot.get("workflow_revision") != workflow_revision
+            )
             or snapshot.get("session_revision") != session_revision
         ):
             raise _stale_error()
@@ -337,6 +364,15 @@ class ChatTurnRetryService:
             raise _stale_error()
         workflow = self._workflows.get_workflow(source.workflow_id)
         current_nodes = {node.node_id: node.revision for node in workflow.nodes}
+        if has_journey_fingerprint:
+            journey_node_revisions, journey_binding_digest = journey_fingerprint(
+                workflow.nodes, workflow.bindings
+            )
+            if (
+                snapshot.get("journey_node_revisions") != journey_node_revisions
+                or snapshot.get("journey_binding_digest") != journey_binding_digest
+            ):
+                raise _stale_error()
         node_revisions = snapshot.get("node_revisions")
         if not isinstance(node_revisions, dict) or any(
             current_nodes.get(str(node_id)) != revision

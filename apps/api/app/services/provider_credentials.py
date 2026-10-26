@@ -15,7 +15,13 @@ from types import MappingProxyType
 from typing import Callable, Iterable, Iterator, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import (
+    BaseHandler,
+    HTTPRedirectHandler,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 
 from filelock import FileLock, Timeout
 from dotenv import dotenv_values
@@ -51,13 +57,35 @@ class LocalSettingsAccessPolicy:
 
     def ensure_allowed(self, *, client_host: str | None, origin: str | None) -> None:
         if not _is_loopback_host(client_host) or (
-            origin is not None and origin not in self._allowed_origins
+            origin is not None
+            and origin not in self._allowed_origins
+            and not _is_loopback_origin(origin)
         ):
             raise CredentialSettingsError(
                 code="local_settings_access_denied",
                 message="Credential settings are available only from trusted local clients.",
                 status_code=403,
             )
+
+
+def _is_loopback_origin(origin: str) -> bool:
+    """Accept a bare http(s) origin on a loopback host, on any port."""
+
+    try:
+        parsed = urlsplit(origin)
+        parsed.port  # noqa: B018 - raises ValueError for a malformed port.
+    except ValueError:
+        return False
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return False
+    return _is_loopback_host(parsed.hostname)
 
 
 def _is_loopback_host(host: str | None) -> bool:
@@ -120,6 +148,7 @@ class ProviderCredentialRegistry:
             _volcengine_ark_definition(),
             _openrouter_definition(),
             _minimax_definition(),
+            _teamorouter_definition(),
             _fake_definition(),
         )
         self._definitions = MappingProxyType(
@@ -1135,8 +1164,12 @@ class UrllibProviderHttpTransport:
         request: Request,
         timeout_seconds: float,
         max_response_bytes: int,
+        proxy_url: str | None = None,
     ) -> ProviderHttpResponse:
-        opener = build_opener(_NoRedirectHandler())
+        handlers: list[BaseHandler] = [_NoRedirectHandler()]
+        if proxy_url is not None:
+            handlers.append(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+        opener = build_opener(*handlers)
         try:
             with opener.open(request, timeout=timeout_seconds) as response:
                 body = response.read(max_response_bytes + 1)
@@ -1572,6 +1605,24 @@ def _minimax_definition() -> ProviderCredentialDefinition:
         allowed_test_origins=("https://api.minimaxi.chat",),
         display_name="MiniMax",
         capability_consumers=MappingProxyType({"video": "video"}),
+    )
+
+
+def _teamorouter_definition() -> ProviderCredentialDefinition:
+    binding = ConsumerCredentialBinding(
+        consumer="image",
+        dotenv_field="TEAMOROUTER_API_KEY",
+        settings_field="teamorouter_api_key",
+        endpoint_field="teamorouter_base_url",
+        endpoint_dotenv_field="TEAMOROUTER_BASE_URL",
+        test_capability="unsupported",
+    )
+    return ProviderCredentialDefinition(
+        provider_id="teamorouter",
+        bindings=MappingProxyType({"image": binding}),
+        allowed_test_origins=("https://api.teamorouter.com",),
+        display_name="TeamoRouter",
+        capability_consumers=MappingProxyType({"image": "image"}),
     )
 
 

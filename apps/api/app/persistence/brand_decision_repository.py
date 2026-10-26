@@ -290,12 +290,6 @@ class BrandDecisionRepository:
         brand_id: str,
         card: BrandOptionCardV1,
     ) -> None:
-        connection.execute(
-            update(BrandOptionCardRow)
-            .where(BrandOptionCardRow.brand_id == brand_id)
-            .where(BrandOptionCardRow.status == "open")
-            .values(status="superseded")
-        )
         insert_statement = sqlite_insert(BrandOptionCardRow).values(
             card_id=card.card_id,
             brand_id=brand_id,
@@ -306,7 +300,7 @@ class BrandDecisionRepository:
             status="open",
             created_at=_now(),
         )
-        connection.execute(
+        saved = connection.execute(
             insert_statement.on_conflict_do_update(
                 index_elements=[BrandOptionCardRow.card_id],
                 set_={
@@ -317,7 +311,20 @@ class BrandDecisionRepository:
                     "payload_json": insert_statement.excluded.payload_json,
                     "created_at": insert_statement.excluded.created_at,
                 },
+                where=BrandOptionCardRow.brand_id == brand_id,
             )
+        )
+        if saved.rowcount != 1:
+            raise V2PersistenceError(
+                "brand_option_card_invalid",
+                "The Brand card belongs to a different project.",
+            )
+        connection.execute(
+            update(BrandOptionCardRow)
+            .where(BrandOptionCardRow.brand_id == brand_id)
+            .where(BrandOptionCardRow.status == "open")
+            .where(BrandOptionCardRow.card_id != card.card_id)
+            .values(status="superseded")
         )
 
     def get_open_card_in_transaction(

@@ -40,6 +40,9 @@ from app.persistence.agent_canvas_capability_proposal_repository import (
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.brand_decision_repository import BrandDecisionRepository
+from app.services.agent_canvas_parent_derived_materialization import (
+    ParentDerivedMaterializationCoordinator,
+)
 from app.persistence.errors import V2PersistenceError
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
@@ -191,6 +194,7 @@ from app.services.agent_canvas_requirements import (
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.advertising_production_readiness import advertising_production_is_ready
+from app.services.agent_canvas_node_ownership import agent_journey_nodes
 from app.services.authoritative_workflow_context import (
     AuthoritativeWorkflowContextProjector,
 )
@@ -247,11 +251,13 @@ def _answer_context_from_agent_context(
 
 
 def _workflow_conversation_summary(workflow: AgentCanvasWorkflowV2) -> str:
+    # User-created canvas nodes are outside the Agent journey and stay unreported.
+    nodes = agent_journey_nodes(workflow.nodes)
     status_counts: dict[str, int] = {}
-    for node in workflow.nodes:
+    for node in nodes:
         status_counts[node.status] = status_counts.get(node.status, 0) + 1
     counts = ", ".join(f"{status}={count}" for status, count in sorted(status_counts.items()))
-    return f"Canvas nodes: {len(workflow.nodes)} ({counts or 'none'})."
+    return f"Canvas nodes: {len(nodes)} ({counts or 'none'})."
 
 
 @dataclass(frozen=True, slots=True)
@@ -2238,6 +2244,17 @@ class AgentConversationService:
                 expected_session_revision=session.revision,
                 idempotency_key=f"reserve:{turn_id}",
             )
+            if (
+                ParentDerivedMaterializationCoordinator(
+                    workflows=self._workflows,
+                    conversations=self._conversations,
+                    materializations=AgentCanvasMaterializationRepository(
+                        self._workflows.database, self._conversations.events
+                    ),
+                ).queue_character_turnaround(session, turn_id=turn_id, lease_guard=lambda: None)
+                is not None
+            ):
+                return complete_message("Preparing the Turnaround from the current Character Main.")
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
                     if session.awaiting is None:

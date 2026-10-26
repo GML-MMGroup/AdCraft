@@ -20,6 +20,7 @@ import {
 } from "./run-budget.js";
 import { AgentOperationFailure, PROVIDER_INSUFFICIENT_BALANCE_MESSAGE } from "./operation-recovery.js";
 import { AgentPromptInputProjectionError } from "./prompt-input-projection.js";
+import { PythonInternalUnavailableError } from "./python-internal-client.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -433,7 +434,9 @@ function terminalFailureAudit(
   durationMs: number,
 ): TerminalFailureAudit {
   const attempt = failure?.attemptMetadata;
-  const modelSubmissionCount = submittedModelCount(terminal.code, attempt);
+  const modelSubmissionCount = failure?.beforeModelSubmission
+    ? 0
+    : submittedModelCount(terminal.code, attempt);
   const responseActivityObserved = attempt?.response_activity_observed ??
     (modelSubmissionCount === 0 ? false : undefined);
   return {
@@ -445,7 +448,9 @@ function terminalFailureAudit(
     attempt_stage: attempt?.attempt_stage ?? terminal.attemptStage,
     ...safeAttemptAudit(attempt),
     ...safeProjectionAudit(failure?.projectionMetadata),
-    failure_boundary: failureBoundary(terminal.code, attempt),
+    failure_boundary: failure?.beforeModelSubmission
+      ? "runtime_config_unreachable"
+      : failureBoundary(terminal.code, attempt),
     ...(modelSubmissionCount === undefined ? {} : { model_submission_count: modelSubmissionCount }),
     ...(responseActivityObserved === undefined
       ? {}
@@ -550,6 +555,7 @@ class RuntimeFailure extends Error {
     readonly attemptStage = "initial",
     readonly attemptMetadata?: FailureAudit,
     readonly projectionMetadata?: ProjectionFailureAudit,
+    readonly beforeModelSubmission = false,
   ) {
     super(message);
   }
@@ -585,6 +591,17 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
     );
   }
   if (error instanceof RuntimeFailure) return error;
+  if (error instanceof PythonInternalUnavailableError) {
+    return new RuntimeFailure(
+      error.code,
+      "Agent runtime is unavailable.",
+      true,
+      "initial",
+      undefined,
+      undefined,
+      error.beforeModelSubmission,
+    );
+  }
   if (error instanceof Error && safeAdapterErrorCodes.has(error.message)) {
     return new RuntimeFailure(error.message, "Agent runtime rejected the operation.");
   }

@@ -11832,6 +11832,18 @@
           "default": null,
           "title": "Gender Presentation"
         },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Human Face"
+        },
         "identity_projection_digest": {
           "anyOf": [
             {
@@ -12078,6 +12090,18 @@
           "title": "Gender Presentation",
           "type": "string"
         },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Human Face"
+        },
         "identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -12198,6 +12222,19 @@
           ],
           "title": "Gender Presentation",
           "type": "string"
+        },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the character is a human, or a humanoid with a realistic human face (for example an elf or a horned demon with a human face), depicted with realistic proportions. False for animals, robots, creatures, faceless mascots and objects, and for characters intentionally drawn in a stylized non-realistic style such as anime, cartoon or chibi. Always set it.",
+          "title": "Human Face"
         },
         "identity": {
           "maxLength": 4096,
@@ -12536,6 +12573,19 @@
           ],
           "title": "Gender Presentation",
           "type": "string"
+        },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the character is a human, or a humanoid with a realistic human face (for example an elf or a horned demon with a human face), depicted with realistic proportions. False for animals, robots, creatures, faceless mascots and objects, and for characters intentionally drawn in a stylized non-realistic style such as anime, cartoon or chibi. Always set it.",
+          "title": "Human Face"
         },
         "identity": {
           "maxLength": 4096,
@@ -23591,6 +23641,19 @@
     "ParentNodeSnapshotV1": {
       "additionalProperties": false,
       "properties": {
+        "creative_input_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Input Digest"
+        },
         "node_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -26903,6 +26966,7 @@
             "openai_images_native",
             "openrouter_images_native",
             "pi_native_openai_compatible",
+            "teamorouter_images_native",
             "tianpuyue_audio_native"
           ],
           "title": "Transport Kind",
@@ -27021,6 +27085,7 @@
             "openai_images_native",
             "openrouter_images_native",
             "pi_native_openai_compatible",
+            "teamorouter_images_native",
             "tianpuyue_audio_native"
           ],
           "title": "Transport Kind",
@@ -27160,6 +27225,7 @@
             "openai_images_native",
             "openrouter_images_native",
             "pi_native_openai_compatible",
+            "teamorouter_images_native",
             "tianpuyue_audio_native"
           ],
           "title": "Transport Kind",
@@ -27336,6 +27402,7 @@
                 "openai_images_native",
                 "openrouter_images_native",
                 "pi_native_openai_compatible",
+                "teamorouter_images_native",
                 "tianpuyue_audio_native"
               ],
               "type": "string"
@@ -29573,6 +29640,18 @@
           "title": "Binding Revision",
           "type": "integer"
         },
+        "character_human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Human Face"
+        },
         "character_phase": {
           "anyOf": [
             {
@@ -30782,7 +30861,7 @@
             "type": "string"
           },
           "maxItems": 9,
-          "minItems": 9,
+          "minItems": 1,
           "title": "Views",
           "type": "array"
         }
@@ -31024,7 +31103,7 @@
             "$ref": "#/$defs/SceneBoardPanelV2"
           },
           "maxItems": 9,
-          "minItems": 9,
+          "minItems": 1,
           "title": "Panels",
           "type": "array"
         },

@@ -21,10 +21,12 @@ Use the audience, campaign tone, script context, explicit character constraints,
 - Make character descriptions stable enough for consistent image and video generation.
 - Define role, age range, face, hair, outfit, body type, silhouette, temperament, and brand fit when relevant.
 - Separate character identity from action and environment.
-- Keep the Character Main composition to one full-body illustrated person on a seamless light-neutral background with no environmental objects.
+- Keep the Character Main composition to one full-body person on a seamless light-neutral background with no environmental objects.
 - For Turnaround guidance, preserve one identity across exactly three unlabeled full-body views: forward-facing, exact side profile, and rear-facing.
 - For a public Character Proposal, produce exactly three concise alternatives for the current Character occurrence only.
 - Never combine multiple Character occurrences into one Proposal.
+
+Always set human_face: true for humans or humanoids with a realistic human face (such as an elf or a horned demon with a human face) and realistic proportions; false for animals, robots, creatures, faceless mascots, objects, and intentionally stylized non-realistic characters such as anime, cartoon, or chibi. For human_face=true characters, the style description must describe a photographic studio character reference, never an illustration.
 
 # Prompt Rules
 

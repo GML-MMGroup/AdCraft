@@ -15,6 +15,7 @@ from app.persistence.agent_run_repository import (
     AgentRunRecord,
     AgentRunRepository,
     AgentRunRepositoryError,
+    _unsubmitted_runtime_failure,
 )
 from app.persistence.database import create_v2_database
 from app.persistence.provider_model_repository import ProviderModelRepository
@@ -97,6 +98,7 @@ _SAFE_FAILURE_MESSAGES = {
         "Please top up your account or switch to another model provider."
     ),
     "agent_run_cancelled": "Agent run was cancelled.",
+    "agent_run_in_progress": "The matching Agent action is already running.",
     "agent_runtime_unavailable": (
         "Agent runtime is unavailable. Please retry after the Agent runtime service is restored."
     ),
@@ -287,7 +289,10 @@ class DurablePiRunService:
             owns_lease = created
             lease_generation = record.lease_generation
             if not created:
-                if record.status in {"completed", "failed", "cancelled"}:
+                reopen = record.status == "failed" and _unsubmitted_runtime_failure(
+                    record.safe_failure
+                )
+                if record.status in {"completed", "failed", "cancelled"} and not reopen:
                     return self._replayed_result(record)
                 if _has_live_lease(record):
                     raise PiAgentRuntimeError(
@@ -295,11 +300,32 @@ class DurablePiRunService:
                         "The matching Agent action is already running.",
                         retryable=True,
                     )
-                record = repository.acquire_lease(
-                    record.run_id,
-                    lease_owner_id=lease_owner_id,
-                    lease_duration_seconds=lease_duration,
-                )
+                try:
+                    record = (
+                        repository.reopen_failed_run(
+                            record.run_id,
+                            expected_lease_generation=record.lease_generation,
+                            lease_owner_id=lease_owner_id,
+                            lease_duration_seconds=lease_duration,
+                        )
+                        if reopen
+                        else repository.acquire_lease(
+                            record.run_id,
+                            lease_owner_id=lease_owner_id,
+                            lease_duration_seconds=lease_duration,
+                        )
+                    )
+                except AgentRunRepositoryError as error:
+                    if not reopen or error.code not in {
+                        "agent_run_reopen_conflict",
+                        "agent_run_lease_active",
+                    }:
+                        raise
+                    raise PiAgentRuntimeError(
+                        "agent_run_in_progress",
+                        "The matching Agent action is already running.",
+                        retryable=True,
+                    ) from error
                 owns_lease = True
                 lease_generation = record.lease_generation
                 request = request.model_copy(

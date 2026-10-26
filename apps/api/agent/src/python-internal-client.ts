@@ -64,7 +64,7 @@ export class PythonInternalClient {
   constructor(options: PythonInternalClientOptions) {
     this.#baseUrl = options.baseUrl.replace(/\/$/, "");
     this.#internalToken = options.internalToken;
-    this.#fetch = options.fetchImpl ?? fetch;
+    this.#fetch = reachable(options.fetchImpl ?? fetch);
   }
 
   async credential(
@@ -104,17 +104,26 @@ export class PythonInternalClient {
       model_policy_id: modelPolicyId,
       model_ref: modelRef,
     });
-    const response = await this.#fetch(
-      `${this.#baseUrl}/internal/v1/agent-runtime-config/${encodeURIComponent(credentialRef)}?${query.toString()}`,
-      {
-        headers: {
-          authorization: `Bearer ${this.#internalToken}`,
-          "cache-control": "no-store",
+    let response: Response;
+    try {
+      response = await this.#fetch(
+        `${this.#baseUrl}/internal/v1/agent-runtime-config/${encodeURIComponent(credentialRef)}?${query.toString()}`,
+        {
+          headers: {
+            authorization: `Bearer ${this.#internalToken}`,
+            "cache-control": "no-store",
+          },
+          signal: AbortSignal.timeout(5_000),
         },
-        signal: AbortSignal.timeout(5_000),
-      },
-    );
-    const payload = await boundedJson(response);
+      );
+    } catch (error) {
+      // The runtime config is read before any model call.
+      if (error instanceof PythonInternalUnavailableError) {
+        throw new PythonInternalUnavailableError(true);
+      }
+      throw error;
+    }
+    const payload = await boundedJson(response, true);
     if (
       payload.protocol_version !== "1" ||
       typeof payload.model_ref !== "string" ||
@@ -501,8 +510,74 @@ function isReasoningEffort(
   return value == null || (typeof value === "string" && REASONING_EFFORTS.has(value));
 }
 
-async function boundedJson(response: Response): Promise<Record<string, unknown>> {
-  const bytes = new Uint8Array(await response.arrayBuffer());
+/**
+ * The Python API is unreachable (stopping for a restart, timing out, or
+ * behind a failing gateway). Nothing was submitted to a model, so the run
+ * is safe to retry (production incident 2026-10-23).
+ */
+export class PythonInternalUnavailableError extends Error {
+  readonly code = "agent_runtime_unavailable";
+
+  constructor(readonly beforeModelSubmission = false) {
+    super("agent_runtime_unavailable");
+  }
+}
+
+const UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
+
+function reachable(fetchImpl: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    let response: Response;
+    try {
+      response = await fetchImpl(input, init);
+    } catch (error) {
+      if (error instanceof TypeError || isTimeout(error)) {
+        throw new PythonInternalUnavailableError();
+      }
+      throw error;
+    }
+    if (UNAVAILABLE_STATUSES.has(response.status) && !(await hasDetailCode(response))) {
+      throw new PythonInternalUnavailableError();
+    }
+    return response;
+  };
+}
+
+/** A structured broker failure (for example missing credentials) keeps its own code. */
+async function hasDetailCode(response: Response): Promise<boolean> {
+  try {
+    const payload: unknown = await response.clone().json();
+    const detail =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).detail
+        : undefined;
+    return (
+      !!detail &&
+      typeof detail === "object" &&
+      !Array.isArray(detail) &&
+      typeof (detail as Record<string, unknown>).code === "string"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isTimeout(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "TimeoutError";
+}
+
+async function boundedJson(
+  response: Response,
+  beforeModelSubmission = false,
+): Promise<Record<string, unknown>> {
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await response.arrayBuffer();
+  } catch (error) {
+    if (beforeModelSubmission) throw new PythonInternalUnavailableError(true);
+    throw error;
+  }
+  const bytes = new Uint8Array(buffer);
   if (bytes.byteLength > 65_536) throw new Error("agent_protocol_mismatch");
   const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {

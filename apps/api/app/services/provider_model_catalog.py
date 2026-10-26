@@ -427,6 +427,74 @@ _OPENROUTER_IMAGE_ROUTING = build_openrouter_routing_policy(
     operation_contract="openrouter-gpt-image-2-v1",
 )
 
+# TeamoRouter serves GPT Image 2 through the OpenAI Images API. Every guided
+# per-ratio size satisfies GPT Image 2 limits (edges multiples of 16, at most
+# 3840 px, aspect ratio at most 3:1, 655,360 to 8,294,400 pixels).
+TEAMOROUTER_IMAGE_SIZES = (
+    *dict.fromkeys(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO.values()),
+    "1024x1024",
+    "1536x1024",
+    "1024x1536",
+    "auto",
+)
+
+
+def _teamorouter_image_profile(provider_model_id: str) -> dict[str, Any]:
+    slug = provider_model_id.replace(".", "-")
+    return _image_profile(
+        f"teamorouter:{provider_model_id}",
+        adapter_id="teamorouter-image-native",
+        transport_kind="teamorouter_images_native",
+        parameter_matrix=_parameter_matrix(
+            schema_id=f"teamorouter-{slug}-v1",
+            descriptors=(
+                {
+                    "name": "size",
+                    "value_type": "enum",
+                    "allowed_values": list(TEAMOROUTER_IMAGE_SIZES),
+                },
+                {
+                    "name": "aspect_ratio",
+                    "value_type": "enum",
+                    "allowed_values": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+                },
+                {
+                    "name": "quality",
+                    "value_type": "enum",
+                    "allowed_values": ["low", "medium", "high", "auto"],
+                },
+                {
+                    "name": "background",
+                    "value_type": "enum",
+                    "allowed_values": ["transparent", "opaque", "auto"],
+                },
+                {
+                    "name": "output_format",
+                    "value_type": "enum",
+                    "allowed_values": ["png", "jpeg", "webp"],
+                },
+                {
+                    "name": "output_compression",
+                    "value_type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                },
+            ),
+        ),
+    )
+
+
+# GPT Image 2.5 Sunburst uses the same OpenAI Images contract and size limits.
+TEAMOROUTER_IMAGE_MODELS = (
+    ("gpt-image-2", "GPT Image 2"),
+    ("gpt-image-2.5-sunburst", "GPT Image 2.5 Sunburst"),
+)
+TEAMOROUTER_IMAGE_PROFILES = {
+    f"teamorouter:{model_id}": _teamorouter_image_profile(model_id)
+    for model_id, _ in TEAMOROUTER_IMAGE_MODELS
+}
+TEAMOROUTER_IMAGE_PROFILE = TEAMOROUTER_IMAGE_PROFILES["teamorouter:gpt-image-2"]
+
 _OPENROUTER_TEXT_ADAPTER_REVISION = "openrouter-pi-agent-v1"
 _OPENROUTER_TEXT_CAPABILITY_REVISION = "openrouter-openai-gpt-5-6-sol-agent-v1"
 _OPENROUTER_TEXT_PROFILE = _adapter_profile(
@@ -483,6 +551,14 @@ def _video_capability_metadata(
         "supported_resolutions": ["480p", "720p", "1080p"],
         "duration_range_seconds": list(duration_range_seconds),
         "supports_native_audio": True,
+        # Execution fills unset video parameters from these defaults; without
+        # them a node lacking a resolution fails manual_media_parameters_unavailable.
+        "default_parameters": {
+            "duration_seconds": min(max(5, duration_range_seconds[0]), duration_range_seconds[1]),
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+            "generate_audio": False,
+        },
         "provider_protocol": provider_protocol,
         "supports_provider_idempotency_token": False,
         "supports_remote_task_lookup": True,
@@ -522,6 +598,30 @@ _TRUSTED_MANIFESTS = (
             "adapter_id": "volcengine_ark-pi-agent-v1",
             "adapter_revision": "volcengine_ark-pi-agent-v1",
             "capability_revision": "volcengine-ark-glm-5-2-260617-agent-v2",
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "supported_thinking_modes": ["disabled", "enabled"],
+            "thinking_format": "none",
+            "reasoning_control": "ark_thinking",
+            "structured_transport": "non_streaming_json_object",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="glm-5-3-flash-260828",
+        display_name="GLM-5.3 Flash",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "capability_revision": "volcengine-ark-glm-5-3-flash-260828-agent-v1",
             "provider_protocol": "openai_compatible",
             "accepted_input_types": ["text"],
             "supports_structured_output": True,
@@ -764,6 +864,34 @@ _TRUSTED_MANIFESTS = (
             "openrouter_routing": _OPENROUTER_IMAGE_ROUTING.model_dump(mode="json"),
         },
     ),
+    *(
+        TrustedModelManifest(
+            provider_id="teamorouter",
+            provider_model_id=model_id,
+            display_name=display_name,
+            capability="image",
+            capability_metadata={
+                "accepted_input_types": ["text", "image"],
+                "max_references": 4,
+                "reference_limits": {"image": 4, "video": 0, "audio": 0},
+                "supported_parameters": [
+                    "size",
+                    "aspect_ratio",
+                    "quality",
+                    "background",
+                    "output_format",
+                    "output_compression",
+                ],
+                "supported_aspect_ratios": list(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+                "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+                "provider_protocol": "openai_images",
+                "supports_provider_idempotency_token": False,
+                "supports_remote_task_lookup": False,
+                "adapter_profile": dict(TEAMOROUTER_IMAGE_PROFILES[f"teamorouter:{model_id}"]),
+            },
+        )
+        for model_id, display_name in TEAMOROUTER_IMAGE_MODELS
+    ),
     TrustedModelManifest(
         provider_id="openrouter",
         provider_model_id="openai/gpt-5.6-sol",
@@ -968,10 +1096,17 @@ _RETIRED_MODEL_REFS = frozenset(
         "volcengine_ark:doubao-seed-2-0-mini-260428",
         "volcengine_ark:doubao-seedream-5-0-250128",
         "volcengine_ark:doubao-seedream-5-0-260128",
+        # Superseded by doubao-seedance-2-5-260628 in the trusted catalog.
+        "volcengine_ark:doubao-seedance-2-5-260128",
         "openai:gpt-image-2",
     }
 )
 _BLOCKING_RETIRED_DEFAULT_REFS = frozenset({"openai:gpt-image-2"})
+# Retired ids that the same provider model now serves under a new id; nodes
+# pinned to the old id run on the successor instead of failing.
+RETIRED_MODEL_SUCCESSORS: Mapping[str, str] = {
+    "volcengine_ark:doubao-seedance-2-5-260128": "volcengine_ark:doubao-seedance-2-5-260628",
+}
 _CREDENTIAL_INDEPENDENT_SELECTION_REFS = frozenset({"openrouter:openai/gpt-image-2"})
 
 
@@ -1120,6 +1255,7 @@ class ProviderModelCatalogService:
                 "tianpuyue",
                 "openrouter",
                 "minimax",
+                "teamorouter",
                 "fake",
             )
         )

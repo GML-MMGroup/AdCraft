@@ -18,6 +18,17 @@ from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegist
 
 
 PRODUCT_MULTIVIEW_VIEWS = ("front", "side", "back", "three-quarter", "detail")
+SCENE_MULTIVIEW_VIEWS = (
+    "establishing wide view",
+    "reverse angle",
+    "left side view",
+    "right side view",
+    "high angle view",
+    "low angle view",
+    "entrance or approach view",
+    "medium shot of the key fixture",
+    "signature material or detail close-up",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,12 +71,13 @@ def _policy(
     required_reference_purposes: tuple[str, ...] = (),
     required_document_kinds: tuple[str, ...] = (),
     sequence_scoped: bool = False,
+    policy_ref: str | None = None,
 ) -> PromptAssertionPolicyV1:
     fields = dict(engine_owned_fields or {})
-    policy_ref = f"{recipe_id}.prompt_assertions"
+    resolved_policy_ref = policy_ref or f"{recipe_id}.prompt_assertions"
     block = "\n".join(
         (
-            f"Deterministic production policy: {policy_ref}@1",
+            f"Deterministic production policy: {resolved_policy_ref}@1",
             "Required assertions:",
             *(f"- [{item}] {clause}" for item, clause in zip(assertion_ids, positive)),
             "Prohibited behavior:",
@@ -73,7 +85,7 @@ def _policy(
         )
     )
     canonical = {
-        "policy_ref": policy_ref,
+        "policy_ref": resolved_policy_ref,
         "policy_version": "1",
         "recipe_id": recipe_id,
         "recipe_version": recipe_version,
@@ -121,6 +133,14 @@ _SPECIAL_POLICIES = {
         ),
         "engine_owned_fields": {"views": PRODUCT_MULTIVIEW_VIEWS},
         "required_reference_purposes": ("product_main_identity",),
+    },
+    "scene_board": {
+        "assertion_ids": ("scene_main.primary_location",),
+        "positive": ("Render one single full-frame image of the scene's primary location.",),
+        "negative": (
+            "No alternate views, panels, collage, split screen, multiple locations, or alternate environments.",
+            "No people, product, prop interaction, narrative action, or text.",
+        ),
     },
     "video_segment": {
         "assertion_ids": (
@@ -193,10 +213,30 @@ class PromptAssertionPolicyRegistry:
         recipe_version: str,
         *,
         native_audio_required: bool,
+        scene_asset_kind: str | None = None,
     ) -> PromptAssertionPolicyV1:
         """Resolve the Video policy with an applicable native-audio assertion."""
 
         policy = self.resolve(recipe_id, recipe_version)
+        if recipe_id == "adcraft.agent_canvas.scene_board" and scene_asset_kind == "multi_view":
+            policy = _policy(
+                recipe_id,
+                recipe_version,
+                (
+                    "scene_multiview.bound_scene_main_identity",
+                    "scene_multiview.nine_equal_viewpoints",
+                    "scene_multiview.same_primary_location",
+                ),
+                (
+                    "Use the bound Scene Main image as the sole environment identity source.",
+                    "Render one 3x3 grid of nine equal panels in the fixed viewpoint order.",
+                    "Show the same primary location from distinct viewpoints around and inside it.",
+                ),
+                ("No other locations, people, text, captions, or narrative action.",),
+                engine_owned_fields={"views": SCENE_MULTIVIEW_VIEWS},
+                required_reference_purposes=("scene_main_identity",),
+                policy_ref=f"{recipe_id}.multi_view.prompt_assertions",
+            )
         if native_audio_required or "video.native_audio_without_bgm" not in policy.assertion_ids:
             return policy
         retained = tuple(
@@ -391,6 +431,12 @@ def prompt_assertion_admission_error(node) -> str | None:
             preparation.recipe_id,
             preparation.recipe_version,
             native_audio_required=_node_requires_native_audio(node),
+            scene_asset_kind=(
+                node.structured_content.get("scene_asset_kind")
+                or node.parameters.get("scene_asset_kind")
+                if preparation.role_variant == "scene_board"
+                else None
+            ),
         )
         evidence = preparation.assertion_evidence
         PromptAssertionEvidenceValidator().validate_preparation(

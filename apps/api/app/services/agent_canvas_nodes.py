@@ -19,12 +19,15 @@ from app.schemas.agent_canvas import (
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
     CanvasNodeV2,
+    USER_AUTHORING_ORIGIN,
+    USER_AUTHORING_ORIGIN_KEY,
 )
 from app.schemas.agent_canvas_editing import default_editing_content
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
+from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
 from app.services.model_selection import ModelSelectionService
 
 
@@ -48,6 +51,7 @@ class AgentCanvasNodeService:
         request: CanvasNodeCreateRequestV2,
         *,
         expected_revision: int,
+        user_authored: bool = False,
     ) -> CanvasNodeV2:
         now = datetime.now(timezone.utc)
         workflow = self._repository.get_workflow(workflow_id)
@@ -76,6 +80,8 @@ class AgentCanvasNodeService:
             revision=1,
             error=None,
             prompt_preparation=_initial_prompt_preparation(request, now),
+            # Canvas-created nodes belong to the user and stay outside Agent journeys.
+            metadata=({USER_AUTHORING_ORIGIN_KEY: USER_AUTHORING_ORIGIN} if user_authored else {}),
             created_at=now,
             updated_at=now,
         )
@@ -137,11 +143,17 @@ class AgentCanvasNodeService:
                 expected_node_revision=current.revision,
             )
             return self._repository.get_node(workflow_id, node_id)
+        if "position" in changes:
+            changes["position"] = request.position
         now = datetime.now(timezone.utc)
+        creative_change = creative_node_inputs_changed(current, current.model_copy(update=changes))
         if (
             _has_managed_prompt_preparation(current)
             and current.prompt_preparation.status in {"queued", "working"}
-            and _changes_prompt_authority(changes)
+            and (
+                creative_change
+                or bool({"parameters", "model_selection_mode", "model_ref"} & changes.keys())
+            )
         ):
             raise V2PersistenceError(
                 "prompt_preparation_in_progress",
@@ -184,7 +196,7 @@ class AgentCanvasNodeService:
                 if normalized_prompt is not None
                 else None
             )
-        if _has_managed_prompt_preparation(current) and _changes_prompt_authority(changes):
+        if _has_managed_prompt_preparation(current) and creative_change:
             changes["prompt_context_snapshot_id"] = None
             changes["metadata"] = {
                 key: value
@@ -384,19 +396,6 @@ def _validate_inherited_prompt_projection(node: CanvasNodeV2) -> None:
             "The editable prompt projection does not match the Node revision.",
             stage="agent_canvas_nodes",
         )
-
-
-def _changes_prompt_authority(changes: dict[str, object]) -> bool:
-    return bool(
-        {
-            "generation_prompt",
-            "structured_content",
-            "parameters",
-            "model_selection_mode",
-            "model_ref",
-        }
-        & changes.keys()
-    )
 
 
 def _manual_parameter_provenance(

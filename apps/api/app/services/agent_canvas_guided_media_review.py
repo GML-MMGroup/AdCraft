@@ -78,15 +78,17 @@ class GuidedMediaResultPublicationContextResolver:
             or getattr(journey, "journey_policy_id", None) != "proposal_submit_auto_result_v1"
         ):
             return None
+        # Nodes outside the Storyboard plan (manual or design media) publish
+        # normally, even before the guided journey has a planning wave.
+        creative_role = getattr(context.node, "creative_role", None)
+        if creative_role is not None and creative_role not in _STORYBOARD_PLAN_CREATIVE_ROLES:
+            return None
         planning_wave_id = getattr(journey, "planning_wave_id", None)
         if not planning_wave_id:
             raise _error(
                 "guided_planning_wave_missing",
                 "Guided result publication requires a persisted planning wave.",
             )
-        creative_role = getattr(context.node, "creative_role", None)
-        if creative_role is not None and creative_role not in _STORYBOARD_PLAN_CREATIVE_ROLES:
-            return None
         plan, record = _find_plan_record(
             self._plans,
             context.node.workflow_id,

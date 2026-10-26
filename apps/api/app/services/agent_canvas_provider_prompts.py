@@ -104,6 +104,10 @@ _ROLE_BOUNDARIES = {
         "Do not add undeclared speech or lyrics.",
     ),
 }
+_SCENE_MAIN_BOUNDARIES = (
+    "Render one single full-frame image of the scene's primary location.",
+    "Do not compose a grid, contact sheet, storyboard, or multiple views.",
+)
 _STYLE_ROLE_BY_SEMANTIC_ROLE = {
     "product": "product",
     "prop": "prop",
@@ -164,9 +168,24 @@ class AgentCanvasProviderPromptCompiler:
             )
         _validate_editable_prompt_authority(node)
         if node.semantic_role == "scene":
+            scene_policy = PromptAssertionPolicyRegistry().resolve_for_video_audio(
+                "adcraft.agent_canvas.scene_board",
+                "1",
+                native_audio_required=False,
+                scene_asset_kind=(
+                    node.structured_content.get("scene_asset_kind")
+                    or node.parameters.get("scene_asset_kind")
+                ),
+            )
+            # The compiler's exact canonical block is trusted constraint text,
+            # not authored scene content. Keep it in the provider payload and
+            # its evidence checks, while validating every other character.
+            authored_scene_text = str(node.generation_prompt).replace(
+                scene_policy.assertion_block, "\n"
+            )
             violation = role_prompt_text_violation(
                 "scene_board",
-                str(node.generation_prompt),
+                authored_scene_text,
                 field_path="generation_prompt",
             )
             if violation is not None:
@@ -221,6 +240,12 @@ class AgentCanvasProviderPromptCompiler:
                 preparation.recipe_id,
                 preparation.recipe_version,
                 native_audio_required=native_audio_required,
+                scene_asset_kind=(
+                    node.structured_content.get("scene_asset_kind")
+                    or node.parameters.get("scene_asset_kind")
+                    if preparation.role_variant == "scene_board"
+                    else None
+                ),
             )
             PromptAssertionEvidenceValidator().validate_preparation(
                 policy=policy,
@@ -302,6 +327,11 @@ class AgentCanvasProviderPromptCompiler:
                     "Video style contract is invalid before provider dispatch.",
                 ) from error
             raise
+        if (
+            isinstance(structured, SceneDesignBoardContentV2)
+            and structured.scene_asset_kind == "main"
+        ):
+            registration = _registration("scene", *_SCENE_MAIN_BOUNDARIES)
         style = _style_from_content(
             node,
             structured,
@@ -698,6 +728,20 @@ def _style_from_projection(
 
 def _render_content(structured: object, *, generation_prompt: str = "") -> str:
     if isinstance(structured, SceneDesignBoardContentV2):
+        if structured.scene_asset_kind == "main":
+            primary = structured.panels[0]
+            return "\n".join(
+                (
+                    f"Environment: {structured.scene_identity}",
+                    f"Description: {structured.environment_summary}",
+                    f"Layout: {structured.layout}",
+                    f"Lighting: {structured.lighting}",
+                    f"Materials: {structured.materials}",
+                    f"Time of day: {structured.time_of_day}",
+                    f"Primary view: {primary.view_or_zone}; {primary.spatial_description}; "
+                    f"{primary.lighting_material_detail}",
+                )
+            )
         return "\n".join(
             [
                 f"Environment: {structured.scene_identity}",

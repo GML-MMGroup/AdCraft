@@ -1478,7 +1478,7 @@ class BrandCapabilityInvocationService:
         with self._database.engine.connect() as connection:
             candidates = self._repository.get_hypotheses_in_transaction(connection, brand_id)
         card = BrandOptionCardV1(
-            card_id=f"hypothesis_candidates_{journey.stage_revision}",
+            card_id=f"{brand_id}_hypothesis_candidates_{journey.stage_revision}",
             stage="hypothesis",
             stage_revision=journey.stage_revision,
             target_slot_id=None,

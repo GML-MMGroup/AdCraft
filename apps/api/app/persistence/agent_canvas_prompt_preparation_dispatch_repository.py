@@ -43,6 +43,7 @@ from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     prompt_preparation_dispatch_logical_key,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_node_change_authority import creative_node_input_digest
 
 
 APPLICABLE_NODE_TYPES = frozenset({"text", "script", "image", "video", "audio"})
@@ -1454,38 +1455,6 @@ class AgentCanvasPromptPreparationDispatchRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
-    def refresh_completed_references_in_transaction(
-        self,
-        connection: Connection,
-        *,
-        node: CanvasNodeV2,
-        binding_digest: str | None,
-        now: datetime,
-    ) -> None:
-        """Re-pin a completed dispatch to the Node's current input lineage.
-
-        Ready prompts are never re-authored automatically (user rule,
-        2026-10-19). When only upstream references change, the completed
-        dispatch keeps its operation and context but records the current
-        source snapshot so terminal identity checks stay consistent.
-        """
-
-        connection.execute(
-            update(AgentCanvasPromptPreparationOutboxRow)
-            .where(
-                AgentCanvasPromptPreparationOutboxRow.workflow_id == node.workflow_id,
-                AgentCanvasPromptPreparationOutboxRow.node_id == node.node_id,
-                AgentCanvasPromptPreparationOutboxRow.operation_id
-                == node.prompt_preparation.operation_id,
-                AgentCanvasPromptPreparationOutboxRow.status == "completed",
-            )
-            .values(
-                binding_digest=binding_digest,
-                source_snapshot_json=_json(_source_snapshot_for_node(connection, node, ())),
-                updated_at=_iso(_utc(now)),
-            )
-        )
-
     def reconcile_node_terminal_in_transaction(
         self,
         connection: Connection,
@@ -2294,13 +2263,7 @@ def _source_snapshot_for_node(
             if source_node_id:
                 source_row = (
                     connection.execute(
-                        select(
-                            AgentCanvasNodeRow.node_id,
-                            AgentCanvasNodeRow.revision,
-                            AgentCanvasNodeRow.output_asset_id,
-                            AgentCanvasNodeRow.prompt_preparation_json,
-                            AgentCanvasNodeRow.metadata_json,
-                        ).where(
+                        select(AgentCanvasNodeRow).where(
                             AgentCanvasNodeRow.workflow_id == node.workflow_id,
                             AgentCanvasNodeRow.node_id == source_node_id,
                         )
@@ -2370,6 +2333,9 @@ def _source_snapshot_for_node(
                         ),
                         "prompt_digest": source_preparation.get("prompt_digest"),
                         "operation_id": source_preparation.get("operation_id"),
+                        "creative_input_digest": creative_node_input_digest(
+                            _snapshot_node(source_row)
+                        ),
                     }
             elif row["source_kind"] == "image_asset":
                 source = _direct_asset_snapshot_for_binding(connection, row)
@@ -2798,36 +2764,13 @@ def _assert_current_node_identity(
         ):
             raise _stale_dispatch()
     if source_snapshot is not None:
-        current_node = CanvasNodeV2.model_validate(
-            {
-                "node_id": row["node_id"],
-                "workflow_id": row["workflow_id"],
-                "node_type": row["node_type"],
-                "creative_role": row["creative_role"],
-                "role_contract_version": row["role_contract_version"],
-                "title": row["title"],
-                "status": row["status"],
-                "execution_mode": row["execution_mode"],
-                "summary_prompt": row["summary_prompt"],
-                "generation_prompt": row["generation_prompt"],
-                "structured_content": _parse_json_object(row["structured_content_json"]),
-                "parameters": _parse_json_object(row["parameters_json"]),
-                "metadata": _parse_json_object(row["metadata_json"]),
-                "position": {"x": row["position_x"], "y": row["position_y"]},
-                "revision": row["revision"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "prompt_preparation": persisted_preparation,
-            }
-        )
+        current_node = _snapshot_node(row)
         current_snapshot = _source_snapshot_for_node(connection, current_node, ())
         # The target Node's own lifecycle revision/output are mutable as the
         # preparation service moves queued -> working -> ready.  They are not
         # dependency lineage.  Source node revisions, pinned AssetVersions,
         # binding identities, and occurrence metadata remain in the comparison.
-        if _json(_dependency_snapshot(current_snapshot)) != _json(
-            _dependency_snapshot(source_snapshot)
-        ):
+        if not _dependency_snapshots_match(source_snapshot, current_snapshot):
             raise _stale_dispatch()
 
 
@@ -2869,6 +2812,75 @@ def _assert_terminal_projection_identity(
         source_snapshot=_source_snapshot_for_node(connection, node, ()),
         node_revision=None,
     )
+
+
+def _snapshot_node(row: Mapping[str, Any]) -> CanvasNodeV2:
+    return CanvasNodeV2.model_validate(
+        {
+            "node_id": row["node_id"],
+            "workflow_id": row["workflow_id"],
+            "node_type": row["node_type"],
+            "creative_role": row["creative_role"],
+            "role_contract_version": row["role_contract_version"],
+            "title": row["title"],
+            "status": row["status"],
+            "execution_mode": row["execution_mode"],
+            "summary_prompt": row["summary_prompt"],
+            "generation_prompt": row["generation_prompt"],
+            "structured_content": _parse_json_object(row["structured_content_json"]),
+            "parameters": _parse_json_object(row["parameters_json"]),
+            "metadata": _parse_json_object(row["metadata_json"]),
+            "output_asset_id": row["output_asset_id"],
+            "error": _parse_json_object(row["error_json"]) if row["error_json"] else None,
+            "position": {"x": row["position_x"], "y": row["position_y"]},
+            "revision": row["revision"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "prompt_preparation": _parse_json_object(row["prompt_preparation_json"]),
+        }
+    )
+
+
+def _dependency_snapshots_match(
+    expected: Mapping[str, object], current: Mapping[str, object]
+) -> bool:
+    """Ignore source revision drift only when frozen creative proof still matches."""
+
+    expected_dependencies = _dependency_snapshot(expected)
+    current_dependencies = _dependency_snapshot(current)
+    expected_bindings = expected_dependencies.get("bindings")
+    current_bindings = current_dependencies.get("bindings")
+    if not isinstance(expected_bindings, list) or not isinstance(current_bindings, list):
+        return _json(expected_dependencies) == _json(current_dependencies)
+    if len(expected_bindings) != len(current_bindings):
+        return False
+    comparable_bindings: list[object] = []
+    for prior, observed in zip(expected_bindings, current_bindings, strict=True):
+        if not isinstance(prior, dict) or not isinstance(observed, dict):
+            return False
+        comparable = dict(observed)
+        prior_source, observed_source = prior.get("source"), observed.get("source")
+        if isinstance(prior_source, dict) and isinstance(observed_source, dict):
+            source = dict(observed_source)
+            digest = prior_source.get("creative_input_digest")
+            if digest is None:
+                # Historical snapshots retain their exact revision fence.
+                source.pop("creative_input_digest", None)
+            elif digest == source.get("creative_input_digest"):
+                prior_revision, current_revision = (
+                    prior_source.get("revision"),
+                    source.get("revision"),
+                )
+                if (
+                    isinstance(prior_revision, int)
+                    and isinstance(current_revision, int)
+                    and current_revision >= prior_revision
+                ):
+                    source["revision"] = prior_revision
+            comparable["source"] = source
+        comparable_bindings.append(comparable)
+    current_dependencies["bindings"] = comparable_bindings
+    return _json(expected_dependencies) == _json(current_dependencies)
 
 
 def _dependency_snapshot(value: Mapping[str, object]) -> dict[str, object]:

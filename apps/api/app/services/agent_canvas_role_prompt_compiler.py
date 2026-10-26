@@ -42,6 +42,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleCreativeBriefMemberV2,
     RolePromptPreparationContextV2,
     RolePromptViolationV1,
+    SceneEnvironmentViewV1,
     SceneBoardRoleBriefV2,
     SceneEnvironmentProjectionV1,
     ScriptRoleBriefV2,
@@ -49,8 +50,10 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     VideoSegmentRoleBriefV2,
     WorldViewRoleBriefV2,
 )
+from app.services.agent_canvas_human_style_rules import human_style_rule
 from app.services.agent_canvas_prompt_assertion_policy import (
     PRODUCT_MULTIVIEW_VIEWS,
+    SCENE_MULTIVIEW_VIEWS,
     PromptAssertionPolicyRegistry,
     source_snapshots_from_context,
 )
@@ -88,11 +91,7 @@ _ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
         "using the product",
         "active scene",
     ),
-    "character_main": (
-        "photorealistic",
-        "photo-realistic",
-        "photograph",
-    ),
+    "character_main": (),
     "character_turnaround": (
         "label",
         "labels",
@@ -160,6 +159,11 @@ class AgentCanvasRolePromptCompiler:
                 context.role_variant == "video_segment"
                 and any(item.name == "generate_audio" and item.value is True for item in parameters)
             ),
+            scene_asset_kind=(
+                context.node_parameters.get("scene_asset_kind")
+                if context.role_variant == "scene_board"
+                else None
+            ),
         )
         role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
         if isinstance(concrete_brief, ProductMultiviewRoleBriefV2):
@@ -177,6 +181,10 @@ class AgentCanvasRolePromptCompiler:
         )
         rendered_prompt, negative = _render(
             concrete_brief,
+            scene_multiview=(
+                context.role_variant == "scene_board"
+                and context.node_parameters.get("scene_asset_kind") == "multi_view"
+            ),
             character_projection=character_projection,
             scene_projection=scene_projection,
             product_projection=product_projection,
@@ -196,8 +204,11 @@ class AgentCanvasRolePromptCompiler:
                     CharacterTurnaroundRoleBriefV2,
                 ),
             )
-            and editable_prompt_override is None
-        )
+            or (
+                context.role_variant == "scene_board"
+                and context.node_parameters.get("scene_asset_kind") == "multi_view"
+            )
+        ) and editable_prompt_override is None
         if editable_prompt is not None and not engine_owned_identity_render:
             prompt = editable_prompt.strip()
             if not prompt:
@@ -207,6 +218,8 @@ class AgentCanvasRolePromptCompiler:
                 )
         else:
             prompt = rendered_prompt
+        if isinstance(concrete_brief, VideoSegmentRoleBriefV2) and editable_prompt_override is None:
+            prompt = _retain_video_audio(prompt, concrete_brief)
         _validate_role_prompt_text(
             context.role_variant,
             prompt,
@@ -237,7 +250,22 @@ class AgentCanvasRolePromptCompiler:
                     context.role_variant, authored_style, field_path="style_description"
                 )
                 prompt = f"{prompt} Visual style: {authored_style.strip()}"
-        self._validate_required_references(recipe.reference_purposes, context)
+        required_references = recipe.reference_purposes
+        if (
+            context.role_variant == "scene_board"
+            and context.node_parameters.get("scene_asset_kind") == "multi_view"
+        ):
+            matching = tuple(
+                item for item in context.bindings if item.reference_purpose == "scene_main_identity"
+            )
+            scene_sources = tuple(item for item in context.bindings if item.source_role == "scene")
+            if len(matching) != 1 or matching[0].source_role != "scene" or len(scene_sources) != 1:
+                raise _error(
+                    "node_prompt_required_reference_missing",
+                    "Scene Multi-view requires the sole bound Scene Main identity source.",
+                )
+            required_references = ("scene_main_identity",)
+        self._validate_required_references(required_references, context)
         self._reference_policy.require_derivative_prompt_bindings(
             context.role_variant,
             context.bindings,
@@ -260,6 +288,12 @@ class AgentCanvasRolePromptCompiler:
         ):
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         prompt = f"{prompt}\n\n{policy.assertion_block}"
+        rule = human_style_rule(
+            concrete_brief if isinstance(concrete_brief, CharacterMainRoleBriefV2) else context
+        )
+        if rule is not None:
+            # User decision (2026-10-26): the rule is visible in the node prompt.
+            prompt = f"{prompt}\n\n{rule}"
         if (
             context.role_variant in {"video_segment", "free_video"}
             and context.video_representation_mode == "illustration_to_live_action"
@@ -517,6 +551,7 @@ def _semantic_projections(
                 "accessories": projection.accessories,
                 "rendering_mode": projection.rendering_mode,
                 "gender_presentation": projection.gender_presentation,
+                "human_face": projection.human_face,
             }
             for name, expected in protected.items():
                 actual = getattr(brief, name)
@@ -623,6 +658,7 @@ def _semantic_projections(
 def _render(
     brief: RoleCreativeBriefMemberV2,
     *,
+    scene_multiview: bool = False,
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
@@ -677,25 +713,38 @@ def _render(
         accessories = (
             character_projection.accessories if character_projection else brief.accessories
         )
+        human_face = character_projection.human_face if character_projection else brief.human_face
+        medium = (
+            "detailed non-photorealistic semi-realistic commercial illustration"
+            if human_face is None
+            else "photographic studio character reference"
+        )
         return (
-            "Use the exact bound Character Main as identity authority. Create the same detailed "
-            "non-photorealistic semi-realistic commercial illustration in front, side, and back "
+            "Use the exact bound Character Main as identity authority. Create the same "
+            f"{medium} in front, side, and back "
             "full-body views on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",
-            "No photorealistic human, identity drift, labels, captions, annotation text, product, "
+            ("No photorealistic human, " if human_face is None else "No ")
+            + "identity drift, labels, captions, annotation text, product, "
             "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
     if isinstance(brief, CharacterMainRoleBriefV2):
+        medium = (
+            "detailed semi-realistic commercial illustration"
+            if brief.human_face is None
+            else "photographic studio character reference"
+        )
         return (
-            "Create exactly one full-body detailed semi-realistic commercial "
-            f"illustration on a clean neutral background. Preserve all distinguishing details. "
+            f"Create exactly one full-body {medium} on a clean neutral background. "
+            "Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
             f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}."
             f"{_optional_labeled_fragment('Accessories', brief.accessories)}",
-            "No photograph, photorealistic human, product, prop, active scene, second person, "
+            ("No photograph, photorealistic human, " if brief.human_face is None else "No ")
+            + "product, prop, active scene, second person, "
             "text, labels, annotation, captions, or board layout.",
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
@@ -708,20 +757,27 @@ def _render(
         lighting = scene_projection.lighting if scene_projection else brief.lighting
         materials = scene_projection.materials if scene_projection else brief.materials
         atmosphere = scene_projection.atmosphere if scene_projection else brief.atmosphere
-        views = (
-            tuple(item.view_or_zone for item in scene_projection.views)
-            if scene_projection
-            else brief.views
-        )
-        return (
-            "Create one text-free 3x3 environment board of the same coherent environment. "
+        views = SCENE_MULTIVIEW_VIEWS if scene_multiview else ()
+        prompt = (
+            (
+                "Use the bound Scene Main image as the sole environment identity source. "
+                "Create one text-free 3x3 grid of nine equal panels showing the same primary "
+                "location from distinct viewpoints around and inside it. "
+            )
+            if scene_multiview
+            else "Create one single full-frame image of the scene's primary location. "
+        ) + (
             f"Identity: {environment_identity}. Spatial logic: {spatial_logic}. "
-            f"Lighting: {lighting}. Materials: {materials}. Atmosphere: "
-            f"{atmosphere}."
-            f"{_optional_labeled_fragment('Views', '; '.join(views))}",
-            "No active character, product, prop interaction, narrative action, plot progression, "
-            "captions, labels, panel numbers, or unrelated environment.",
+            f"Lighting: {lighting}. Materials: {materials}. Atmosphere: {atmosphere}."
+            f"{_optional_labeled_fragment('Views', '; '.join(views))}"
         )
+        negative = (
+            "No other locations, people, text, captions, or narrative action."
+            if scene_multiview
+            else "No combined alternate views, collage, split screen, multiple locations, people, product, "
+            "prop interaction, narrative action, plot progression, or text."
+        )
+        return prompt, negative
     if isinstance(brief, ScriptRoleBriefV2):
         return (
             f"Editable narrative: {brief.narrative}. Timing: {brief.timing}. Dialogue: "
@@ -775,6 +831,20 @@ def _authored_visual_style(brief: RoleCreativeBriefMemberV2) -> str | None:
     return brief.style_description
 
 
+def _retain_video_audio(prompt: str, brief: VideoSegmentRoleBriefV2) -> str:
+    """Keep declared native audio visible without inventing or reauthoring it."""
+    for label, value in (
+        ("Dialogue", brief.dialogue),
+        ("Voiceover", brief.voiceover),
+        ("Ambience", brief.ambience),
+        ("Synchronized action effects", brief.action_effects),
+    ):
+        text = value.strip()
+        if text and text not in prompt:
+            prompt = f"{prompt}\n{label}: {text}"
+    return prompt
+
+
 def _structured_content(
     brief: RoleCreativeBriefMemberV2,
     context: RolePromptPreparationContextV2,
@@ -783,6 +853,8 @@ def _structured_content(
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
+    if isinstance(brief, CharacterMainRoleBriefV2) and brief.human_face is not None:
+        default_style = "Photographic studio character reference"
     if (
         isinstance(brief, VideoSegmentRoleBriefV2)
         and context.video_representation_mode == "illustration_to_live_action"
@@ -845,6 +917,7 @@ def _structured_content(
         ).model_dump(mode="json")
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         projection = context.character_identity_projection
+        human_face = projection.human_face if projection is not None else brief.human_face
         return CharacterDesignAssetContentV2(
             subject_identity=projection.identity if projection is not None else brief.identity,
             face_and_hair=projection.face_and_hair
@@ -862,6 +935,7 @@ def _structured_content(
                 if projection is not None
                 else brief.gender_presentation
             ),
+            human_face=human_face,
             design_summary="; ".join(
                 (
                     projection.face_and_hair if projection is not None else brief.face_and_hair,
@@ -876,7 +950,11 @@ def _structured_content(
             ),
             style=style,
             explicit_inclusions=brief.views,
-            negative_constraints=("photorealistic human", "text", "identity drift"),
+            negative_constraints=(
+                ("photorealistic human", "text", "identity drift")
+                if human_face is None
+                else ("text", "identity drift")
+            ),
             character_asset_kind="turnaround",
             occurrence_id=context.occurrence_id,
             parent_source_node_id=(projection.source_node_id if projection is not None else None),
@@ -898,6 +976,7 @@ def _structured_content(
             wardrobe=brief.wardrobe,
             accessories=brief.accessories,
             gender_presentation=brief.gender_presentation,
+            human_face=brief.human_face,
             design_summary="; ".join(
                 (
                     brief.face_and_hair,
@@ -907,7 +986,11 @@ def _structured_content(
                 )
             ),
             style=style,
-            negative_constraints=("photorealistic human", "text", "identity drift"),
+            negative_constraints=(
+                ("photorealistic human", "text", "identity drift")
+                if brief.human_face is None
+                else ("text", "identity drift")
+            ),
             character_asset_kind="identity_master",
         ).model_dump(mode="json")
     if isinstance(brief, SceneBoardRoleBriefV2):
@@ -919,13 +1002,29 @@ def _structured_content(
         lighting = projection.lighting if projection else brief.lighting
         materials = projection.materials if projection else brief.materials
         atmosphere = projection.atmosphere if projection else brief.atmosphere
-        scene_views = projection.views if projection else None
+        if context.node_parameters.get("scene_asset_kind") == "multi_view":
+            scene_views = tuple(
+                SceneEnvironmentViewV1(
+                    view_or_zone=view,
+                    spatial_details=f"{spatial_logic} View: {view}.",
+                    allowed_environment_elements=(),
+                )
+                for view in SCENE_MULTIVIEW_VIEWS
+            )
+        elif projection is not None:
+            scene_views = projection.views[:1]
+        else:
+            scene_views = tuple(brief.views[:1])
         panels = tuple(
             SceneBoardPanelV2(
                 panel_index=index,
-                view_or_zone=(view.view_or_zone if scene_views else view),
+                view_or_zone=(
+                    view.view_or_zone if isinstance(view, SceneEnvironmentViewV1) else view
+                ),
                 spatial_description=(
-                    view.spatial_details if scene_views else f"{spatial_logic} View: {view}."
+                    view.spatial_details
+                    if isinstance(view, SceneEnvironmentViewV1)
+                    else f"{spatial_logic} View: {view}."
                 ),
                 lighting_material_detail=f"{lighting} {materials}",
             )
@@ -939,7 +1038,11 @@ def _structured_content(
             ),
             scene_identity=environment_identity,
             environment_summary=f"{spatial_logic} {atmosphere}",
-            layout="Nine distinct views of one coherent environment.",
+            layout=(
+                "Nine distinct viewpoints of the same primary location."
+                if context.node_parameters.get("scene_asset_kind") == "multi_view"
+                else "One full-frame primary location."
+            ),
             lighting=lighting,
             materials=materials,
             time_of_day="Use the accepted scene time of day.",

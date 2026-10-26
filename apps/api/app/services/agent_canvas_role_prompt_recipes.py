@@ -75,8 +75,8 @@ _RECIPE_DEFINITIONS: tuple[
         ("requirements", "style", "world_view"),
         (),
         ("aspect_ratio", "size"),
-        "One illustrated full-body character identity.",
-        "No photorealistic human, product, or scene.",
+        "One full-body character identity.",
+        "No product or scene.",
     ),
     (
         "character_turnaround",
@@ -91,8 +91,8 @@ _RECIPE_DEFINITIONS: tuple[
         ("requirements", "style", "world_view"),
         (),
         ("aspect_ratio", "size"),
-        "One coherent environment board.",
-        "No narrative subject activity or text.",
+        "One primary location environment.",
+        "No narrative subject activity, multiple locations, or text.",
     ),
     (
         "script",

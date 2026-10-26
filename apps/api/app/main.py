@@ -46,6 +46,7 @@ def create_app(
         lifespan=_lifespan(
             resolved_settings,
             runtime_factory=agent_canvas_runtime_factory,
+            settings_provider=_settings_provider(settings),
         ),
     )
     trace_session = agent_model_trace_session_from_environment()
@@ -76,10 +77,24 @@ def create_app(
     return application
 
 
+def _settings_provider(explicit: Settings | None) -> Callable[[], Settings]:
+    """Return the settings source background cycles re-read on every cycle.
+
+    Without explicit settings the process settings are used, which the API
+    space refreshes when a credential is saved, so keys saved after startup
+    reach background recovery without a restart.
+    """
+
+    if explicit is None:
+        return get_settings
+    return lambda: explicit
+
+
 def _lifespan(
     settings: Settings,
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
+    settings_provider: Callable[[], Settings] | None = None,
 ) -> Callable[[FastAPI], AsyncIterator[None]]:
     """Build a lifespan hook that gates V2 recovery on verified persistence."""
 
@@ -127,6 +142,7 @@ def _lifespan(
                 _poll_agent_canvas_provider_tasks(
                     settings,
                     provider_poll_stop,
+                    settings_provider=settings_provider,
                     **recovery_kwargs,
                 )
             )
@@ -135,6 +151,7 @@ def _lifespan(
                 _poll_agent_canvas_continuations(
                     settings,
                     continuation_poll_stop,
+                    settings_provider=settings_provider,
                     **recovery_kwargs,
                 )
             )
@@ -143,6 +160,7 @@ def _lifespan(
                 _poll_agent_canvas_guided_media_resumes(
                     settings,
                     guided_media_resume_poll_stop,
+                    settings_provider=settings_provider,
                     **recovery_kwargs,
                 )
             )
@@ -206,6 +224,7 @@ async def _poll_agent_canvas_continuations(
     stop: asyncio.Event,
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
+    settings_provider: Callable[[], Settings] | None = None,
 ) -> None:
     interval = max(1, settings.v2_provider_task_poll_interval_seconds)
     while not stop.is_set():
@@ -215,12 +234,13 @@ async def _poll_agent_canvas_continuations(
         except asyncio.TimeoutError:
             pass
         try:
+            cycle_settings = settings_provider() if settings_provider else settings
             if runtime_factory is None:
-                await asyncio.to_thread(_recover_agent_canvas_continuations, settings)
+                await asyncio.to_thread(_recover_agent_canvas_continuations, cycle_settings)
             else:
                 await asyncio.to_thread(
                     _recover_agent_canvas_continuations,
-                    settings,
+                    cycle_settings,
                     runtime_factory=runtime_factory,
                 )
         except Exception:  # noqa: BLE001 - later poll cycles must remain available.
@@ -287,18 +307,20 @@ async def _poll_agent_canvas_guided_media_resumes(
     stop: asyncio.Event,
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
+    settings_provider: Callable[[], Settings] | None = None,
 ) -> None:
     """Recover durable media-confirmation resumes without delaying startup."""
 
     interval = max(1, settings.v2_provider_task_poll_interval_seconds)
     while not stop.is_set():
         try:
+            cycle_settings = settings_provider() if settings_provider else settings
             if runtime_factory is None:
-                await asyncio.to_thread(_recover_agent_canvas_guided_media_resumes, settings)
+                await asyncio.to_thread(_recover_agent_canvas_guided_media_resumes, cycle_settings)
             else:
                 await asyncio.to_thread(
                     _recover_agent_canvas_guided_media_resumes,
-                    settings,
+                    cycle_settings,
                     runtime_factory=runtime_factory,
                 )
         except Exception:  # noqa: BLE001 - later poll cycles must remain available.
@@ -326,6 +348,7 @@ async def _poll_agent_canvas_provider_tasks(
     stop: asyncio.Event,
     *,
     runtime_factory: AgentCanvasRuntimeFactory | None = None,
+    settings_provider: Callable[[], Settings] | None = None,
 ) -> None:
     interval = max(1, settings.v2_provider_task_poll_interval_seconds)
     while not stop.is_set():
@@ -335,12 +358,13 @@ async def _poll_agent_canvas_provider_tasks(
         except asyncio.TimeoutError:
             pass
         try:
+            cycle_settings = settings_provider() if settings_provider else settings
             if runtime_factory is None:
-                await asyncio.to_thread(_recover_agent_canvas_provider_tasks, settings)
+                await asyncio.to_thread(_recover_agent_canvas_provider_tasks, cycle_settings)
             else:
                 await asyncio.to_thread(
                     _recover_agent_canvas_provider_tasks,
-                    settings,
+                    cycle_settings,
                     runtime_factory=runtime_factory,
                 )
         except Exception:  # noqa: BLE001 - later poll cycles must remain available.

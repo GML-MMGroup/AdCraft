@@ -84,6 +84,7 @@ class CharacterDesignAssetContentV2(DesignAssetContentV2):
     wardrobe: str | None = Field(default=None, min_length=1, max_length=2_048)
     accessories: str | None = Field(default=None, max_length=1_024)
     gender_presentation: CharacterGenderPresentationV1 | None = None
+    human_face: bool | None = None
     character_asset_kind: CharacterAssetKindV2 = "identity_master"
     reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
         "detailed_semi_realistic_illustration"
@@ -114,7 +115,7 @@ class SceneDesignBoardContentV2(_AdMediaModel):
     materials: str = Field(min_length=1, max_length=2_048)
     time_of_day: str = Field(min_length=1, max_length=512)
     style: VisualStyleContractV2
-    panels: tuple[SceneBoardPanelV2, ...] = Field(min_length=9, max_length=9)
+    panels: tuple[SceneBoardPanelV2, ...] = Field(min_length=1, max_length=9)
     explicit_entity_reference_ids: tuple[str, ...] = Field(default=(), max_length=32)
     exclude_unreferenced_entities: Literal[True] = True
     no_narrative_progression: Literal[True] = True
@@ -125,6 +126,10 @@ class SceneDesignBoardContentV2(_AdMediaModel):
 
     @model_validator(mode="after")
     def validate_panel_sequence(self) -> "SceneDesignBoardContentV2":
+        if self.scene_asset_kind == "multi_view" and len(self.panels) != 9:
+            raise ValueError("scene_design_board_contract_invalid")
+        if self.scene_asset_kind == "main" and len(self.panels) not in {1, 9}:
+            raise ValueError("scene_design_board_contract_invalid")
         _require_panel_sequence(self.panels, "scene_design_board_contract_invalid")
         _require_distinct_panel_values(
             self.panels,
@@ -289,7 +294,7 @@ def resolve_visual_style(
 
 
 def _require_panel_sequence(panels: tuple[object, ...], error_code: str) -> None:
-    if [getattr(panel, "panel_index") for panel in panels] != list(range(1, 10)):
+    if [getattr(panel, "panel_index") for panel in panels] != list(range(1, len(panels) + 1)):
         raise ValueError(error_code)
 
 

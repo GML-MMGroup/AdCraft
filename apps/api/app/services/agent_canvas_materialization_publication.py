@@ -30,6 +30,8 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
+from app.services.agent_canvas_node_change_authority import creative_node_input_digest
+from app.services.agent_canvas_parent_identity import parent_snapshot_matches
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_ad_media import (
     StoryboardGridContentV2,
@@ -785,12 +787,8 @@ class CapabilityMaterializationPublicationService:
                     isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
                     and current_anchor.source.node_id == envelope.parent_snapshot.node_id
                 )
-                parent_revision_matches = (
-                    parent_source_matches
-                    and current_anchor.source.node_revision
-                    == envelope.parent_snapshot.node_revision
-                )
-                if parent_source_matches and not parent_revision_matches:
+                parent_revision_matches = False
+                if parent_source_matches:
                     try:
                         current_parent = self._workflows.get_node(
                             envelope.workflow_id,
@@ -800,10 +798,7 @@ class CapabilityMaterializationPublicationService:
                         current_parent = None
                     parent_revision_matches = (
                         current_parent is not None
-                        and current_parent.revision == envelope.parent_snapshot.node_revision
-                        and current_parent.prompt_preparation.status == "ready"
-                        and current_parent.prompt_preparation.operation_id
-                        == envelope.parent_snapshot.prompt_preparation_operation_id
+                        and parent_snapshot_matches(envelope.parent_snapshot, current_parent)
                     )
                 if (
                     not parent_source_matches
@@ -1296,6 +1291,7 @@ class CapabilityMaterializationPublicationService:
             update={
                 "node_revision": current.revision,
                 "prompt_preparation_operation_id": current_operation_id,
+                "creative_input_digest": creative_node_input_digest(current),
             }
         )
         refreshed_intent = envelope.derivative_intent.model_copy(

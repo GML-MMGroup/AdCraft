@@ -29,7 +29,15 @@ from app.schemas.workflow_v2 import WorkflowAssetVersionV2
 from app.services.media_inputs import MediaInputConverter
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_storage_adapter import StorageAdapter
-from app.services.v2_data_boundary import validate_v2_relative_path
+from app.services.v2_data_boundary import (
+    V2DataBoundaryError,
+    validate_v2_data_path,
+    validate_v2_relative_path,
+)
+from app.services.v2_asset_renditions import (
+    V2AssetRenditionService,
+    read_image_dimensions,
+)
 from app.services.v2_library_reference_preview import (
     LibraryReferencePreviewError,
     ResolvedLibraryPreview,
@@ -107,6 +115,7 @@ CANVAS_PROTOCOL_REFERENCE_DELIVERY_MODES: dict[str, frozenset[str]] = {
         }
     ),
     "openai_compatible": frozenset(),
+    "openai_images": frozenset({"data_url"}),
     "tianpuyue_audio": frozenset(),
 }
 
@@ -167,7 +176,9 @@ class V2DeliveredProviderReference(BaseModel):
     provider_input_value: str = Field(exclude=True, repr=False)
     source: Literal["public_url", "local_file", "provider_upload"]
     delivery_status: Literal["ready"] = "ready"
-    rendition_kind: Literal["original", "provider_ready", "preview"] = "original"
+    rendition_kind: Literal["original", "provider_ready", "preview", "provider_reference"] = (
+        "original"
+    )
     checksum: str | None = None
     byte_count: int | None = None
     source_checksum: str | None = None
@@ -320,7 +331,10 @@ class V2DeliveredReferenceSet(BaseModel):
             return
         raise V2ProviderReferenceDeliveryError(
             code=CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE,
-            message="A required bound asset cannot be delivered to the provider.",
+            message=(
+                "A required bound asset cannot be delivered to the provider "
+                f"({self.failures[0].reason})."
+            ),
             failures=list(self.failures),
             audit=self.audit,
         )
@@ -348,6 +362,7 @@ class V2ProviderReferenceInputDeliveryService:
         self._asset_store = V2AssetStoreService(data_dir)
         self._asset_library = V2AssetLibraryRepository(create_v2_database(data_dir))
         self._library_preview = V2LibraryReferencePreviewResolver(data_dir)
+        self._renditions = V2AssetRenditionService(data_dir)
         self._converter = MediaInputConverter(
             data_dir,
             url_validator=is_provider_compatible_public_url,
@@ -431,10 +446,15 @@ class V2ProviderReferenceInputDeliveryService:
         context = reference_delivery_context_from_model_resolution(model_resolution)
         delivery_modes = _canvas_delivery_modes(context)
         _validate_canvas_input_capabilities(context, inputs)
-        references: list[V2DeliveredProviderReference] = []
+        delivered_inputs: list[
+            tuple[
+                ResolvedMediaInputSnapshotV2,
+                AssetVersionMetadataV2,
+                V2DeliveredProviderReference,
+            ]
+        ] = []
         failures: list[V2ReferenceInputDeliveryFailure] = []
         optional_omissions: list[V2ReferenceInputDeliveryFailure] = []
-        total_data_url_bytes = 0
         order_by_identity = (
             {
                 (item.asset_id, item.version_id): index
@@ -523,14 +543,33 @@ class V2ProviderReferenceInputDeliveryService:
                         "reference_instruction_transport": context.reference_instruction_transport,
                     }
                 )
+            if version is not None:
+                delivered_inputs.append((input_snapshot, version, delivered))
+
+        original_data_url_bytes = sum(
+            delivered.byte_count or 0
+            for _, _, delivered in delivered_inputs
+            if (
+                delivered.media_type == "image"
+                and delivered.provider_input_type == "data_url"
+                and delivered.rendition_kind == "original"
+            )
+        )
+        if original_data_url_bytes > self._settings.v2_provider_reference_total_data_url_bytes:
+            delivered_inputs = self._redeliver_canvas_original_images(delivered_inputs)
+
+        references: list[V2DeliveredProviderReference] = []
+        total_data_url_bytes = 0
+        for input_snapshot, _, delivered in delivered_inputs:
             if delivered.provider_input_type == "data_url" and delivered.byte_count:
                 next_total = total_data_url_bytes + delivered.byte_count
                 if next_total > self._settings.v2_provider_reference_total_data_url_bytes:
-                    failure = _canvas_delivery_failure(
-                        input_snapshot,
-                        "image_data_url_total_too_large",
+                    failures.append(
+                        _canvas_delivery_failure(
+                            input_snapshot,
+                            "image_data_url_total_too_large",
+                        )
                     )
-                    failures.append(failure)
                     continue
                 total_data_url_bytes = next_total
             references.append(delivered)
@@ -539,6 +578,93 @@ class V2ProviderReferenceInputDeliveryService:
             references=references,
             failures=failures,
             omitted_optional_inputs=optional_omissions,
+        )
+
+    def _redeliver_canvas_original_images(
+        self,
+        delivered_inputs: list[
+            tuple[
+                ResolvedMediaInputSnapshotV2,
+                AssetVersionMetadataV2,
+                V2DeliveredProviderReference,
+            ]
+        ],
+    ) -> list[
+        tuple[
+            ResolvedMediaInputSnapshotV2,
+            AssetVersionMetadataV2,
+            V2DeliveredProviderReference,
+        ]
+    ]:
+        redelivered: list[
+            tuple[
+                ResolvedMediaInputSnapshotV2,
+                AssetVersionMetadataV2,
+                V2DeliveredProviderReference,
+            ]
+        ] = []
+        for input_snapshot, version, delivered in delivered_inputs:
+            if not (
+                delivered.media_type == "image"
+                and delivered.provider_input_type == "data_url"
+                and delivered.rendition_kind == "original"
+            ):
+                redelivered.append((input_snapshot, version, delivered))
+                continue
+            rendition = self._deliver_canvas_provider_reference_rendition(
+                input_snapshot,
+                version,
+                delivered,
+            )
+            redelivered.append((input_snapshot, version, rendition or delivered))
+        return redelivered
+
+    def _deliver_canvas_provider_reference_rendition(
+        self,
+        input_snapshot: ResolvedMediaInputSnapshotV2,
+        version: AssetVersionMetadataV2,
+        original: V2DeliveredProviderReference,
+    ) -> V2DeliveredProviderReference | None:
+        try:
+            source_path = validate_v2_data_path(
+                self._data_dir,
+                self._data_dir / version.storage_key,
+                operation="v2-provider-reference-rendition-source",
+            )
+            if not source_path.is_file() or source_path.is_symlink():
+                return None
+            rendition = self._renditions.ensure(
+                source_path,
+                asset_id=input_snapshot.asset_id,
+                version_id=version.version_id,
+                media_type="image",
+                kind="provider_reference",
+                max_dimension=2048,
+            )
+            content = rendition.path.read_bytes()
+            width, height = read_image_dimensions(rendition.path)
+        except (OSError, V2DataBoundaryError, V2PersistenceError):
+            return None
+        data_url = f"data:image/jpeg;base64,{base64.b64encode(content).decode('ascii')}"
+        byte_count = len(data_url.encode("utf-8"))
+        if byte_count > self._settings.v2_provider_reference_max_data_url_bytes:
+            return None
+        return original.model_copy(
+            update={
+                "mime_type": "image/jpeg",
+                "provider_input_type": "data_url",
+                "provider_input_value": data_url,
+                "source": "local_file",
+                "byte_count": byte_count,
+                "rendition_kind": "provider_reference",
+                "source_checksum": version.sha256,
+                "source_byte_count": version.size_bytes,
+                "source_mime_type": version.mime_type,
+                "rendition_checksum": hashlib.sha256(content).hexdigest(),
+                "rendition_byte_count": len(content),
+                "rendition_width": width,
+                "rendition_height": height,
+            }
         )
 
     def _deliver_canvas_version(
@@ -1000,7 +1126,9 @@ def _canvas_delivered(
     input_value: str,
     source: Literal["public_url", "local_file", "provider_upload"],
     byte_count: int | None = None,
-    rendition_kind: Literal["original", "provider_ready", "preview"] = "original",
+    rendition_kind: Literal["original", "provider_ready", "preview", "provider_reference"] = (
+        "original"
+    ),
     mime_type: str | None = None,
     rendition_checksum: str | None = None,
     rendition_byte_count: int | None = None,

@@ -19,6 +19,37 @@ class AssetRendition:
     kind: str
 
 
+def read_image_dimensions(path: Path) -> tuple[int, int]:
+    """Read dimensions from a rendered PNG or JPEG without a runtime image dependency."""
+
+    content = path.read_bytes()
+    if content[:8] == b"\x89PNG\r\n\x1a\n" and len(content) >= 24 and content[12:16] == b"IHDR":
+        return int.from_bytes(content[16:20], "big"), int.from_bytes(content[20:24], "big")
+    if content[:2] == b"\xff\xd8":
+        position = 2
+        while position + 9 <= len(content):
+            if content[position] != 0xFF:
+                break
+            marker = content[position + 1]
+            position += 2
+            if marker in {0xD8, 0xD9}:
+                continue
+            length = int.from_bytes(content[position : position + 2], "big")
+            if length < 2 or position + length > len(content):
+                break
+            if marker in {0xC0, 0xC1, 0xC2}:
+                return (
+                    int.from_bytes(content[position + 5 : position + 7], "big"),
+                    int.from_bytes(content[position + 3 : position + 5], "big"),
+                )
+            position += length
+    raise V2PersistenceError(
+        "asset_rendition_metadata_invalid",
+        "Asset rendition image metadata is invalid.",
+        stage="v2_asset_rendition_service",
+    )
+
+
 class V2AssetRenditionService:
     """Create deterministic preview files without mutating AssetVersion content."""
 
@@ -36,7 +67,7 @@ class V2AssetRenditionService:
         kind: str,
         max_dimension: int | None = None,
     ) -> AssetRendition:
-        if kind not in {"preview", "poster"}:
+        if kind not in {"preview", "poster", "provider_reference"}:
             raise V2PersistenceError(
                 "asset_rendition_kind_invalid",
                 "Asset rendition kind is invalid.",
@@ -48,13 +79,28 @@ class V2AssetRenditionService:
                 "Asset rendition media type is unsupported.",
                 stage="v2_asset_rendition_service",
             )
-        if kind == "poster" and media_type != "video":
+        if kind in {"poster", "provider_reference"} and (
+            (kind == "poster" and media_type != "video")
+            or (kind == "provider_reference" and media_type != "image")
+        ):
             raise V2PersistenceError(
                 "asset_rendition_media_unsupported",
-                "Poster renditions require video media.",
+                (
+                    "Poster renditions require video media."
+                    if kind == "poster"
+                    else "Provider reference renditions require image media."
+                ),
                 stage="v2_asset_rendition_service",
             )
-        if max_dimension is not None and max_dimension not in {320, 640}:
+        if kind == "provider_reference":
+            if max_dimension not in {None, 2048}:
+                raise V2PersistenceError(
+                    "asset_rendition_size_invalid",
+                    "Provider reference renditions require a 2048px maximum dimension.",
+                    stage="v2_asset_rendition_service",
+                )
+            max_dimension = 2048
+        elif max_dimension is not None and max_dimension not in {320, 640}:
             raise V2PersistenceError(
                 "asset_rendition_size_invalid",
                 "Asset rendition size is invalid.",
@@ -75,7 +121,12 @@ class V2AssetRenditionService:
         temporary = target.with_name(f".{target.stem}.{uuid4().hex}.{extension}")
         if media_type == "image":
             dimension = max_dimension or 640
-            filters = f"scale={dimension}:{dimension}:force_original_aspect_ratio=decrease"
+            filters = (
+                "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease"
+                if kind == "provider_reference"
+                else f"scale={dimension}:{dimension}:force_original_aspect_ratio=decrease"
+            )
+            quality = "3" if kind == "provider_reference" else "5"
             command = [
                 self._ffmpeg_path,
                 "-y",
@@ -89,7 +140,7 @@ class V2AssetRenditionService:
                 "-frames:v",
                 "1",
                 "-q:v",
-                "5",
+                quality,
                 temporary.as_posix(),
             ]
         else:

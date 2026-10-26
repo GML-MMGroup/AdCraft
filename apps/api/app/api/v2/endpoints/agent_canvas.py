@@ -2419,6 +2419,7 @@ def create_node(
             workflow_id,
             request,
             expected_revision=expected,
+            user_authored=True,
         )
         workflow = runtime.projects.get_workflow(workflow_id)
         workflow = runtime.editing_responses.project_workflow(workflow)

@@ -117,6 +117,7 @@ class RoleBindingSnapshotV2(_RolePromptModel):
     reference_purpose: str = Field(min_length=1, max_length=80)
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     character_phase: CharacterAuthoringPhaseV1 | None = None
+    character_human_face: bool | None = None
     requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
     requirement_revision_no: int | None = Field(default=None, ge=1)
     source_sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
@@ -124,6 +125,8 @@ class RoleBindingSnapshotV2(_RolePromptModel):
 
     @model_validator(mode="after")
     def validate_asset_identity(self) -> "RoleBindingSnapshotV2":
+        if self.source_role != "character" and self.character_human_face is not None:
+            raise ValueError("Only Character Bindings may specify a human face.")
         if (self.asset_id is None) != (self.asset_version_id is None):
             raise ValueError("Binding Asset and version identities must be supplied together.")
         character_values = (
@@ -238,6 +241,7 @@ class CharacterIdentityAuthorityProjectionV1(_RolePromptModel):
         "detailed_semi_realistic_commercial_illustration"
     )
     gender_presentation: CharacterGenderPresentationV1 = "unspecified"
+    human_face: bool | None = None
     projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
 
     @classmethod
@@ -246,11 +250,15 @@ class CharacterIdentityAuthorityProjectionV1(_RolePromptModel):
         payload.pop("projection_digest", None)
         payload.setdefault("gender_presentation", "unspecified")
         payload.setdefault("rendering_mode", "detailed_semi_realistic_commercial_illustration")
+        if payload.get("human_face") is None:
+            payload.pop("human_face", None)
         return cls.model_validate({**payload, "projection_digest": _projection_digest(payload)})
 
     @model_validator(mode="after")
     def validate_projection_digest(self) -> "CharacterIdentityAuthorityProjectionV1":
         payload = self.model_dump(mode="json", exclude={"projection_digest"})
+        if self.human_face is None:
+            payload.pop("human_face")
         if self.projection_digest != _projection_digest(payload):
             raise ValueError("Character identity projection digest does not match its payload.")
         if (self.source_asset_id is None) != (self.source_asset_version_id is None):
@@ -558,6 +566,16 @@ class CharacterMainRoleBriefV2(_RoleBriefModel):
     wardrobe: str = Field(min_length=1, max_length=2_048)
     accessories: str = Field(default="", max_length=1_024)
     gender_presentation: CharacterGenderPresentationV1 = "unspecified"
+    human_face: bool | None = Field(
+        default=None,
+        description=(
+            "True when the character is a human, or a humanoid with a realistic human face "
+            "(for example an elf or a horned demon with a human face), depicted with realistic "
+            "proportions. False for animals, robots, creatures, faceless mascots and objects, "
+            "and for characters intentionally drawn in a stylized non-realistic style such as "
+            "anime, cartoon or chibi. Always set it."
+        ),
+    )
     rendering_mode: Literal["detailed_semi_realistic_commercial_illustration"] = (
         "detailed_semi_realistic_commercial_illustration"
     )
@@ -581,7 +599,7 @@ class SceneBoardRoleBriefV2(_RoleBriefModel):
     lighting: str = Field(min_length=1, max_length=2_048)
     materials: str = Field(min_length=1, max_length=2_048)
     atmosphere: str = Field(min_length=1, max_length=2_048)
-    views: tuple[str, ...] = Field(min_length=9, max_length=9)
+    views: tuple[str, ...] = Field(min_length=1, max_length=9)
     entity_references: tuple[str, ...] = Field(default=(), max_length=32)
     action_references: tuple[str, ...] = Field(default=(), max_length=32)
     environment_only: Literal[True] = True

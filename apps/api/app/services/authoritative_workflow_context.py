@@ -37,6 +37,7 @@ from app.schemas.agent_operation_contexts import (
     WorkflowStateCapsuleV1,
     WorkflowWorkItemSummaryV1,
 )
+from app.services.agent_canvas_node_ownership import agent_journey_nodes
 from app.schemas.language import BCP47Tag
 
 
@@ -81,6 +82,7 @@ class AuthoritativeWorkflowContextProjector:
             with self._workflows.database.engine.connect() as connection:
                 snapshot = self._guidance.read_in_transaction(connection, workflow_id)
             workflow = self._workflows.get_workflow(workflow_id)
+            journey_nodes = agent_journey_nodes(workflow.nodes)
             members = {
                 item.node_id: item
                 for item in self._runtime.list_latest_members_for_workflow(workflow_id)
@@ -88,7 +90,7 @@ class AuthoritativeWorkflowContextProjector:
             dispatches = {
                 item.node_id: item for item in self._prompt_dispatch.list_for_workflow(workflow_id)
             }
-            status_counts = Counter(node.status for node in workflow.nodes)
+            status_counts = Counter(node.status for node in journey_nodes)
             work = [
                 WorkflowWorkItemSummaryV1(
                     node_id=node.node_id,
@@ -110,7 +112,7 @@ class AuthoritativeWorkflowContextProjector:
                     output_available=node.output_asset_id is not None,
                     failure_code=(node.error.code if node.error is not None else None),
                 )
-                for node in workflow.nodes
+                for node in journey_nodes
                 if node.status != "ready"
             ]
             work.sort(key=lambda item: (_WORK_PRIORITY[item.node_status], item.node_id))
@@ -141,7 +143,7 @@ class AuthoritativeWorkflowContextProjector:
                     leaf_error_code=(node.error.code if node.error is not None else "node_failed"),
                     blocker_class="unrecoverable",
                 )
-                for node in workflow.nodes
+                for node in journey_nodes
                 if node.status == "failed"
             ]
             if current_action is not None and current_action.ownership_status in {

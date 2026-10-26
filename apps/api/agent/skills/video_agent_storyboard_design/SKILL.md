@@ -6,6 +6,8 @@ description: Convert approved script beats into ordered, visually continuous sto
 
 # Purpose
 
+Keep confirmed audible speech in the narrative and sequence timing, including speaker and exact words; image panels depict the accompanying action without rendering that speech as captions. Do not convert required dialogue into on-screen copy. Separate BGM generation does not remove native Video sound.
+
 Organize the approved script into bounded Storyboard Sequences and executable image directions while preserving product, character, and scene continuity.
 
 # Inputs

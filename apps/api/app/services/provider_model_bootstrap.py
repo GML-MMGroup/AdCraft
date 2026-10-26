@@ -68,6 +68,7 @@ class ProviderModelBootstrapService:
             "tianpuyue",
             "openrouter",
             "minimax",
+            "teamorouter",
             "fake",
         ):
             had_models = bool(self._repository.list_models(provider_id=provider_id))

@@ -2211,7 +2211,16 @@ def _public_world_setting_input(
 
 
 def _public_input_manifest(manifest: ResolvedNodeInputManifestV2) -> dict[str, object]:
-    payload = manifest.model_dump(mode="json")
+    # The event is a bounded notification; the full manifest (source structured
+    # content and text bodies) stays on the execution member, identified by
+    # manifest_digest and each input's content_digest.
+    payload = manifest.model_dump(
+        mode="json",
+        exclude={
+            "text_inputs": {"__all__": {"content", "source_structured_content"}},
+            "media_inputs": {"__all__": {"source_structured_content"}},
+        },
+    )
     payload["world_setting_inputs"] = [
         _public_world_setting_input(item) for item in manifest.world_setting_inputs
     ]

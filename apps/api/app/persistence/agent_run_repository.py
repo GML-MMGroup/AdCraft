@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -18,7 +18,9 @@ from app.schemas.agent_runtime import AgentRunRequest
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 _MAX_AUDIT_BYTES = 16_384
-_MAX_VALIDATION_CONTEXT_BYTES = 16_384
+# JSON escaping stores each CJK character as six bytes; Treatment review
+# contexts with all confirmed sections need more than 16 KB.
+_MAX_VALIDATION_CONTEXT_BYTES = 65_536
 _MAX_TOOL_RESULTS_BYTES = 65_536
 _SENSITIVE_KEYS = ("api_key", "authorization", "credential", "secret", "token")
 _SAFE_TOKEN_METADATA_KEYS = {
@@ -79,6 +81,19 @@ class AgentRunRecord:
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
+
+
+def _unsubmitted_runtime_failure(failure: Mapping[str, Any]) -> bool:
+    """Require explicit evidence that an unreachable runtime never reached a model."""
+
+    audit = failure.get("audit")
+    return (
+        failure.get("code") == "agent_runtime_unavailable"
+        and failure.get("retryable") is True
+        and isinstance(audit, Mapping)
+        and audit.get("model_submission_count") == 0
+        and audit.get("failure_boundary") in {"runtime_unreachable", "runtime_config_unreachable"}
+    )
 
 
 class AgentRunRepository:
@@ -485,6 +500,69 @@ class AgentRunRepository:
                         updated_at=_iso(timestamp),
                     )
                 )
+                updated = _get_row(connection, run_id)
+        except AgentRunRepositoryError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _record(updated)
+
+    def reopen_failed_run(
+        self,
+        run_id: str,
+        *,
+        expected_lease_generation: int,
+        lease_owner_id: str,
+        lease_duration_seconds: float,
+        now: datetime | None = None,
+    ) -> AgentRunRecord:
+        """Take a failed run back under a fresh lease so it is executed again."""
+
+        timestamp = _utc(now)
+        lease_expiry = timestamp + timedelta(seconds=_lease_duration(lease_duration_seconds))
+        try:
+            with self._database.engine.begin() as connection:
+                row = _get_row(connection, run_id)
+                if (
+                    row["status"] != "failed"
+                    or row["completed_result_identity"] is not None
+                    or row["lease_generation"] != expected_lease_generation
+                    or not _unsubmitted_runtime_failure(_object(row["safe_failure_json"]))
+                ):
+                    raise _error("agent_run_reopen_conflict", "Agent run cannot be reopened.")
+                audit_metadata = _object(row["audit_metadata_json"])
+                audit_metadata = {
+                    **audit_metadata,
+                    "reopen_count": int(audit_metadata.get("reopen_count", 0)) + 1,
+                    "last_reopen_code": row["safe_error_code"],
+                }
+                result = connection.execute(
+                    update(AgentRunRow)
+                    .where(
+                        AgentRunRow.run_id == run_id,
+                        AgentRunRow.status == "failed",
+                        AgentRunRow.lease_generation == expected_lease_generation,
+                        AgentRunRow.updated_at == row["updated_at"],
+                    )
+                    .values(
+                        status="running",
+                        operation_stage="running",
+                        lease_owner_id=lease_owner_id,
+                        lease_generation=int(row["lease_generation"]) + 1,
+                        lease_expires_at=_iso(lease_expiry),
+                        # The Sidecar numbers each new attempt from seq 1.
+                        last_event_seq=0,
+                        terminal_result_json=None,
+                        audit_metadata_json=_json(audit_metadata),
+                        updated_at=_iso(timestamp),
+                        finished_at=None,
+                    )
+                )
+                if result.rowcount != 1:
+                    raise _error(
+                        "agent_run_reopen_conflict",
+                        "Agent run changed before it could be reopened.",
+                    )
                 updated = _get_row(connection, run_id)
         except AgentRunRepositoryError:
             raise

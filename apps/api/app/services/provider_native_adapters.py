@@ -9,6 +9,8 @@ import hashlib
 import json
 from typing import Any, Mapping, Protocol
 from urllib.parse import urlsplit
+from urllib.request import Request
+from uuid import uuid4
 
 from app.core.config import Settings
 from app.schemas.provider_models import (
@@ -19,7 +21,14 @@ from app.schemas.provider_models import (
     ReferenceInputPolicyV1,
 )
 from app.services.openrouter_policy import build_openrouter_routing_policy
-from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
+from app.services.provider_credentials import (
+    ProviderHttpResponse,
+    ProviderHttpTransport,
+    UrllibProviderHttpTransport,
+)
+from app.services.provider_model_catalog import TEAMOROUTER_IMAGE_PROFILE
+from app.services.workflow_model_call_redaction import redact_model_call
+from app.tools.media_provider_protocol import MediaApiError
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,7 +327,7 @@ class OpenRouterImageTransport:
             max_response_bytes=28_000_000,
         )
         if response.status_code < 200 or response.status_code >= 300:
-            raise ValueError("provider_request_failed")
+            raise _image_http_error(response, api_key=self._api_key)
         try:
             parsed = json.loads(response.body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -547,6 +556,345 @@ class OpenRouterImageAdapter(ProviderNativeAdapter):
             request_fingerprint=status.request_fingerprint,
             raw={"media_type": media_type, "decoded_size": len(decoded)},
         )
+
+
+_TEAMOROUTER_BASE_URL = "https://api.teamorouter.com/v1"
+# GPT Image 2 can take minutes; TeamoRouter recommends a 300 s client timeout.
+_TEAMOROUTER_TIMEOUT_SECONDS = 300.0
+_TEAMOROUTER_MAX_RESPONSE_BYTES = 64_000_000
+# The OpenAI edits endpoint treats input images as the canvas to modify, while
+# Canvas bindings are references (as with Seedream). Live checks (2026-10-20)
+# showed a descriptive node prompt returns the reference almost unchanged; a
+# layout-first edit instruction with high input fidelity yields the requested
+# views while keeping the subject's identity.
+TEAMOROUTER_REFERENCE_INSTRUCTION = (
+    "Turn the attached reference image into a NEW image that satisfies the required "
+    "layout below. Keep the subject's exact identity, shape, materials and colors; change "
+    "the composition, framing and viewpoints as the layout requires."
+)
+_TEAMOROUTER_REQUEST_FIELDS = (
+    "size",
+    "quality",
+    "background",
+    "output_format",
+    "output_compression",
+)
+
+
+class RawHttpPostTransport(Protocol):
+    def post(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse: ...
+
+
+class UrllibRawHttpPostTransport:
+    """POST prepared bytes with redirects disabled, optionally via one proxy."""
+
+    def __init__(self, *, proxy_url: str | None = None) -> None:
+        self.proxy_url = proxy_url
+
+    def post(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse:
+        return UrllibProviderHttpTransport._open(
+            request=Request(url, data=body, headers=headers, method="POST"),
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+            proxy_url=self.proxy_url,
+        )
+
+
+class TeamoRouterImageTransport:
+    """Synchronous OpenAI Images transport fixed to the TeamoRouter endpoint."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        http_transport: RawHttpPostTransport | None = None,
+    ) -> None:
+        self._api_key = (settings.teamorouter_api_key or "").strip()
+        self._base_url = settings.teamorouter_base_url.rstrip("/")
+        # Only TeamoRouter traffic uses this proxy; other providers stay direct.
+        self._proxy_url = (settings.teamorouter_proxy_url or "").strip() or None
+        self._http = http_transport or UrllibRawHttpPostTransport(proxy_url=self._proxy_url)
+
+    def submit(self, payload: Mapping[str, object]) -> Mapping[str, object]:
+        if not self._api_key:
+            raise ValueError("provider_configuration_missing")
+        if self._base_url != _TEAMOROUTER_BASE_URL:
+            raise ValueError("provider_base_url_invalid")
+        if self._proxy_url is not None and not _valid_http_proxy_url(self._proxy_url):
+            raise ValueError("provider_proxy_invalid")
+        fields = payload.get("fields")
+        images = payload.get("images")
+        if not isinstance(fields, Mapping) or not isinstance(images, list):
+            raise ValueError("provider_request_contract_invalid")
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        if images:
+            boundary = f"adcraft-{uuid4().hex}"
+            url = f"{self._base_url}/images/edits"
+            headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+            body = _multipart_body(boundary, fields, [_data_url_file(item) for item in images])
+        else:
+            url = f"{self._base_url}/images/generations"
+            headers["Content-Type"] = "application/json"
+            body = json.dumps(dict(fields), separators=(",", ":")).encode("utf-8")
+        response = self._http.post(
+            url=url,
+            headers=headers,
+            body=body,
+            timeout_seconds=_TEAMOROUTER_TIMEOUT_SECONDS,
+            max_response_bytes=_TEAMOROUTER_MAX_RESPONSE_BYTES,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            raise _image_http_error(response, api_key=self._api_key)
+        try:
+            parsed = json.loads(response.body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("provider_response_contract_invalid") from error
+        if not isinstance(parsed, Mapping):
+            raise ValueError("provider_response_contract_invalid")
+        return parsed
+
+    def poll(self, provider_task_id: str) -> Mapping[str, object]:
+        del provider_task_id
+        raise ValueError("provider_task_not_pollable")
+
+    def download(self, value: str) -> Mapping[str, object]:
+        del value
+        raise ValueError("provider_task_not_pollable")
+
+
+def _image_http_error(response: ProviderHttpResponse, *, api_key: str) -> MediaApiError:
+    metadata: dict[str, Any] = {"http_status": response.status_code}
+    if len(response.body) <= 16_384:
+        try:
+            parsed = json.loads(response.body)
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+            parsed = None
+        if isinstance(parsed, dict):
+            nested = parsed.get("error")
+            sources = (nested, parsed) if isinstance(nested, dict) else (parsed,)
+            details: dict[str, str] = {}
+            for key in ("code", "message", "request_id", "requestId"):
+                for source in sources:
+                    value = source.get(key)
+                    if isinstance(value, str) and value.strip():
+                        details[key] = value
+                        break
+            # Only bounded standard diagnostic fields cross the transport boundary.
+            # Never retain a raw response, provider stack, or echoed credentials.
+            safe_details, _ = redact_model_call(details, (api_key,))
+            metadata["response_body"] = safe_details
+    return MediaApiError("provider_request_failed", metadata)
+
+
+class TeamoRouterImageAdapter(ProviderNativeAdapter):
+    """Project one canonical image request into TeamoRouter GPT Image 2."""
+
+    profile = ProviderAdapterProfileV1.model_validate(TEAMOROUTER_IMAGE_PROFILE)
+
+    def __init__(
+        self,
+        *,
+        transport: NativeProviderTransport | None = None,
+        profile: ProviderAdapterProfileV1 | None = None,
+    ) -> None:
+        super().__init__(transport=transport)
+        if profile is not None:
+            if profile.transport_kind != "teamorouter_images_native":
+                raise ValueError("provider_adapter_profile_invalid")
+            self.profile = profile
+
+    def _compile_payload(self, request: CanonicalProviderRequest) -> Mapping[str, object]:
+        prompt = _layout_first_edit_prompt(request.prompt) if request.references else request.prompt
+        fields: dict[str, object] = {
+            "model": request.provider_model_id,
+            "prompt": prompt,
+            "n": 1,
+        }
+        if request.references:
+            fields["input_fidelity"] = "high"
+        fields.update(
+            {
+                name: request.parameters[name]
+                for name in _TEAMOROUTER_REQUEST_FIELDS
+                if name in request.parameters
+            }
+        )
+        return {
+            "fields": fields,
+            "images": [reference.value for reference in request.references],
+        }
+
+    def _validate_references(
+        self,
+        references: tuple[CanonicalProviderReference, ...],
+    ) -> tuple[str, ...]:
+        # The OpenAI Images API has no reference roles; order alone is meaningful.
+        if references and "native_reference_slots" not in self.profile.accepted_input_modes:
+            return ("reference_input_mode_unsupported",)
+        for reference in references:
+            if reference.input_type != "data_url":
+                return ("provider_reference_input_invalid",)
+            try:
+                _data_url_file(reference.value)
+            except ValueError:
+                return ("provider_reference_input_invalid",)
+        return ()
+
+    def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
+        transport = self._require_transport()
+        response = transport.submit(request.payload)
+        value, media_type = _single_b64_raster(response)
+        return ProviderSubmission(
+            provider_task_id=f"sync:{request.request_fingerprint}",
+            request_fingerprint=request.request_fingerprint,
+            raw={"data": [{"b64_json": value, "media_type": media_type}]},
+        )
+
+    def poll(self, submission: ProviderSubmission) -> ProviderStatus:
+        return ProviderStatus(
+            provider_task_id=submission.provider_task_id,
+            request_fingerprint=submission.request_fingerprint,
+            state="completed",
+            raw=submission.raw,
+        )
+
+    def download(self, status: ProviderStatus) -> ProviderArtifact:
+        value, media_type = _single_b64_raster(status.raw)
+        return ProviderArtifact(
+            media_type="image",
+            value=value,
+            provider_task_id=status.provider_task_id,
+            request_fingerprint=status.request_fingerprint,
+            raw={"media_type": media_type},
+        )
+
+
+def _valid_http_proxy_url(value: str) -> bool:
+    try:
+        parsed = urlsplit(value)
+        parsed.port  # noqa: B018 - raises ValueError for a malformed port.
+    except ValueError:
+        return False
+    return (
+        parsed.scheme in {"http", "https"}
+        and bool(parsed.hostname)
+        and parsed.path in {"", "/"}
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
+def _layout_first_edit_prompt(prompt: str) -> str:
+    """Lead an edit with its deterministic layout rules, then the descriptive prompt."""
+
+    requirements: list[str] = []
+    prohibited: list[str] = []
+    section: list[str] | None = None
+    for line in prompt.splitlines():
+        stripped = line.strip()
+        if stripped == "Required assertions:":
+            section = requirements
+        elif stripped == "Prohibited behavior:":
+            section = prohibited
+        elif section is not None and stripped.startswith("- "):
+            item = stripped[2:]
+            if item.startswith("[") and "]" in item:
+                item = item.split("]", 1)[1].strip()
+            section.append(item)
+        elif stripped:
+            section = None
+    rules = ""
+    if requirements:
+        rules += "Required layout and rules:\n" + "".join(f"- {item}\n" for item in requirements)
+    if prohibited:
+        rules += "Prohibited:\n" + "".join(f"- {item}\n" for item in prohibited)
+    return f"{TEAMOROUTER_REFERENCE_INSTRUCTION}\n{rules}\nSubject and style details:\n{prompt}"
+
+
+def _single_b64_raster(response: Mapping[str, object]) -> tuple[str, str]:
+    data = response.get("data") if isinstance(response, Mapping) else None
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], Mapping):
+        raise ValueError("provider_response_contract_invalid")
+    value = data[0].get("b64_json")
+    if not isinstance(value, str) or not value:
+        raise ValueError("provider_response_contract_invalid")
+    try:
+        head = base64.b64decode(value[:64], validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("provider_response_contract_invalid") from error
+    media_type = _raster_media_type(head)
+    _decode_raster(value, media_type)
+    return value, media_type
+
+
+def _raster_media_type(head: bytes) -> str:
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(head) >= 12 and head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("provider_response_contract_invalid")
+
+
+def _data_url_file(value: object) -> tuple[str, bytes]:
+    if not isinstance(value, str) or not value.startswith("data:image/"):
+        raise ValueError("provider_reference_input_invalid")
+    header, separator, encoded = value.partition(",")
+    mime_type = header[len("data:") :].split(";", 1)[0]
+    if not separator or ";base64" not in header or len(value) > 8_000_000:
+        raise ValueError("provider_reference_input_invalid")
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("provider_reference_input_invalid") from error
+    if not content:
+        raise ValueError("provider_reference_input_invalid")
+    return mime_type, content
+
+
+def _multipart_body(
+    boundary: str,
+    fields: Mapping[str, object],
+    files: list[tuple[str, bytes]],
+) -> bytes:
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append(
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
+            ).encode("utf-8")
+        )
+    for index, (mime_type, content) in enumerate(files, start=1):
+        extension = mime_type.split("/", 1)[1]
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="image[]"; '
+                f'filename="reference-{index}.{extension}"\r\n'
+                f"Content-Type: {mime_type}\r\n\r\n"
+            ).encode("utf-8")
+            + content
+            + b"\r\n"
+        )
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(parts)
 
 
 class MiniMaxVideoAdapter(ProviderNativeAdapter):
