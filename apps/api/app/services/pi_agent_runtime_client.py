@@ -200,16 +200,21 @@ class PiAgentRuntimeClient:
         except (httpx.HTTPError, OSError) as error:
             if terminal_count == 1 and terminal is not None:
                 return PiAgentRunOutcome(terminal_event=terminal, last_seq=last_seq)
+            details = _runtime_unavailable_details(
+                request,
+                response_received=runtime_response_received,
+                stream_accepted=runtime_stream_accepted,
+                last_event_seq=last_seq,
+            )
+            if not runtime_response_received and isinstance(
+                error, (httpx.ConnectError, httpx.ConnectTimeout)
+            ):
+                details["failure_boundary"] = "runtime_unreachable"
             raise PiAgentRuntimeError(
                 "agent_runtime_unavailable",
                 "Agent runtime is unavailable.",
                 retryable=True,
-                details=_runtime_unavailable_details(
-                    request,
-                    response_received=runtime_response_received,
-                    stream_accepted=runtime_stream_accepted,
-                    last_event_seq=last_seq,
-                ),
+                details=details,
             ) from error
         if terminal_count != 1 or terminal is None:
             raise _protocol_error()

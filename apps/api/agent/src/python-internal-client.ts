@@ -123,7 +123,7 @@ export class PythonInternalClient {
       }
       throw error;
     }
-    const payload = await boundedJson(response);
+    const payload = await boundedJson(response, true);
     if (
       payload.protocol_version !== "1" ||
       typeof payload.model_ref !== "string" ||
@@ -566,8 +566,18 @@ function isTimeout(error: unknown): boolean {
   return error instanceof DOMException && error.name === "TimeoutError";
 }
 
-async function boundedJson(response: Response): Promise<Record<string, unknown>> {
-  const bytes = new Uint8Array(await response.arrayBuffer());
+async function boundedJson(
+  response: Response,
+  beforeModelSubmission = false,
+): Promise<Record<string, unknown>> {
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await response.arrayBuffer();
+  } catch (error) {
+    if (beforeModelSubmission) throw new PythonInternalUnavailableError(true);
+    throw error;
+  }
+  const bytes = new Uint8Array(buffer);
   if (bytes.byteLength > 65_536) throw new Error("agent_protocol_mismatch");
   const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {

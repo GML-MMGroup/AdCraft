@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -81,6 +81,19 @@ class AgentRunRecord:
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
+
+
+def _unsubmitted_runtime_failure(failure: Mapping[str, Any]) -> bool:
+    """Require explicit evidence that an unreachable runtime never reached a model."""
+
+    audit = failure.get("audit")
+    return (
+        failure.get("code") == "agent_runtime_unavailable"
+        and failure.get("retryable") is True
+        and isinstance(audit, Mapping)
+        and audit.get("model_submission_count") == 0
+        and audit.get("failure_boundary") in {"runtime_unreachable", "runtime_config_unreachable"}
+    )
 
 
 class AgentRunRepository:
@@ -498,6 +511,7 @@ class AgentRunRepository:
         self,
         run_id: str,
         *,
+        expected_lease_generation: int,
         lease_owner_id: str,
         lease_duration_seconds: float,
         now: datetime | None = None,
@@ -509,8 +523,13 @@ class AgentRunRepository:
         try:
             with self._database.engine.begin() as connection:
                 row = _get_row(connection, run_id)
-                if row["status"] != "failed" or row["completed_result_identity"] is not None:
-                    raise _error("agent_run_not_reopenable", "Agent run cannot be reopened.")
+                if (
+                    row["status"] != "failed"
+                    or row["completed_result_identity"] is not None
+                    or row["lease_generation"] != expected_lease_generation
+                    or not _unsubmitted_runtime_failure(_object(row["safe_failure_json"]))
+                ):
+                    raise _error("agent_run_reopen_conflict", "Agent run cannot be reopened.")
                 audit_metadata = _object(row["audit_metadata_json"])
                 audit_metadata = {
                     **audit_metadata,
@@ -522,6 +541,7 @@ class AgentRunRepository:
                     .where(
                         AgentRunRow.run_id == run_id,
                         AgentRunRow.status == "failed",
+                        AgentRunRow.lease_generation == expected_lease_generation,
                         AgentRunRow.updated_at == row["updated_at"],
                     )
                     .values(
@@ -540,8 +560,8 @@ class AgentRunRepository:
                 )
                 if result.rowcount != 1:
                     raise _error(
-                        "agent_run_lease_active",
-                        "Agent run lease was acquired by another worker.",
+                        "agent_run_reopen_conflict",
+                        "Agent run changed before it could be reopened.",
                     )
                 updated = _get_row(connection, run_id)
         except AgentRunRepositoryError:

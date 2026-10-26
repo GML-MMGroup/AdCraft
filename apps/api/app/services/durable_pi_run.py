@@ -15,6 +15,7 @@ from app.persistence.agent_run_repository import (
     AgentRunRecord,
     AgentRunRepository,
     AgentRunRepositoryError,
+    _unsubmitted_runtime_failure,
 )
 from app.persistence.database import create_v2_database
 from app.persistence.provider_model_repository import ProviderModelRepository
@@ -97,6 +98,7 @@ _SAFE_FAILURE_MESSAGES = {
         "Please top up your account or switch to another model provider."
     ),
     "agent_run_cancelled": "Agent run was cancelled.",
+    "agent_run_in_progress": "The matching Agent action is already running.",
     "agent_runtime_unavailable": (
         "Agent runtime is unavailable. Please retry after the Agent runtime service is restored."
     ),
@@ -302,6 +304,7 @@ class DurablePiRunService:
                     record = (
                         repository.reopen_failed_run(
                             record.run_id,
+                            expected_lease_generation=record.lease_generation,
                             lease_owner_id=lease_owner_id,
                             lease_duration_seconds=lease_duration,
                         )
@@ -313,7 +316,10 @@ class DurablePiRunService:
                         )
                     )
                 except AgentRunRepositoryError as error:
-                    if not reopen or error.code != "agent_run_lease_active":
+                    if not reopen or error.code not in {
+                        "agent_run_reopen_conflict",
+                        "agent_run_lease_active",
+                    }:
                         raise
                     raise PiAgentRuntimeError(
                         "agent_run_in_progress",
@@ -783,23 +789,6 @@ def _safe_error_code(payload: Mapping[str, Any]) -> str:
 
 def _safe_error_message_for_code(code: str) -> str:
     return _SAFE_FAILURE_MESSAGES.get(code, "Agent runtime failed.")
-
-
-def _unsubmitted_runtime_failure(failure: Mapping[str, Any]) -> bool:
-    """A failure from an unreachable runtime that never reached a model.
-
-    A restart can make the backend or Sidecar briefly unreachable. Replaying that
-    stored failure would make every automatic retry fail the same way, so the
-    next attempt runs the operation again (production incident 2026-10-23).
-    """
-
-    audit = failure.get("audit")
-    return (
-        failure.get("code") == "agent_runtime_unavailable"
-        and failure.get("retryable") is True
-        and isinstance(audit, Mapping)
-        and audit.get("model_submission_count") == 0
-    )
 
 
 def _normalized_runtime_error(

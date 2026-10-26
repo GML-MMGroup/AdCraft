@@ -448,7 +448,9 @@ function terminalFailureAudit(
     attempt_stage: attempt?.attempt_stage ?? terminal.attemptStage,
     ...safeAttemptAudit(attempt),
     ...safeProjectionAudit(failure?.projectionMetadata),
-    failure_boundary: failureBoundary(terminal.code, attempt),
+    failure_boundary: failure?.beforeModelSubmission
+      ? "runtime_config_unreachable"
+      : failureBoundary(terminal.code, attempt),
     ...(modelSubmissionCount === undefined ? {} : { model_submission_count: modelSubmissionCount }),
     ...(responseActivityObserved === undefined
       ? {}
