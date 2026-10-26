@@ -133,6 +133,7 @@ export function useNodeWorkbenchDraft({
     onError: handlePromptError,
   });
   const acceptAuthoritativePrompt = promptAutosave.acceptAuthoritativeValue;
+  const discardPrompt = promptAutosave.discard;
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.title);
@@ -179,6 +180,7 @@ export function useNodeWorkbenchDraft({
           `/nodes/${encodeURIComponent(node.node_id)}`,
         )
       ) return;
+      discardPrompt(node.generation_prompt ?? "");
       restoreFromNode();
       setDirty(false);
     };
@@ -187,7 +189,7 @@ export function useNodeWorkbenchDraft({
       V2_AUTHORING_DRAFT_DISCARDED_EVENT,
       discardConflictDraft as EventListener,
     );
-  }, [node, restoreFromNode, workflow.workflow_id]);
+  }, [discardPrompt, node, restoreFromNode, workflow.workflow_id]);
 
   const perform = async (action: () => Promise<unknown>): Promise<boolean> => {
     setPending(true);
@@ -320,7 +322,7 @@ export function useNodeWorkbenchDraft({
     flushPrompt: promptAutosave.flush,
     retryPromptSave: promptAutosave.retry,
     discardPromptChanges: () => {
-      const discarded = promptAutosave.discard();
+      const discarded = promptAutosave.discard(node.generation_prompt ?? "");
       restoreFromNode();
       setPrompt(discarded);
       setDirty(false);

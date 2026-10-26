@@ -15,6 +15,7 @@ function persistedPrompt(value: string): string | null {
 
 interface PromptAutosaveSession {
   nodeId: string;
+  generation: number;
   latestValue: string;
   persistedValue: string | null;
   enabled: boolean;
@@ -27,6 +28,7 @@ interface PromptAutosaveSession {
 function createSession(nodeId: string, value: string, enabled: boolean): PromptAutosaveSession {
   return {
     nodeId,
+    generation: 0,
     latestValue: value,
     persistedValue: persistedPrompt(value),
     enabled,
@@ -76,6 +78,7 @@ export function useNodePromptAutosave({
     if (!session.enabled && !session.localEdited) return true;
     if (session.flushPromise) return session.flushPromise;
 
+    const generation = session.generation;
     const promise = (async () => {
       if (session.timer) {
         clearTimeout(session.timer);
@@ -93,6 +96,7 @@ export function useNodePromptAutosave({
         try {
           const patch: CanvasNodePatchRequestV2 = { generation_prompt: valueBeingSaved };
           await patchNode(session.nodeId, patch, { coalesce: true });
+          if (session.generation !== generation) return false;
           session.persistedValue = valueBeingSaved;
           session.awaitingAcknowledgement = true;
           session.localEdited = false;
@@ -105,6 +109,7 @@ export function useNodePromptAutosave({
           setSessionStatus(session, valueBeingSaved === null ? "clean" : "saved");
           return true;
         } catch (error) {
+          if (session.generation !== generation) return false;
           if (isV2ApiError(error) && (error.status === 412 || error.status === 428)) {
             setSessionStatus(session, "conflict");
             if (mountedRef.current && activeSessionRef.current === session) await onConflict?.();
@@ -154,12 +159,20 @@ export function useNodePromptAutosave({
     return flushSession(session);
   }, [flushSession, setSessionStatus]);
 
-  const discard = useCallback(() => {
+  const discard = useCallback((authoritativeValue?: string) => {
     const session = activeSessionRef.current;
     if (!session) return "";
-    const nextValue = session.persistedValue ?? "";
+    const nextPersistedValue = authoritativeValue === undefined
+      ? session.persistedValue
+      : persistedPrompt(authoritativeValue);
+    const nextValue = nextPersistedValue ?? "";
+    session.generation += 1;
+    session.flushPromise = null;
     session.latestValue = nextValue;
+    session.persistedValue = nextPersistedValue;
     session.localEdited = false;
+    session.awaitingAcknowledgement = false;
+    setLastSavedValue(nextPersistedValue);
     if (session.timer) {
       clearTimeout(session.timer);
       session.timer = null;

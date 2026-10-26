@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,7 @@ const { legacyApi, v2Api } = vi.hoisted(() => ({
     listProjects: vi.fn(async () => ({ items: [], next_cursor: null })),
     listProjectsWithEtag: vi.fn(),
     createAgentCanvasProject: vi.fn(),
+    patchAgentCanvasNode: vi.fn(),
     projectWithEtag: vi.fn(),
     agentCanvasWorkflowWithEtag: vi.fn(),
     trashProject: vi.fn(),
@@ -30,8 +31,10 @@ vi.mock("../api/v2Client", () => ({
 import { useApp } from "../AppContextValue.ts";
 import { v2AuthoringConflictStore } from "../api/v2AuthoringConflictStore.ts";
 import { normalizeCanvasNodeV2 } from "../features/agent-canvas/model/normalizers.ts";
+import { useAgentCanvasSession } from "../features/agent-canvas/session/useAgentCanvasSession.ts";
 import { saveProjectCatalogCache } from "../projects/projectCatalogCache.ts";
 import { WORKSPACE_ACTIVE_PROJECT_KEY, WORKSPACE_WORKFLOW_KEY } from "../projects/newProject.ts";
+import type { AgentCanvasWorkflowV2 } from "../types-v2.ts";
 import { WorkspaceProvider } from "./WorkspaceProvider.tsx";
 
 const workflow = {
@@ -89,8 +92,67 @@ function Probe() {
   );
 }
 
+function editableWorkflow(projectId = "project-1", workflowId = "workflow-1"): AgentCanvasWorkflowV2 {
+  return {
+    ...workflow,
+    project_id: projectId,
+    workflow_id: workflowId,
+    layout_revision: 1,
+    active_style_skill: null,
+    nodes: [{
+      node_id: `image-${workflowId}`,
+      workflow_id: workflowId,
+      node_type: "image",
+      creative_role: "general_image",
+      role_contract_version: "ad-media-role-v2",
+      title: "Product image",
+      status: "draft",
+      execution_mode: "generative",
+      summary_prompt: null,
+      generation_prompt: "Original prompt",
+      structured_content: {},
+      model_id: null,
+      model_selection_mode: "default",
+      model_ref: null,
+      model_summary: null,
+      parameters: {},
+      metadata: {},
+      parameter_provenance: {},
+      prompt_context_snapshot_id: null,
+      output_asset_id: null,
+      output_asset_version_id: null,
+      latest_attempt: null,
+      position: { x: 0, y: 0 },
+      revision: 1,
+      error: null,
+      prompt_presentation: null,
+      prompt_preparation: null,
+      created_at: "2026-10-25T00:00:00Z",
+      updated_at: "2026-10-25T00:00:00Z",
+    }],
+  };
+}
+
+function EditorSessionProbe() {
+  const app = useApp();
+  const session = useAgentCanvasSession();
+  const node = session.state.workflow?.nodes[0];
+  return (
+    <div>
+      <span data-testid="editor-workflow">{session.state.workflow?.workflow_id ?? "none"}</span>
+      <span data-testid="editor-project">{app.activeProjectId ?? "none"}</span>
+      <span data-testid="editor-hydrated">{String(app.workspaceHydrated)}</span>
+      <span data-testid="editor-prompt">{node?.generation_prompt}</span>
+      <button type="button" onClick={() => {
+        if (node) void session.actions.patchNode(node.node_id, { generation_prompt: "Saved prompt" });
+      }}>Save prompt</button>
+    </div>
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  v2Api.patchAgentCanvasNode.mockReset();
   window.localStorage.clear();
   v2Api.listProjects.mockResolvedValue({ items: [], next_cursor: null });
   v2Api.listProjectsWithEtag.mockResolvedValue({
@@ -119,6 +181,64 @@ afterEach(() => {
 });
 
 describe("WorkspaceProvider Agent Canvas authority", () => {
+  it("applies a saved node snapshot while its project is still active", async () => {
+    const active = editableWorkflow();
+    const saved = { ...active, revision: 2, nodes: [{ ...active.nodes[0]!, generation_prompt: "Saved prompt", revision: 2 }] };
+    v2Api.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: active, etag: "a-1" });
+    v2Api.patchAgentCanvasNode.mockResolvedValue({ value: { workflow: saved, node: saved.nodes[0] }, etag: "a-2" });
+    render(<WorkspaceProvider projectId="project-1"><EditorSessionProbe /></WorkspaceProvider>);
+    await waitFor(() => expect(screen.getByTestId("editor-workflow").textContent).toBe("workflow-1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save prompt" }));
+
+    await waitFor(() => expect(screen.getByTestId("editor-prompt").textContent).toBe("Saved prompt"));
+    expect(v2Api.patchAgentCanvasNode).toHaveBeenCalledWith("workflow-1", "image-workflow-1", { generation_prompt: "Saved prompt" });
+    expect(screen.getByTestId("editor-project").textContent).toBe("project-1");
+  });
+
+  it.each(["loading", "loaded"] as const)(
+    "ignores an old project's node save while the next project is %s",
+    async (nextProjectState) => {
+      const active = editableWorkflow();
+      const next = editableWorkflow("project-2", "workflow-2");
+      const pendingPatch = deferred<unknown>();
+      const pendingProject = deferred<unknown>();
+      v2Api.patchAgentCanvasNode.mockReturnValue(pendingPatch.promise);
+      v2Api.projectWithEtag.mockImplementation(async (projectId: string) => projectId === "project-2"
+        ? pendingProject.promise
+        : { value: { project_id: "project-1", workflow_id: "workflow-1", name: "First project" }, etag: "a" });
+      v2Api.agentCanvasWorkflowWithEtag.mockImplementation(async (workflowId: string) => ({
+        value: workflowId === "workflow-2" ? next : active,
+        etag: workflowId,
+      }));
+      const view = render(<WorkspaceProvider projectId="project-1"><EditorSessionProbe /></WorkspaceProvider>);
+      await waitFor(() => expect(screen.getByTestId("editor-workflow").textContent).toBe("workflow-1"));
+      fireEvent.click(screen.getByRole("button", { name: "Save prompt" }));
+      view.rerender(<WorkspaceProvider projectId="project-2"><EditorSessionProbe /></WorkspaceProvider>);
+      await waitFor(() => expect(screen.getByTestId("editor-workflow").textContent).toBe("none"));
+
+      const finishNavigation = async () => {
+        await act(async () => pendingProject.resolve({
+          value: { project_id: "project-2", workflow_id: "workflow-2", name: "Second project" },
+          etag: "b",
+        }));
+      };
+      if (nextProjectState === "loaded") {
+        await finishNavigation();
+        await waitFor(() => expect(screen.getByTestId("editor-workflow").textContent).toBe("workflow-2"));
+      }
+      await act(async () => pendingPatch.resolve({
+        value: { workflow: { ...active, revision: 2 }, node: active.nodes[0] },
+        etag: "a-2",
+      }));
+      if (nextProjectState === "loading") await finishNavigation();
+
+      await waitFor(() => expect(screen.getByTestId("editor-workflow").textContent).toBe("workflow-2"));
+      expect(screen.getByTestId("editor-project").textContent).toBe("project-2");
+      expect(screen.getByTestId("editor-hydrated").textContent).toBe("true");
+    },
+  );
+
   it("uses a fresh persisted catalog without starting a background request", async () => {
     saveProjectCatalogCache({
       active: [{
