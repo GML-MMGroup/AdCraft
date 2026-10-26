@@ -21,6 +21,36 @@ import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 const VIDEO_TOOLBAR_PARAMETERS = ["duration_seconds", "resolution", "aspect_ratio"];
 
+function mediaExecutionError(node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) {
+  const attempt = node.latest_attempt;
+  if (runtime) {
+    // New queued work can retain the node's old timestamp and error. Hide that
+    // inherited failure until the independent projections align.
+    const inheritedError = !runtime.error || (
+      runtime.error.code === attempt?.error?.code
+      && runtime.error.message === attempt?.error?.message
+    );
+    if (attempt?.status === "failed"
+      && runtime.execution_id
+      && runtime.execution_id !== attempt.execution_id
+      && runtime.phase
+      && inheritedError) return null;
+    // Runtime and Workflow refresh independently. A newer attempt can already
+    // be running while the other projection still contains the previous error.
+    const newerNode = Date.parse(node.updated_at) > Date.parse(runtime.updated_at);
+    const newerAttempt = attempt
+      && Date.parse(attempt.updated_at) > Date.parse(runtime.updated_at);
+    if (!newerNode && !newerAttempt) {
+      if (runtime.visible_status === "working") return null;
+      if (runtime.error) return runtime.error;
+      if (!attempt || attempt.execution_id !== runtime.execution_id) return null;
+    }
+  }
+  // Failed regenerations can retain a Ready node and its previous output.
+  if (attempt) return attempt.status === "failed" ? attempt.error : null;
+  return node.status === "failed" ? node.error : null;
+}
+
 export function MediaPromptWorkbench({
   node,
   runtime,
@@ -90,6 +120,7 @@ export function MediaPromptWorkbench({
   const parametersInvalid = node.node_type !== "image" && parameterIssues.length > 0;
   const audioIssue = audioDescriptor ? parameterIssues.find((issue) => issue.name === "generate_audio") : undefined;
   const publishing = runtime?.phase === "publishing";
+  const executionError = mediaExecutionError(node, runtime);
   const retryingExecution = canRetryNodeExecution(node);
   const regenerating = node.status === "failed"
     && failureUserAction(nodeActionableFailure(node)) === "regenerate";
@@ -138,12 +169,12 @@ export function MediaPromptWorkbench({
       </label>
 
       {node.node_type === "image" ? (
-        draft.error || draft.promptSaveStatus === "conflict" ? (
+        draft.error || draft.promptSaveStatus === "conflict" || executionError ? (
           <div className="agent-node-workbench__image-feedback">
-            <NodeWorkbenchError draft={draft} />
+            <NodeWorkbenchError draft={draft} executionError={executionError} />
           </div>
         ) : null
-      ) : <NodeWorkbenchError draft={draft} />}
+      ) : <NodeWorkbenchError draft={draft} executionError={executionError} />}
       {audioIssue ? (
         <p className="agent-node-workbench__field-error">
           {t("Generate audio")}: {audioIssue.message}
