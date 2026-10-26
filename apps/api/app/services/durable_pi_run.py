@@ -287,7 +287,10 @@ class DurablePiRunService:
             owns_lease = created
             lease_generation = record.lease_generation
             if not created:
-                if record.status in {"completed", "failed", "cancelled"}:
+                reopen = record.status == "failed" and _unsubmitted_runtime_failure(
+                    record.safe_failure
+                )
+                if record.status in {"completed", "failed", "cancelled"} and not reopen:
                     return self._replayed_result(record)
                 if _has_live_lease(record):
                     raise PiAgentRuntimeError(
@@ -295,11 +298,28 @@ class DurablePiRunService:
                         "The matching Agent action is already running.",
                         retryable=True,
                     )
-                record = repository.acquire_lease(
-                    record.run_id,
-                    lease_owner_id=lease_owner_id,
-                    lease_duration_seconds=lease_duration,
-                )
+                try:
+                    record = (
+                        repository.reopen_failed_run(
+                            record.run_id,
+                            lease_owner_id=lease_owner_id,
+                            lease_duration_seconds=lease_duration,
+                        )
+                        if reopen
+                        else repository.acquire_lease(
+                            record.run_id,
+                            lease_owner_id=lease_owner_id,
+                            lease_duration_seconds=lease_duration,
+                        )
+                    )
+                except AgentRunRepositoryError as error:
+                    if not reopen or error.code != "agent_run_lease_active":
+                        raise
+                    raise PiAgentRuntimeError(
+                        "agent_run_in_progress",
+                        "The matching Agent action is already running.",
+                        retryable=True,
+                    ) from error
                 owns_lease = True
                 lease_generation = record.lease_generation
                 request = request.model_copy(
@@ -763,6 +783,23 @@ def _safe_error_code(payload: Mapping[str, Any]) -> str:
 
 def _safe_error_message_for_code(code: str) -> str:
     return _SAFE_FAILURE_MESSAGES.get(code, "Agent runtime failed.")
+
+
+def _unsubmitted_runtime_failure(failure: Mapping[str, Any]) -> bool:
+    """A failure from an unreachable runtime that never reached a model.
+
+    A restart can make the backend or Sidecar briefly unreachable. Replaying that
+    stored failure would make every automatic retry fail the same way, so the
+    next attempt runs the operation again (production incident 2026-10-23).
+    """
+
+    audit = failure.get("audit")
+    return (
+        failure.get("code") == "agent_runtime_unavailable"
+        and failure.get("retryable") is True
+        and isinstance(audit, Mapping)
+        and audit.get("model_submission_count") == 0
+    )
 
 
 def _normalized_runtime_error(

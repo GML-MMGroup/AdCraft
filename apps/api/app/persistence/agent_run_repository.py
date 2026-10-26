@@ -494,6 +494,62 @@ class AgentRunRepository:
             raise _persistence_error() from error
         return _record(updated)
 
+    def reopen_failed_run(
+        self,
+        run_id: str,
+        *,
+        lease_owner_id: str,
+        lease_duration_seconds: float,
+        now: datetime | None = None,
+    ) -> AgentRunRecord:
+        """Take a failed run back under a fresh lease so it is executed again."""
+
+        timestamp = _utc(now)
+        lease_expiry = timestamp + timedelta(seconds=_lease_duration(lease_duration_seconds))
+        try:
+            with self._database.engine.begin() as connection:
+                row = _get_row(connection, run_id)
+                if row["status"] != "failed" or row["completed_result_identity"] is not None:
+                    raise _error("agent_run_not_reopenable", "Agent run cannot be reopened.")
+                audit_metadata = _object(row["audit_metadata_json"])
+                audit_metadata = {
+                    **audit_metadata,
+                    "reopen_count": int(audit_metadata.get("reopen_count", 0)) + 1,
+                    "last_reopen_code": row["safe_error_code"],
+                }
+                result = connection.execute(
+                    update(AgentRunRow)
+                    .where(
+                        AgentRunRow.run_id == run_id,
+                        AgentRunRow.status == "failed",
+                        AgentRunRow.updated_at == row["updated_at"],
+                    )
+                    .values(
+                        status="running",
+                        operation_stage="running",
+                        lease_owner_id=lease_owner_id,
+                        lease_generation=int(row["lease_generation"]) + 1,
+                        lease_expires_at=_iso(lease_expiry),
+                        # The Sidecar numbers each new attempt from seq 1.
+                        last_event_seq=0,
+                        terminal_result_json=None,
+                        audit_metadata_json=_json(audit_metadata),
+                        updated_at=_iso(timestamp),
+                        finished_at=None,
+                    )
+                )
+                if result.rowcount != 1:
+                    raise _error(
+                        "agent_run_lease_active",
+                        "Agent run lease was acquired by another worker.",
+                    )
+                updated = _get_row(connection, run_id)
+        except AgentRunRepositoryError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _record(updated)
+
     def store_tool_result(
         self,
         run_id: str,
