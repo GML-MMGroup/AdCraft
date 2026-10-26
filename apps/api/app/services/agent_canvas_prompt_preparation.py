@@ -1035,6 +1035,11 @@ class NodePromptPreparationService:
                     source_node_id=source_node_id,
                     source_node_revision=source_node.revision if source_node is not None else None,
                     source_role=(source_node.creative_role if source_node is not None else None),
+                    character_human_face=(
+                        source_node.structured_content.get("human_face")
+                        if source_node is not None and source_node.creative_role == "character"
+                        else None
+                    ),
                     asset_id=asset_id,
                     asset_version_id=version_id,
                     reference_purpose=_reference_purpose(node, source_node),
@@ -1227,7 +1232,13 @@ def _scene_environment_projection_metadata(
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:
     payload = json.dumps(
-        [item.model_dump(mode="json") for item in bindings],
+        [
+            item.model_dump(
+                mode="json",
+                exclude={"character_human_face"} if item.character_human_face is None else set(),
+            )
+            for item in bindings
+        ],
         ensure_ascii=True,
         separators=(",", ":"),
         sort_keys=True,

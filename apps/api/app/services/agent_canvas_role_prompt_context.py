@@ -649,6 +649,7 @@ def character_identity_projection_from_node(
             source_asset_version_id=source_asset_version_id,
             occurrence_id=occurrence_id or str(node.metadata.get("occurrence_id") or "unknown"),
             identity=identity,
+            human_face=content.get("human_face"),
             **facets,
         )
     except ValidationError as error:

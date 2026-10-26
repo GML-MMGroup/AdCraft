@@ -50,7 +50,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     VideoSegmentRoleBriefV2,
     WorldViewRoleBriefV2,
 )
-from app.services.agent_canvas_human_style_rules import HUMAN_STYLE_RULES_BY_ROLE_VARIANT
+from app.services.agent_canvas_human_style_rules import human_style_rule
 from app.services.agent_canvas_prompt_assertion_policy import (
     PRODUCT_MULTIVIEW_VIEWS,
     SCENE_MULTIVIEW_VIEWS,
@@ -91,11 +91,7 @@ _ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
         "using the product",
         "active scene",
     ),
-    "character_main": (
-        "photorealistic",
-        "photo-realistic",
-        "photograph",
-    ),
+    "character_main": (),
     "character_turnaround": (
         "label",
         "labels",
@@ -292,10 +288,12 @@ class AgentCanvasRolePromptCompiler:
         ):
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         prompt = f"{prompt}\n\n{policy.assertion_block}"
-        human_style_rule = HUMAN_STYLE_RULES_BY_ROLE_VARIANT.get(context.role_variant)
-        if human_style_rule is not None:
-            # User decision (2026-10-23): the rule is visible in the node prompt.
-            prompt = f"{prompt}\n\n{human_style_rule}"
+        rule = human_style_rule(
+            concrete_brief if isinstance(concrete_brief, CharacterMainRoleBriefV2) else context
+        )
+        if rule is not None:
+            # User decision (2026-10-26): the rule is visible in the node prompt.
+            prompt = f"{prompt}\n\n{rule}"
         if (
             context.role_variant in {"video_segment", "free_video"}
             and context.video_representation_mode == "illustration_to_live_action"
@@ -553,6 +551,7 @@ def _semantic_projections(
                 "accessories": projection.accessories,
                 "rendering_mode": projection.rendering_mode,
                 "gender_presentation": projection.gender_presentation,
+                "human_face": projection.human_face,
             }
             for name, expected in protected.items():
                 actual = getattr(brief, name)
@@ -714,25 +713,38 @@ def _render(
         accessories = (
             character_projection.accessories if character_projection else brief.accessories
         )
+        human_face = character_projection.human_face if character_projection else brief.human_face
+        medium = (
+            "detailed non-photorealistic semi-realistic commercial illustration"
+            if human_face is None
+            else "photographic studio character reference"
+        )
         return (
-            "Use the exact bound Character Main as identity authority. Create the same detailed "
-            "non-photorealistic semi-realistic commercial illustration in front, side, and back "
+            "Use the exact bound Character Main as identity authority. Create the same "
+            f"{medium} in front, side, and back "
             "full-body views on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",
-            "No photorealistic human, identity drift, labels, captions, annotation text, product, "
+            ("No photorealistic human, " if human_face is None else "No ")
+            + "identity drift, labels, captions, annotation text, product, "
             "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
     if isinstance(brief, CharacterMainRoleBriefV2):
+        medium = (
+            "detailed semi-realistic commercial illustration"
+            if brief.human_face is None
+            else "photographic studio character reference"
+        )
         return (
-            "Create exactly one full-body detailed semi-realistic commercial "
-            f"illustration on a clean neutral background. Preserve all distinguishing details. "
+            f"Create exactly one full-body {medium} on a clean neutral background. "
+            "Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
             f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}."
             f"{_optional_labeled_fragment('Accessories', brief.accessories)}",
-            "No photograph, photorealistic human, product, prop, active scene, second person, "
+            ("No photograph, photorealistic human, " if brief.human_face is None else "No ")
+            + "product, prop, active scene, second person, "
             "text, labels, annotation, captions, or board layout.",
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
@@ -841,6 +853,8 @@ def _structured_content(
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
+    if isinstance(brief, CharacterMainRoleBriefV2) and brief.human_face is not None:
+        default_style = "Photographic studio character reference"
     if (
         isinstance(brief, VideoSegmentRoleBriefV2)
         and context.video_representation_mode == "illustration_to_live_action"
@@ -903,6 +917,7 @@ def _structured_content(
         ).model_dump(mode="json")
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         projection = context.character_identity_projection
+        human_face = projection.human_face if projection is not None else brief.human_face
         return CharacterDesignAssetContentV2(
             subject_identity=projection.identity if projection is not None else brief.identity,
             face_and_hair=projection.face_and_hair
@@ -920,6 +935,7 @@ def _structured_content(
                 if projection is not None
                 else brief.gender_presentation
             ),
+            human_face=human_face,
             design_summary="; ".join(
                 (
                     projection.face_and_hair if projection is not None else brief.face_and_hair,
@@ -934,7 +950,11 @@ def _structured_content(
             ),
             style=style,
             explicit_inclusions=brief.views,
-            negative_constraints=("photorealistic human", "text", "identity drift"),
+            negative_constraints=(
+                ("photorealistic human", "text", "identity drift")
+                if human_face is None
+                else ("text", "identity drift")
+            ),
             character_asset_kind="turnaround",
             occurrence_id=context.occurrence_id,
             parent_source_node_id=(projection.source_node_id if projection is not None else None),
@@ -956,6 +976,7 @@ def _structured_content(
             wardrobe=brief.wardrobe,
             accessories=brief.accessories,
             gender_presentation=brief.gender_presentation,
+            human_face=brief.human_face,
             design_summary="; ".join(
                 (
                     brief.face_and_hair,
@@ -965,7 +986,11 @@ def _structured_content(
                 )
             ),
             style=style,
-            negative_constraints=("photorealistic human", "text", "identity drift"),
+            negative_constraints=(
+                ("photorealistic human", "text", "identity drift")
+                if brief.human_face is None
+                else ("text", "identity drift")
+            ),
             character_asset_kind="identity_master",
         ).model_dump(mode="json")
     if isinstance(brief, SceneBoardRoleBriefV2):

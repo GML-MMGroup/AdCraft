@@ -56,6 +56,7 @@ def deterministic_role_brief(
             "wardrobe": projection.wardrobe,
             "accessories": projection.accessories,
             "gender_presentation": projection.gender_presentation,
+            "human_face": projection.human_face,
             "rendering_mode": projection.rendering_mode,
             "views": ["front", "side", "back"],
         }

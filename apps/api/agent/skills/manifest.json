@@ -22,7 +22,7 @@
     },
     {
       "path": "video_agent_character_design/SKILL.md",
-      "sha256": "db1f5558bb7aa6ee6866f90bbd8a03f8cdaa61e7a31230d34c018a425c635297",
+      "sha256": "60560b7a3d1c24a6925d1132a00527b79eae77538efbd6d3d011cb0c026c4bdd",
       "skill_id": "video_agent_character_design"
     },
     {
@@ -42,7 +42,7 @@
     },
     {
       "path": "video_agent_role_prompt_authoring/SKILL.md",
-      "sha256": "24a692fadce4fb09b2406d61689dd8ddd261d919a6f9fce601ff9e6fd34cf69f",
+      "sha256": "1412e3ff8954b363eb708a3f226632ecb187ce6b3bf752862724fe5d92898bac",
       "skill_id": "video_agent_role_prompt_authoring"
     },
     {

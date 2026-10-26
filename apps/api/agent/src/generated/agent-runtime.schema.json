@@ -11832,6 +11832,18 @@
           "default": null,
           "title": "Gender Presentation"
         },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Human Face"
+        },
         "identity_projection_digest": {
           "anyOf": [
             {
@@ -12078,6 +12090,18 @@
           "title": "Gender Presentation",
           "type": "string"
         },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Human Face"
+        },
         "identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -12198,6 +12222,19 @@
           ],
           "title": "Gender Presentation",
           "type": "string"
+        },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the character is a human, or a humanoid with a realistic human face (for example an elf or a horned demon with a human face), depicted with realistic proportions. False for animals, robots, creatures, faceless mascots and objects, and for characters intentionally drawn in a stylized non-realistic style such as anime, cartoon or chibi. Always set it.",
+          "title": "Human Face"
         },
         "identity": {
           "maxLength": 4096,
@@ -12536,6 +12573,19 @@
           ],
           "title": "Gender Presentation",
           "type": "string"
+        },
+        "human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the character is a human, or a humanoid with a realistic human face (for example an elf or a horned demon with a human face), depicted with realistic proportions. False for animals, robots, creatures, faceless mascots and objects, and for characters intentionally drawn in a stylized non-realistic style such as anime, cartoon or chibi. Always set it.",
+          "title": "Human Face"
         },
         "identity": {
           "maxLength": 4096,
@@ -29589,6 +29639,18 @@
           "minimum": 1,
           "title": "Binding Revision",
           "type": "integer"
+        },
+        "character_human_face": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Human Face"
         },
         "character_phase": {
           "anyOf": [

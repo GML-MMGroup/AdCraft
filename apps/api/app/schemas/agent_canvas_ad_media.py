@@ -84,6 +84,7 @@ class CharacterDesignAssetContentV2(DesignAssetContentV2):
     wardrobe: str | None = Field(default=None, min_length=1, max_length=2_048)
     accessories: str | None = Field(default=None, max_length=1_024)
     gender_presentation: CharacterGenderPresentationV1 | None = None
+    human_face: bool | None = None
     character_asset_kind: CharacterAssetKindV2 = "identity_master"
     reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
         "detailed_semi_realistic_illustration"
