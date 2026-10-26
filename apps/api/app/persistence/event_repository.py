@@ -630,6 +630,7 @@ _CANONICAL_EVENT_TYPES = {
     "canvas_node_created": "node_created",
     "canvas_node_updated": "node_updated",
     "canvas_node_deleted": "node_deleted",
+    "canvas_node_restored": "node_restored",
     "canvas_binding_created": "binding_created",
     "canvas_binding_updated": "binding_updated",
     "binding_removed": "binding_deleted",

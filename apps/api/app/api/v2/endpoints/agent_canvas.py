@@ -113,6 +113,7 @@ from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     AgentTargetResolutionV2,
     CanvasBindingCreateRequestV2,
+    CanvasBindingRestoreRequestV2,
     CanvasBindingMutationResponseV2,
     CanvasBindingPatchRequestV2,
     CanvasConnectedNodeCreateRequestV2,
@@ -123,6 +124,8 @@ from app.schemas.agent_canvas import (
     CanvasMutationResponseV2,
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
+    CanvasNodeRestoreRequestV2,
+    CanvasNodeRestoreResponseV2,
     CanvasNodeV2,
     ImageLibraryListResponseV2,
     ProjectAssetListResponseV2,
@@ -2622,6 +2625,38 @@ def delete_node(
 
 
 @router.post(
+    "/workflows/{workflow_id}/nodes/{node_id}/restore",
+    response_model=CanvasNodeRestoreResponseV2,
+)
+def restore_node(
+    workflow_id: str,
+    node_id: str,
+    request: CanvasNodeRestoreRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> CanvasNodeRestoreResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        restored = runtime.nodes.restore(
+            workflow_id,
+            node_id,
+            expected_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+            request_fingerprint=sha256(request.model_dump_json().encode()).hexdigest(),
+            project_workflow=lambda workflow: runtime.editing_responses.project_workflow(
+                runtime.projects.project_workflow(workflow)
+            ),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, restored.workflow.revision)
+    return restored
+
+
+@router.post(
     "/workflows/{workflow_id}/connected-nodes",
     response_model=CanvasConnectedNodeCreateResponseV2,
     status_code=status.HTTP_201_CREATED,
@@ -2725,6 +2760,42 @@ def create_binding(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return CanvasMutationResponseV2(workflow=workflow, binding=binding)
+
+
+@router.post(
+    "/workflows/{workflow_id}/bindings/restore",
+    response_model=CanvasMutationResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def restore_binding(
+    workflow_id: str,
+    request: CanvasBindingRestoreRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> CanvasMutationResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        restored = runtime.bindings.restore(
+            workflow_id,
+            request,
+            expected_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+            request_fingerprint=sha256(
+                json.dumps(
+                    request.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+            project_workflow=lambda workflow: runtime.editing_responses.project_workflow(
+                runtime.projects.project_workflow(workflow)
+            ),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, restored.workflow.revision)
+    return restored
 
 
 @router.delete(
@@ -4307,6 +4378,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "agent_document_cross_workflow_reference": 409,
         "pagination_invalid": 422,
         "node_not_found": 404,
+        "node_not_deleted": 409,
+        "binding_id_conflict": 409,
         "binding_not_found": 404,
         "asset_not_found": 404,
         "guided_interaction_action_not_allowed": 422,

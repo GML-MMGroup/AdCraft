@@ -18,6 +18,7 @@ from app.schemas.agent_canvas import (
     CanvasBindingV2,
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
+    CanvasNodeRestoreResponseV2,
     CanvasNodeV2,
     USER_AUTHORING_ORIGIN,
     USER_AUTHORING_ORIGIN_KEY,
@@ -278,6 +279,25 @@ class AgentCanvasNodeService:
             expected_node_revision=current.revision,
         )
         return self._repository.get_node(workflow_id, node_id)
+
+    def restore(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+        project_workflow: Callable[[AgentCanvasWorkflowV2], AgentCanvasWorkflowV2] | None = None,
+    ) -> CanvasNodeRestoreResponseV2:
+        return self._repository.restore_node(
+            workflow_id,
+            node_id,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            project_workflow=project_workflow,
+        )
 
     def delete(
         self,

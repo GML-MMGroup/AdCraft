@@ -118,6 +118,10 @@ class CanvasNodeCreateRequestV2(_AgentCanvasModel):
         return self
 
 
+class CanvasNodeRestoreRequestV2(_AgentCanvasModel):
+    """An explicit undo of a node deletion has no editable fields."""
+
+
 class CanvasNodePatchRequestV2(_AgentCanvasModel):
     title: str | None = Field(default=None, min_length=1)
     summary_prompt: str | None = None
@@ -277,6 +281,13 @@ class CanvasBindingCreateRequestV2(_AgentCanvasModel):
     order: int | None = Field(default=None, ge=0)
     label: str | None = Field(default=None, max_length=160)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class CanvasBindingRestoreRequestV2(CanvasBindingCreateRequestV2):
+    binding_id: str = Field(min_length=1)
+    enabled: bool
+    order: int = Field(ge=0)
+    metadata: dict[str, JsonValue]
 
 
 class CanvasBindingV2(_AgentCanvasModel):
@@ -468,6 +479,13 @@ class CanvasMutationResponseV2(_AgentCanvasModel):
     workflow: AgentCanvasWorkflowV2
     node: CanvasNodeV2 | None = None
     binding: CanvasBindingV2 | None = None
+
+
+class CanvasNodeRestoreResponseV2(_AgentCanvasModel):
+    workflow: AgentCanvasWorkflowV2
+    node: CanvasNodeV2
+    restored_binding_ids: tuple[str, ...]
+    skipped_binding_ids: tuple[str, ...]
 
 
 class ProjectAssetListResponseV2(_AgentCanvasModel):

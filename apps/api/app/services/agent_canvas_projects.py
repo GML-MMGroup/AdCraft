@@ -255,8 +255,12 @@ class AgentCanvasProjectService:
         )
 
     def get_workflow(self, workflow_id: str) -> AgentCanvasWorkflowV2:
-        workflow = self._workflows.get_workflow(workflow_id)
-        skill_run = self._conversations.get_active_style_skill_run(workflow_id)
+        return self.project_workflow(self._workflows.get_workflow(workflow_id))
+
+    def project_workflow(self, workflow: AgentCanvasWorkflowV2) -> AgentCanvasWorkflowV2:
+        """Enrich a caller's authoring snapshot without reloading its graph."""
+
+        skill_run = self._conversations.get_active_style_skill_run(workflow.workflow_id)
         if (
             skill_run.active_creative_direction_snapshot_id is None
             or skill_run.public_skill is None
