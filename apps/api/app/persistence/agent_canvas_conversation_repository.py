@@ -14,6 +14,10 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.persistence.agent_canvas_storyboard_journey_recovery import (
+    recovery_conflict,
+    release_suppressed_reservation_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.agent_canvas_auto_run_repository import (
@@ -549,6 +553,59 @@ class AgentCanvasConversationRepository:
                 "conversation_persistence_unavailable",
                 "Conversation storage failed.",
             ) from error
+
+    def release_suppressed_storyboard_reservation(
+        self,
+        session_id: str,
+        *,
+        envelope_id: str,
+        expected_session_revision: int,
+        expected_action_id: str,
+    ) -> GuidedSessionStateV2:
+        """Repair an inspected historical suppression with exact revision/action fences."""
+
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            row = _require_guidance_session_row(connection, session_id)
+            journey = parse_production_journey(str(row["journey_state_json"]))
+            if (
+                int(row["revision"]) != expected_session_revision
+                or journey.active_action is None
+                or journey.active_action.action_id != expected_action_id
+            ):
+                raise recovery_conflict()
+            envelope = AgentCanvasOperationEnvelopeRepository(self._database).get_in_transaction(
+                connection, envelope_id
+            )
+            if (
+                not isinstance(envelope, CapabilityCommandEnvelopeV2)
+                or envelope.session_id != session_id
+                or envelope.workflow_id != row["workflow_id"]
+            ):
+                raise recovery_conflict()
+            suppressed = connection.execute(
+                select(WorkflowEventRow.payload_json).where(
+                    WorkflowEventRow.workflow_id == envelope.workflow_id,
+                    WorkflowEventRow.event_type == "storyboard_duplicate_proposal_suppressed",
+                )
+            ).scalars()
+            if not any(
+                json.loads(str(raw)).get("suppressed_turn_id") == envelope.capability_turn_id
+                for raw in suppressed
+            ):
+                raise recovery_conflict()
+            if not release_suppressed_reservation_in_transaction(
+                connection,
+                self._events,
+                envelope=envelope,
+                timestamp=_now(),
+            ):
+                raise recovery_conflict()
+            result = _guidance_session(
+                connection, _require_guidance_session_row(connection, session_id)
+            )
+            connection.commit()
+            return result
 
     def replace_guidance_journey(
         self,

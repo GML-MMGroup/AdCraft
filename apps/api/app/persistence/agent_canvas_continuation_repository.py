@@ -12,6 +12,9 @@ from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.persistence.agent_canvas_storyboard_journey_recovery import (
+    recover_failed_materialization_stage_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -714,6 +717,12 @@ class AgentCanvasContinuationOutboxRepository:
                             "active_continuation_conflict",
                             "Another continuation already owns this workflow.",
                         )
+                    recover_failed_materialization_stage_in_transaction(
+                        connection,
+                        self._events,
+                        continuation=row,
+                        timestamp=_iso(timestamp),
+                    )
                     values = {
                         "status": "queued",
                         "attempt_count": 0,

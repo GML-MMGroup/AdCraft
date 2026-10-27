@@ -11,6 +11,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection
 
+from app.persistence.agent_canvas_storyboard_journey_recovery import (
+    release_suppressed_reservation_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -19,6 +22,7 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
 )
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
+    WorkflowEventRow,
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasConceptOptionRow,
@@ -228,6 +232,23 @@ class AgentCanvasCapabilityProposalRepository:
                     _validate_replayed_character_scope(existing, envelope)
                     connection.commit()
                     return str(existing["proposal_id"])
+                if envelope.capability_id == "storyboard_design":
+                    suppressed = connection.execute(
+                        select(WorkflowEventRow.payload_json).where(
+                            WorkflowEventRow.workflow_id == envelope.workflow_id,
+                            WorkflowEventRow.event_type
+                            == "storyboard_duplicate_proposal_suppressed",
+                            WorkflowEventRow.transition_key.startswith(
+                                f"storyboard-proposal-suppressed:{envelope.capability_turn_id}:",
+                                autoescape=True,
+                            ),
+                        )
+                    ).scalar_one_or_none()
+                    if suppressed is not None:
+                        # Releasing the reservation advances the session revision.
+                        # Replay the terminal receipt before checking mutable authority.
+                        connection.commit()
+                        return str(json.loads(str(suppressed))["canonical_proposal_id"])
                 requirement_head = (
                     connection.execute(
                         select(AgentCanvasRequirementLedgerRow).where(
@@ -870,6 +891,12 @@ def _terminalize_suppressed_storyboard_publication(
             last_error_message=None,
             updated_at=timestamp,
         )
+    )
+    release_suppressed_reservation_in_transaction(
+        connection,
+        events,
+        envelope=envelope,
+        timestamp=timestamp,
     )
     events.append_in_transaction(
         connection,
