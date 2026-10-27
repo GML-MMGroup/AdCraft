@@ -38,6 +38,12 @@ from app.schemas.agent_canvas_role_prompt_preparation import is_user_edited_prom
 from app.schemas.v2_persistence import V2EventInsert
 
 
+# Failures caused by an incomplete frozen context, not by the prompt itself.
+_RECOVERABLE_ERROR_CODES = frozenset(
+    {"prompt_preparation_context_missing", "identity_safety_decision_required"}
+)
+
+
 class StoryboardPromptContextRepository:
     """Keep historical managed context separate from the user's current prompt."""
 
@@ -155,7 +161,7 @@ class StoryboardPromptContextRepository:
         dispatch_id: str,
         expected_lease_generation: int,
     ) -> PromptPreparationDispatchV1:
-        """Replace only an inspected, failed, empty-context Agent Draft intent."""
+        """Replace only an inspected Agent Draft intent that failed on its frozen context."""
 
         now = datetime.now(timezone.utc)
         payload, digest = detached_context_payload(context)
@@ -202,8 +208,11 @@ class StoryboardPromptContextRepository:
                     or failed.dispatch_id != dispatch_id
                     or failed.status != "failed"
                     or failed.lease_generation != expected_lease_generation
-                    or failed.last_error_code != "prompt_preparation_context_missing"
-                    or failed.context_json
+                    or failed.last_error_code not in _RECOVERABLE_ERROR_CODES
+                    or (
+                        failed.last_error_code == "prompt_preparation_context_missing"
+                        and failed.context_json
+                    )
                     or failed.lease_owner is not None
                     or node.status != "draft"
                     or node.execution_mode != "generative"
@@ -211,7 +220,7 @@ class StoryboardPromptContextRepository:
                     or node.metadata.get("source_agent_document_id") != plan_document_id
                     or node.prompt_preparation.status != "failed"
                     or node.prompt_preparation.error is None
-                    or node.prompt_preparation.error.code != "prompt_preparation_context_missing"
+                    or node.prompt_preparation.error.code != failed.last_error_code
                     or node.generation_prompt
                     or is_user_edited_prompt(node.prompt_presentation)
                 ):

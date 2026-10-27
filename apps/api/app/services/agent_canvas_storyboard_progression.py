@@ -77,6 +77,7 @@ BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
 StoryboardPipelinePreparedCallback = Callable[[str, str], object]
 VideoResolutionResolver = Callable[[str], str | None]
 VideoAudioConstraintsResolver = Callable[[str, str], dict[str, object]]
+IdentitySafetyDecisionResolver = Callable[[str], dict[str, object] | None]
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,7 @@ class ProgressiveStoryboardReadyService:
         binding_capability_validator: BindingCapabilityValidator | None = None,
         video_resolution_resolver: VideoResolutionResolver | None = None,
         video_audio_constraints_resolver: VideoAudioConstraintsResolver | None = None,
+        identity_safety_decision_resolver: IdentitySafetyDecisionResolver | None = None,
         on_storyboard_pipeline_prepared: StoryboardPipelinePreparedCallback | None = None,
     ) -> None:
         self._workflows = workflows
@@ -115,6 +117,7 @@ class ProgressiveStoryboardReadyService:
         self._binding_capability_validator = binding_capability_validator
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
+        self._identity_safety_decision_resolver = identity_safety_decision_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
         self._prompt_contexts = (
             StoryboardPromptContextRepository(workflows, events) if events is not None else None
@@ -352,6 +355,13 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_progression",
             )
         source_excerpt = excerpts[0]
+        # Video admission for live-action Skills needs the ledger's current
+        # identity safety decision; Grid contexts never carry it.
+        identity_safety_decision = (
+            self._identity_safety_decision_resolver(workflow_id)
+            if self._identity_safety_decision_resolver is not None
+            else None
+        )
         contexts = {}
         for node, _ in members:
             sequence_id = node.metadata.get("source_sequence_id")
@@ -376,6 +386,11 @@ class ProgressiveStoryboardReadyService:
                         {
                             **base.requirement_facts,
                             "duration_seconds": float(segment.end_seconds - segment.start_seconds),
+                            **(
+                                {"identity_safety_decision": identity_safety_decision}
+                                if identity_safety_decision is not None
+                                else {}
+                            ),
                         }
                         if node.creative_role == "storyboard_video"
                         else base.requirement_facts

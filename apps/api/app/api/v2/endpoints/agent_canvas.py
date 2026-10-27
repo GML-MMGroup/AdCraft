@@ -1131,6 +1131,9 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
+        identity_safety_decision_resolver=lambda workflow_id: _current_identity_safety_decision(
+            requirement_service, workflow_id
+        ),
         on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
             _advance_after_storyboard_pipeline(workflow_id, plan_document_id)
         ),
@@ -4287,6 +4290,14 @@ def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
     """Compatibility alias for the shared presentation identity helper."""
 
     return presentation_stream_id(workflow_id, generation_id)
+
+
+def _current_identity_safety_decision(
+    requirements: AgentCanvasRequirementService,
+    workflow_id: str,
+) -> dict[str, object] | None:
+    decision = requirements.get_current_revision(workflow_id).ledger.identity_safety_decision
+    return decision.model_dump(mode="json") if decision is not None else None
 
 
 def _expected_revision(value: str | None, workflow_id: str) -> int:
