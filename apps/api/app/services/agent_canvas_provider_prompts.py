@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -37,7 +38,6 @@ from app.services.agent_canvas_character_reference_prompt_policy import (
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_role_prompt_compiler import (
-    role_prompt_failure_disposition,
     role_prompt_text_violation,
 )
 from app.services.agent_canvas_prompt_assertion_policy import (
@@ -48,6 +48,9 @@ from app.services.agent_canvas_prompt_assertion_policy import (
 from app.services.agent_canvas_reference_semantics import (
     compile_provider_reference_instruction,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,20 +193,18 @@ class AgentCanvasProviderPromptCompiler:
                 field_path="generation_prompt",
             )
             if violation is not None:
-                disposition = role_prompt_failure_disposition(
-                    user_authored=not has_managed_prompt_preparation(node)
-                )
-                raise V2PersistenceError(
-                    "node_prompt_role_contract_invalid",
-                    "The Scene prompt conflicts with its environment-only role contract.",
-                    stage="agent_canvas_provider_prompt_compiler",
-                    details={
-                        "role_variant": violation.role_variant,
-                        "violation_category": violation.violation_category,
-                        "field_path": violation.field_path,
-                        "actionable_failure": disposition.model_dump(mode="json"),
-                        "retryable": disposition.retryable,
-                    },
+                logger.warning(
+                    "%s",
+                    json.dumps(
+                        {
+                            "event": "role_prompt_soft_violation",
+                            **violation.model_dump(mode="json"),
+                            "call_site": "provider_submission",
+                            "node_id": node.node_id,
+                            "workflow_id": node.workflow_id,
+                        },
+                        sort_keys=True,
+                    ),
                 )
         if role_contract.semantic_role != node.semantic_role:
             raise _error(

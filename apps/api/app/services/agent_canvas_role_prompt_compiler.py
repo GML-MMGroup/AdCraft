@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import logging
 import re
 from typing import TYPE_CHECKING
 from pydantic import ValidationError
@@ -71,6 +72,9 @@ from app.schemas.agent_canvas_world_setting import (
     WorldSettingCoreV2,
     WorldSettingDocumentV2,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 _ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
@@ -232,6 +236,8 @@ class AgentCanvasRolePromptCompiler:
             context.role_variant,
             prompt,
             field_path=("editable_prompt" if editable_prompt is not None else "rendered_prompt"),
+            node_id=context.node_id,
+            workflow_id=context.workflow_id,
         )
         style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
         conditioning_plan = ReferenceConditioningPlanResolver().resolve(context)
@@ -252,10 +258,16 @@ class AgentCanvasRolePromptCompiler:
                     context.role_variant,
                     context.style_projection,
                     field_path="style_projection",
+                    node_id=context.node_id,
+                    workflow_id=context.workflow_id,
                 )
             if authored_style:
                 _validate_role_prompt_text(
-                    context.role_variant, authored_style, field_path="style_description"
+                    context.role_variant,
+                    authored_style,
+                    field_path="style_description",
+                    node_id=context.node_id,
+                    workflow_id=context.workflow_id,
                 )
                 prompt = f"{prompt} Visual style: {authored_style.strip()}"
         required_references = recipe.reference_purposes
@@ -1241,17 +1253,23 @@ def _validate_role_prompt_text(
     text: str,
     *,
     field_path: str,
+    node_id: str,
+    workflow_id: str,
 ) -> None:
-    violation = role_prompt_text_violation(
-        role_variant,
-        text,
-        field_path=field_path,
-    )
+    violation = role_prompt_text_violation(role_variant, text, field_path=field_path)
     if violation is not None:
-        raise _error(
-            "node_prompt_role_contract_invalid",
-            "Role prompt text conflicts with the foundation isolation contract.",
-            details=violation.model_dump(mode="json"),
+        logger.warning(
+            "%s",
+            json.dumps(
+                {
+                    "event": "role_prompt_soft_violation",
+                    **violation.model_dump(mode="json"),
+                    "call_site": "compiler",
+                    "node_id": node_id,
+                    "workflow_id": workflow_id,
+                },
+                sort_keys=True,
+            ),
         )
 
 

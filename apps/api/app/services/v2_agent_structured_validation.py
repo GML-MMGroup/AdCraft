@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 import unicodedata
 
@@ -26,6 +28,9 @@ from app.services.v2_agent_structured_normalization import (
     AGENT_STRUCTURED_NORMALIZATION_REGISTRY,
     AgentStructuredNormalizationResult,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class V2AgentStructuredValidationService:
@@ -114,6 +119,7 @@ class V2AgentStructuredValidationService:
             run.validation_profile,
             run.validation_context,
             normalized_value,
+            workflow_id=run.workflow_id,
         )
         if semantic_violations:
             return _rejected(
@@ -204,6 +210,8 @@ def _semantic_violations(
     profile: str | None,
     context: dict[str, Any],
     value: dict[str, Any],
+    *,
+    workflow_id: str | None = None,
 ) -> tuple[StructuredViolation, ...]:
     if profile in {
         None,
@@ -259,7 +267,7 @@ def _semantic_violations(
     if profile == "brand_treatment_review_sources_v1":
         return _brand_treatment_review_source_violations(context, value)
     if profile == "role_prompt_contract_v1":
-        return _role_prompt_contract_violations(context, value)
+        return _role_prompt_contract_violations(context, value, workflow_id=workflow_id)
     if profile != "frozen_fields_v1":
         return (
             StructuredViolation(
@@ -582,6 +590,8 @@ def _normalized_form_option_label(label: str) -> str:
 def _role_prompt_contract_violations(
     context: dict[str, Any],
     value: dict[str, Any],
+    *,
+    workflow_id: str | None = None,
 ) -> tuple[StructuredViolation, ...]:
     role_variant = context.get("role_variant")
     prompt_authority = context.get("prompt_authority")
@@ -630,26 +640,21 @@ def _role_prompt_contract_violations(
         editable_prompt,
         field_path="editable_prompt",
     )
-    if violation is None:
-        return ()
-    if role_variant == "scene_board":
-        message = "The Scene brief conflicts with its environment-only role contract."
-        expected = "environment_only"
-    elif role_variant == "video_segment":
-        message = "The video brief mentions music. Remove every reference to background music, BGM, soundtrack, music beats, or cutting to music from editable_prompt, and express rhythm only as visual timing (for example a hard cut at 3 s or a freeze frame at 15 s)."
-        expected = "video_without_background_music"
-    else:
-        message = "The role brief conflicts with its role contract."
-        expected = "role_specific_content"
-    return (
-        StructuredViolation(
-            code="node_prompt_role_contract_invalid",
-            message=message,
-            field_path=violation.field_path,
-            expected=expected,
-            actual=violation.violation_category,
-        ),
-    )
+    if violation is not None:
+        logger.warning(
+            "%s",
+            json.dumps(
+                {
+                    "event": "role_prompt_soft_violation",
+                    **violation.model_dump(mode="json"),
+                    "call_site": "agent_brief_validation",
+                    **({"workflow_id": workflow_id} if workflow_id is not None else {}),
+                    **({"node_id": context["node_id"]} if context.get("node_id") else {}),
+                },
+                sort_keys=True,
+            ),
+        )
+    return ()
 
 
 def _proposal_candidate_count_violations(
