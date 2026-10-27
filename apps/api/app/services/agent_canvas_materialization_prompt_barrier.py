@@ -46,7 +46,7 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
         materialization_id: str,
         operations: tuple[tuple[str, str], ...],
     ) -> None:
-        """Return only when every exact dispatch is terminal and successful."""
+        """Return when every exact dispatch has settled, including failures."""
 
         pending = self._inspect(
             workflow_id=workflow_id,
@@ -153,15 +153,10 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
         resolved = self._resolve_wait_operations(workflow_id, operations)
         if resolved is None:
             return None
-        try:
-            pending = self._inspect(
-                workflow_id=workflow_id,
-                operations=resolved,
-            )
-        except V2PersistenceError as error:
-            if error.code != "prompt_preparation_failed":
-                raise
-            pending = ()
+        pending = self._inspect(
+            workflow_id=workflow_id,
+            operations=resolved,
+        )
         if pending:
             return None
         return self._continuations.wake_prompt_preparation_wait(
@@ -225,17 +220,8 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
                 pending.append((node_id, operation_id))
                 continue
             if dispatch.status == "failed":
-                raise V2PersistenceError(
-                    "prompt_preparation_failed",
-                    dispatch.last_error_message or "Prompt preparation failed.",
-                    stage="capability_materialization_publication",
-                    details={
-                        "retryable": False,
-                        "preparation_error_code": (
-                            dispatch.last_error_code or "prompt_preparation_failed"
-                        ),
-                    },
-                )
+                # The source retains its own error; downstream authoring can continue.
+                continue
             if dispatch.status == "superseded":
                 raise V2PersistenceError(
                     "prompt_preparation_dispatch_stale",

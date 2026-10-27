@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from hashlib import sha256
+import json
+import logging
 
 from pydantic import BaseModel, ValidationError
 
@@ -123,6 +125,9 @@ from app.services.agent_canvas_stage_authoring_context import (
 )
 from app.services.brand_production_context import project_brand_production_context
 from app.services.agent_working_documents import AgentWorkingDocumentService
+
+
+logger = logging.getLogger(__name__)
 
 
 class CapabilityMaterializationPublicationService:
@@ -1848,7 +1853,7 @@ class CapabilityMaterializationPublicationService:
         session_id: str,
         lease_guard: Callable[[], None],
     ) -> None:
-        """Prepare the transitive source Drafts before strict promotion.
+        """Best-effort preparation of source Drafts before strict promotion.
 
         The materialization commit and continuation identity are the durable
         retry boundary. An idempotent event records the exact dependency set so
@@ -1856,6 +1861,13 @@ class CapabilityMaterializationPublicationService:
         """
 
         if outcome.journey_stage != "storyboard_grids":
+            return
+        action_id = f"storyboard-prompt-ready:{outcome.materialization_id}"
+        if any(
+            event.event_type == "storyboard_prompt_ready_dependency_barrier_satisfied"
+            and event.transition_key == f"{action_id}:satisfied"
+            for event in self._conversations.events.list_after(envelope.workflow_id)
+        ):
             return
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         dependency_discovery = getattr(
@@ -1980,7 +1992,6 @@ class CapabilityMaterializationPublicationService:
         if not pending:
             return
         pending.sort()
-        action_id = f"storyboard-prompt-ready:{outcome.materialization_id}"
         turn = self._conversations.get_turn(envelope.action_turn_id)
         payload = {
             "materialization_id": outcome.materialization_id,
@@ -2001,18 +2012,58 @@ class CapabilityMaterializationPublicationService:
                 payload=payload,
             )
         )
-        self._prepare_prompts(
-            envelope,
-            context,
-            session_id=session_id,
-            session_revision=outcome.session_revision,
-            stage=outcome.journey_stage,
-            occurrence_id=None,
-            node_ids=tuple(item[0] for item in pending),
-            operation_ids=tuple(item[1] for item in pending),
-            lease_guard=lease_guard,
-            context_by_node=contexts,
-        )
+        warned_sources: set[str] = set()
+
+        def prepare_sources(
+            operations: list[tuple[str, str]],
+            source_contexts: Mapping[str, StageAuthoringContextV1],
+        ) -> None:
+            for node_id, operation_id in operations:
+                lease_guard()
+                error_code = None
+                try:
+                    self._prepare_prompts(
+                        envelope,
+                        context,
+                        session_id=session_id,
+                        session_revision=outcome.session_revision,
+                        stage=outcome.journey_stage,
+                        occurrence_id=None,
+                        node_ids=(node_id,),
+                        operation_ids=(operation_id,),
+                        lease_guard=lease_guard,
+                        context_by_node=source_contexts,
+                    )
+                    preparation = self._workflows.get_node(
+                        envelope.workflow_id, node_id
+                    ).prompt_preparation
+                    if preparation.status == "failed":
+                        error_code = (
+                            preparation.error.code
+                            if preparation.error is not None
+                            else "prompt_preparation_failed"
+                        )
+                except Exception as error:  # noqa: BLE001 - source failures never block siblings.
+                    error_code = str(getattr(error, "code", type(error).__name__))
+                # Source failures are advisory; continuation ownership is not.
+                lease_guard()
+                if error_code is not None and node_id not in warned_sources:
+                    warned_sources.add(node_id)
+                    logger.warning(
+                        "%s",
+                        json.dumps(
+                            {
+                                "event": "storyboard_source_prompt_preparation_failed",
+                                "workflow_id": envelope.workflow_id,
+                                "materialization_id": outcome.materialization_id,
+                                "node_id": node_id,
+                                "error_code": error_code,
+                            },
+                            sort_keys=True,
+                        ),
+                    )
+
+        prepare_sources(pending, contexts)
 
         # Upstream preparation can publish new Node revisions or AssetVersions
         # after a downstream Draft was initially prepared. Re-scan the closure
@@ -2105,18 +2156,7 @@ class CapabilityMaterializationPublicationService:
             followup_pending.append((node_id, operation_id))
         if followup_pending:
             followup_pending.sort()
-            self._prepare_prompts(
-                envelope,
-                context,
-                session_id=session_id,
-                session_revision=outcome.session_revision,
-                stage=outcome.journey_stage,
-                occurrence_id=None,
-                node_ids=tuple(item[0] for item in followup_pending),
-                operation_ids=tuple(item[1] for item in followup_pending),
-                lease_guard=lease_guard,
-                context_by_node=followup_contexts,
-            )
+            prepare_sources(followup_pending, followup_contexts)
         self._conversations.events.append(
             V2EventInsert(
                 workflow_id=envelope.workflow_id,

@@ -676,6 +676,91 @@ class AgentCanvasContinuationOutboxRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def reopen_failed_materialization(
+        self,
+        continuation_id: str,
+        *,
+        workflow_id: str,
+        envelope_id: str,
+        expected_lease_generation: int,
+        expected_error_code: str,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
+        """Requeue one inspected failure without replacing its publication identity."""
+
+        timestamp = _utc(now)
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = _select_one(connection, continuation_id)
+                    if (
+                        row is None
+                        or row["workflow_id"] != workflow_id
+                        or row["operation"] != "capability_materialization"
+                        or row["status"] != "failed"
+                        or row["lease_generation"] != expected_lease_generation
+                        or row["lease_owner"] is not None
+                        or row["lease_expires_at"] is not None
+                        or row["last_error_code"] != expected_error_code
+                        or json.loads(row["payload_json"]).get("envelope_id") != envelope_id
+                    ):
+                        raise _error(
+                            "continuation_reopen_conflict",
+                            "Failed materialization continuation authority changed.",
+                        )
+                    if _select_active_for_workflow(connection, workflow_id) is not None:
+                        raise _error(
+                            "active_continuation_conflict",
+                            "Another continuation already owns this workflow.",
+                        )
+                    values = {
+                        "status": "queued",
+                        "attempt_count": 0,
+                        "next_attempt_at": _iso(timestamp),
+                        "lease_generation": expected_lease_generation + 1,
+                        "lease_owner": None,
+                        "lease_expires_at": None,
+                        "last_error_code": None,
+                        "last_error_message": None,
+                        "updated_at": _iso(timestamp),
+                    }
+                    changed = connection.execute(
+                        update(AgentCanvasContinuationOutboxRow)
+                        .where(
+                            AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+                            AgentCanvasContinuationOutboxRow.status == "failed",
+                            AgentCanvasContinuationOutboxRow.lease_generation
+                            == expected_lease_generation,
+                        )
+                        .values(**values)
+                    )
+                    if changed.rowcount != 1:
+                        raise _error(
+                            "continuation_reopen_conflict",
+                            "Failed materialization continuation authority changed.",
+                        )
+                    updated = {**row, **values}
+                    self._append_lifecycle_event(
+                        connection,
+                        updated,
+                        event_type="continuation_queued",
+                        transition_key=(
+                            f"conversation:{row['continuation_turn_id']}:"
+                            f"continuation_queued:reopen:{values['lease_generation']}"
+                        ),
+                        created_at=timestamp,
+                    )
+                    connection.commit()
+                    return _delivery(updated)
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
     def fail(
         self,
         continuation_id: str,
