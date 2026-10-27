@@ -8357,6 +8357,106 @@
       "title": "BrandQuestionImpactV1",
       "type": "object"
     },
+    "BrandSelectedCreativeMethodV1": {
+      "additionalProperties": false,
+      "description": "Stored method details disclosed only for selected Treatment methods.",
+      "properties": {
+        "common_mistakes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Common Mistakes"
+        },
+        "hook_methods": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hook Methods"
+        },
+        "product_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Product Role"
+        },
+        "skill_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_kind": {
+          "const": "creative_method",
+          "default": "creative_method",
+          "title": "Skill Kind",
+          "type": "string"
+        },
+        "story_structure": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Story Structure"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "unsuitable_cases": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unsuitable Cases"
+        },
+        "version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id",
+        "summary",
+        "title",
+        "version"
+      ],
+      "title": "BrandSelectedCreativeMethodV1",
+      "type": "object"
+    },
     "BrandShortOptionV1": {
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",

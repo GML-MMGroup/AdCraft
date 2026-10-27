@@ -301,6 +301,16 @@ class BrandCreativeMethodV1(BrandSkillReferenceV1):
     summary: str
 
 
+class BrandSelectedCreativeMethodV1(BrandCreativeMethodV1):
+    """Stored method details disclosed only for selected Treatment methods."""
+
+    story_structure: str | None = None
+    hook_methods: str | None = None
+    product_role: str | None = None
+    common_mistakes: str | None = None
+    unsuitable_cases: str | None = None
+
+
 class BrandCreativeMethodCatalogV1(_BrandModel):
     items: tuple[BrandCreativeMethodV1, ...]
 

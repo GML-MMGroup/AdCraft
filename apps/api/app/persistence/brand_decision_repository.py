@@ -785,6 +785,22 @@ class BrandDecisionRepository:
             for row in rows
         )
 
+    def get_creative_skill_body(self, skill_id: str, version: str) -> dict[str, object]:
+        """Read one selected creative method's exact stored version."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                body = connection.execute(
+                    select(CreativeSkillCatalogRow.body_json).where(
+                        CreativeSkillCatalogRow.skill_id == skill_id,
+                        CreativeSkillCatalogRow.version == version,
+                        CreativeSkillCatalogRow.skill_kind == "creative_method",
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return json.loads(body) if body is not None else {}
+
     # ---- Invocations -------------------------------------------------------
 
     def create_invocation_in_transaction(

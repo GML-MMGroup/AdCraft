@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_conversation import VideoSkillRunCreateRequestV2
 from app.schemas.brand_professional_mode import (
     BrandCreativeMethodCatalogV1,
     BrandCreativeMethodV1,
+    BrandSelectedCreativeMethodV1,
     BrandSkillRecommendationsV1,
     BrandSkillReferenceV1,
     SkillStackEntryV1,
@@ -94,11 +95,24 @@ class BrandSkillStackService:
             if entry.skill_kind == "creative_method"
         }
         context["creative_methods"] = [
-            item.model_dump(mode="json")
+            self._selected_method_details(item).model_dump(mode="json")
             for item in self.creative_method_catalog().items
             if (item.skill_id, item.version) in chosen
         ]
         return context
+
+    def _selected_method_details(
+        self, item: BrandCreativeMethodV1
+    ) -> BrandSelectedCreativeMethodV1:
+        body = self._repository.get_creative_skill_body(item.skill_id, item.version)
+        return BrandSelectedCreativeMethodV1(
+            **item.model_dump(),
+            story_structure=body.get("story_structure"),
+            hook_methods=body.get("hook_methods"),
+            product_role=body.get("product_role"),
+            common_mistakes=body.get("common_mistakes"),
+            unsuitable_cases=body.get("unsuitable_cases"),
+        )
 
     def recommendation_stack(self, output: BrandSkillRecommendationsV1) -> SkillStackV1:
         methods = self._method_entries(output.creative_methods)

@@ -69,6 +69,7 @@ CONTRACT_MODELS = (
     brand_professional_mode.AdSpecStateV1,
     brand_professional_mode.SkillStackEntryV1,
     brand_professional_mode.SkillStackV1,
+    brand_professional_mode.BrandSelectedCreativeMethodV1,
     workflow_model_calls.WorkflowModelCallWriteV1,
     workflow_model_calls.WorkflowModelCallReceiptV1,
     brand_professional_mode.BrandSkillRecommendationV1,
