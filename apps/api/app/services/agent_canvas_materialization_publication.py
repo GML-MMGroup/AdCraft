@@ -41,6 +41,7 @@ from app.schemas.agent_canvas_ad_media import (
     VisualStyleContractV2,
 )
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
+from app.schemas.agent_canvas_role_prompt_preparation import is_user_edited_prompt
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceAuthorityPlanV2,
@@ -1038,6 +1039,15 @@ class CapabilityMaterializationPublicationService:
             strict=True,
         ):
             node = self._workflows.get_node(envelope.workflow_id, node_id)
+            if (
+                is_user_edited_prompt(node.prompt_presentation)
+                and node.prompt_preparation.status == "ready"
+                and (node.generation_prompt or "").strip()
+            ):
+                # The user's prompt resolves authoring, including reference selection.
+                # Do not reopen that checkpoint or require the old managed operation.
+                reference_source_resolved = True
+                continue
             current_operation_id = self._resolve_reference_prompt_successor(
                 workflow_id=envelope.workflow_id,
                 node_id=node_id,
