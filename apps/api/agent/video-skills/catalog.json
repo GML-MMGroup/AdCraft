@@ -169,6 +169,11 @@
       "display_order": 380
     },
     {
+      "skill_id": "shadiao-absurd-animation",
+      "version": "1.0.0",
+      "display_order": 390
+    },
+    {
       "skill_id": "mixed-media-collage-motion",
       "version": "1.0.0",
       "display_order": 410
@@ -192,6 +197,11 @@
       "skill_id": "miniature-world-cinema",
       "version": "1.0.0",
       "display_order": 450
+    },
+    {
+      "skill_id": "deadpan-absurd-live-comedy",
+      "version": "1.0.0",
+      "display_order": 460
     },
     {
       "skill_id": "hand-drawn-travel-journal",

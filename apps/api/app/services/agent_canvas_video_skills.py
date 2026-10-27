@@ -77,6 +77,8 @@ class VideoSkillManifestV2(BaseModel):
     preview: VideoSkillPreviewV2 | None = None
     display_order: int = Field(ge=0)
     video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
+    allows_meme_captions: bool = False
+    allows_comedic_sound_effects: bool = False
     files: dict[str, str]
     role_guidance: dict[str, str] = Field(default_factory=dict)
 

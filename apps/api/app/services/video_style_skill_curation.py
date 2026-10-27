@@ -42,11 +42,13 @@ EXPECTED_CURATED_SKILL_IDS = (
     "chinese-traditional-art-animation",
     "retro-pixel-arcade",
     "retro-magical-girl-animation",
+    "shadiao-absurd-animation",
     "mixed-media-collage-motion",
     "surreal-pop-concept-film",
     "brand-mark-in-context",
     "chinese-millennium-dreamcore",
     "miniature-world-cinema",
+    "deadpan-absurd-live-comedy",
     "hand-drawn-travel-journal",
     "gentle-everyday-vlog",
     "cinematic-food-story",
@@ -79,13 +81,22 @@ class CuratedSourceV1(_CurationModel):
 class CuratedSkillRecordV1(_CurationModel):
     skill_id: str = Field(min_length=1)
     version: Literal["1.0.0"]
-    sources: tuple[CuratedSourceV1, ...] = Field(min_length=1)
+    origin: Literal["curated_source", "in_house"] = "curated_source"
+    sources: tuple[CuratedSourceV1, ...]
     retained_methods: tuple[str, ...] = Field(min_length=1)
     merged_duplicates: tuple[str, ...]
     removed_runtime_constraints: tuple[str, ...] = Field(min_length=1)
     naming_adaptation: str = Field(min_length=12)
     commercial_adaptation: str = Field(min_length=12)
     review_status: Literal["approved"]
+
+    @model_validator(mode="after")
+    def validate_origin_sources(self) -> "CuratedSkillRecordV1":
+        if self.origin == "in_house" and self.sources:
+            raise ValueError("in-house skills must have no curated sources")
+        if self.origin == "curated_source" and not self.sources:
+            raise ValueError("curated-source skills must have at least one source")
+        return self
 
 
 class CuratedSkillMapV1(_CurationModel):

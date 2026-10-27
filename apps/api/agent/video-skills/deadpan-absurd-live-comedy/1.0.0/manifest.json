@@ -1,0 +1,47 @@
+{
+  "skill_id": "deadpan-absurd-live-comedy",
+  "version": "1.0.0",
+  "display_name": "一本正经整活实拍",
+  "description": "以冷面表演、离谱升级、急推定格、短花字和喜剧音效组织无厘头抽象风格的真人商业短视频。",
+  "content_locale": "zh-CN",
+  "category": "experimental-graphic",
+  "tags": [
+    "抽象",
+    "整活",
+    "无厘头",
+    "冷面喜剧",
+    "真人实拍"
+  ],
+  "supported_use_cases": [
+    "品牌宣传",
+    "产品广告",
+    "社交媒体短视频"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "一本正经整活实拍视觉预览。",
+    "media_url": "/api/v2/video-skills/deadpan-absurd-live-comedy/preview?v=1.0.0"
+  },
+  "display_order": 460,
+  "video_representation_mode": "illustration_to_live_action",
+  "allows_meme_captions": true,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "ea3abd6d4c0c6f091084910b6f49e12975a441129ddb2f6b672f80a88f3690ef",
+    "previews/preview.webp": "231d3c74a9f3b2eeeb74e70ef0218ca24303beb4029a90adff323d36495de991",
+    "references/bgm.md": "b63e9ef3ebcbf36c1791437f83aa273ef2d514a9a7645ddfe22155652591291a",
+    "references/character.md": "687b2d2227f0ff105e20ccc966a96028d8320e465d2ff717cae0f4ca44f09595",
+    "references/product.md": "fd6d23f0edfc1c3d18437d1c2bfe5e535d277d32c3845a12a0b131e013bcd2a7",
+    "references/script.md": "0320764df5db088b6516692307a7aaed8f9b476bb28dd227d6a19a5b8641dcb4",
+    "references/storyboard.md": "86395e0089a4beca27fcc0eada78263f4812563355cecad95ff5fe27a783b96a",
+    "references/video.md": "ed33a9abe436900b6525c5f0281abdcb47dd538e156cd74e14be4c2962daddc1"
+  },
+  "role_guidance": {
+    "bgm": "references/bgm.md",
+    "character": "references/character.md",
+    "product": "references/product.md",
+    "script": "references/script.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
+  }
+}
