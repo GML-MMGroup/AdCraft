@@ -3,7 +3,7 @@ name: 沙雕抽象动画
 description: 以粗线平涂的表情包式角色、物理规则失效、瞬间变形、冷面反应、短花字和喜剧音效组织无厘头抽象风格的二维动画广告。
 ---
 
-把 physics break（物理规则失效）、squash and stretch gag（挤压拉伸笑点）、instant transformation（瞬间变形）、deadpan reaction face（冷面反应脸）、meme caption（短花字）和 comedic sound sting（喜剧音效点）作为沙雕动画的共同语法。画面简单、动作夸张、规则随时崩坏，但角色永远一脸淡定。
+把 physics break（物理规则失效）、squash and stretch gag（挤压拉伸笑点）、instant transformation（瞬间变形）、deadpan reaction face（冷面反应脸）、短花字和 comedic sound sting（喜剧音效点）作为沙雕动画的共同语法。画面简单、动作夸张、规则随时崩坏，但角色永远一脸淡定。
 
 ## 画面语言
 

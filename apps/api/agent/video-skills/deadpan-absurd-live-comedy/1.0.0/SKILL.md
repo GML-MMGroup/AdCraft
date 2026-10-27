@@ -3,7 +3,7 @@ name: 一本正经整活实拍
 description: 以冷面表演、离谱升级、急推定格、短花字和喜剧音效组织无厘头抽象风格的真人商业短视频。
 ---
 
-把 deadpan performance（冷面表演）、absurd escalation（离谱升级）、crash zoom freeze（急推定格）、meme caption（短花字）、comedic sound sting（喜剧音效点）和 in-shot repetition（镜头内重复）作为“抽象”短视频的共同语法。抽象不是随机热闹，而是一件离谱的事被所有人当成理所当然：画面越离谱，人物越平静。
+把 deadpan performance（冷面表演）、absurd escalation（离谱升级）、crash zoom freeze（急推定格）、短花字、comedic sound sting（喜剧音效点）和 in-shot repetition（镜头内重复）作为“抽象”短视频的共同语法。抽象不是随机热闹，而是一件离谱的事被所有人当成理所当然：画面越离谱，人物越平静。
 
 ## 核心规则
 
