@@ -81,6 +81,12 @@ class EditablePromptProjectionV1(_RolePromptModel):
     prompt_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 
+def is_user_edited_prompt(presentation: EditablePromptProjectionV1 | None) -> bool:
+    """Recognize the prompt authority recorded by normal Canvas user edits."""
+
+    return presentation is not None and presentation.source == "user_edited"
+
+
 def _require_editable_prompt_in_schema(schema: dict[str, Any]) -> None:
     properties = schema.get("properties")
     if not isinstance(properties, dict) or "editable_prompt" not in properties:

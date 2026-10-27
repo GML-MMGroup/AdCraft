@@ -25,6 +25,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
 )
 from app.schemas.agent_canvas_role_prompt_preparation import (
     EditablePromptProjectionV1,
+    is_user_edited_prompt,
     RoleBindingSnapshotV2,
     RoleBoundTextControlV2,
     RoleCreativeBriefV2,
@@ -113,10 +114,8 @@ class NodePromptPreparationService:
         started_monotonic = monotonic()
         current = self._workflows.get_node(workflow_id, node_id)
         require_node_runnable(current)
-        if (
-            current.prompt_preparation.status == "ready"
-            and current.prompt_presentation is not None
-            and current.prompt_presentation.source == "user_edited"
+        if current.prompt_preparation.status == "ready" and is_user_edited_prompt(
+            current.prompt_presentation
         ):
             _validate_inherited_prompt_projection(current)
             return current

@@ -43,7 +43,12 @@ from app.schemas.agent_canvas_guided_checkpoint import (
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_role_prompt_preparation import (
+    EditablePromptProjectionV1,
+    is_user_edited_prompt,
+)
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
+    StoryboardPromptPreparationPairV1,
     StoryboardPromptReadyPromotionCommandV1,
     StoryboardPromptReadyPromotionResultV1,
 )
@@ -69,6 +74,21 @@ class StoryboardPromptReadyPromotionRepository:
         self._events = events
         self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
         self._fault_injector = fault_injector
+
+    def promoted_stage_revision(self, workflow_id: str, materialization_id: str) -> int | None:
+        """Recover checkpoint identity without writing onto a user-edited Node."""
+
+        with self._database.engine.connect() as connection:
+            payload = connection.execute(
+                select(WorkflowEventRow.payload_json).where(
+                    WorkflowEventRow.workflow_id == workflow_id,
+                    WorkflowEventRow.event_type == "storyboard_prompt_ready_promoted",
+                    WorkflowEventRow.transition_key.startswith(
+                        f"storyboard-prompt-ready:{materialization_id}:", autoescape=True
+                    ),
+                )
+            ).scalar_one_or_none()
+        return json.loads(payload).get("stage_revision") if payload is not None else None
 
     def promote(
         self,
@@ -134,9 +154,11 @@ class StoryboardPromptReadyPromotionRepository:
                     ):
                         raise _stale("guidance_awaiting")
 
-                    self._validate_production_plan(connection, command)
+                    planned_node_ids = self._validate_production_plan(connection, command)
                     node_rows = self._validate_nodes(connection, command)
-                    execution_node_rows = self._validate_execution_nodes(connection, command)
+                    execution_node_rows = self._validate_execution_nodes(
+                        connection, command, planned_node_ids
+                    )
                     self._validate_execution_mode(connection, command)
 
                     origin = GuidedCheckpointOriginV1(
@@ -146,6 +168,8 @@ class StoryboardPromptReadyPromotionRepository:
                     )
                     timestamp = now.isoformat()
                     for pair, row in zip(command.preparations, node_rows, strict=True):
+                        if _has_user_edited_prompt(row):
+                            continue
                         metadata = json.loads(str(row["metadata_json"]))
                         metadata["guided_checkpoint"] = origin.model_dump(mode="json")
                         metadata["guided_review_node_revision"] = pair.expected_node_revision + 1
@@ -228,23 +252,23 @@ class StoryboardPromptReadyPromotionRepository:
                             )
                             if str(row["status"]) == "draft" and item.node_id not in active_node_ids
                         )
-                        # Record the exact admission set: later replay must not
-                        # infer it from mutable execution status or enqueue a
-                        # second run for a Grid the user already ran.
-                        self._events.append_in_transaction(
-                            connection,
-                            V2EventInsert(
-                                workflow_id=command.workflow_id,
-                                action_id=action_id,
-                                event_type="storyboard_prompt_ready_promoted",
-                                transition_key=f"{action_id}:promoted",
-                                created_at=timestamp,
-                                payload={
-                                    "checkpoint_id": checkpoint_id,
-                                    "automatic_run_command_ids": list(automatic_ids),
-                                },
-                            ),
-                        )
+                    # The receipt owns replay identity even when user prompt
+                    # authority prevents attaching checkpoint metadata to a Node.
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=command.workflow_id,
+                            action_id=action_id,
+                            event_type="storyboard_prompt_ready_promoted",
+                            transition_key=f"{action_id}:promoted",
+                            created_at=timestamp,
+                            payload={
+                                "checkpoint_id": checkpoint_id,
+                                "stage_revision": command.expected_stage_revision,
+                                "automatic_run_command_ids": list(automatic_ids),
+                            },
+                        ),
+                    )
                     self._fault("awaiting_or_command")
 
                     next_workflow_revision = command.expected_workflow_revision + 1
@@ -402,7 +426,9 @@ class StoryboardPromptReadyPromotionRepository:
             raise _invalid("production_plan_lineage")
 
     @staticmethod
-    def _validate_production_plan(connection, command) -> None:
+    def _validate_production_plan(
+        connection: Connection, command: StoryboardPromptReadyPromotionCommandV1
+    ) -> frozenset[str]:
         row = (
             connection.execute(
                 select(AgentWorkingDocumentRow).where(
@@ -422,18 +448,20 @@ class StoryboardPromptReadyPromotionRepository:
         content = json.loads(str(row["content_json"]))
         planned_nodes = content.get("planned_nodes", [])
         expected_ids = {item.node_id for item in command.preparations}
-        if not expected_ids.issubset(
-            {
-                str(item.get("node_id"))
-                for item in planned_nodes
-                if isinstance(item, dict)
-                and item.get("materialization_id") == command.materialization_id
-            }
-        ):
+        planned_node_ids = frozenset(
+            str(item.get("node_id"))
+            for item in planned_nodes
+            if isinstance(item, dict)
+            and item.get("materialization_id") == command.materialization_id
+        )
+        if not expected_ids.issubset(planned_node_ids):
             raise _invalid("production_plan_nodes")
+        return planned_node_ids
 
     @staticmethod
-    def _validate_nodes(connection, command) -> tuple[Mapping[str, object], ...]:
+    def _validate_nodes(
+        connection: Connection, command: StoryboardPromptReadyPromotionCommandV1
+    ) -> tuple[Mapping[str, object], ...]:
         rows: list[Mapping[str, object]] = []
         for pair in command.preparations:
             row = (
@@ -461,7 +489,10 @@ class StoryboardPromptReadyPromotionRepository:
                     pair,
                 )
             )
-            if metadata.get("source_agent_document_id") != command.production_plan_document_id:
+            source_document = metadata.get("source_agent_document_id")
+            if source_document != command.production_plan_document_id and not (
+                source_document is None and _has_user_edited_prompt(row)
+            ):
                 raise _invalid("node_plan_lineage")
             connection.execute(
                 select(AgentCanvasBindingRow.binding_id).where(
@@ -474,7 +505,11 @@ class StoryboardPromptReadyPromotionRepository:
         return tuple(rows)
 
     @staticmethod
-    def _validate_execution_nodes(connection, command) -> tuple[Mapping[str, object], ...]:
+    def _validate_execution_nodes(
+        connection: Connection,
+        command: StoryboardPromptReadyPromotionCommandV1,
+        planned_node_ids: frozenset[str],
+    ) -> tuple[Mapping[str, object], ...]:
         rows: list[Mapping[str, object]] = []
         for pair in command.execution_preparations:
             row = (
@@ -496,6 +531,8 @@ class StoryboardPromptReadyPromotionRepository:
             # is still Ready; prompt failures fail the validation below.
             if str(row["status"]) not in {"draft", "working", "ready", "failed"}:
                 raise _invalid("execution_node_status")
+            if _has_user_edited_prompt(row) and pair.node_id not in planned_node_ids:
+                raise _invalid("production_plan_nodes")
             StoryboardPromptReadyPromotionRepository._validate_prompt_ready_row(row, pair)
             rows.append(row)
         return tuple(rows)
@@ -524,19 +561,23 @@ class StoryboardPromptReadyPromotionRepository:
     @staticmethod
     def _validate_prompt_ready_row(
         row: Mapping[str, object],
-        pair,
+        pair: StoryboardPromptPreparationPairV1,
     ) -> tuple[NodePromptPreparationV1, dict[str, object]]:
         preparation = NodePromptPreparationV1.model_validate_json(
             str(row["prompt_preparation_json"])
         )
         prompt = str(row["generation_prompt"] or "").strip()
+        user_edited = _has_user_edited_prompt(row)
         if (
             preparation.status != "ready"
-            or preparation.operation_id != pair.operation_id
+            or (not user_edited and preparation.operation_id != pair.operation_id)
             or not prompt
             or preparation.prompt_digest != sha256(prompt.encode("utf-8")).hexdigest()
         ):
             raise _invalid("prompt_ready")
+        metadata = json.loads(str(row["metadata_json"]))
+        if user_edited:
+            return preparation, metadata
         required = (
             preparation.context_snapshot_id,
             preparation.role_variant,
@@ -553,7 +594,6 @@ class StoryboardPromptReadyPromotionRepository:
             raise _invalid("prompt_provenance")
         if preparation.attempt_stage != "completed":
             raise _invalid("prompt_attempt_stage")
-        metadata = json.loads(str(row["metadata_json"]))
         expected_metadata = {
             "prompt_context_digest": preparation.context_snapshot_id,
             "prompt_digest": preparation.prompt_digest,
@@ -599,10 +639,23 @@ class StoryboardPromptReadyPromotionRepository:
         )
         if any(row is None for row in node_rows):
             return None
+        receipt_json = connection.execute(
+            select(WorkflowEventRow.payload_json).where(
+                WorkflowEventRow.workflow_id == command.workflow_id,
+                WorkflowEventRow.transition_key == f"{action_id}:promoted",
+                WorkflowEventRow.event_type == "storyboard_prompt_ready_promoted",
+            )
+        ).scalar_one_or_none()
+        receipt = json.loads(receipt_json) if receipt_json is not None else None
         if any(
             json.loads(str(row["metadata_json"])).get("guided_checkpoint", {}).get("checkpoint_id")
             != checkpoint_id
             for row in node_rows
+            if not (
+                _has_user_edited_prompt(row)
+                and receipt is not None
+                and receipt.get("checkpoint_id") == checkpoint_id
+            )
         ):
             return None
         journey = parse_production_journey(str(session["journey_state_json"]))
@@ -724,6 +777,16 @@ class StoryboardPromptReadyPromotionRepository:
     def _fault(self, boundary: str) -> None:
         if self._fault_injector is not None:
             self._fault_injector(boundary)
+
+
+def _has_user_edited_prompt(row: Mapping[str, object]) -> bool:
+    metadata = json.loads(str(row["metadata_json"]))
+    presentation = metadata.get("editable_prompt_projection")
+    return is_user_edited_prompt(
+        EditablePromptProjectionV1.model_validate(presentation)
+        if isinstance(presentation, dict)
+        else None
+    )
 
 
 def _dump(value: object) -> str:
