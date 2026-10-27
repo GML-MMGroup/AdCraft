@@ -1221,6 +1221,7 @@ class AgentCanvasWorkflowRepository:
                     if (
                         current.prompt_preparation.assertion_evidence == assertion_evidence
                         and current.prompt_preparation.binding_digest == binding_digest
+                        and current.metadata.get("prompt_reference_bundle_digest") == binding_digest
                         and current.metadata.get("prepared_reference_snapshots")
                         == prepared_reference_snapshots
                     ):
@@ -1244,6 +1245,7 @@ class AgentCanvasWorkflowRepository:
                             "metadata": {
                                 **current.metadata,
                                 **safe_prompt_assertion_metadata(assertion_evidence),
+                                "prompt_reference_bundle_digest": binding_digest,
                                 "prepared_reference_snapshots": prepared_reference_snapshots,
                                 **_advance_in_sync_review_marker(current),
                             },
