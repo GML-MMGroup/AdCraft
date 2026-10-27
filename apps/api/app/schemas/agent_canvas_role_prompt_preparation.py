@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
 from app.schemas.brand_production_context import BrandProductionContextV1
+from app.schemas.agent_canvas_video_skills import VideoStyleExpressionV2
 
 
 RolePromptVariantV2 = Literal[
@@ -385,6 +386,7 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     style_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     installation_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     video_representation_mode: VideoRepresentationModeV2 | None = None
+    style_expression: VideoStyleExpressionV2 | None = None
     video_representation_source: str | None = Field(default=None, max_length=160)
     video_representation_source_id: str | None = Field(default=None, max_length=160)
     video_representation_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")

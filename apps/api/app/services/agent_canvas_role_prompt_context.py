@@ -13,6 +13,7 @@ from pydantic import JsonValue, ValidationError
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.schemas.agent_canvas_video_skills import VideoStyleExpressionV2
 from app.schemas.agent_canvas_role_prompt_preparation import (
     CharacterIdentityAuthorityProjectionV1,
     ProductIdentityAuthorityProjectionV1,
@@ -360,6 +361,17 @@ class RolePromptContextProjector:
             world_view_block_id=world_view_block_id,
             video_representation_mode=(
                 representation.mode if role_variant in {"video_segment", "free_video"} else None
+            ),
+            style_expression=(
+                VideoStyleExpressionV2(
+                    allows_meme_captions=stage_context.allows_meme_captions,
+                    allows_comedic_sound_effects=stage_context.allows_comedic_sound_effects,
+                )
+                if is_video_role
+                and (
+                    stage_context.allows_meme_captions or stage_context.allows_comedic_sound_effects
+                )
+                else None
             ),
             video_representation_source=(
                 representation.source if role_variant in {"video_segment", "free_video"} else None

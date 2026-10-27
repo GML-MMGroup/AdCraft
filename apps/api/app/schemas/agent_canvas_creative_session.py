@@ -293,6 +293,8 @@ class StyleGuidanceContextV2(_CreativeSessionModel):
     role_guidance: str | None = Field(default=None, max_length=8_192)
     role_guidance_digest: str | None = Field(default=None, max_length=160)
     video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
+    allows_meme_captions: bool = False
+    allows_comedic_sound_effects: bool = False
     video_representation_source_id: str = Field(default="platform-default", max_length=160)
     source: Literal["creative_direction_snapshot"] = "creative_direction_snapshot"
     precedence: Literal["advisory"] = "advisory"

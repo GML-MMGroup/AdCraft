@@ -11,6 +11,11 @@ class _VideoSkillPublicModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class VideoStyleExpressionV2(_VideoSkillPublicModel):
+    allows_meme_captions: bool = False
+    allows_comedic_sound_effects: bool = False
+
+
 class VideoSkillPreviewV2(_VideoSkillPublicModel):
     kind: Literal["none", "image", "video"]
     summary: str | None = Field(default=None, max_length=1_024)

@@ -43,6 +43,7 @@ from app.services.agent_canvas_role_prompt_compiler import (
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionEvidenceValidator,
     PromptAssertionPolicyRegistry,
+    node_allows_comedic_sound_effects,
 )
 from app.services.agent_canvas_reference_semantics import (
     compile_provider_reference_instruction,
@@ -240,6 +241,7 @@ class AgentCanvasProviderPromptCompiler:
                 preparation.recipe_id,
                 preparation.recipe_version,
                 native_audio_required=native_audio_required,
+                allows_comedic_sound_effects=node_allows_comedic_sound_effects(node),
                 scene_asset_kind=(
                     node.structured_content.get("scene_asset_kind")
                     or node.parameters.get("scene_asset_kind")

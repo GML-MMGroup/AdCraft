@@ -159,6 +159,10 @@ class AgentCanvasRolePromptCompiler:
                 context.role_variant == "video_segment"
                 and any(item.name == "generate_audio" and item.value is True for item in parameters)
             ),
+            allows_comedic_sound_effects=(
+                context.style_expression is not None
+                and context.style_expression.allows_comedic_sound_effects
+            ),
             scene_asset_kind=(
                 context.node_parameters.get("scene_asset_kind")
                 if context.role_variant == "scene_board"
@@ -181,6 +185,10 @@ class AgentCanvasRolePromptCompiler:
         )
         rendered_prompt, negative = _render(
             concrete_brief,
+            allows_meme_captions=(
+                context.style_expression is not None
+                and context.style_expression.allows_meme_captions
+            ),
             scene_multiview=(
                 context.role_variant == "scene_board"
                 and context.node_parameters.get("scene_asset_kind") == "multi_view"
@@ -658,6 +666,7 @@ def _semantic_projections(
 def _render(
     brief: RoleCreativeBriefMemberV2,
     *,
+    allows_meme_captions: bool = False,
     scene_multiview: bool = False,
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
@@ -798,7 +807,8 @@ def _render(
             f"{brief.segment_summary} Action: {brief.action}. Dialogue: {brief.dialogue}. "
             f"Voiceover: {brief.voiceover}. Ambience: {brief.ambience}. Synchronized action "
             f"effects: {brief.action_effects}. Target output style: {brief.target_style}.",
-            "No background music, identity drift, unrelated action, or visible text.",
+            "No background music, identity drift, unrelated action"
+            + ("." if allows_meme_captions else ", or visible text."),
         )
     if isinstance(brief, BgmRoleBriefV2):
         return (
@@ -1112,6 +1122,7 @@ def _structured_content(
             duration_seconds=brief.duration_seconds,
             storyboard_content=brief.action,
             representation_mode=(context.video_representation_mode or "illustrated"),
+            style_expression=context.style_expression,
             style=style,
             dialogue=brief.dialogue,
             voice_style=brief.voiceover,

@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_prompt_preparation import (
     PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
@@ -213,6 +214,7 @@ class PromptAssertionPolicyRegistry:
         recipe_version: str,
         *,
         native_audio_required: bool,
+        allows_comedic_sound_effects: bool = False,
         scene_asset_kind: str | None = None,
     ) -> PromptAssertionPolicyV1:
         """Resolve the Video policy with an applicable native-audio assertion."""
@@ -237,16 +239,23 @@ class PromptAssertionPolicyRegistry:
                 required_reference_purposes=("scene_main_identity",),
                 policy_ref=f"{recipe_id}.multi_view.prompt_assertions",
             )
-        if native_audio_required or "video.native_audio_without_bgm" not in policy.assertion_ids:
+        if "video.native_audio_without_bgm" not in policy.assertion_ids:
+            return policy
+        if native_audio_required and not allows_comedic_sound_effects:
             return policy
         retained = tuple(
-            (assertion_id, positive_clause)
+            (
+                assertion_id,
+                "Generate native ambience, synchronized action effects, and comedic sound stings."
+                if assertion_id == "video.native_audio_without_bgm" and allows_comedic_sound_effects
+                else positive_clause,
+            )
             for assertion_id, positive_clause in zip(
                 policy.assertion_ids,
                 policy.positive_clauses,
                 strict=True,
             )
-            if assertion_id != "video.native_audio_without_bgm"
+            if native_audio_required or assertion_id != "video.native_audio_without_bgm"
         )
         return _policy(
             policy.recipe_id,
@@ -431,6 +440,7 @@ def prompt_assertion_admission_error(node) -> str | None:
             preparation.recipe_id,
             preparation.recipe_version,
             native_audio_required=_node_requires_native_audio(node),
+            allows_comedic_sound_effects=node_allows_comedic_sound_effects(node),
             scene_asset_kind=(
                 node.structured_content.get("scene_asset_kind")
                 or node.parameters.get("scene_asset_kind")
@@ -493,3 +503,14 @@ def _node_requires_native_audio(node) -> bool:
         if parameter.name == "generate_audio":
             return parameter.value is True
     return node.parameters.get("generate_audio") is True
+
+
+def node_allows_comedic_sound_effects(node: CanvasNodeV2) -> bool:
+    """Recover the prepared Video policy from its persisted typed style expression."""
+
+    expression = node.structured_content.get("style_expression")
+    return (
+        node.prompt_preparation.role_variant == "video_segment"
+        and isinstance(expression, dict)
+        and expression.get("allows_comedic_sound_effects") is True
+    )

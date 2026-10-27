@@ -14,6 +14,7 @@ from app.schemas import agent_runtime
 from app.schemas import agent_model_trace
 from app.schemas import workflow_model_calls
 from app.schemas import agent_canvas_video_parameters
+from app.schemas import agent_canvas_video_skills
 from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_canvas_editing
@@ -177,6 +178,7 @@ CONTRACT_MODELS = (
     agent_canvas_role_prompt_preparation.RolePromptCompactionPolicyV2,
     agent_canvas_role_prompt_preparation.RolePromptCompactionDecisionV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationContextV2,
+    agent_canvas_video_skills.VideoStyleExpressionV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationRequestV2,
     agent_canvas_role_prompt_preparation.NodePromptPreparationV2,
     agent_canvas_role_prompt_preparation.EditablePromptProjectionV1,

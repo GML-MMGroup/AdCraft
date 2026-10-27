@@ -30439,6 +30439,17 @@
           ],
           "default": null
         },
+        "style_expression": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoStyleExpressionV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "style_parameters": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -34320,6 +34331,16 @@
     "StyleGuidanceContextV2": {
       "additionalProperties": false,
       "properties": {
+        "allows_comedic_sound_effects": {
+          "default": false,
+          "title": "Allows Comedic Sound Effects",
+          "type": "boolean"
+        },
+        "allows_meme_captions": {
+          "default": false,
+          "title": "Allows Meme Captions",
+          "type": "boolean"
+        },
         "creative_direction_snapshot_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -37341,6 +37362,17 @@
           ],
           "default": null
         },
+        "style_expression": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoStyleExpressionV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "voice_style": {
           "default": "",
           "maxLength": 2048,
@@ -37601,6 +37633,23 @@
         "target_style"
       ],
       "title": "VideoSegmentRoleBriefV2",
+      "type": "object"
+    },
+    "VideoStyleExpressionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "allows_comedic_sound_effects": {
+          "default": false,
+          "title": "Allows Comedic Sound Effects",
+          "type": "boolean"
+        },
+        "allows_meme_captions": {
+          "default": false,
+          "title": "Allows Meme Captions",
+          "type": "boolean"
+        }
+      },
+      "title": "VideoStyleExpressionV2",
       "type": "object"
     },
     "VisualStyleContractV2": {
