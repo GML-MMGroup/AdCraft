@@ -676,6 +676,8 @@ class DynamicCanvasScheduler:
             if isinstance(frozen_node, dict)
             else self._workflows.get_node(workflow_id, node_id)
         )
+        # Keep admission authority before derived Video parameters advance the Node.
+        accepted_node_revision = node.revision if isinstance(frozen_node, dict) else None
         managed_prompt = has_managed_prompt_preparation(node)
         if node.prompt_preparation.status == "failed":
             preparation_error = _prompt_preparation_failure(node)
@@ -1049,6 +1051,7 @@ class DynamicCanvasScheduler:
             node=node,
             inputs=inputs,
             authoring_revision_observed=observed_revision,
+            accepted_node_revision=accepted_node_revision,
             model_id=model_id,
             provider_id=provider_id,
             model_resolution=resolution,

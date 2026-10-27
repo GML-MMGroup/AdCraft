@@ -342,6 +342,7 @@ class ProviderTaskRecoveryService:
         context = NodeExecutionContext(
             execution_id=task.execution_id,
             node=node,
+            accepted_node_revision=node.revision if frozen_node is not None else None,
             inputs=(),
             model_id=resolution.provider_model_id if resolution is not None else None,
             provider_id=resolution.provider_id if resolution is not None else None,

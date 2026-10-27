@@ -155,6 +155,11 @@ class AgentCanvasOutputPreparationService:
                 ),
                 publication_intent_id=publication_intent_id,
                 before_object_publish=before_object_publish,
+                accepted_node_revision=(
+                    context.accepted_node_revision
+                    if context.accepted_node_revision is not None
+                    else context.node.revision
+                ),
             )
             prepared = prepared.model_copy(
                 update={

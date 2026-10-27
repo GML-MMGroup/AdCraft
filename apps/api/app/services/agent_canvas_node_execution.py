@@ -111,6 +111,7 @@ class NodeExecutionContext:
     execution_mode: CanvasExecutionModeV2 = "agent_assisted"
     semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
     execution_lease: NodeExecutionLeaseV2 | None = None
+    accepted_node_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
