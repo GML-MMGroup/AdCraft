@@ -26,6 +26,8 @@ from app.persistence.models import (
     AgentCanvasBindingRow,
     AgentCanvasChatTurnRow,
     AgentCanvasExecutionSettingsRow,
+    AgentCanvasExecutionMemberRow,
+    AgentCanvasExecutionRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasMaterializationCommitRow,
@@ -134,7 +136,7 @@ class StoryboardPromptReadyPromotionRepository:
 
                     self._validate_production_plan(connection, command)
                     node_rows = self._validate_nodes(connection, command)
-                    self._validate_execution_nodes(connection, command)
+                    execution_node_rows = self._validate_execution_nodes(connection, command)
                     self._validate_execution_mode(connection, command)
 
                     origin = GuidedCheckpointOriginV1(
@@ -210,6 +212,9 @@ class StoryboardPromptReadyPromotionRepository:
                             )
                         )
                     else:
+                        active_node_ids = self._active_execution_node_ids(
+                            connection, command.workflow_id
+                        )
                         automatic_ids = tuple(
                             self._automatic_runs.enqueue_in_transaction(
                                 connection,
@@ -218,7 +223,27 @@ class StoryboardPromptReadyPromotionRepository:
                                 node_id=item.node_id,
                                 now=now,
                             ).command_id
-                            for item in command.execution_preparations
+                            for item, row in zip(
+                                command.execution_preparations, execution_node_rows, strict=True
+                            )
+                            if str(row["status"]) == "draft" and item.node_id not in active_node_ids
+                        )
+                        # Record the exact admission set: later replay must not
+                        # infer it from mutable execution status or enqueue a
+                        # second run for a Grid the user already ran.
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=command.workflow_id,
+                                action_id=action_id,
+                                event_type="storyboard_prompt_ready_promoted",
+                                transition_key=f"{action_id}:promoted",
+                                created_at=timestamp,
+                                payload={
+                                    "checkpoint_id": checkpoint_id,
+                                    "automatic_run_command_ids": list(automatic_ids),
+                                },
+                            ),
                         )
                     self._fault("awaiting_or_command")
 
@@ -426,9 +451,10 @@ class StoryboardPromptReadyPromotionRepository:
             if (
                 str(row["node_type"]) != "image"
                 or str(row["creative_role"]) != "storyboard_sequence"
-                or str(row["status"]) != "draft"
             ):
                 raise _invalid("node_role")
+            if str(row["status"]) not in {"draft", "working", "ready", "failed"}:
+                raise _invalid("node_status")
             _preparation, metadata = (
                 StoryboardPromptReadyPromotionRepository._validate_prompt_ready_row(
                     row,
@@ -448,7 +474,8 @@ class StoryboardPromptReadyPromotionRepository:
         return tuple(rows)
 
     @staticmethod
-    def _validate_execution_nodes(connection, command) -> None:
+    def _validate_execution_nodes(connection, command) -> tuple[Mapping[str, object], ...]:
+        rows: list[Mapping[str, object]] = []
         for pair in command.execution_preparations:
             row = (
                 connection.execute(
@@ -464,9 +491,35 @@ class StoryboardPromptReadyPromotionRepository:
                 raise _stale("execution_node_revision")
             if str(row["node_type"]) not in {"text", "script", "image", "video", "audio"}:
                 raise _invalid("execution_node_type")
-            if str(row["status"]) != "draft":
+            # Canvas Working covers running media execution. A media
+            # failure is also satisfied here only if its original preparation
+            # is still Ready; prompt failures fail the validation below.
+            if str(row["status"]) not in {"draft", "working", "ready", "failed"}:
                 raise _invalid("execution_node_status")
             StoryboardPromptReadyPromotionRepository._validate_prompt_ready_row(row, pair)
+            rows.append(row)
+        return tuple(rows)
+
+    @staticmethod
+    def _active_execution_node_ids(connection: Connection, workflow_id: str) -> frozenset[str]:
+        """Include queued members whose Canvas status has not changed yet."""
+
+        return frozenset(
+            connection.execute(
+                select(AgentCanvasExecutionMemberRow.node_id)
+                .join(
+                    AgentCanvasExecutionRow,
+                    AgentCanvasExecutionRow.execution_id
+                    == AgentCanvasExecutionMemberRow.execution_id,
+                )
+                .where(
+                    AgentCanvasExecutionMemberRow.workflow_id == workflow_id,
+                    AgentCanvasExecutionRow.workflow_id == workflow_id,
+                    AgentCanvasExecutionRow.status.in_(("queued", "running", "waiting")),
+                    AgentCanvasExecutionMemberRow.state.in_(("queued", "running", "waiting")),
+                )
+            ).scalars()
+        )
 
     @staticmethod
     def _validate_prompt_ready_row(
@@ -592,7 +645,20 @@ class StoryboardPromptReadyPromotionRepository:
                     )
                 ).scalars()
             )
-            if len(automatic_ids) != len(command.execution_preparations):
+            receipt_json = connection.execute(
+                select(WorkflowEventRow.payload_json).where(
+                    WorkflowEventRow.workflow_id == command.workflow_id,
+                    WorkflowEventRow.transition_key == f"{action_id}:promoted",
+                    WorkflowEventRow.event_type == "storyboard_prompt_ready_promoted",
+                )
+            ).scalar_one_or_none()
+            if receipt_json is not None:
+                receipt = json.loads(receipt_json)
+                if receipt.get("checkpoint_id") != checkpoint_id or sorted(automatic_ids) != sorted(
+                    receipt["automatic_run_command_ids"]
+                ):
+                    raise _invalid("replay_automatic_command")
+            elif len(automatic_ids) != len(command.execution_preparations):
                 raise _invalid("replay_automatic_command")
         workflow_revision = connection.execute(
             select(AgentCanvasWorkflowRow.revision).where(
