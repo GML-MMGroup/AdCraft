@@ -10,8 +10,8 @@ import json
 from types import SimpleNamespace
 from sqlalchemy.engine import Connection
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
-from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
-    AgentCanvasPromptPreparationDispatchRepository,
+from app.persistence.agent_canvas_storyboard_prompt_context_repository import (
+    StoryboardPromptContextRepository,
 )
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
@@ -34,6 +34,7 @@ from app.schemas.agent_canvas_ad_media import (
 )
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_prompt_preparation_dispatch import PromptPreparationDispatchV1
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -46,6 +47,7 @@ from app.schemas.agent_canvas_production_closure import (
 )
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_working_documents import (
+    AgentWorkingDocumentV2,
     StoryboardNodeRecordV2,
     StoryboardPlannedNodeV3,
     StoryboardProductionPlanContentV2,
@@ -114,13 +116,8 @@ class ProgressiveStoryboardReadyService:
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
-        self._prompt_dispatches = (
-            AgentCanvasPromptPreparationDispatchRepository(
-                workflows.database,
-                events,
-            )
-            if events is not None
-            else None
+        self._prompt_contexts = (
+            StoryboardPromptContextRepository(workflows, events) if events is not None else None
         )
 
     def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> tuple[str, ...]:
@@ -139,6 +136,12 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_progression",
             )
         plan = plans[0]
+        content = _plan_content(plan.content)
+        first_video_id = _node_id(plan.document_id, _first_sequence(content).sequence_id, "video")
+        # A committed-publication replay owns only the first progressive handoff.
+        # Later prompt-ready callbacks own the remaining planned Drafts.
+        if any(record.node_id == first_video_id for record in _planned_nodes(content)):
+            return ()
         created = self.materialize_planned_drafts(
             workflow_id=outcome.workflow_id,
             plan_document_id=plan.document_id,
@@ -175,6 +178,30 @@ class ProgressiveStoryboardReadyService:
                 "Storyboard Draft progression requires the current accepted Plan.",
                 stage="storyboard_progression",
             )
+        content = _plan_content(plan.content)
+        sequence_id = current.metadata.get("source_sequence_id")
+        sequences = sorted(content.segments, key=lambda item: item.order)
+        sequence_index = next(
+            (index for index, item in enumerate(sequences) if item.sequence_id == sequence_id), None
+        )
+        if sequence_index is None:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Storyboard prompt-ready callback has no owning Plan sequence.",
+                stage="storyboard_progression",
+            )
+        successor_id = None
+        if current.creative_role == "storyboard_sequence":
+            successor_id = _node_id(plan.document_id, sequence_id, "video")
+        elif sequence_index + 1 < len(sequences):
+            successor_id = _node_id(
+                plan.document_id, sequences[sequence_index + 1].sequence_id, "grid"
+            )
+        if successor_id is not None and any(
+            node.node_id == successor_id for node in workflow.nodes
+        ):
+            # Replaying this callback cannot consume another Node's progression step.
+            return ()
         created = self.materialize_planned_drafts(
             workflow_id=workflow_id,
             plan_document_id=plan.document_id,
@@ -299,25 +326,26 @@ class ProgressiveStoryboardReadyService:
                 raise
         return tuple(node.node_id for node, _ in members)
 
-    def _prompt_contexts_for_members(self, *, workflow_id, plan, source_grid, members):
-        if self._prompt_dispatches is None:
-            return {}
-        operation_id = source_grid.prompt_preparation.operation_id
-        if not operation_id:
-            return {}
-        dispatch = self._prompt_dispatches.get_by_node_operation(
-            workflow_id, source_grid.node_id, operation_id
-        )
-        if dispatch is None or not dispatch.context_json:
+    def _prompt_contexts_for_members(
+        self,
+        *,
+        workflow_id: str,
+        plan: AgentWorkingDocumentV2,
+        source_grid: CanvasNodeV2,
+        members: tuple[tuple[CanvasNodeV2, tuple[CanvasBindingV2, ...]], ...],
+    ) -> dict[str, StageAuthoringContextV1]:
+        if source_grid.workflow_id != workflow_id or plan.workflow_id != workflow_id:
             raise V2PersistenceError(
-                "storyboard_prompt_context_missing",
-                "Progressive Storyboard Draft has no frozen prompt context.",
+                "storyboard_prompt_context_invalid",
+                "Storyboard context must belong to the same workflow.",
                 stage="storyboard_progression",
             )
-        base = StageAuthoringContextV1.model_validate(dispatch.context_json)
+        if self._prompt_contexts is None:
+            return {}
+        base = self._prompt_contexts.resolve(source_grid, plan_document_id=plan.document_id)
         content = _plan_content(plan.content)
         excerpts = base.working_document_excerpts
-        if len(excerpts) != 1:
+        if len(excerpts) != 1 or excerpts[0].document_id != plan.document_id:
             raise V2PersistenceError(
                 "storyboard_prompt_context_invalid",
                 "Progressive Storyboard Draft requires one frozen working-document excerpt.",
@@ -365,6 +393,99 @@ class ProgressiveStoryboardReadyService:
                 }
             )
         return contexts
+
+    def redispatch_missing_prompt_context(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        dispatch_id: str,
+        expected_node_revision: int,
+        expected_plan_revision: int,
+        expected_lease_generation: int,
+        expected_source_revision: int,
+    ) -> PromptPreparationDispatchV1:
+        """Repair an inspected historical fan-out failure without recreating its Node."""
+
+        if self._prompt_contexts is None:
+            raise ValueError("Storyboard prompt context recovery requires an event repository.")
+        workflow = self._workflows.get_workflow(workflow_id)
+        node = self._workflows.get_node(workflow_id, node_id)
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(workflow_id).items
+                if item.document_id == node.metadata.get("source_agent_document_id")
+            ),
+            None,
+        )
+        if (
+            plan is None
+            or plan.revision != expected_plan_revision
+            or node.revision != expected_node_revision
+        ):
+            raise V2PersistenceError(
+                "storyboard_prompt_context_recovery_conflict",
+                "Storyboard recovery requires the inspected Node and Plan revisions.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        first_sequence = _first_sequence(content)
+        source_record = next(
+            (
+                item
+                for item in _planned_nodes(content)
+                if item.sequence_id == first_sequence.sequence_id
+                and item.node_role == "storyboard_grid"
+            ),
+            None,
+        )
+        source = next(
+            (
+                item
+                for item in workflow.nodes
+                if source_record is not None and item.node_id == source_record.node_id
+            ),
+            None,
+        )
+        member = next((item for item in _planned_nodes(content) if item.node_id == node_id), None)
+        if (
+            source is None
+            or source.revision != expected_source_revision
+            or member is None
+            or node.node_id == source.node_id
+            or node.creative_role not in {"storyboard_sequence", "storyboard_video"}
+            or member.sequence_id != node.metadata.get("source_sequence_id")
+            or node.node_id
+            != _node_id(
+                plan.document_id,
+                member.sequence_id,
+                "video" if node.creative_role == "storyboard_video" else "grid",
+            )
+        ):
+            raise V2PersistenceError(
+                "storyboard_prompt_context_recovery_conflict",
+                "Storyboard recovery requires its inspected source and Agent-created Plan member.",
+                stage="storyboard_progression",
+            )
+        bindings = tuple(item for item in workflow.bindings if item.target_node_id == node_id)
+        context = self._prompt_contexts_for_members(
+            workflow_id=workflow_id,
+            plan=plan,
+            source_grid=source,
+            members=((node, bindings),),
+        )[node_id]
+        return self._prompt_contexts.redispatch(
+            node=node,
+            source=source,
+            bindings=bindings,
+            context=context,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=expected_plan_revision,
+            expected_workflow_revision=workflow.revision,
+            dispatch_id=dispatch_id,
+            expected_lease_generation=expected_lease_generation,
+        )
 
     def preflight_fanout(
         self,
