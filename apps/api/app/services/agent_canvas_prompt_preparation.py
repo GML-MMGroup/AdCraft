@@ -1045,7 +1045,7 @@ class NodePromptPreparationService:
                     source_node_revision=source_node.revision if source_node is not None else None,
                     source_role=(source_node.creative_role if source_node is not None else None),
                     character_human_face=(
-                        source_node.structured_content.get("human_face")
+                        _character_human_face(source_node, nodes)
                         if source_node is not None and source_node.creative_role == "character"
                         else None
                     ),
@@ -1234,6 +1234,29 @@ def _scene_environment_projection_metadata(
     if projection is None:
         return {}
     return {"scene_environment_projection": projection.model_dump(mode="json")}
+
+
+def _character_human_face(source: CanvasNodeV2, nodes: dict[str, CanvasNodeV2]) -> bool | None:
+    """Resolve missing face classification from the same occurrence's unique Main."""
+
+    human_face = source.structured_content.get("human_face")
+    if human_face is not None:
+        return human_face
+    occurrence_id = source.metadata.get("occurrence_id")
+    if not occurrence_id:
+        return None
+    mains = [
+        node
+        for node in nodes.values()
+        if node.workflow_id == source.workflow_id
+        and node.creative_role == "character"
+        and node.metadata.get("character_phase") == "main"
+        and node.metadata.get("occurrence_id") == occurrence_id
+    ]
+    if len(mains) != 1:
+        return None
+    human_face = mains[0].structured_content.get("human_face")
+    return human_face if isinstance(human_face, bool) else None
 
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:
