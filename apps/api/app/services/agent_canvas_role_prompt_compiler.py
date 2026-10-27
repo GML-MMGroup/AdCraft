@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from hashlib import sha256
 import json
 import logging
@@ -135,6 +136,14 @@ _SCENE_CONFLICT_CATEGORIES = {
 }
 
 
+@dataclass(frozen=True)
+class RolePromptCompilationResult:
+    """Python-only compilation artifacts; projections never enter the sidecar contract."""
+
+    compiled_prompt: CompiledNodePromptV2
+    scene_environment_projection: SceneEnvironmentProjectionV1 | None
+
+
 class AgentCanvasRolePromptCompiler:
     """Compile stable provider-neutral prompts from one strict role brief."""
 
@@ -152,6 +161,25 @@ class AgentCanvasRolePromptCompiler:
         editable_prompt_override: str | None = None,
         preserved_node: CanvasNodeV2 | None = None,
     ) -> CompiledNodePromptV2:
+        return self.compile_with_projections(
+            brief,
+            context,
+            parameters=parameters,
+            editable_prompt_override=editable_prompt_override,
+            preserved_node=preserved_node,
+        ).compiled_prompt
+
+    def compile_with_projections(
+        self,
+        brief: RoleCreativeBriefV2 | RoleCreativeBriefMemberV2,
+        context: RolePromptPreparationContextV2,
+        *,
+        parameters: tuple[ResolvedNodeParameterV2, ...] = (),
+        editable_prompt_override: str | None = None,
+        preserved_node: CanvasNodeV2 | None = None,
+    ) -> RolePromptCompilationResult:
+        """Return the exact semantic authority used by the compiled prompt and evidence."""
+
         concrete_brief = brief.root if isinstance(brief, RoleCreativeBriefV2) else brief
         if concrete_brief.role_variant != context.role_variant:
             raise _error("node_prompt_brief_invalid", "Role brief variant does not match context.")
@@ -490,7 +518,7 @@ class AgentCanvasRolePromptCompiler:
             ),
             engine_owned_fields_digest=policy.engine_owned_fields_digest,
         )
-        return CompiledNodePromptV2(
+        compiled_prompt = CompiledNodePromptV2(
             role_variant=context.role_variant,
             recipe_id=recipe.recipe_id,
             recipe_version=recipe.recipe_version,
@@ -516,6 +544,10 @@ class AgentCanvasRolePromptCompiler:
             compaction_policy_version=recipe.compaction_policy.policy_version,
             compaction_policy_digest=recipe.compaction_policy.digest,
             compaction_decisions=compaction_decisions,
+        )
+        return RolePromptCompilationResult(
+            compiled_prompt=compiled_prompt,
+            scene_environment_projection=scene_projection,
         )
 
     @staticmethod

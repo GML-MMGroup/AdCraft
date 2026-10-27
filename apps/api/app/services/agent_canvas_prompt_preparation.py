@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import inspect
+import logging
 from pathlib import Path
 from time import monotonic
 
@@ -28,6 +29,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleBoundTextControlV2,
     RoleCreativeBriefV2,
     RolePromptPreparationContextV2,
+    SceneEnvironmentProjectionV1,
 )
 from app.services.agent_canvas_role_prompt_compiler import (
     AgentCanvasRolePromptCompiler,
@@ -66,6 +68,7 @@ from app.services.agent_canvas_derivative_prompt_reuse import (
 RoleBriefAuthor = Callable[..., RoleCreativeBriefV2]
 LockedElementGuard = Callable[[str, CanvasNodeV2, str], None]
 _GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
+logger = logging.getLogger(__name__)
 
 
 def _prompt_stream_id(workflow_id: str, node_id: str, operation_id: str) -> str:
@@ -262,7 +265,7 @@ class NodePromptPreparationService:
                         brief = deterministic_role_brief(role_context)
                     else:
                         raise
-                compiled_prompt = self._compiler.compile(
+                compilation = self._compiler.compile_with_projections(
                     brief,
                     role_context,
                     parameters=self._parameter_resolver.resolve(
@@ -271,10 +274,8 @@ class NodePromptPreparationService:
                     ),
                     editable_prompt_override=role_context.user_prompt,
                 )
-                prompt = compiled_prompt.prompt
-                structured_content = compiled_prompt.structured_content
             else:
-                compiled_prompt = self._compiler.compile(
+                compilation = self._compiler.compile_with_projections(
                     deterministic_role_brief(role_context),
                     role_context,
                     parameters=self._parameter_resolver.resolve(
@@ -288,8 +289,9 @@ class NodePromptPreparationService:
                     ),
                     preserved_node=current if preserve_creative_text else None,
                 )
-                prompt = compiled_prompt.prompt
-                structured_content = compiled_prompt.structured_content
+            compiled_prompt = compilation.compiled_prompt
+            prompt = compiled_prompt.prompt
+            structured_content = compiled_prompt.structured_content
             editable_text = compiled_prompt.prompt
             prompt_presentation = EditablePromptProjectionV1(
                 text=editable_text,
@@ -387,7 +389,7 @@ class NodePromptPreparationService:
                         ),
                         **_scene_environment_projection_metadata(
                             working,
-                            structured_content,
+                            compilation.scene_environment_projection,
                             role_context,
                         ),
                         "role_reference_policy_version": (
@@ -863,10 +865,18 @@ class NodePromptPreparationService:
                 expected_digest = source.prompt_preparation.scene_environment_projection_digest
                 if expected_digest is not None and scene_projection is not None:
                     if scene_projection.projection_digest != expected_digest:
-                        raise V2PersistenceError(
-                            "scene_parent_environment_projection_invalid",
-                            "Scene Main projection digest does not match its prepared authority.",
-                            stage="node_prompt_preparation",
+                        # Historical preparations rebuilt this projection from content panels.
+                        logger.warning(
+                            "%s",
+                            json.dumps(
+                                {
+                                    "event": "scene_projection_digest_mismatch",
+                                    "workflow_id": node.workflow_id,
+                                    "node_id": node.node_id,
+                                    "source_node_id": source.node_id,
+                                },
+                                sort_keys=True,
+                            ),
                         )
             else:
                 scene_projection = scene_environment_projection_from_node(
@@ -1217,17 +1227,14 @@ def _ensure_scene_main_projection_available(
 
 def _scene_environment_projection_metadata(
     node: CanvasNodeV2,
-    structured_content: dict[str, object],
+    projection: SceneEnvironmentProjectionV1 | None,
     context: RolePromptPreparationContextV2,
 ) -> dict[str, object]:
     if context.role_variant != "scene_board" or _is_scene_multiview(node):
         return {}
-    projected = scene_environment_projection_from_node(
-        node.model_copy(update={"structured_content": structured_content}),
-    )
-    if projected is None:
+    if projection is None:
         return {}
-    return {"scene_environment_projection": projected.model_dump(mode="json")}
+    return {"scene_environment_projection": projection.model_dump(mode="json")}
 
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:
