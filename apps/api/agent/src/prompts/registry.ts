@@ -4,6 +4,17 @@ import { videoAgentBasePolicy } from "./agents.js";
 import { nativeVideoAudioPolicy } from "./audio-policy.js";
 import { listOperationDescriptors } from "../registry.js";
 
+const capabilityOptionSubjects: Readonly<Record<string, string>> = {
+  product: "the product's own appearance: form, proportions, materials, colours, finish, markings, and how it is presented on its own",
+  prop: "the prop objects' appearance, materials, condition, and function in the scene",
+  character: "the character's identity, age band, face, hair, wardrobe, body type, and personality cues",
+  scene: "the location's space, layout, set dressing, light, and atmosphere",
+  world_setting: "the world's premise, rules, era, place, and tone",
+  storyboard: "this sequence's beats, framing, and visual progression",
+  video: "this segment's motion, camera movement, performance, pacing, and native sound",
+  bgm: "the music's genre, instrumentation, tempo, mood, and structure",
+};
+
 const shotDirectionPolicy = [
   "For Storyboard and Video only, the Plan owns story causality, identities, key actions, product facts, sequence order, timing, and ending; do not replace those facts with a new story.",
   "Use the supplied narrative_context, selected_direction, brand_decisions, sequence start/end states, terminal policy, and prior_final_panel as quoted creative authority. Preserve the approved product purpose and CTA when they are present; do not substitute a Style Skill example for those facts.",
@@ -104,6 +115,11 @@ const creativeMethodOptionRules = [
 ].join(" ");
 
 function instructionForOperation(operation: string, context: Readonly<Record<string, unknown>> = {}): string {
+  const optionCapability = /^(?:propose|revise)_(.+)_options$/.exec(operation)?.[1];
+  const optionSubject = optionCapability ? capabilityOptionSubjects[optionCapability] : undefined;
+  const optionSubjectRule = optionSubject
+    ? `Each option's title and public_summary must describe only ${optionSubject}. Do not summarize the advertisement's overall story, hook, ending, slogan, call to action, duration, aspect ratio, or platform. Use brand_decisions and accepted Requirements only as constraints on ${optionSubject}; when the brand decisions already fix ${optionSubject}, offer three distinct executions of that fixed design rather than three story ideas.`
+    : "";
   const capabilityContext = context.capability_context as Readonly<Record<string, unknown>> | undefined;
   const hasBrandDecisions = Boolean(context.brand_decisions ?? capabilityContext?.brand_decisions);
   const methodRule = context.creative_method ? creativeMethodExecutionRule : "";
@@ -294,6 +310,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       methodOptions ? "Python assigns option IDs and owns candidate cardinality; emit only the supplied creative method IDs." : "Python assigns option IDs and owns candidate cardinality; never emit IDs or private authoring data.",
       "Render all option display text in the supplied response_locale.",
       "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
+      ...(optionSubjectRule ? [optionSubjectRule] : []),
     ].join(" ");
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
@@ -305,6 +322,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "The desired public presentation targets are title <=64 Unicode characters and public_summary <=240 Unicode characters. These are not structured-validation maxima; return complete authoring text within the supplied schema safety envelope and let Python project the public cards.",
       "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or safety-length violations without truncating or inventing content.",
       "Do not publish, select, or mutate platform state.",
+      ...(optionSubjectRule ? [optionSubjectRule] : []),
     ].join(" ");
   }
   if (operation.startsWith("free_")) {
