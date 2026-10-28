@@ -530,6 +530,7 @@ class MediaNodeExecutor:
                 checksum=reference.checksum
                 or _seedance_checksum(reference.asset_id, reference.version_id),
                 byte_count=reference.byte_count,
+                storyboard_downscaled_for=reference.storyboard_downscaled_for,
             )
             for reference in delivered_references
         )

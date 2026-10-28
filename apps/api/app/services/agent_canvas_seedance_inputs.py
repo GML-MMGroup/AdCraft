@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 
 from app.schemas.agent_canvas import (
     CanvasNodeV2,
@@ -24,6 +25,20 @@ from app.schemas.seedance_inputs import (
     StoryboardReferenceIdentityAuditV1,
 )
 from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
+from app.services.response_locale_resolver import ResponseLocaleResolverV1
+
+
+_STORYBOARD_LAYOUT_ONLY_ZH = (
+    "【参考图用途】分镜九宫格参考图只用来确定每一格的构图、人物位置、动作和镜头顺序，"
+    "不参考它的画风、笔触、上色和质感；画面质感以真实电影摄影为准："
+    "真实皮肤毛孔、真实布料纹理、自然光影、镜头景深。"
+)
+_STORYBOARD_LAYOUT_ONLY_EN = (
+    "[Reference use] Use the storyboard grid reference only for each panel's composition, "
+    "character positions, actions, and shot order. Do not copy its drawing style, strokes, "
+    "coloring, or texture. Render the look of real cinematic photography: real skin pores, "
+    "real fabric texture, natural light, and lens depth of field."
+)
 
 
 class AgentCanvasSeedanceInputCompiler:
@@ -72,6 +87,12 @@ class AgentCanvasSeedanceInputCompiler:
         if grounding_plan is not None:
             _validate_grounding_manifest_inputs(grounding_plan, media_inputs)
         compiled_prompt = _compile_prompt(prompt, text_inputs, media_inputs, grounding_plan)
+        layout_only = model_id.startswith("doubao-seedance-2-5") and any(
+            item.storyboard_downscaled_for == "seedance_2_5" for item in delivered_media
+        )
+        if layout_only:
+            instruction = _storyboard_layout_only_instruction(node, prompt)
+            compiled_prompt = f"{instruction}\n{compiled_prompt}"
         manifest = SeedanceInputManifestV1(
             node_id=node.node_id,
             model_id=model_id,
@@ -88,7 +109,10 @@ class AgentCanvasSeedanceInputCompiler:
             normalizations=normalizations,
             grounding_plan=grounding_plan,
         )
-        return manifest, _audit_projection(manifest, grounding_plan=grounding_plan)
+        audit = _audit_projection(manifest, grounding_plan=grounding_plan)
+        return manifest, audit.model_copy(
+            update={"storyboard_layout_only_instruction": layout_only}
+        )
 
     def _duration_values(
         self,
@@ -187,6 +211,23 @@ class AgentCanvasSeedanceInputCompiler:
                 )
             )
         return tuple(result)
+
+
+def _storyboard_layout_only_instruction(node: CanvasNodeV2, prompt: str) -> str:
+    locale = (
+        ResponseLocaleResolverV1().resolve(node.prompt_presentation.locale)
+        if node.prompt_presentation is not None
+        else "und"
+    )
+    contains_cjk = any(
+        unicodedata.name(character, "").startswith(("CJK ", "HIRAGANA ", "KATAKANA ", "HANGUL "))
+        for character in prompt
+    )
+    return (
+        _STORYBOARD_LAYOUT_ONLY_ZH
+        if locale == "zh-CN" or contains_cjk
+        else _STORYBOARD_LAYOUT_ONLY_EN
+    )
 
 
 def validate_seedance_audio_parity(
