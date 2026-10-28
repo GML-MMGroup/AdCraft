@@ -33,7 +33,7 @@ from app.persistence.models import (
     BrandJourneyRow,
     ProjectRow,
 )
-from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1, SkillStackEntryV1
 from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.schemas.agent_canvas_requirements import (
@@ -253,8 +253,8 @@ class BrandProductionHandoffService:
         treatment_summary = "; ".join(self._treatment_lines(brand_id))
         stack = self._repository.get_skill_stack(brand_id)
         selected_methods = (
-            "; ".join(
-                f"{entry.skill_id}: {entry.title}"
+            " | ".join(
+                self._creative_method_context(entry)
                 for entry in stack.entries
                 if entry.selected and entry.skill_kind == "creative_method"
             )
@@ -618,6 +618,27 @@ class BrandProductionHandoffService:
                 return {}
             raise
         return {control.control: control.value for control in revision.ledger.hard_controls}
+
+    def _creative_method_context(self, entry: SkillStackEntryV1) -> str:
+        fallback = f"{entry.skill_id}: {entry.title}"
+        if entry.version is None:
+            return fallback
+        try:
+            body = self._repository.get_creative_skill_body(entry.skill_id, entry.version)
+        except (V2PersistenceError, ValueError):
+            return fallback
+        if not isinstance(body, dict) or not body:
+            return fallback
+        fields = [
+            f"{label}: {body[key]}"
+            for key, label in (
+                ("story_structure", "story structure"),
+                ("hook_methods", "hook"),
+                ("product_role", "product role"),
+            )
+            if body.get(key)
+        ]
+        return f"{entry.skill_id} ({entry.title}): " + "; ".join(fields)
 
     def _treatment_lines(self, brand_id: str) -> list[str]:
         try:

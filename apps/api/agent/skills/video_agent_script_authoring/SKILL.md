@@ -17,7 +17,8 @@ Use the creative objective, product truth, audience, campaign appeal, duration c
 - Render user-visible and audible content in `response_locale`; keep internal controls in English.
 
 - Keep the core idea concrete, visual, and achievable in the requested duration.
-- Begin with a clear hook, demonstrate the product benefit, and end with a concise call to action.
+- When a creative_method or reviewed brand_decisions is supplied, keep its mechanism: reveal timing, reversal position, when and how the product appears, and its structure (for example a logo held until the end, a late reveal, or a story-free form). Do not reshape it into a generic hook, product benefit, call-to-action sequence.
+- Only when no creative method or brand decision applies, begin with a clear hook, demonstrate the product benefit, and end with a concise call to action.
 - Keep spoken and on-screen lines natural, short, and suitable for viewers.
 - Keep timing and beat order internally consistent while preserving explicit user copy.
 - Preserve confirmed dialogue and voiceover as audible lines with speakers, delivery, and timing. Do not rewrite a spoken line as a subtitle or infer silence from `audio_mode=bgm_only`; that control limits separate audio generation to BGM, not native Video sound. Respect explicit no-dialogue or silent creative decisions.
