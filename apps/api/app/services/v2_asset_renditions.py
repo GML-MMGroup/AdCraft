@@ -94,22 +94,24 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         if kind == "provider_reference":
-            if max_dimension not in {None, 2048, 1536, 1024, 768, 512}:
+            if max_dimension not in {None, 2048, 1536, 1024, 768, 512, 320}:
                 raise V2PersistenceError(
                     "asset_rendition_size_invalid",
                     (
                         "Provider reference renditions require a 2048px, 1536px, 1024px, "
-                        "768px, or 512px maximum dimension."
+                        "768px, 512px, or 320px maximum dimension."
                     ),
                     stage="v2_asset_rendition_service",
                 )
             max_dimension = max_dimension or 2048
             if min_short_side is not None and (
-                max_dimension not in {1024, 768, 512} or not 300 <= min_short_side <= max_dimension
+                max_dimension not in {1024, 768, 512, 320}
+                or not 300 <= min_short_side <= max_dimension
             ):
                 raise V2PersistenceError(
                     "asset_rendition_size_invalid",
-                    "A minimum short side needs a 1024px, 768px, or 512px rendition and 300px or more.",
+                    "A minimum short side needs a 1024px, 768px, 512px, or 320px rendition "
+                    "and 300px or more.",
                     stage="v2_asset_rendition_service",
                 )
         elif min_short_side is not None:

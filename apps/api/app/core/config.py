@@ -39,10 +39,10 @@ def _read_int(name: str, default: int) -> int:
 
 def _read_seedance_25_storyboard_dimension() -> int:
     try:
-        return _read_int("SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION", 512)
+        return _read_int("SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION", 320)
     except ValueError as error:
         raise ValueError(
-            "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 512, 768, 1024"
+            "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 320, 512, 768, 1024"
         ) from error
 
 
@@ -195,7 +195,7 @@ class Settings:
     v2_provider_rate_limit_cooldown_seconds: int = 120
     v2_provider_rate_limit_reduced_image_jobs: int = 2
     v2_provider_rate_limit_reduced_video_jobs: int = 1
-    seedance_25_storyboard_reference_max_dimension: int = 512
+    seedance_25_storyboard_reference_max_dimension: int = 320
     v2_provider_reference_max_data_url_bytes: int = 4 * 1024 * 1024
     v2_provider_reference_total_data_url_bytes: int = 8 * 1024 * 1024
     v2_recommended_catalog_root: Path = Path("assets/catalogs/recommended")
@@ -205,9 +205,9 @@ class Settings:
     media_data_dir: Path = Path("data")
 
     def __post_init__(self) -> None:
-        if self.seedance_25_storyboard_reference_max_dimension not in {512, 768, 1024}:
+        if self.seedance_25_storyboard_reference_max_dimension not in {320, 512, 768, 1024}:
             raise ValueError(
-                "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 512, 768, 1024"
+                "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 320, 512, 768, 1024"
             )
 
     @classmethod

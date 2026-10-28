@@ -29,14 +29,17 @@ from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 
 _STORYBOARD_LAYOUT_ONLY_ZH = (
-    "【参考图用途】分镜九宫格参考图只用来确定每一格的构图、人物位置、动作和镜头顺序，"
-    "不参考它的画风、笔触、上色和质感；画面质感以真实电影摄影为准："
+    "【参考图用途】分镜九宫格参考图只用来确定每一格的构图、人物位置、动作和镜头顺序；"
+    "其余参考图（角色、场景、产品、道具）只用来确定长相、发型、服装、物体外形和颜色。"
+    "所有参考图的画风、笔触、上色和质感都不参考；画面质感以真实电影摄影为准："
     "真实皮肤毛孔、真实布料纹理、自然光影、镜头景深。"
 )
 _STORYBOARD_LAYOUT_ONLY_EN = (
     "[Reference use] Use the storyboard grid reference only for each panel's composition, "
-    "character positions, actions, and shot order. Do not copy its drawing style, strokes, "
-    "coloring, or texture. Render the look of real cinematic photography: real skin pores, "
+    "character positions, actions, and shot order. Use the other references (characters, scenes, "
+    "products, props) only for faces, hair, clothing, object shapes, and colors. Do not copy the "
+    "drawing style, strokes, coloring, or texture of any reference. Render the look of real "
+    "cinematic photography: real skin pores, "
     "real fabric texture, natural light, and lens depth of field."
 )
 
