@@ -10,6 +10,11 @@ from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
 from app.persistence.errors import V2PersistenceError
+from app.persistence.brand_decision_repository import BrandDecisionRepository
+from app.services.agent_canvas_creative_methods import (
+    creative_method_catalog_facts,
+    read_creative_method,
+)
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
     CapabilityContextSnapshotV2,
@@ -62,6 +67,22 @@ def build_capability_context_snapshot(
         capability_context["brand_decisions"] = project_brand_production_context(
             brand_document, role=capability_id
         ).model_dump(mode="json")
+    elif capability_id == "world_setting":
+        capability_context.update(creative_method_catalog_facts(conversations.database))
+    if capability_id == "script_authoring" and session.journey.stage in {
+        "narrative_direction",
+        "storyboard_plan",
+    }:
+        selected = conversations.get_selected_world_option(workflow.workflow_id, session.journey)
+        method = read_creative_method(BrandDecisionRepository(conversations.database), selected)
+        if method is not None:
+            capability_context["creative_method"] = method.model_dump(mode="json")
+        elif (
+            session.journey.stage == "narrative_direction"
+            and not getattr(selected, "creative_method_id", None)
+            and brand_document is None
+        ):
+            capability_context.update(creative_method_catalog_facts(conversations.database))
     if character_target is not None:
         _validate_character_target(
             character_target,

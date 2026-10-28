@@ -2184,6 +2184,8 @@ class AgentCanvasDecisionBundleRow(Base):
 
 
 class AgentCanvasConceptOptionRow(Base):
+    creative_method_id: Mapped[str | None] = mapped_column(Text)
+    creative_method_version: Mapped[str | None] = mapped_column(Text)
     __tablename__ = "agent_canvas_concept_options"
 
     option_id: Mapped[str] = mapped_column(Text, primary_key=True)

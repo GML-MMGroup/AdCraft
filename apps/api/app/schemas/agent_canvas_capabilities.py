@@ -21,6 +21,7 @@ from pydantic import (
 from app.schemas.agent_canvas_ad_media import SemanticReferenceRoleV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
+from app.schemas.creative_method_context import CreativeMethodContextV1, CreativeMethodSummaryV1
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
@@ -920,6 +921,12 @@ class CapabilityContextSnapshotV2(_CapabilityModel):
 
 
 class CapabilityInvocationContextV2(_CapabilityModel):
+    creative_method_catalog: tuple[CreativeMethodSummaryV1, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    creative_method: CreativeMethodContextV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     context_kind: Literal["capability_operation"]
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
@@ -1147,6 +1154,20 @@ class GuidedProposalAuthoringResultV4(_CapabilityModel):
     ]
 
 
+class WorldSettingProposalAuthoringOptionV1(GuidedProposalAuthoringOptionV4):
+    creative_method_id: str = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+
+
+class WorldSettingProposalAuthoringResultV1(GuidedProposalAuthoringResultV4):
+    options: tuple[
+        WorldSettingProposalAuthoringOptionV1,
+        WorldSettingProposalAuthoringOptionV1,
+        WorldSettingProposalAuthoringOptionV1,
+    ]
+
+
 class WorldSettingProposalOptionV1(_OptionBaseV1):
     pass
 
@@ -1228,7 +1249,7 @@ class QuickMediaProposalResultV1(_CapabilityModel):
 
 
 CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
-    "world_setting": GuidedProposalAuthoringResultV4,
+    "world_setting": WorldSettingProposalAuthoringResultV1,
     "product_design": GuidedProposalAuthoringResultV4,
     "prop_design": GuidedProposalAuthoringResultV4,
     "character_design": GuidedProposalAuthoringResultV4,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_creative_method_validation import creative_method_option_violations
+
 from collections.abc import Callable, Mapping
 from typing import Protocol
 
@@ -79,6 +81,9 @@ def capability_context_from_envelope(
     """Project only immutable, capability-local context for the Pi boundary."""
 
     capability_context = dict(envelope.capability_context)
+    catalog = capability_context.pop("creative_method_catalog", None)
+    capability_context.pop("creative_method_versions", None)
+    creative_method = capability_context.pop("creative_method", None)
     if envelope.character_target is not None:
         capability_context["character_target"] = envelope.character_target.model_dump(mode="json")
     if envelope.publication_kind == "internal_document":
@@ -114,6 +119,20 @@ def capability_context_from_envelope(
         "style_projection": envelope.style_projection,
         "response_locale": envelope.response_locale,
     }
+    if (
+        catalog is not None
+        and capability_context.get("brand_decisions") is None
+        and (
+            (envelope.publication_kind == "proposal" and envelope.capability_id == "world_setting")
+            or (
+                envelope.publication_kind == "internal_document"
+                and envelope.journey_stage == "narrative_direction"
+            )
+        )
+    ):
+        projected_context["creative_method_catalog"] = catalog
+    if creative_method is not None:
+        projected_context["creative_method"] = creative_method
     if envelope.character_target is not None:
         projected_context["character_target"] = envelope.character_target
     return projected_context
@@ -367,6 +386,23 @@ class CapabilityExecutionService:
                     "proposal_candidate_count_mismatch",
                     "Capability result candidate count does not match its immutable envelope.",
                     details=details,
+                )
+        if envelope.publication_kind == "proposal":
+            violations = creative_method_option_violations(
+                {
+                    "capability_id": envelope.capability_id,
+                    "brand_decisions": envelope.capability_context.get("brand_decisions"),
+                    "creative_method_catalog": envelope.capability_context.get(
+                        "creative_method_catalog"
+                    ),
+                },
+                result.model_dump(mode="json", exclude_unset=True),
+            )
+            if violations:
+                raise _CapabilityResultValidationError(
+                    "creative_method_id_invalid",
+                    violations[0].message,
+                    details={"violations": [item.model_dump(mode="json") for item in violations]},
                 )
         if canonical_script_duration is None:
             return result

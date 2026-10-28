@@ -54,7 +54,7 @@ interface OperationMetadata {
 }
 
 const capabilityDefinitions = [
-  ["world_setting", "world_setting", "GuidedProposalAuthoringResultV4", "video_agent_world_setting", "World Setting Designer"],
+  ["world_setting", "world_setting", "WorldSettingProposalAuthoringResultV1", "video_agent_world_setting", "World Setting Designer"],
   ["product_design", "product", "GuidedProposalAuthoringResultV4", "video_agent_product_design", "Product Designer"],
   ["prop_design", "prop", "GuidedProposalAuthoringResultV4", "video_agent_prop_design", "Prop Designer"],
   ["character_design", "character", "GuidedProposalAuthoringResultV4", "video_agent_character_design", "Character Designer"],

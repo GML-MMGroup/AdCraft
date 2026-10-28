@@ -444,6 +444,7 @@ export function promptAuditForRequest(
   const descriptor = getPromptDescriptor(
     request.operation,
     request.contract_name ?? "",
+    request.context as Readonly<Record<string, unknown>>,
   );
   return {
     prompt_id: descriptor.prompt_id,

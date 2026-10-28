@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_creative_method_validation import creative_method_option_violations
+
 import json
 import logging
 from typing import Any
@@ -703,7 +705,7 @@ def _proposal_candidate_count_violations(
                 actual=len(options),
             ),
         )
-    return ()
+    return creative_method_option_violations(context, value)
 
 
 def _storyboard_sequence_window_violations(

@@ -85,6 +85,8 @@ def stage_authoring_context_from_materialization(
             option_id=selected.option_id,
             title=selected.title,
             public_summary=selected.public_summary,
+            creative_method_id=selected.creative_method_id,
+            creative_method_version=selected.creative_method_version,
             key_decisions=tuple(getattr(selected, "key_decisions", ())),
         ),
         style_snapshot_id=style_snapshot_id,

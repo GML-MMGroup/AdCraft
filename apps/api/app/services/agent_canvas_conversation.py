@@ -161,6 +161,10 @@ from app.services.agent_canvas_capability_dispatch import (
     CapabilityDispatchService,
     SourceTurnReplyPublicationV1,
 )
+from app.services.brand_production_handoff import BrandProductionHandoffService
+from app.services.brand_production_context import project_brand_production_context
+from app.services.agent_canvas_creative_methods import creative_method_catalog_facts
+from app.services.agent_canvas_creative_method_validation import creative_method_option_violations
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
@@ -506,9 +510,12 @@ class DeterministicVideoAgentGateway:
         repair_error: str | None,
     ) -> BaseModel:
         contract = CAPABILITY_RESULT_CONTRACTS[capability_id]
-        return contract.model_validate(
-            _deterministic_capability_result(capability_id, candidate_count)
-        )
+        result = _deterministic_capability_result(capability_id, candidate_count)
+        catalog = context.get("creative_method_catalog")
+        if capability_id == "world_setting" and isinstance(catalog, (list, tuple)):
+            for option, method in zip(result["options"], catalog):
+                option["creative_method_id"] = method["skill_id"]
+        return contract.model_validate(result)
 
     def run_materialization(
         self,
@@ -899,8 +906,18 @@ class PiVideoAgentGateway:
         elif validation_profile == "proposal_candidate_count_v1":
             validation_context = {
                 "expected_candidate_count": getattr(context, "candidate_count", None),
+                **(
+                    {
+                        "creative_method_catalog": [
+                            item.model_dump(mode="json") for item in context.creative_method_catalog
+                        ]
+                    }
+                    if getattr(context, "creative_method_catalog", None) is not None
+                    else {}
+                ),
                 "operation": operation,
                 "capability_id": getattr(context, "capability_id", None),
+                "brand_decisions": context.capability_context.get("brand_decisions"),
                 "result_contract_name": contract.__name__,
             }
         request = self._request_factory.build(
@@ -3258,7 +3275,20 @@ class AgentConversationService:
                     "Character Proposal public scope differs from its persisted target.",
                     stage="agent_conversation_service",
                 )
+        brand_document = (
+            BrandProductionHandoffService(self._workflows.database).production_context(
+                proposal.workflow_id
+            )
+            if proposal.capability_id == "world_setting"
+            else None
+        )
+        method_facts = (
+            creative_method_catalog_facts(self._workflows.database)
+            if proposal.capability_id == "world_setting" and brand_document is None
+            else {}
+        )
         snapshot_payload = {
+            **method_facts,
             "workflow_id": proposal.workflow_id,
             "proposal_id": proposal.proposal_id,
             "proposal_revision": proposal.proposal_revision,
@@ -3297,6 +3327,16 @@ class AgentConversationService:
             reference_plan=reference_plan,
         )
         invocation = CapabilityInvocationContextV2(
+            creative_method_catalog=method_facts.get("creative_method_catalog"),
+            capability_context=(
+                {
+                    "brand_decisions": project_brand_production_context(
+                        brand_document, role=proposal.capability_id
+                    ).model_dump(mode="json")
+                }
+                if brand_document is not None
+                else {}
+            ),
             context_kind="capability_operation",
             workflow_id=proposal.workflow_id,
             conversation_id=turn.conversation_id,
@@ -3331,8 +3371,8 @@ class AgentConversationService:
                 repair_error=None,
             )
             try:
-                result = contract.model_validate(raw)
-            except ValidationError:
+                result = _validate_capability_revision_result(contract, raw, invocation)
+            except (ValidationError, ValueError):
                 repaired = self._gateway.run_capability(
                     request_identity=request_identity,
                     capability_id=proposal.capability_id,
@@ -3342,7 +3382,7 @@ class AgentConversationService:
                     context=invocation.model_dump(mode="json"),
                     repair_error="capability_contract_invalid",
                 )
-                result = contract.model_validate(repaired)
+                result = _validate_capability_revision_result(contract, repaired, invocation)
         except PiAgentRuntimeError as error:
             self._conversations.transition_expert_activity(
                 activity.activity_id,
@@ -3370,6 +3410,7 @@ class AgentConversationService:
             source_turn_id=turn.turn_id,
             capability_turn_id=turn.turn_id,
             source_proposal_id=proposal.proposal_id,
+            capability_context=method_facts,
             session_id=session.session_id,
             expected_session_revision=action.expected_session_revision,
             capability_id=proposal.capability_id,
@@ -3394,6 +3435,20 @@ class AgentConversationService:
             self._workflows.database,
             EventRepository(self._workflows.database),
         ).publish(envelope, result)
+
+
+def _validate_capability_revision_result(
+    contract: type[BaseModel],
+    raw: Mapping[str, object] | BaseModel,
+    context: CapabilityInvocationContextV2,
+) -> BaseModel:
+    result = contract.model_validate(raw)
+    violations = creative_method_option_violations(
+        context.model_dump(mode="json"), result.model_dump(mode="json", exclude_unset=True)
+    )
+    if violations:
+        raise ValueError(violations[0].message)
+    return result
 
 
 def _treatment_review_gate_message(document: BrandTreatmentDocumentV1, response_locale: str) -> str:

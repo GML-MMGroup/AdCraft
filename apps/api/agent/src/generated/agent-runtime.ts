@@ -2,6 +2,16 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
+export type CreativeMethodSummaryV1 = { readonly "skill_id": string; readonly "title": string; readonly "summary": string };
+
+export type CreativeMethodContextV1 = { readonly "skill_id": string; readonly "version": string; readonly "title": string; readonly "core_principle": string; readonly "story_structure": string; readonly "hook_methods": string; readonly "product_role": string; readonly "common_mistakes": string };
+
+export type ConceptOptionRecordV2 = { readonly "creative_method_id"?: string | null; readonly "creative_method_version"?: string | null; readonly "option_id": string; readonly "title": string; readonly "public_summary": string };
+
+export type WorldSettingProposalAuthoringOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "creative_method_id"?: string };
+
+export type WorldSettingProposalAuthoringResultV1 = { readonly "options": ReadonlyArray<unknown> };
+
 export type BrandProductionStepV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "selected_label": string; readonly "sections"?: ReadonlyArray<TreatmentSectionV1>; readonly "legacy_detail"?: string | null };
 
 export type BrandProductionContextV1 = { readonly "projection_version"?: "brand_role_v1"; readonly "source_content_digest": string; readonly "role": "bgm" | "character" | "general" | "product" | "scene" | "script" | "storyboard" | "video"; readonly "brand_profile": BrandBriefSummaryV1; readonly "campaign_brief": BrandBriefSummaryV1; readonly "selected_hypothesis"?: CreativeHypothesisCandidateV1 | null; readonly "adspec"?: AdSpecStateV1 | null; readonly "skill_stack"?: SkillStackV1 | null; readonly "treatment_steps"?: ReadonlyArray<BrandProductionStepV1>; readonly "omitted_sections"?: ReadonlyArray<string>; readonly "authorized_asset_references"?: ReadonlyArray<BrandAssetReferenceV1>; readonly "complete": boolean; readonly "missing_sections"?: ReadonlyArray<string>; readonly "execution_limitations"?: ReadonlyArray<string>; readonly "review"?: BrandTreatmentReviewV1 | null };
@@ -702,7 +712,7 @@ export type ValidatedNextActionV1 = { readonly "command": NextActionCommandV1; r
 
 export type CapabilityContextSnapshotV2 = { readonly "snapshot_id": string; readonly "digest": string; readonly "requirement_projection": CapabilityRequirementProjectionV1; readonly "approved_reference_ids"?: ReadonlyArray<string>; readonly "reference_plan": CapabilityReferencePlanV1; readonly "capability_context"?: Readonly<Record<string, unknown>>; readonly "style_projection"?: Readonly<Record<string, unknown>>; readonly "shared_summary"?: string; readonly "response_locale"?: string; readonly "character_target"?: CharacterProposalTargetV1 | null };
 
-export type CapabilityInvocationContextV2 = { readonly "context_kind": "capability_operation"; readonly "workflow_id": string; readonly "conversation_id": string; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "candidate_count": number; readonly "objective": string; readonly "context_snapshot_id": string; readonly "context_snapshot_digest": string; readonly "requirement_projection": CapabilityRequirementProjectionV1; readonly "approved_reference_ids"?: ReadonlyArray<string>; readonly "capability_context"?: Readonly<Record<string, unknown>>; readonly "style_projection"?: Readonly<Record<string, unknown>>; readonly "repair_error"?: string | null; readonly "response_locale"?: string; readonly "character_target"?: CharacterProposalTargetV1 | null };
+export type CapabilityInvocationContextV2 = { readonly "creative_method_catalog"?: ReadonlyArray<CreativeMethodSummaryV1> | null; readonly "creative_method"?: CreativeMethodContextV1 | null; readonly "context_kind": "capability_operation"; readonly "workflow_id": string; readonly "conversation_id": string; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "candidate_count": number; readonly "objective": string; readonly "context_snapshot_id": string; readonly "context_snapshot_digest": string; readonly "requirement_projection": CapabilityRequirementProjectionV1; readonly "approved_reference_ids"?: ReadonlyArray<string>; readonly "capability_context"?: Readonly<Record<string, unknown>>; readonly "style_projection"?: Readonly<Record<string, unknown>>; readonly "repair_error"?: string | null; readonly "response_locale"?: string; readonly "character_target"?: CharacterProposalTargetV1 | null };
 
 export type VideoAgentOperationDefinitionV1 = { readonly "operation": string; readonly "capability_id"?: "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting" | null; readonly "internal_skill_id"?: string | null; readonly "style_projection_role"?: string | null; readonly "context_contract_name": string; readonly "result_contract_name": string; readonly "validation_profile"?: string | null; readonly "display_name"?: string | null; readonly "max_skill_context_bytes"?: number; readonly "max_handoffs"?: 0 };
 
@@ -714,9 +724,9 @@ export type CapabilityDispatchReceiptV1 = { readonly "envelope_id": string; read
 
 export type CapabilityExecutionResultV1 = { readonly "envelope_id": string; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "result_contract_name": string; readonly "publication_kind"?: "internal_document" | "proposal"; readonly "proposal_id"?: string | null; readonly "document_receipt_id"?: string | null; readonly "repaired"?: boolean };
 
-export type SelectedConceptOptionV1 = { readonly "option_id": string; readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "custom_text"?: string | null };
+export type SelectedConceptOptionV1 = { readonly "creative_method_id"?: string | null; readonly "creative_method_version"?: string | null; readonly "option_id": string; readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "custom_text"?: string | null };
 
-export type SelectedProposalCardV2 = { readonly "option_id": string; readonly "title": string; readonly "public_summary": string; readonly "custom_text"?: string | null };
+export type SelectedProposalCardV2 = { readonly "creative_method_id"?: string | null; readonly "creative_method_version"?: string | null; readonly "option_id": string; readonly "title": string; readonly "public_summary": string; readonly "custom_text"?: string | null };
 
 export type ProposalReferenceSnapshotV1 = { readonly "source_kind": "image_asset" | "node"; readonly "source_id": string; readonly "source_revision"?: number | null; readonly "asset_version_id"?: string | null };
 

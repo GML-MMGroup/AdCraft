@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
+from app.schemas import creative_method_context
+from app.schemas import agent_canvas_conversation
 from app.schemas import agent_capabilities
 from app.schemas import agent_runtime
 from app.schemas import agent_model_trace
@@ -56,6 +58,11 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    creative_method_context.CreativeMethodSummaryV1,
+    creative_method_context.CreativeMethodContextV1,
+    agent_canvas_conversation.ConceptOptionRecordV2,
+    agent_canvas_capabilities.WorldSettingProposalAuthoringOptionV1,
+    agent_canvas_capabilities.WorldSettingProposalAuthoringResultV1,
     brand_production_context.BrandProductionStepV1,
     brand_production_context.BrandProductionContextV1,
     brand_treatment_detail.TreatmentSectionV1,

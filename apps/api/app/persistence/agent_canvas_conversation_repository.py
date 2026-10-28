@@ -4310,6 +4310,49 @@ class AgentCanvasConversationRepository:
             ),
         )
 
+    def get_selected_world_option(
+        self, workflow_id: str, journey: GuidedProductionJourneyV2
+    ) -> ConceptOptionRecordV2 | None:
+        """Resolve the selected world's exact persisted option identity."""
+        evidence = next(
+            (
+                item
+                for item in reversed(journey.transition_evidence)
+                if item.evidence_kind
+                in {"world_view_selected", "world_view_excluded", "world_view_delegated"}
+            ),
+            None,
+        )
+        if evidence is None or evidence.evidence_kind != "world_view_selected":
+            return None
+        with self._database.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    select(
+                        AgentCanvasConceptProposalRow.proposal_id,
+                        AgentCanvasConceptProposalRow.materialization_option_id,
+                    ).where(
+                        AgentCanvasConceptProposalRow.workflow_id == workflow_id,
+                        AgentCanvasConceptProposalRow.capability_id == "world_setting",
+                        AgentCanvasConceptProposalRow.materialization_id == evidence.source_id,
+                        AgentCanvasConceptProposalRow.materialization_status == "completed",
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        proposal = self.get_private_proposal(str(row["proposal_id"]))
+        return next(
+            (
+                option
+                for option in proposal.options
+                if option.option_id == row["materialization_option_id"]
+            ),
+            None,
+        )
+
     def get_private_proposal(self, proposal_id: str) -> ConceptProposalV2:
         """Read the complete private Proposal authority for materialization paths."""
 
@@ -6757,6 +6800,8 @@ def _proposal(
                 option_id=str(option["option_id"]),
                 title=str(option["title"]),
                 public_summary=str(option["description"]),
+                creative_method_id=option["creative_method_id"],
+                creative_method_version=option["creative_method_version"],
                 key_decisions=(
                     tuple(json.loads(str(option["key_decisions_json"])))
                     if proposal_card_schema_version == 1

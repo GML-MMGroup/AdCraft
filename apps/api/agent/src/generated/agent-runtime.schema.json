@@ -10481,6 +10481,32 @@
           "title": "Conversation Id",
           "type": "string"
         },
+        "creative_method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeMethodContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creative_method_catalog": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CreativeMethodSummaryV1"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Catalog"
+        },
         "objective": {
           "maxLength": 4096,
           "minLength": 1,
@@ -13759,6 +13785,58 @@
       "title": "CompiledNodePromptV2",
       "type": "object"
     },
+    "ConceptOptionRecordV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_method_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Id"
+        },
+        "creative_method_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Version"
+        },
+        "option_id": {
+          "title": "Option Id",
+          "type": "string"
+        },
+        "public_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "public_summary",
+        "title"
+      ],
+      "title": "ConceptOptionRecordV2",
+      "type": "object"
+    },
     "ConversationQueryV1": {
       "additionalProperties": false,
       "properties": {
@@ -14509,6 +14587,79 @@
         "product_role"
       ],
       "title": "CreativeHypothesisCandidateV1",
+      "type": "object"
+    },
+    "CreativeMethodContextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "common_mistakes": {
+          "title": "Common Mistakes",
+          "type": "string"
+        },
+        "core_principle": {
+          "title": "Core Principle",
+          "type": "string"
+        },
+        "hook_methods": {
+          "title": "Hook Methods",
+          "type": "string"
+        },
+        "product_role": {
+          "title": "Product Role",
+          "type": "string"
+        },
+        "skill_id": {
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "story_structure": {
+          "title": "Story Structure",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "common_mistakes",
+        "core_principle",
+        "hook_methods",
+        "product_role",
+        "skill_id",
+        "story_structure",
+        "title",
+        "version"
+      ],
+      "title": "CreativeMethodContextV1",
+      "type": "object"
+    },
+    "CreativeMethodSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "skill_id": {
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id",
+        "summary",
+        "title"
+      ],
+      "title": "CreativeMethodSummaryV1",
       "type": "object"
     },
     "CreativeStrategyOutputV1": {
@@ -31824,6 +31975,30 @@
     "SelectedConceptOptionV1": {
       "additionalProperties": false,
       "properties": {
+        "creative_method_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Id"
+        },
+        "creative_method_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Version"
+        },
         "custom_text": {
           "anyOf": [
             {
@@ -31880,6 +32055,30 @@
       "additionalProperties": false,
       "description": "Selected public card carried into private post-selection authoring.",
       "properties": {
+        "creative_method_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Id"
+        },
+        "creative_method_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Version"
+        },
         "custom_text": {
           "anyOf": [
             {
@@ -39147,6 +39346,62 @@
       "title": "WorldSettingMaterializationResultV1",
       "type": "object"
     },
+    "WorldSettingProposalAuthoringOptionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_method_id": {
+          "default": null,
+          "minLength": 1,
+          "title": "Creative Method Id",
+          "type": "string"
+        },
+        "public_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "WorldSettingProposalAuthoringOptionV1",
+      "type": "object"
+    },
+    "WorldSettingProposalAuthoringResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/WorldSettingProposalAuthoringOptionV1"
+            },
+            {
+              "$ref": "#/$defs/WorldSettingProposalAuthoringOptionV1"
+            },
+            {
+              "$ref": "#/$defs/WorldSettingProposalAuthoringOptionV1"
+            }
+          ],
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "WorldSettingProposalAuthoringResultV1",
+      "type": "object"
+    },
     "WorldSettingProposalOptionV1": {
       "additionalProperties": false,
       "properties": {
@@ -39402,6 +39657,7 @@
     "WorldSettingProposalResultV1",
     "ProposalCardResultV2",
     "GuidedProposalAuthoringResultV4",
+    "WorldSettingProposalAuthoringResultV1",
     "GuidedProposalCardResultV3",
     "ProductProposalResultV1",
     "PropProposalResultV1",
@@ -39587,7 +39843,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_world_setting_options",
-      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "result_contract_name": "WorldSettingProposalAuthoringResultV1",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -39599,7 +39855,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_world_setting_options",
-      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "result_contract_name": "WorldSettingProposalAuthoringResultV1",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },

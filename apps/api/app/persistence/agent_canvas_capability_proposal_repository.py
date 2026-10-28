@@ -134,6 +134,16 @@ class AgentCanvasCapabilityProposalRepository:
             response_locale=envelope.response_locale,
             recommended_option_id=option_ids[0],
         )
+        method_versions = envelope.capability_context.get("creative_method_versions", {})
+        method_metadata = {
+            option_id: {
+                "creative_method_id": getattr(option, "creative_method_id", None),
+                "creative_method_version": method_versions.get(
+                    getattr(option, "creative_method_id", None)
+                ),
+            }
+            for option_id, option in zip(option_ids, options, strict=True)
+        }
         response_locale = public_projection.response_locale
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -145,6 +155,8 @@ class AgentCanvasCapabilityProposalRepository:
                                 AgentCanvasConceptOptionRow.option_id,
                                 AgentCanvasConceptOptionRow.title,
                                 AgentCanvasConceptOptionRow.description,
+                                AgentCanvasConceptOptionRow.creative_method_id,
+                                AgentCanvasConceptOptionRow.creative_method_version,
                             )
                             .where(
                                 AgentCanvasConceptOptionRow.proposal_id
@@ -155,6 +167,14 @@ class AgentCanvasCapabilityProposalRepository:
                         .mappings()
                         .all()
                     )
+                    for row in source_option_rows:
+                        copied_id = (
+                            f"option_{_digest(proposal_id, 'source', str(row['option_id']))[:32]}"
+                        )
+                        method_metadata[copied_id] = {
+                            "creative_method_id": row["creative_method_id"],
+                            "creative_method_version": row["creative_method_version"],
+                        }
                     public_projection = _merge_revision_projection(
                         source_option_rows,
                         public_projection,
@@ -196,6 +216,8 @@ class AgentCanvasCapabilityProposalRepository:
                             select(
                                 AgentCanvasConceptOptionRow.title,
                                 AgentCanvasConceptOptionRow.description,
+                                AgentCanvasConceptOptionRow.creative_method_id,
+                                AgentCanvasConceptOptionRow.creative_method_version,
                             )
                             .where(
                                 AgentCanvasConceptOptionRow.proposal_id
@@ -217,7 +239,18 @@ class AgentCanvasCapabilityProposalRepository:
                             (option.title, option.summary) for option in public_projection.options
                         )
                     )
-                    if persisted_digest != incoming_digest:
+                    persisted_methods = [
+                        (option["creative_method_id"], option["creative_method_version"])
+                        for option in persisted_options
+                    ]
+                    incoming_methods = [
+                        (
+                            method_metadata[option.option_id]["creative_method_id"],
+                            method_metadata[option.option_id]["creative_method_version"],
+                        )
+                        for option in public_projection.options
+                    ]
+                    if persisted_digest != incoming_digest or persisted_methods != incoming_methods:
                         raise V2PersistenceError(
                             "proposal_card_version_conflict",
                             "The replayed Proposal Card differs from the persisted card.",
@@ -503,6 +536,7 @@ class AgentCanvasCapabilityProposalRepository:
                             display_order=order,
                             title=option.title,
                             description=option.summary,
+                            **method_metadata[option_id],
                             key_decisions_json="[]",
                             draft_seed_schema=None,
                             draft_seed_json=None,
