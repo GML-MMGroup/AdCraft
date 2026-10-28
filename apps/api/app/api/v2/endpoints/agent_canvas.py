@@ -4472,6 +4472,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
         "workflow_state_conflict": 409,
+        "run_intent_stale": 409,
         "requirement_ledger_not_found": 404,
         "requirement_revision_conflict": 412,
         "requirement_patch_invalid": 422,
