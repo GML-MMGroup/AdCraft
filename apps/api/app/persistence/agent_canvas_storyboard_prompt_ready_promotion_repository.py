@@ -190,9 +190,20 @@ class StoryboardPromptReadyPromotionRepository:
                             raise _stale("node_revision")
                     self._fault("node")
 
+                    manual_wait_node_ids = (
+                        [
+                            item.node_id
+                            for item, row in zip(
+                                command.execution_preparations, execution_node_rows, strict=True
+                            )
+                            if str(row["status"]) not in {"ready", "failed"}
+                        ]
+                        if command.execution_mode == "manual"
+                        else []
+                    )
                     next_journey = (
                         journey.model_copy(update={"stage_status": "waiting_user"})
-                        if command.execution_mode == "manual"
+                        if manual_wait_node_ids
                         else journey
                     )
                     next_session_revision = command.expected_session_revision + 1
@@ -215,7 +226,7 @@ class StoryboardPromptReadyPromotionRepository:
 
                     awaiting_id: str | None = None
                     automatic_ids: tuple[str, ...] = ()
-                    if command.execution_mode == "manual":
+                    if manual_wait_node_ids:
                         awaiting_id = f"awaiting:{checkpoint_id}"
                         connection.execute(
                             insert(AgentCanvasGuidanceAwaitingRow).values(
@@ -227,15 +238,13 @@ class StoryboardPromptReadyPromotionRepository:
                                 requires_user_action=True,
                                 resume_policy="node_terminal",
                                 interaction_id=None,
-                                node_ids_json=_dump(
-                                    [item.node_id for item in command.execution_preparations]
-                                ),
+                                node_ids_json=_dump(manual_wait_node_ids),
                                 stage="storyboard_grids",
                                 stage_revision=command.expected_stage_revision,
                                 created_at=timestamp,
                             )
                         )
-                    else:
+                    elif command.execution_mode == "automatic":
                         active_node_ids = self._active_execution_node_ids(
                             connection, command.workflow_id
                         )
@@ -266,6 +275,11 @@ class StoryboardPromptReadyPromotionRepository:
                                 "checkpoint_id": checkpoint_id,
                                 "stage_revision": command.expected_stage_revision,
                                 "automatic_run_command_ids": list(automatic_ids),
+                                **(
+                                    {"manual_wait_node_ids": manual_wait_node_ids}
+                                    if command.execution_mode == "manual"
+                                    else {}
+                                ),
                             },
                         ),
                     )
@@ -294,7 +308,7 @@ class StoryboardPromptReadyPromotionRepository:
                     )
                     if turn is None:
                         raise _invalid("action_turn")
-                    if command.execution_mode == "manual":
+                    if awaiting_id is not None:
                         self._events.append_in_transaction(
                             connection,
                             V2EventInsert(
@@ -336,9 +350,7 @@ class StoryboardPromptReadyPromotionRepository:
                                     "kind": "manual_node_run",
                                     "resume_policy": "node_terminal",
                                     "interaction_id": None,
-                                    "node_ids": [
-                                        item.node_id for item in command.execution_preparations
-                                    ],
+                                    "node_ids": manual_wait_node_ids,
                                 },
                             ),
                         )
@@ -666,6 +678,14 @@ class StoryboardPromptReadyPromotionRepository:
         awaiting_id: str | None = None
         automatic_ids: tuple[str, ...] = ()
         if command.execution_mode == "manual":
+            # Replay the persisted wait selection, never current terminal statuses.
+            # Older receipts waited on every execution preparation.
+            expected_wait_node_ids = tuple(
+                (receipt or {}).get(
+                    "manual_wait_node_ids",
+                    [item.node_id for item in command.execution_preparations],
+                )
+            )
             awaiting = (
                 connection.execute(
                     select(AgentCanvasGuidanceAwaitingRow).where(
@@ -677,13 +697,16 @@ class StoryboardPromptReadyPromotionRepository:
                 .one_or_none()
             )
             if awaiting is None:
-                self._require_consumed_manual_wait(connection, command, checkpoint_id, action_id)
+                if expected_wait_node_ids:
+                    self._require_consumed_manual_wait(
+                        connection, command, checkpoint_id, action_id
+                    )
+                elif journey.stage_status != "working" and not later_authoring:
+                    raise _stale("replay_journey")
             else:
                 if journey.stage_status != "waiting_user" and not later_authoring:
                     raise _stale("replay_journey")
-                if tuple(json.loads(str(awaiting["node_ids_json"]))) != tuple(
-                    item.node_id for item in command.execution_preparations
-                ):
+                if tuple(json.loads(str(awaiting["node_ids_json"]))) != expected_wait_node_ids:
                     raise _invalid("replay_awaiting_nodes")
                 awaiting_id = str(awaiting["awaiting_id"])
         else:
