@@ -48,7 +48,10 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_editing import EditingPreparationResultV2
-from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidanceAwaitingV2,
+    awaiting_blocks_authoring,
+)
 from app.schemas.agent_canvas_production_closure import (
     EditingActionReconciliationOutcomeV1,
     EditingActionSystemOwnerKindV1,
@@ -242,7 +245,17 @@ class DurableNextActionExecutionService:
                 and resumed_session.journey.stage != "intake"
                 and resumed_session.journey.active_action is None
                 and resumed_session.journey.suspended_action is None
-                and resumed_session.awaiting is None
+                and (
+                    resumed_session.awaiting is None
+                    or (
+                        resumed_session.journey.stage != "editing"
+                        and not awaiting_blocks_authoring(
+                            resumed_session.awaiting,
+                            stage=resumed_session.journey.stage,
+                            stage_revision=resumed_session.journey.stage_revision,
+                        )
+                    )
+                )
             ):
                 # Reference recovery completes the previously committed
                 # materialization, but it is not itself the successor Journey

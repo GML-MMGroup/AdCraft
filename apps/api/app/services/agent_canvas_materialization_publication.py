@@ -41,6 +41,7 @@ from app.schemas.agent_canvas_ad_media import (
     VisualStyleContractV2,
 )
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
+from app.services.agent_canvas_production_journey import GuidedProductionJourneyPolicyService
 from app.schemas.agent_canvas_role_prompt_preparation import is_user_edited_prompt
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
@@ -436,6 +437,7 @@ class CapabilityMaterializationPublicationService:
                 self._refreshed_parent_reconciliation_envelope(envelope, outcome),
                 lease_guard=lease_guard,
             )
+        self._continue_guided_authoring(envelope, outcome)
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _open_reference_source_checkpoint(
@@ -1149,18 +1151,35 @@ class CapabilityMaterializationPublicationService:
                     lease_guard=lease_guard,
                     source_turn_id=continuation_source_turn_id,
                 )
-        # Parent-derived identity work advances the Journey only when the
-        # derivative commit is published.  Its materialization continuation
-        # intentionally owns prompt preparation, so there is no ordinary
-        # Next Action continuation in the derivative plan.  Dispatch the next
-        # guided action after all prompts are ready, otherwise the Journey
-        # remains in the successor stage with no proposal or awaiting card.
-        if (
-            envelope.operation_kind == "derivative"
-            and self._on_guided_materialization_completed is not None
+        self._continue_guided_authoring(envelope, outcome)
+        return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _continue_guided_authoring(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome: MaterializationOutcomeV1,
+    ) -> None:
+        """Resume authoring after prompt publication, including Storyboard promotion."""
+
+        session = self._conversations.get_guidance_session(envelope.workflow_id)
+        journey = session.journey
+        ready_authoring = (
+            session.status == "active"
+            and any(
+                evidence.source_id == outcome.materialization_id
+                and evidence.evidence_kind != "targeted_action_finished"
+                for evidence in journey.transition_evidence
+            )
+            and journey.active_action is None
+            and journey.suspended_action is None
+            and journey.stage_status == "ready"
+            and GuidedProductionJourneyPolicyService().evaluate(journey).action
+            in {"invoke_capability", "invoke_internal_checkpoint"}
+        )
+        if self._on_guided_materialization_completed is not None and (
+            envelope.operation_kind == "derivative" or ready_authoring
         ):
             self._on_guided_materialization_completed(envelope, outcome)
-        return outcome.node_ids[0] if outcome.node_ids else None
 
     def _prepare_progressive_storyboard_nodes(
         self,

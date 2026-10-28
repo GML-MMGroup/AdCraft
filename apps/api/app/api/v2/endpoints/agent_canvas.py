@@ -374,6 +374,7 @@ from app.services.agent_canvas_guided_production_closure import (
 )
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.services.agent_canvas_guidance_orphan_recovery import GuidanceOrphanRecoveryService
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
 from app.services.agent_canvas_prompt_preparation_worker import (
     AgentCanvasPromptPreparationWorker,
@@ -566,6 +567,7 @@ class AgentCanvasRuntime:
     accepted_background: AgentCanvasAcceptedBackgroundRunner
     presentation_streams: PresentationStreamRepository
     presentation_publisher: PresentationStreamPublisher
+    guidance_orphan_recovery: GuidanceOrphanRecoveryService
     prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
 
 
@@ -1748,12 +1750,10 @@ def create_agent_canvas_runtime(
         envelope: ProposalPublicationEnvelopeV1,
         outcome: MaterializationOutcomeV1,
     ) -> object | None:
-        """Resume the fixed Journey after parent-derived prompt preparation.
+        """Resume the Journey after guided materialization and prompt publication.
 
-        The derivative materialization is the authoritative stage transition,
-        while its capability-materialization continuation owns prompt
-        preparation.  Queueing the next action here keeps the two durable
-        boundaries ordered and idempotent.
+        The publication owns prompt preparation before the next authoring action.
+        The dispatcher preserves the source Turn and session revision replay key.
         """
 
         del outcome
@@ -2117,6 +2117,9 @@ def create_agent_canvas_runtime(
         presentation_streams=presentation_streams,
         presentation_publisher=presentation_publisher,
         prompt_preparation_worker=prompt_preparation_worker,
+        guidance_orphan_recovery=GuidanceOrphanRecoveryService(
+            guided_interaction_repository, continuation_outbox, event_repository
+        ),
     )
 
 
@@ -3114,11 +3117,34 @@ def get_agent_working_document(
 )
 def get_chat_timeline(
     workflow_id: str,
+    background_tasks: BackgroundTasks,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     after_seq: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> ChatTimelineListResponseV2:
     try:
+        session = runtime.conversation_repository.get_guidance_session_or_none(workflow_id)
+        if (
+            session is not None
+            and session.awaiting is not None
+            and session.awaiting.kind in {"manual_node_run", "media_review"}
+        ):
+
+            def schedule_continuation(continuation_id: str) -> None:
+                background_tasks.add_task(
+                    runtime.accepted_background.run,
+                    AcceptedBackgroundWork(
+                        operation=AcceptedBackgroundOperation.GUIDANCE_CONTINUATION_DRAIN,
+                        workflow_id=workflow_id,
+                        resource_type=AcceptedBackgroundResourceType.DELIVERY,
+                        resource_id=continuation_id,
+                        callback=runtime.continuation_worker.run_once,
+                    ),
+                )
+
+            runtime.guidance_orphan_recovery.recover_promised_progress(
+                workflow_id, drain_continuation=schedule_continuation
+            )
         timeline = runtime.conversations.get_timeline(
             workflow_id,
             after_seq=after_seq,
