@@ -48,6 +48,7 @@ from app.services.agent_canvas_role_prompt_context import (
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
 from app.services.agent_canvas_nodes import _validate_inherited_prompt_projection
+from app.services.agent_canvas_prompt_projection_lag import resync_derived_parameter_lag
 from app.services.agent_structured_validation_audit import (
     safe_structured_validation_attempts,
 )
@@ -117,7 +118,7 @@ class NodePromptPreparationService:
         if current.prompt_preparation.status == "ready" and is_user_edited_prompt(
             current.prompt_presentation
         ):
-            _validate_inherited_prompt_projection(current)
+            _validate_inherited_prompt_projection(resync_derived_parameter_lag(current))
             return current
         if (
             current.prompt_preparation.status == "ready"

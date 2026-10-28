@@ -29,6 +29,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProje
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
+from app.services.agent_canvas_prompt_projection_lag import resync_derived_parameter_lag
 from app.services.model_selection import ModelSelectionService
 
 
@@ -236,6 +237,7 @@ class AgentCanvasNodeService:
             and current.prompt_presentation is not None
             and current.prompt_preparation.status == "ready"
         ):
+            current = resync_derived_parameter_lag(current)
             _validate_inherited_prompt_projection(current)
             changes["prompt_presentation"] = current.prompt_presentation.model_copy(
                 update={"revision": current.revision + 1}

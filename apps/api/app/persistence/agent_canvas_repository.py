@@ -88,6 +88,7 @@ from app.services.agent_canvas_requirements import (
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_character_prompt_reuse import retain_legacy_character_proof
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
+from app.services.agent_canvas_prompt_projection_lag import resync_derived_parameter_lag
 
 
 class AgentCanvasWorkflowRepository:
@@ -1227,7 +1228,7 @@ class AgentCanvasWorkflowRepository:
                     ):
                         connection.commit()
                         return current
-                    synced = _resync_derived_parameter_lag(current)
+                    synced = resync_derived_parameter_lag(current)
                     refreshed = current.model_copy(
                         update={
                             "revision": current.revision + 1,
@@ -3430,34 +3431,6 @@ def _advance_in_sync_presentation(
     if presentation is None or presentation.revision != from_revision:
         return presentation
     return presentation.model_copy(update={"revision": from_revision + 1})
-
-
-def _resync_derived_parameter_lag(node: CanvasNodeV2) -> CanvasNodeV2:
-    """Treat the derived Video parameter lag as in sync before another revision bump.
-
-    A derived parameter write leaves the projection and review marker one
-    revision behind on purpose. A later reference-only refresh would otherwise
-    widen that lag to two, which no run can restore (production incident
-    2026-10-27). The prompt text itself is unchanged, so the projection moves
-    back in sync with the Node revision.
-    """
-
-    projection = node.prompt_presentation
-    prompt = str(node.generation_prompt or "")
-    if (
-        projection is None
-        or projection.revision + 1 != node.revision
-        or node.metadata.get("guided_review_node_revision") != projection.revision
-        or projection.text != prompt
-        or projection.prompt_digest != f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}"
-    ):
-        return node
-    return node.model_copy(
-        update={
-            "prompt_presentation": projection.model_copy(update={"revision": node.revision}),
-            "metadata": {**node.metadata, "guided_review_node_revision": node.revision},
-        }
-    )
 
 
 def _advance_in_sync_review_marker(node: CanvasNodeV2) -> dict[str, object]:
