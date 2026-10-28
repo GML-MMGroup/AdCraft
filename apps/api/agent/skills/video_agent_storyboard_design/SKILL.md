@@ -20,6 +20,10 @@ Use the approved script, product identity, character and scene designs, timing, 
 
 - One Storyboard Sequence equals one ordered 3x3 storyboard grid and one downstream video segment.
 - Shots, camera changes, panels, and story beats are internal content of a Sequence; organize them into its nine-panel progression instead of promoting each one to a separate Sequence.
+- Each Sequence carries at most four primary actions; the nine panels show the progression of those actions (setup, action, reaction), not nine different events.
+- Allowed in-clip techniques: push-in or crash zoom, pan, tilt, tracking, handheld feel, slow motion, a held still pose by the performers, and short on-screen captions. Do not rely on freeze frames, frame-exact cuts or sound hits, music that stops or changes on a cut, split screens, or anything that requires post-production editing.
+- On-screen captions: at most two per 15 seconds, each 2 to 6 characters (or 1 to 3 short words), large, high-contrast, and placed in a fixed lower area; never long sentences.
+- When brand decisions describe editing-only techniques (freeze frames, beat-synced music cuts, frame-exact sound), keep their intent with an allowed in-clip technique instead.
 - Preserve platform-supplied Sequence counts and timing windows exactly. When they are not supplied, use the minimum number of contiguous Sequences required by the total duration and the 15-second maximum.
 - Define ordered shot purpose, action, framing, text, timing, and relevant input roles.
 - Keep each beat concrete enough to occupy a clear place within its owning storyboard grid and video segment.

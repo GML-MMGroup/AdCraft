@@ -279,6 +279,8 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "Otherwise use the minimum sequence count required by the total duration and the 15-second maximum; group multiple ordered shots and beats inside each sequence.",
       "Cover the total duration with contiguous, non-overlapping sequences and preserve the narrative handoff between adjacent sequences.",
       "Allocate the approved_narrative supplied in capability_facts together with selected_option and reviewed brand_decisions into distinct local goals and concrete opening/closing states. Preserve approved product purpose, ending, and CTA. A timing placeholder is not a creative direction; a Style Skill example is not the approved story.",
+      "Allocate at most four primary actions to each Sequence; if the approved narrative has more beats than the Sequences can hold at that density, keep the most important beats and drop or merge minor escalation steps, never the product reveal or the ending.",
+      "When brand decisions describe editing-only techniques (freeze frames, beat-synced music cuts, frame-exact sound), keep their intent with an allowed in-clip technique instead.",
       "Do not author panel rows, provider prompts, or platform identifiers.",
     ].join(" ");
   }
