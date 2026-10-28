@@ -332,6 +332,9 @@ class AgentCanvasPromptPreparationWorker:
 
 
 _ONE_AUTOMATIC_RETRY_CODES = frozenset({"agent_provider_timeout"})
+_PRE_SUBMISSION_RUNTIME_FAILURE_BOUNDARIES = frozenset(
+    {"runtime_process", "runtime_http", "runtime_unreachable", "runtime_config_unreachable"}
+)
 
 
 def _failure(error: Exception) -> tuple[str, bool]:
@@ -342,7 +345,7 @@ def _failure(error: Exception) -> tuple[str, bool]:
             error.retryable
             and error.code == "agent_runtime_unavailable"
             and error.details.get("model_submission_count") == 0
-            and error.details.get("failure_boundary") in {"runtime_process", "runtime_http"}
+            and error.details.get("failure_boundary") in _PRE_SUBMISSION_RUNTIME_FAILURE_BOUNDARIES
         )
         return error.code, safe_pre_submission_retry
     if isinstance(error, V2PersistenceError):
