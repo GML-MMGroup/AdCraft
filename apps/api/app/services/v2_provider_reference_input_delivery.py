@@ -776,9 +776,7 @@ class V2ProviderReferenceInputDeliveryService:
             return _canvas_delivery_failure(input_snapshot, "local_file_missing")
         value = f"data:{version.mime_type};base64,{base64.b64encode(path.read_bytes()).decode()}"
         byte_count = len(value.encode())
-        if byte_count > self._settings.v2_provider_reference_max_data_url_bytes:
-            return _canvas_delivery_failure(input_snapshot, "image_data_url_too_large")
-        return _canvas_delivered(
+        original = _canvas_delivered(
             input_snapshot,
             version,
             input_type="data_url",
@@ -786,6 +784,14 @@ class V2ProviderReferenceInputDeliveryService:
             source="local_file",
             byte_count=byte_count,
         )
+        if byte_count > self._settings.v2_provider_reference_max_data_url_bytes:
+            rendition = self._deliver_canvas_provider_reference_rendition(
+                input_snapshot,
+                version,
+                original,
+            )
+            return rendition or _canvas_delivery_failure(input_snapshot, "image_data_url_too_large")
+        return original
 
     def _reference_records_for_slot(
         self,
