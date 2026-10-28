@@ -4,6 +4,7 @@ from dataclasses import replace
 import hashlib
 from http.client import IncompleteRead, RemoteDisconnected
 import json
+import logging
 from pathlib import Path
 import re
 import socket
@@ -56,6 +57,7 @@ from app.services.provider_native_adapters import (
     CanonicalProviderReference,
     CanonicalProviderRequest,
     ProviderNativeAdapter,
+    ProviderResponseContractError,
     ProviderResult,
     ProviderSubmission,
 )
@@ -1402,6 +1404,8 @@ class V2ProviderExecutor:
                 media_type=media_type,
                 provider_payload=provider_payload,
                 error_code=error_code,
+                diagnostics=getattr(error, "diagnostics", None),
+                error_message=_native_contract_failure_message(error),
                 reference_asset_ids=reference_asset_ids,
             )
         except Exception as error:  # noqa: BLE001 - native transport failures become results.
@@ -1499,6 +1503,8 @@ class V2ProviderExecutor:
                 media_type=media_type,
                 provider_payload=provider_payload,
                 error_code=error_code,
+                diagnostics=getattr(error, "diagnostics", None),
+                error_message=_native_contract_failure_message(error),
                 audit=audit,
                 reference_asset_ids=_native_reference_asset_ids(provider_payload),
             )
@@ -2751,6 +2757,36 @@ def _decode_native_result_value(value: str) -> bytes | None:
     except (ValueError, TypeError):
         return None
     return decoded or None
+
+
+def _native_contract_failure_message(error: ValueError) -> str | None:
+    if not isinstance(error, ProviderResponseContractError):
+        return None
+    diagnostics = error.diagnostics
+    logging.getLogger(__name__).warning(
+        "Provider response contract failure: contract_check=%s http_status=%s "
+        "response_body_bytes=%s data_item_count=%s",
+        diagnostics.get("contract_check"),
+        diagnostics.get("http_status"),
+        diagnostics.get("response_body_bytes"),
+        diagnostics.get("data_item_count"),
+    )
+    fields: list[str] = []
+    for key, label in (
+        ("contract_check", "check"),
+        ("http_status", "http_status"),
+        ("response_body_bytes", "body_bytes"),
+        ("data_item_count", "data_items"),
+        ("data_item_keys", "item_keys"),
+        ("provider_error_code", "provider_error_code"),
+        ("provider_message", "provider_message"),
+    ):
+        value = diagnostics.get(key)
+        if value is not None:
+            text = ",".join(value) if isinstance(value, list) else str(value)
+            fields.append(f"{label}={text[:200] if key == 'provider_message' else text}")
+    prefix = "Provider response did not match the image contract ("
+    return prefix + "; ".join(fields)[: 600 - len(prefix) - 2] + ")."
 
 
 def _native_provider_failure(
