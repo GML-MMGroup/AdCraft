@@ -48,6 +48,8 @@ from app.services.v2_library_reference_preview import (
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
 CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE = "provider_reference_delivery_unavailable"
 _PROVIDER_REFERENCE_DIMENSIONS = (2048, 1536, 1024)
+# Seedance rejects reference images under 300px on either side; keep a margin.
+_SEEDANCE_MIN_SHORT_SIDE = 320
 PROVIDER_REFERENCE_ERROR_URL_INVALID = "v2_provider_reference_url_invalid"
 PROVIDER_REFERENCE_ERROR_FILE_MISSING = "v2_provider_reference_file_missing"
 PROVIDER_REFERENCE_ERROR_UNSUPPORTED = "v2_provider_reference_delivery_unsupported"
@@ -701,6 +703,7 @@ class V2ProviderReferenceInputDeliveryService:
         *,
         max_dimension: int = 2048,
         max_data_url_bytes: int | None = None,
+        min_short_side: int | None = None,
     ) -> V2DeliveredProviderReference | None:
         try:
             source_path = validate_v2_data_path(
@@ -727,6 +730,7 @@ class V2ProviderReferenceInputDeliveryService:
                     media_type="image",
                     kind="provider_reference",
                     max_dimension=dimension,
+                    **({"min_short_side": min_short_side} if min_short_side is not None else {}),
                 )
                 content = rendition.path.read_bytes()
                 width, height = read_image_dimensions(rendition.path)
@@ -778,6 +782,7 @@ class V2ProviderReferenceInputDeliveryService:
                 version,
                 original,
                 max_dimension=storyboard_max_dimension,
+                min_short_side=_SEEDANCE_MIN_SHORT_SIDE,
             )
             if rendition is None:
                 return _canvas_delivery_failure(input_snapshot, "asset_rendition_generation_failed")
