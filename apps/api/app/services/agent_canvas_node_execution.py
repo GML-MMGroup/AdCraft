@@ -705,6 +705,12 @@ class MediaNodeExecutor:
         raise _error(
             result.error_code or "provider_generation_failed",
             result.error_message or "Provider generation failed.",
+            details={
+                "contract_check": result.metadata.get("contract_check"),
+                "retryable": result.metadata.get("retryable", False),
+            }
+            if result.error_code == "provider_response_contract_invalid"
+            else None,
         )
 
     def _execute_seedance_video(self, context: NodeExecutionContext) -> NodeExecutionOutcome:

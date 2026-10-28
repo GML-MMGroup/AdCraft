@@ -53,12 +53,17 @@ def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeEr
     details = getattr(error, "details", {})
     safe_details = details if isinstance(details, dict) else {}
     explicitly_retryable = transport_interrupted or bool(safe_details.get("retryable", False))
+    image_url_download_failed = (
+        code == "provider_response_contract_invalid"
+        and safe_details.get("contract_check") == "image_url_download_failed"
+    )
     role_error = code == "node_prompt_role_contract_invalid"
     actionable_failure = _safe_actionable_failure(safe_details, code=code)
     retryable = (
         actionable_failure.retryable
         if actionable_failure is not None
-        else explicitly_retryable and code in APPROVED_TRANSIENT_ERROR_CODES
+        else explicitly_retryable
+        and (code in APPROVED_TRANSIENT_ERROR_CODES or image_url_download_failed)
     )
     return CanvasNodeErrorV2(
         code=code,

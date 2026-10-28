@@ -6,11 +6,13 @@ import base64
 import binascii
 from dataclasses import dataclass
 import hashlib
+from http.client import HTTPException
 import json
 import re
 from typing import Any, Mapping, Protocol
-from urllib.parse import urlsplit
-from urllib.request import Request
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlsplit
+from urllib.request import BaseHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -644,9 +646,23 @@ class RawHttpPostTransport(Protocol):
         max_response_bytes: int,
     ) -> ProviderHttpResponse: ...
 
+    def get(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse: ...
+
+
+class _NoImageRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
 
 class UrllibRawHttpPostTransport:
-    """POST prepared bytes with redirects disabled, optionally via one proxy."""
+    """POST prepared bytes or GET an HTTPS image, optionally via one proxy."""
 
     def __init__(self, *, proxy_url: str | None = None) -> None:
         self.proxy_url = proxy_url
@@ -666,6 +682,41 @@ class UrllibRawHttpPostTransport:
             max_response_bytes=max_response_bytes,
             proxy_url=self.proxy_url,
         )
+
+    def get(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse:
+        handlers: list[BaseHandler] = [_NoImageRedirectHandler()]
+        if self.proxy_url is not None:
+            handlers.append(ProxyHandler({"http": self.proxy_url, "https": self.proxy_url}))
+        opener = build_opener(*handlers)
+        redirects_remaining = 3
+        while True:
+            if not url.startswith("https://"):
+                raise ValueError("Image download requires HTTPS.")
+            try:
+                response = opener.open(
+                    Request(url, headers=headers, method="GET"), timeout=timeout_seconds
+                )
+            except HTTPError as error:
+                response = error
+            with response:
+                body = response.read(max_response_bytes + 1)
+                if len(body) > max_response_bytes:
+                    raise OSError("Image download exceeded the configured limit.")
+                status = int(response.status)
+                location = response.headers.get("Location")
+            if status not in {301, 302, 303, 307, 308} or not location:
+                return ProviderHttpResponse(status_code=status, body=body)
+            if not redirects_remaining:
+                raise OSError("Image download redirect limit exceeded.")
+            url = urljoin(url, location)
+            redirects_remaining -= 1
 
 
 class TeamoRouterImageTransport:
@@ -741,7 +792,43 @@ class TeamoRouterImageTransport:
                         value, api_key=self._api_key, prompt=prompt
                     )
                     break
+        self._inline_image_url(parsed, diagnostics)
         return _ImageResponse(parsed, diagnostics)
+
+    def _inline_image_url(
+        self, response: Mapping[str, object], diagnostics: dict[str, Any]
+    ) -> None:
+        data = response.get("data")
+        if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+            return
+        item = data[0]
+        value = item.get("b64_json")
+        if isinstance(value, str) and value:
+            return
+        url = item.get("url")
+        if not isinstance(url, str):
+            return
+        diagnostics["image_url"] = True
+        try:
+            if not url.startswith("https://"):
+                raise ValueError("Image download requires HTTPS.")
+            downloaded = self._http.get(
+                url=url,
+                headers={},
+                timeout_seconds=120.0,
+                max_response_bytes=_TEAMOROUTER_MAX_RESPONSE_BYTES,
+            )
+            if (
+                not 200 <= downloaded.status_code < 300
+                or len(downloaded.body) > _TEAMOROUTER_MAX_RESPONSE_BYTES
+            ):
+                raise ValueError("Image download response rejected.")
+        except (OSError, ValueError, HTTPException):
+            # Signed URLs and transport exception messages must never cross this boundary.
+            raise ProviderResponseContractError(
+                "image_url_download_failed", {**diagnostics, "retryable": True}
+            ) from None
+        item["b64_json"] = base64.b64encode(downloaded.body).decode("ascii")
 
     def poll(self, provider_task_id: str) -> Mapping[str, object]:
         del provider_task_id
