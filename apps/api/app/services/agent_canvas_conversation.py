@@ -2297,20 +2297,22 @@ class AgentConversationService:
                                 "stage_revision": session.journey.stage_revision,
                             },
                         )
-                message = (
-                    "The production journey is ready for Editing preparation."
-                    if journey_action.action == "prepare_editing"
-                    else "Please provide the information required for the current stage."
+                if journey_action.action == "prepare_editing":
+                    # Editing preparation runs only inside a durable Next Action;
+                    # a user message on the reserved action must queue it rather
+                    # than only announce it (production incident 2026-10-27).
+                    self._next_action_dispatch.dispatch(
+                        turn,
+                        session_id=session.session_id,
+                        expected_session_revision=session.revision,
+                        objective=session.goal.summary,
+                    )
+                    return complete_message(
+                        "Preparing the Editing node from the Ready Videos and BGM."
+                    )
+                return complete_message(
+                    "Please provide the information required for the current stage."
                 )
-                if journey_action.action == "prepare_editing" and (
-                    self._latest_agent_message_equals(turn.workflow_id, message)
-                ):
-                    # Failing Editing nodes keep every next_action poll answering
-                    # with the same notice. Re-publishing it on each poll only
-                    # spams the timeline; finish this poll silently until the
-                    # user resolves the nodes or sends a new message.
-                    return complete_message(None)
-                return complete_message(message)
             if journey_action.action == "complete":
                 return complete_message(
                     "Guided production is complete.",
@@ -2816,22 +2818,6 @@ class AgentConversationService:
             continuation=None,
         )
         return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
-
-    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
-        """Return whether this exact agent notice was already published once.
-
-        Journey stage notices must fire once per stage, not once per poll: a
-        repeat would re-enter the poll loop every time the user sends any
-        message, so any historical copy of the notice suppresses a new one.
-        """
-
-        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
-        return any(
-            entry.entry_type == "message"
-            and entry.speaker == "adcraft_video_agent"
-            and entry.content.strip() == message.strip()
-            for entry in timeline.items
-        )
 
     def _complete_turn(
         self,

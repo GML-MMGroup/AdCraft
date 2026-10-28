@@ -139,11 +139,17 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_progression",
             )
         plan = plans[0]
-        content = _plan_content(plan.content)
-        first_video_id = _node_id(plan.document_id, _first_sequence(content).sequence_id, "video")
-        # A committed-publication replay owns only the first progressive handoff.
-        # Later prompt-ready callbacks own the remaining planned Drafts.
-        if any(record.node_id == first_video_id for record in _planned_nodes(content)):
+        nodes = {
+            node.node_id: node for node in self._workflows.get_workflow(outcome.workflow_id).nodes
+        }
+        if any(
+            (node := nodes.get(record.node_id)) is not None
+            and node.creative_role in {"storyboard_sequence", "storyboard_video"}
+            and node.prompt_preparation.status not in {"ready", "failed"}
+            for record in _planned_nodes(plan.content)
+        ):
+            # A replay publishes the next Draft only after every published
+            # predecessor prompt is terminal; otherwise it is a no-op.
             return ()
         created = self.materialize_planned_drafts(
             workflow_id=outcome.workflow_id,
@@ -346,6 +352,8 @@ class ProgressiveStoryboardReadyService:
         if self._prompt_contexts is None:
             return {}
         base = self._prompt_contexts.resolve(source_grid, plan_document_id=plan.document_id)
+        if base is None:
+            return {}
         content = _plan_content(plan.content)
         excerpts = base.working_document_excerpts
         if len(excerpts) != 1 or excerpts[0].document_id != plan.document_id:

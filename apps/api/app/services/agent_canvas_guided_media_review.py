@@ -126,6 +126,7 @@ class GuidedMediaReviewCoordinator:
         node_resolver: Callable[[str, str], object] | None = None,
         execution_settings: Callable[[str], object] | None = None,
         prompt_ready_activation: Callable[..., object] | None = None,
+        media_complete: Callable[[str], object] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -139,6 +140,7 @@ class GuidedMediaReviewCoordinator:
         self._node_resolver = node_resolver
         self._execution_settings = execution_settings
         self._prompt_ready_activation = prompt_ready_activation
+        self._media_complete = media_complete
 
     def on_node_ready(self, node) -> tuple[str, ...]:
         return self._on_node_ready(
@@ -445,6 +447,9 @@ class GuidedMediaReviewCoordinator:
                 planned_node_ids,
                 source_id=f"guided-result:{lineage.commit_id}",
             )
+        if self._media_complete is not None and record.node_role in {"video_segment", "bgm"}:
+            # The last Ready Video or BGM starts Editing in every media mode.
+            self._media_complete(effect.workflow_id)
         return CanvasPostReadyEffectDispositionV1(
             outcome="applied",
             reason_code="guided_media_result_published",

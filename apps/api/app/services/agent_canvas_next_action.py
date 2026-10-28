@@ -419,7 +419,7 @@ class DurableNextActionExecutionService:
                 command = NextActionCommandV1(
                     action="reply",
                     message=(
-                        "The production journey is ready for Editing preparation."
+                        "The Editing node is ready with the Ready Videos and BGM."
                         if journey_action.action == "prepare_editing"
                         and editing_outcome == "prepared"
                         else "Background media work will resume Editing when it settles."

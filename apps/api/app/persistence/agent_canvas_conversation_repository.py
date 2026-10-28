@@ -4216,6 +4216,24 @@ class AgentCanvasConversationRepository:
             ),
         )
 
+    def get_latest_turn(self, workflow_id: str) -> ChatTurnV2 | None:
+        try:
+            with self._database.engine.connect() as connection:
+                turn_id = connection.execute(
+                    select(AgentCanvasChatTurnRow.turn_id)
+                    .where(AgentCanvasChatTurnRow.workflow_id == workflow_id)
+                    .order_by(
+                        AgentCanvasChatTurnRow.created_at.desc(),
+                        AgentCanvasChatTurnRow.turn_id.desc(),
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        return self.get_turn(str(turn_id)) if turn_id is not None else None
+
     def get_turn_by_idempotency_key(self, idempotency_key: str) -> ChatTurnV2 | None:
         try:
             with self._database.engine.connect() as connection:

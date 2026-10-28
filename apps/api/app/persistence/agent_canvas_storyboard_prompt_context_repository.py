@@ -54,7 +54,17 @@ class StoryboardPromptContextRepository:
             workflows.database, events
         )
 
-    def resolve(self, source: CanvasNodeV2, *, plan_document_id: str) -> StageAuthoringContextV1:
+    def resolve(
+        self, source: CanvasNodeV2, *, plan_document_id: str
+    ) -> StageAuthoringContextV1 | None:
+        """Return the Grid's frozen managed context, or None when it never had one.
+
+        A Grid without any managed prompt history (early topology, or a user
+        prompt written before any Agent dispatch) queues its members without a
+        frozen context, as before user-edit support. A managed operation, or a
+        user edit over managed history, whose context is missing is an error.
+        """
+
         dispatch = None
         operation_id = source.prompt_preparation.operation_id
         if operation_id:
@@ -125,6 +135,27 @@ class StoryboardPromptContextRepository:
                         dispatch = self._dispatches.get_for_node_operation_in_transaction(
                             connection, source.workflow_id, source.node_id, operation_id
                         )
+                    else:
+                        managed_history = connection.execute(
+                            select(AgentCanvasPromptPreparationOutboxRow.dispatch_id)
+                            .where(
+                                AgentCanvasPromptPreparationOutboxRow.workflow_id
+                                == source.workflow_id,
+                                AgentCanvasPromptPreparationOutboxRow.node_id == source.node_id,
+                            )
+                            .limit(1)
+                        ).scalar_one_or_none()
+                        if managed_history is None:
+                            return None
+        if (
+            dispatch is None
+            and not source.prompt_preparation.operation_id
+            and not (
+                source.prompt_preparation.status == "ready"
+                and is_user_edited_prompt(source.prompt_presentation)
+            )
+        ):
+            return None
         if dispatch is None or not dispatch.context_json:
             raise V2PersistenceError(
                 "storyboard_prompt_context_missing",

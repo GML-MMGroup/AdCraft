@@ -410,6 +410,7 @@ from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
 )
 from app.services.agent_canvas_guided_editing import GuidedEditingPreparationService
+from app.services.agent_canvas_guided_editing_trigger import GuidedEditingTrigger
 from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_next_action_dispatch import NextActionDispatchService
@@ -1478,6 +1479,13 @@ def create_agent_canvas_runtime(
         continuation_worker.run_once()
         return result
 
+    next_action_dispatch = NextActionDispatchService(database, event_repository)
+    guided_editing_trigger = GuidedEditingTrigger(
+        conversations=conversation_repository,
+        plans=storyboard_authoring,
+        workflows=workflow_repository,
+        next_action_dispatch=next_action_dispatch,
+    )
     guided_media_reviews = GuidedMediaReviewCoordinator(
         interactions=guided_interaction_repository,
         conversations=conversation_repository,
@@ -1491,6 +1499,7 @@ def create_agent_canvas_runtime(
         node_resolver=workflow_repository.get_node,
         execution_settings=execution_settings.get_or_create,
         prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
+        media_complete=guided_editing_trigger.continue_when_media_complete,
     )
 
     def persist_script_document(effect) -> CanvasPostReadyEffectDispositionV1:
@@ -1713,7 +1722,6 @@ def create_agent_canvas_runtime(
         decision_bundles=decision_bundles,
         editing_preparer=prepare_current_editing,
     )
-    next_action_dispatch = NextActionDispatchService(database, event_repository)
     materialization_repository = AgentCanvasMaterializationRepository(
         database,
         event_repository,
