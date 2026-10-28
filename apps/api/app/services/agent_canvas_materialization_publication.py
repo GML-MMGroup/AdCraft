@@ -1161,6 +1161,11 @@ class CapabilityMaterializationPublicationService:
     ) -> None:
         """Resume authoring after prompt publication, including Storyboard promotion."""
 
+        if self._on_guided_materialization_completed is None:
+            return
+        if envelope.operation_kind == "derivative":
+            self._on_guided_materialization_completed(envelope, outcome)
+            return
         session = self._conversations.get_guidance_session(envelope.workflow_id)
         journey = session.journey
         ready_authoring = (
@@ -1176,9 +1181,7 @@ class CapabilityMaterializationPublicationService:
             and GuidedProductionJourneyPolicyService().evaluate(journey).action
             in {"invoke_capability", "invoke_internal_checkpoint"}
         )
-        if self._on_guided_materialization_completed is not None and (
-            envelope.operation_kind == "derivative" or ready_authoring
-        ):
+        if ready_authoring:
             self._on_guided_materialization_completed(envelope, outcome)
 
     def _prepare_progressive_storyboard_nodes(
