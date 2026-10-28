@@ -255,11 +255,7 @@ class StoryboardFanoutActivationService:
                 (command.command_id,),
             )
 
-        # BGM publication advances to Editing before prompt preparation finishes.
-        # Editing still needs its output, so retain BGM's own manual run checkpoint.
-        if _media_stage_precedes_cursor(node_role, stage=session.journey.stage) and not (
-            node_role == "bgm" and session.journey.stage == "editing"
-        ):
+        if _media_stage_precedes_cursor(node_role, stage=session.journey.stage):
             # Authoring already advanced past this media's stage, so the late
             # Draft stays a runnable Node without gating the current stage.
             owned = self._awaiting.inspect(workflow_id, node_id=node_id)
