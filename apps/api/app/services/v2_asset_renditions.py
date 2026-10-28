@@ -93,13 +93,13 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         if kind == "provider_reference":
-            if max_dimension not in {None, 2048}:
+            if max_dimension not in {None, 2048, 1536, 1024}:
                 raise V2PersistenceError(
                     "asset_rendition_size_invalid",
-                    "Provider reference renditions require a 2048px maximum dimension.",
+                    "Provider reference renditions require a 2048px, 1536px, or 1024px maximum dimension.",
                     stage="v2_asset_rendition_service",
                 )
-            max_dimension = 2048
+            max_dimension = max_dimension or 2048
         elif max_dimension is not None and max_dimension not in {320, 640}:
             raise V2PersistenceError(
                 "asset_rendition_size_invalid",
@@ -122,7 +122,7 @@ class V2AssetRenditionService:
         if media_type == "image":
             dimension = max_dimension or 640
             filters = (
-                "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease"
+                f"scale='min({dimension},iw)':'min({dimension},ih)':force_original_aspect_ratio=decrease"
                 if kind == "provider_reference"
                 else f"scale={dimension}:{dimension}:force_original_aspect_ratio=decrease"
             )

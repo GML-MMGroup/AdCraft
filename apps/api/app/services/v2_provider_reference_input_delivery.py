@@ -46,6 +46,7 @@ from app.services.v2_library_reference_preview import (
 
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
 CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE = "provider_reference_delivery_unavailable"
+_PROVIDER_REFERENCE_DIMENSIONS = (2048, 1536, 1024)
 PROVIDER_REFERENCE_ERROR_URL_INVALID = "v2_provider_reference_url_invalid"
 PROVIDER_REFERENCE_ERROR_FILE_MISSING = "v2_provider_reference_file_missing"
 PROVIDER_REFERENCE_ERROR_UNSUPPORTED = "v2_provider_reference_delivery_unsupported"
@@ -546,17 +547,14 @@ class V2ProviderReferenceInputDeliveryService:
             if version is not None:
                 delivered_inputs.append((input_snapshot, version, delivered))
 
-        original_data_url_bytes = sum(
+        data_url_bytes = sum(
             delivered.byte_count or 0
             for _, _, delivered in delivered_inputs
-            if (
-                delivered.media_type == "image"
-                and delivered.provider_input_type == "data_url"
-                and delivered.rendition_kind == "original"
-            )
+            if delivered.provider_input_type == "data_url"
         )
-        if original_data_url_bytes > self._settings.v2_provider_reference_total_data_url_bytes:
+        if data_url_bytes > self._settings.v2_provider_reference_total_data_url_bytes:
             delivered_inputs = self._redeliver_canvas_original_images(delivered_inputs)
+            delivered_inputs = self._shrink_canvas_provider_reference_renditions(delivered_inputs)
 
         references: list[V2DeliveredProviderReference] = []
         total_data_url_bytes = 0
@@ -619,11 +617,68 @@ class V2ProviderReferenceInputDeliveryService:
             redelivered.append((input_snapshot, version, rendition or delivered))
         return redelivered
 
+    def _shrink_canvas_provider_reference_renditions(
+        self,
+        delivered_inputs: list[
+            tuple[
+                ResolvedMediaInputSnapshotV2,
+                AssetVersionMetadataV2,
+                V2DeliveredProviderReference,
+            ]
+        ],
+    ) -> list[
+        tuple[
+            ResolvedMediaInputSnapshotV2,
+            AssetVersionMetadataV2,
+            V2DeliveredProviderReference,
+        ]
+    ]:
+        total_bytes = sum(
+            delivered.byte_count or 0
+            for _, _, delivered in delivered_inputs
+            if delivered.provider_input_type == "data_url"
+        )
+        remaining = {
+            index
+            for index, (_, _, delivered) in enumerate(delivered_inputs)
+            if delivered.provider_input_type == "data_url"
+            and delivered.rendition_kind == "provider_reference"
+        }
+        while remaining and total_bytes > self._settings.v2_provider_reference_total_data_url_bytes:
+            index = max(
+                remaining,
+                key=lambda index: (delivered_inputs[index][2].byte_count or 0, -index),
+            )
+            remaining.remove(index)
+            input_snapshot, version, delivered = delivered_inputs[index]
+            dimensions = [
+                dimension
+                for dimension in _PROVIDER_REFERENCE_DIMENSIONS
+                if dimension < max(delivered.rendition_width or 0, delivered.rendition_height or 0)
+            ]
+            if not dimensions:
+                continue
+            rendition = self._deliver_canvas_provider_reference_rendition(
+                input_snapshot,
+                version,
+                delivered,
+                max_dimension=dimensions[0],
+                max_data_url_bytes=(delivered.byte_count or 0) - 1,
+            )
+            if rendition is not None:
+                total_bytes += (rendition.byte_count or 0) - (delivered.byte_count or 0)
+                delivered_inputs[index] = (input_snapshot, version, rendition)
+                remaining.add(index)
+        return delivered_inputs
+
     def _deliver_canvas_provider_reference_rendition(
         self,
         input_snapshot: ResolvedMediaInputSnapshotV2,
         version: AssetVersionMetadataV2,
         original: V2DeliveredProviderReference,
+        *,
+        max_dimension: int = 2048,
+        max_data_url_bytes: int | None = None,
     ) -> V2DeliveredProviderReference | None:
         try:
             source_path = validate_v2_data_path(
@@ -633,39 +688,49 @@ class V2ProviderReferenceInputDeliveryService:
             )
             if not source_path.is_file() or source_path.is_symlink():
                 return None
-            rendition = self._renditions.ensure(
-                source_path,
-                asset_id=input_snapshot.asset_id,
-                version_id=version.version_id,
-                media_type="image",
-                kind="provider_reference",
-                max_dimension=2048,
-            )
-            content = rendition.path.read_bytes()
-            width, height = read_image_dimensions(rendition.path)
         except (OSError, V2DataBoundaryError, V2PersistenceError):
             return None
-        data_url = f"data:image/jpeg;base64,{base64.b64encode(content).decode('ascii')}"
-        byte_count = len(data_url.encode("utf-8"))
-        if byte_count > self._settings.v2_provider_reference_max_data_url_bytes:
-            return None
-        return original.model_copy(
-            update={
-                "mime_type": "image/jpeg",
-                "provider_input_type": "data_url",
-                "provider_input_value": data_url,
-                "source": "local_file",
-                "byte_count": byte_count,
-                "rendition_kind": "provider_reference",
-                "source_checksum": version.sha256,
-                "source_byte_count": version.size_bytes,
-                "source_mime_type": version.mime_type,
-                "rendition_checksum": hashlib.sha256(content).hexdigest(),
-                "rendition_byte_count": len(content),
-                "rendition_width": width,
-                "rendition_height": height,
-            }
-        )
+        byte_limit = self._settings.v2_provider_reference_max_data_url_bytes
+        if max_data_url_bytes is not None:
+            byte_limit = min(byte_limit, max_data_url_bytes)
+        for dimension in _PROVIDER_REFERENCE_DIMENSIONS:
+            if dimension > max_dimension:
+                continue
+            try:
+                rendition = self._renditions.ensure(
+                    source_path,
+                    asset_id=input_snapshot.asset_id,
+                    version_id=version.version_id,
+                    media_type="image",
+                    kind="provider_reference",
+                    max_dimension=dimension,
+                )
+                content = rendition.path.read_bytes()
+                width, height = read_image_dimensions(rendition.path)
+            except (OSError, V2DataBoundaryError, V2PersistenceError):
+                continue
+            data_url = f"data:image/jpeg;base64,{base64.b64encode(content).decode('ascii')}"
+            byte_count = len(data_url.encode("utf-8"))
+            if byte_count > byte_limit:
+                continue
+            return original.model_copy(
+                update={
+                    "mime_type": "image/jpeg",
+                    "provider_input_type": "data_url",
+                    "provider_input_value": data_url,
+                    "source": "local_file",
+                    "byte_count": byte_count,
+                    "rendition_kind": "provider_reference",
+                    "source_checksum": version.sha256,
+                    "source_byte_count": version.size_bytes,
+                    "source_mime_type": version.mime_type,
+                    "rendition_checksum": hashlib.sha256(content).hexdigest(),
+                    "rendition_byte_count": len(content),
+                    "rendition_width": width,
+                    "rendition_height": height,
+                }
+            )
+        return None
 
     def _deliver_canvas_version(
         self,
