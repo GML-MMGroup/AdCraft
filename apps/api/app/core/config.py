@@ -37,6 +37,15 @@ def _read_int(name: str, default: int) -> int:
     return int(value)
 
 
+def _read_seedance_25_storyboard_dimension() -> int:
+    try:
+        return _read_int("SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION", 512)
+    except ValueError as error:
+        raise ValueError(
+            "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 512, 768, 1024"
+        ) from error
+
+
 def _read_float(name: str, default: float) -> float:
     value = os.getenv(name)
     if value is None:
@@ -186,6 +195,7 @@ class Settings:
     v2_provider_rate_limit_cooldown_seconds: int = 120
     v2_provider_rate_limit_reduced_image_jobs: int = 2
     v2_provider_rate_limit_reduced_video_jobs: int = 1
+    seedance_25_storyboard_reference_max_dimension: int = 512
     v2_provider_reference_max_data_url_bytes: int = 4 * 1024 * 1024
     v2_provider_reference_total_data_url_bytes: int = 8 * 1024 * 1024
     v2_recommended_catalog_root: Path = Path("assets/catalogs/recommended")
@@ -193,6 +203,12 @@ class Settings:
     upload_audio_max_bytes: int = 100 * 1024 * 1024
     upload_video_max_bytes: int = 500 * 1024 * 1024
     media_data_dir: Path = Path("data")
+
+    def __post_init__(self) -> None:
+        if self.seedance_25_storyboard_reference_max_dimension not in {512, 768, 1024}:
+            raise ValueError(
+                "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 512, 768, 1024"
+            )
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -484,6 +500,7 @@ class Settings:
                 "V2_PROVIDER_RATE_LIMIT_REDUCED_VIDEO_JOBS",
                 cls.v2_provider_rate_limit_reduced_video_jobs,
             ),
+            seedance_25_storyboard_reference_max_dimension=_read_seedance_25_storyboard_dimension(),
             v2_provider_reference_max_data_url_bytes=_read_int(
                 "V2_PROVIDER_REFERENCE_MAX_DATA_URL_BYTES",
                 cls.v2_provider_reference_max_data_url_bytes,

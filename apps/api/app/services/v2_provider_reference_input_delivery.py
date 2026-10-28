@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_runtime import (
     ResolvedModelExecutionV1,
 )
 from app.schemas.seedance_inputs import StoryboardGridGroundingPlanV1
+from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
 from app.services.agent_canvas_reference_semantics import (
     compile_provider_reference_instruction,
 )
@@ -189,6 +190,8 @@ class V2DeliveredProviderReference(BaseModel):
     rendition_byte_count: int | None = None
     rendition_width: int | None = None
     rendition_height: int | None = None
+    storyboard_downscaled_for: Literal["seedance_2_5"] | None = None
+    max_dimension: int | None = None
     reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
     reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
 
@@ -295,6 +298,14 @@ class V2DeliveredReferenceSet(BaseModel):
                     "rendition_byte_count": reference.rendition_byte_count,
                     "rendition_width": reference.rendition_width,
                     "rendition_height": reference.rendition_height,
+                    **(
+                        {
+                            "storyboard_downscaled_for": reference.storyboard_downscaled_for,
+                            "max_dimension": reference.max_dimension,
+                        }
+                        if reference.storyboard_downscaled_for is not None
+                        else {}
+                    ),
                     "reference_instruction": reference.reference_instruction,
                     "reference_instruction_transport": reference.reference_instruction_transport,
                 }
@@ -528,6 +539,17 @@ class V2ProviderReferenceInputDeliveryService:
                     input_snapshot,
                     "asset_checksum_mismatch",
                 )
+            elif context.provider_model_id.startswith("doubao-seedance-2-5") and (
+                _is_canvas_storyboard_grid(input_snapshot)
+            ):
+                delivered = self._deliver_canvas_version(
+                    input_snapshot,
+                    version,
+                    delivery_modes,
+                    storyboard_max_dimension=(
+                        self._settings.seedance_25_storyboard_reference_max_dimension
+                    ),
+                )
             else:
                 delivered = self._deliver_canvas_version(
                     input_snapshot,
@@ -693,9 +715,10 @@ class V2ProviderReferenceInputDeliveryService:
         byte_limit = self._settings.v2_provider_reference_max_data_url_bytes
         if max_data_url_bytes is not None:
             byte_limit = min(byte_limit, max_data_url_bytes)
-        for dimension in _PROVIDER_REFERENCE_DIMENSIONS:
-            if dimension > max_dimension:
-                continue
+        dimensions = (max_dimension,) + tuple(
+            dimension for dimension in _PROVIDER_REFERENCE_DIMENSIONS if dimension < max_dimension
+        )
+        for dimension in dimensions:
             try:
                 rendition = self._renditions.ensure(
                     source_path,
@@ -737,7 +760,33 @@ class V2ProviderReferenceInputDeliveryService:
         input_snapshot: ResolvedMediaInputSnapshotV2,
         version: AssetVersionMetadataV2,
         delivery_modes: frozenset[str],
+        *,
+        storyboard_max_dimension: int | None = None,
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
+        if storyboard_max_dimension is not None:
+            if "data_url" not in delivery_modes:
+                return _canvas_delivery_failure(input_snapshot, "image_data_url_unsupported")
+            original = _canvas_delivered(
+                input_snapshot,
+                version,
+                input_type="data_url",
+                input_value="",
+                source="local_file",
+            )
+            rendition = self._deliver_canvas_provider_reference_rendition(
+                input_snapshot,
+                version,
+                original,
+                max_dimension=storyboard_max_dimension,
+            )
+            if rendition is None:
+                return _canvas_delivery_failure(input_snapshot, "asset_rendition_generation_failed")
+            return rendition.model_copy(
+                update={
+                    "storyboard_downscaled_for": "seedance_2_5",
+                    "max_dimension": storyboard_max_dimension,
+                }
+            )
         metadata = version.metadata if isinstance(version.metadata, dict) else {}
         try:
             preview = self._library_preview.resolve(
@@ -1329,6 +1378,21 @@ def _failure(
             f"workflow_id={workflow_id} slot_id={slot_id} asset_id={asset_id} reason={reason}"
         ),
     )
+
+
+def _is_canvas_storyboard_grid(input_snapshot: ResolvedMediaInputSnapshotV2) -> bool:
+    if input_snapshot.media_type != "image":
+        return False
+    try:
+        return (
+            canonical_storyboard_reference_role(
+                binding_role=input_snapshot.binding_metadata.get("semantic_reference_role"),
+                source_role=input_snapshot.source_semantic_role,
+            )
+            == "storyboard_grid"
+        )
+    except ValueError:
+        return False
 
 
 def _provider_reference_role_from_record(record: WorkflowAssetVersionV2) -> str | None:

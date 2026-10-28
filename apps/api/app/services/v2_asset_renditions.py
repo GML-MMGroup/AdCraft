@@ -93,10 +93,13 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         if kind == "provider_reference":
-            if max_dimension not in {None, 2048, 1536, 1024}:
+            if max_dimension not in {None, 2048, 1536, 1024, 768, 512}:
                 raise V2PersistenceError(
                     "asset_rendition_size_invalid",
-                    "Provider reference renditions require a 2048px, 1536px, or 1024px maximum dimension.",
+                    (
+                        "Provider reference renditions require a 2048px, 1536px, 1024px, "
+                        "768px, or 512px maximum dimension."
+                    ),
                     stage="v2_asset_rendition_service",
                 )
             max_dimension = max_dimension or 2048

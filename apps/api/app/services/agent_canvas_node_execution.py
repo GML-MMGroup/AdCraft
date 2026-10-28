@@ -58,6 +58,7 @@ from app.services.agent_run_context_registry import validate_video_agent_operati
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_reference_input_delivery import (
     V2DeliveredProviderReference,
+    V2DeliveredReferenceSet,
     V2ReferenceInputDeliveryFailure,
     V2ProviderReferenceDeliveryError,
     V2ProviderReferenceInputDeliveryService,
@@ -748,6 +749,13 @@ class MediaNodeExecutor:
             self._handle_submission_error(intent, error)
             raise
         audit_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
+        if any(item.storyboard_downscaled_for for item in context.delivered_references):
+            audit_payload["reference_input_delivery"] = V2DeliveredReferenceSet(
+                requested_reference_asset_ids=[
+                    item.asset_id for item in context.delivered_references
+                ],
+                references=list(context.delivered_references),
+            ).audit
         if result.status == "completed":
             content = result.asset_bytes
             if content is None and result.local_file_path:
