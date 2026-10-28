@@ -8373,6 +8373,30 @@
           "default": null,
           "title": "Common Mistakes"
         },
+        "consumer_psychology": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consumer Psychology"
+        },
+        "cross_category_examples": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cross Category Examples"
+        },
         "hook_methods": {
           "anyOf": [
             {
@@ -8384,6 +8408,18 @@
           ],
           "default": null,
           "title": "Hook Methods"
+        },
+        "how_to_execute": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "How To Execute"
         },
         "product_role": {
           "anyOf": [
@@ -8421,6 +8457,18 @@
           "default": null,
           "title": "Story Structure"
         },
+        "suitable_categories_and_goals": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suitable Categories And Goals"
+        },
         "summary": {
           "title": "Summary",
           "type": "string"
@@ -8446,6 +8494,18 @@
           "minLength": 1,
           "title": "Version",
           "type": "string"
+        },
+        "why_it_works": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why It Works"
         }
       },
       "required": [
@@ -14596,13 +14656,49 @@
           "title": "Common Mistakes",
           "type": "string"
         },
+        "consumer_psychology": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consumer Psychology"
+        },
         "core_principle": {
           "title": "Core Principle",
           "type": "string"
         },
+        "cross_category_examples": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cross Category Examples"
+        },
         "hook_methods": {
           "title": "Hook Methods",
           "type": "string"
+        },
+        "how_to_execute": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "How To Execute"
         },
         "product_role": {
           "title": "Product Role",
@@ -14616,6 +14712,18 @@
           "title": "Story Structure",
           "type": "string"
         },
+        "suitable_categories_and_goals": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suitable Categories And Goals"
+        },
         "title": {
           "title": "Title",
           "type": "string"
@@ -14623,6 +14731,18 @@
         "version": {
           "title": "Version",
           "type": "string"
+        },
+        "why_it_works": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why It Works"
         }
       },
       "required": [

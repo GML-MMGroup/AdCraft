@@ -37,7 +37,7 @@ def read_creative_method(
     try:
         body = repository.get_creative_skill_body(skill_id, version)
         method = CreativeMethodContextV1.model_validate(
-            {key: body[key] for key in CreativeMethodContextV1.model_fields}
+            {key: body[key] for key in CreativeMethodContextV1.model_fields if key in body}
         )
     except (ValueError, KeyError, TypeError, ValidationError):
         return None

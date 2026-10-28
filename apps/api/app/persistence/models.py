@@ -288,6 +288,7 @@ class CreativeSkillCatalogRow(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     body_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    retired_at: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class WorkflowRow(Base):

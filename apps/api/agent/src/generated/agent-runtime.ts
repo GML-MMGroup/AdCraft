@@ -4,7 +4,7 @@ export const AGENT_PROTOCOL_VERSION = "1" as const;
 
 export type CreativeMethodSummaryV1 = { readonly "skill_id": string; readonly "title": string; readonly "summary": string };
 
-export type CreativeMethodContextV1 = { readonly "skill_id": string; readonly "version": string; readonly "title": string; readonly "core_principle": string; readonly "story_structure": string; readonly "hook_methods": string; readonly "product_role": string; readonly "common_mistakes": string };
+export type CreativeMethodContextV1 = { readonly "skill_id": string; readonly "version": string; readonly "title": string; readonly "core_principle": string; readonly "story_structure": string; readonly "hook_methods": string; readonly "product_role": string; readonly "common_mistakes": string; readonly "consumer_psychology"?: string | null; readonly "cross_category_examples"?: string | null; readonly "suitable_categories_and_goals"?: string | null; readonly "why_it_works"?: string | null; readonly "how_to_execute"?: string | null };
 
 export type ConceptOptionRecordV2 = { readonly "creative_method_id"?: string | null; readonly "creative_method_version"?: string | null; readonly "option_id": string; readonly "title": string; readonly "public_summary": string };
 
@@ -38,7 +38,7 @@ export type SkillStackEntryV1 = { readonly "skill_kind": "audiovisual_style" | "
 
 export type SkillStackV1 = { readonly "entries"?: ReadonlyArray<SkillStackEntryV1> };
 
-export type BrandSelectedCreativeMethodV1 = { readonly "skill_id": string; readonly "version": string; readonly "skill_kind"?: "creative_method"; readonly "title": string; readonly "summary": string; readonly "story_structure"?: string | null; readonly "hook_methods"?: string | null; readonly "product_role"?: string | null; readonly "common_mistakes"?: string | null; readonly "unsuitable_cases"?: string | null };
+export type BrandSelectedCreativeMethodV1 = { readonly "skill_id": string; readonly "version": string; readonly "skill_kind"?: "creative_method"; readonly "title": string; readonly "summary": string; readonly "story_structure"?: string | null; readonly "hook_methods"?: string | null; readonly "product_role"?: string | null; readonly "common_mistakes"?: string | null; readonly "unsuitable_cases"?: string | null; readonly "consumer_psychology"?: string | null; readonly "cross_category_examples"?: string | null; readonly "suitable_categories_and_goals"?: string | null; readonly "why_it_works"?: string | null; readonly "how_to_execute"?: string | null };
 
 export type WorkflowModelCallWriteV1 = { readonly "schema_version"?: "1"; readonly "run_id": string; readonly "call_id": string; readonly "phase": "outcome" | "request"; readonly "stage": "capability_fallback" | "initial" | "structured_repair" | "transport_retry"; readonly "recorded_at": string; readonly "boundary": "pi_assistant_events" | "sdk_response" | "sdk_stream_chunks"; readonly "payload": Readonly<Record<string, unknown>>; readonly "skill_context"?: Readonly<Record<string, unknown>> | null; readonly "complete"?: boolean; readonly "failed"?: boolean };
 

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import cast
 from uuid import uuid4
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, insert, select, tuple_, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
@@ -740,15 +740,27 @@ class BrandDecisionRepository:
         summary: str,
         body_json: str,
     ) -> bool:
-        """Insert one catalog entry if new; return True when inserted."""
+        """Refresh seed-owned content; return True only for a new version."""
 
         existing = connection.execute(
-            select(CreativeSkillCatalogRow.entry_id).where(
+            select(CreativeSkillCatalogRow).where(
                 CreativeSkillCatalogRow.skill_id == skill_id,
                 CreativeSkillCatalogRow.version == version,
             )
         ).first()
+        content = {
+            "skill_kind": skill_kind,
+            "title": title,
+            "summary": summary,
+            "body_json": body_json,
+        }
         if existing is not None:
+            if any(existing._mapping[key] != value for key, value in content.items()):
+                connection.execute(
+                    update(CreativeSkillCatalogRow)
+                    .where(CreativeSkillCatalogRow.entry_id == existing.entry_id)
+                    .values(**content)
+                )
             return False
         connection.execute(
             insert(CreativeSkillCatalogRow).values(
@@ -764,26 +776,52 @@ class BrandDecisionRepository:
         )
         return True
 
+    def retire_absent_creative_skills_in_transaction(
+        self, connection: Connection, identities: set[tuple[str, str]]
+    ) -> None:
+        """Reconcile creative method availability against one complete seed import."""
+        present = tuple_(CreativeSkillCatalogRow.skill_id, CreativeSkillCatalogRow.version).in_(
+            sorted(identities)
+        )
+        connection.execute(
+            update(CreativeSkillCatalogRow)
+            .where(
+                CreativeSkillCatalogRow.skill_kind == "creative_method",
+                ~present,
+            )
+            .values(retired_at=_now())
+        )
+        connection.execute(
+            update(CreativeSkillCatalogRow)
+            .where(present, CreativeSkillCatalogRow.retired_at.is_not(None))
+            .values(retired_at=None)
+        )
+
     def list_creative_skills(self) -> tuple[dict[str, object], ...]:
         try:
             with self._database.engine.connect() as connection:
                 rows = connection.execute(
-                    select(CreativeSkillCatalogRow).order_by(
-                        CreativeSkillCatalogRow.skill_id, CreativeSkillCatalogRow.version
+                    select(CreativeSkillCatalogRow).where(
+                        CreativeSkillCatalogRow.retired_at.is_(None)
                     )
                 ).all()
         except SQLAlchemyError as error:
             raise _persistence_error() from error
-        return tuple(
-            {
-                "skill_id": row.skill_id,
-                "version": row.version,
-                "skill_kind": row.skill_kind,
-                "title": row.title,
-                "summary": row.summary,
-            }
-            for row in rows
-        )
+        latest: dict[str, dict[str, object]] = {}
+        for row in sorted(
+            rows, key=lambda row: tuple(int(part) for part in row.version.split(".")), reverse=True
+        ):
+            latest.setdefault(
+                row.skill_id,
+                {
+                    "skill_id": row.skill_id,
+                    "version": row.version,
+                    "skill_kind": row.skill_kind,
+                    "title": row.title,
+                    "summary": row.summary,
+                },
+            )
+        return tuple(latest[skill_id] for skill_id in sorted(latest))
 
     def get_creative_skill_body(self, skill_id: str, version: str) -> dict[str, object]:
         """Read one selected creative method's exact stored version."""

@@ -112,6 +112,11 @@ class BrandSkillStackService:
             product_role=body.get("product_role"),
             common_mistakes=body.get("common_mistakes"),
             unsuitable_cases=body.get("unsuitable_cases"),
+            consumer_psychology=body.get("consumer_psychology"),
+            cross_category_examples=body.get("cross_category_examples"),
+            suitable_categories_and_goals=body.get("suitable_categories_and_goals"),
+            why_it_works=body.get("why_it_works"),
+            how_to_execute=body.get("how_to_execute"),
         )
 
     def recommendation_stack(self, output: BrandSkillRecommendationsV1) -> SkillStackV1:

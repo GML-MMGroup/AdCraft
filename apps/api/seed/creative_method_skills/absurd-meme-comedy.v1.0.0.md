@@ -48,6 +48,13 @@ cross_category_examples: >
 The ad treats an impossible event as ordinary. The laugh comes from the gap
 between the absurd result and the calm, serious people around it.
 
+## Why It Works
+
+Audiences already know the deadpan meme format, so the joke reads in the first
+second. Each escalation is a screenshot-sized beat that invites comments and
+remixes, and the calm reactions make the exaggeration feel confident rather
+than boastful.
+
 ## How To Execute
 
 1. Pick one product attribute and push it to an absurd physical result.

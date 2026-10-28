@@ -309,6 +309,11 @@ class BrandSelectedCreativeMethodV1(BrandCreativeMethodV1):
     product_role: str | None = None
     common_mistakes: str | None = None
     unsuitable_cases: str | None = None
+    consumer_psychology: str | None = None
+    cross_category_examples: str | None = None
+    suitable_categories_and_goals: str | None = None
+    why_it_works: str | None = None
+    how_to_execute: str | None = None
 
 
 class BrandCreativeMethodCatalogV1(_BrandModel):

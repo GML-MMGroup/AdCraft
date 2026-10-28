@@ -22,3 +22,8 @@ class CreativeMethodContextV1(BaseModel):
     hook_methods: str
     product_role: str
     common_mistakes: str
+    consumer_psychology: str | None = None
+    cross_category_examples: str | None = None
+    suitable_categories_and_goals: str | None = None
+    why_it_works: str | None = None
+    how_to_execute: str | None = None
