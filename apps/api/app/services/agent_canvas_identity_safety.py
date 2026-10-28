@@ -1,4 +1,8 @@
-"""Resolve normalized identity safety before live-action media admission."""
+"""Default Agent-designed characters to fictional without blocking media on identity.
+
+Identity never blocks generation, including uploaded photos of real people.
+Seedance's provider-side filter is the only identity gate.
+"""
 
 from __future__ import annotations
 
@@ -28,16 +32,22 @@ def resolve_identity_safety_decision(
     required: bool = False,
     expected_normalized_revision: str | None = None,
 ) -> IdentitySafetyResolutionV1 | None:
-    """Validate one normalized decision without inspecting any creative text."""
+    """Default missing required decisions to fictional; never reject a likeness.
 
+    Agent-designed characters are fictional by default. Uploaded real-person photos
+    are also allowed; only Seedance's provider-side filter gates identity. Explicit
+    decisions still require valid structure and current revision provenance.
+    """
+
+    synthesized_default = decision is None and required
     if decision is None:
-        if required:
-            raise V2PersistenceError(
-                "identity_safety_decision_required",
-                "A normalized identity safety decision is required before live-action admission.",
-                stage="identity_safety",
-            )
-        return None
+        if not required:
+            return None
+        decision = IdentitySafetyDecisionV1(
+            classification="fictional",
+            source="platform_default",
+            normalized_revision="platform-default",
+        )
     try:
         normalized = (
             decision
@@ -50,14 +60,9 @@ def resolve_identity_safety_decision(
             "The normalized identity safety decision is invalid.",
             stage="identity_safety",
         ) from error
-    if normalized.classification == "identifiable_person_likeness":
-        raise V2PersistenceError(
-            "identifiable_person_likeness_unsupported",
-            "Specific identifiable-person likeness is not supported.",
-            stage="identity_safety",
-        )
     if (
-        expected_normalized_revision is not None
+        not synthesized_default
+        and expected_normalized_revision is not None
         and normalized.normalized_revision != expected_normalized_revision
     ):
         raise V2PersistenceError(
