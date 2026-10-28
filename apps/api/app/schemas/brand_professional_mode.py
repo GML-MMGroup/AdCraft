@@ -291,7 +291,7 @@ class BrandSkillRecommendationV1(BrandSkillReferenceV1):
 
 
 class BrandSkillRecommendationsV1(_BrandModel):
-    creative_methods: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=1, max_length=7)
+    creative_methods: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=1, max_length=2)
     audiovisual_styles: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=3, max_length=3)
 
 
@@ -325,7 +325,7 @@ class BrandSkillSelectionRequestV1(_BrandModel):
 
     card_id: str = Field(min_length=1, max_length=120)
     expected_stage_revision: int = Field(ge=1)
-    creative_methods: tuple[BrandSkillReferenceV1, ...] = Field(min_length=1, max_length=7)
+    creative_methods: tuple[BrandSkillReferenceV1, ...] = Field(min_length=1, max_length=2)
     audiovisual_style: BrandSkillReferenceV1
     confirm: bool = False
 

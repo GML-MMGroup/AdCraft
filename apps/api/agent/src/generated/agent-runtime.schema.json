@@ -8611,7 +8611,7 @@
           "items": {
             "$ref": "#/$defs/BrandSkillRecommendationV1"
           },
-          "maxItems": 7,
+          "maxItems": 2,
           "minItems": 1,
           "title": "Creative Methods",
           "type": "array"

@@ -8,7 +8,7 @@ description: Propose brand hypotheses or recommend a catalog-grounded creative m
 
 For hypothesis authoring, propose exactly three Creative Hypothesis candidates
 grounded in the Creative Method Skill catalog. For Skill recommendation, use
-the selected hypothesis and AdSpec to recommend complementary methods and
+the selected hypothesis and AdSpec to recommend one or two complementary methods and
 three ranked alternatives from the existing audiovisual catalog.
 
 # Inputs
