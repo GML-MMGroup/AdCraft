@@ -88,7 +88,11 @@ from app.services.agent_canvas_requirements import (
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_character_prompt_reuse import retain_legacy_character_proof
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
-from app.services.agent_canvas_prompt_projection_lag import resync_derived_parameter_lag
+from app.services.agent_canvas_prompt_projection_lag import (
+    normalize_derived_parameter_prompt_authority,
+    projection_consistency,
+    resync_derived_parameter_lag,
+)
 
 
 class AgentCanvasWorkflowRepository:
@@ -1232,10 +1236,7 @@ class AgentCanvasWorkflowRepository:
                     refreshed = current.model_copy(
                         update={
                             "revision": current.revision + 1,
-                            "prompt_presentation": _advance_in_sync_presentation(
-                                synced.prompt_presentation,
-                                from_revision=current.revision,
-                            ),
+                            "prompt_presentation": _advance_in_sync_presentation(synced),
                             "updated_at": datetime.fromisoformat(now),
                             "prompt_preparation": current.prompt_preparation.model_copy(
                                 update={
@@ -1568,6 +1569,9 @@ class AgentCanvasWorkflowRepository:
                     ):
                         connection.commit()
                         return current
+                    # Keep repeated derivations and intervening manual edits
+                    # within the intentional one-revision lag.
+                    current = normalize_derived_parameter_prompt_authority(current)
                     updated_revision = expected_node_revision + 1
                     updated = connection.execute(
                         update(AgentCanvasNodeRow)
@@ -1584,6 +1588,7 @@ class AgentCanvasWorkflowRepository:
                                     for field, item in provenance.items()
                                 }
                             ),
+                            metadata_json=_node_values(current)["metadata_json"],
                             revision=updated_revision,
                             updated_at=timestamp,
                         )
@@ -2144,9 +2149,7 @@ class AgentCanvasWorkflowRepository:
                             "status": status,
                             "revision": current.revision + 1,
                             "updated_at": _parse_datetime(now),
-                            "prompt_presentation": _advance_in_sync_presentation(
-                                current.prompt_presentation, from_revision=current.revision
-                            ),
+                            "prompt_presentation": _advance_in_sync_presentation(current),
                         }
                     )
                     connection.execute(
@@ -3415,34 +3418,27 @@ def _reconcile_editing_manifest_for_node(
 
 
 def _advance_in_sync_presentation(
-    presentation: EditablePromptProjectionV1 | None,
-    *,
-    from_revision: int,
+    node: CanvasNodeV2,
 ) -> EditablePromptProjectionV1 | None:
     """Move an in-sync editable prompt projection with a reference-only revision bump.
 
-    Provider compilation requires the projection revision to match the Node
-    revision (production incident 2026-10-20). A projection that was already
-    out of sync is left alone so the real conflict still surfaces. Derived
-    Video parameter writes keep their one-revision lag on purpose; the runtime
-    restores the frozen revision through the guided review marker.
+    Keep a synchronized projection on the current Node revision (production
+    incident 2026-10-20). Other states are left alone; the reference refresh
+    resyncs intentional derived parameter lag before calling this helper.
     """
 
-    if presentation is None or presentation.revision != from_revision:
+    presentation = node.prompt_presentation
+    if projection_consistency(node) != "in_sync":
         return presentation
-    return presentation.model_copy(update={"revision": from_revision + 1})
+    assert presentation is not None
+    return presentation.model_copy(update={"revision": node.revision + 1})
 
 
 def _advance_in_sync_review_marker(node: CanvasNodeV2) -> dict[str, object]:
     """Keep the guided review marker on the projection it reviewed."""
 
-    projection = node.prompt_presentation
     review_revision = node.metadata.get("guided_review_node_revision")
-    if (
-        projection is None
-        or projection.revision != node.revision
-        or review_revision != node.revision
-    ):
+    if projection_consistency(node) != "in_sync" or review_revision != node.revision:
         return {}
     return {"guided_review_node_revision": node.revision + 1}
 

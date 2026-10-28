@@ -29,7 +29,10 @@ from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProje
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
-from app.services.agent_canvas_prompt_projection_lag import resync_derived_parameter_lag
+from app.services.agent_canvas_prompt_projection_lag import (
+    projection_consistency,
+    resync_derived_parameter_lag,
+)
 from app.services.model_selection import ModelSelectionService
 
 
@@ -397,22 +400,7 @@ def _editable_prompt_projection(
 
 
 def _validate_inherited_prompt_projection(node: CanvasNodeV2) -> None:
-    projection = node.prompt_presentation
-    if projection is None:
-        return
-    prompt = node.generation_prompt or ""
-    review_revision = node.metadata.get("guided_review_node_revision")
-    revision_matches = projection.revision == node.revision or (
-        isinstance(review_revision, int)
-        and not isinstance(review_revision, bool)
-        and review_revision == node.revision
-        and projection.revision + 1 == node.revision
-    )
-    if (
-        projection.text != prompt
-        or projection.prompt_digest != f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}"
-        or not revision_matches
-    ):
+    if projection_consistency(node) == "conflict":
         raise V2PersistenceError(
             "prompt_revision_conflict",
             "The editable prompt projection does not match the Node revision.",

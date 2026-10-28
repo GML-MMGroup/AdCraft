@@ -32,6 +32,7 @@ from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
 from app.schemas.agent_canvas_reference_conditioning import ReferenceConditioningPlanV1
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
+from app.services.agent_canvas_prompt_projection_lag import projection_consistency
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
 )
@@ -930,23 +931,7 @@ def _digest(value: object) -> str:
 
 
 def _validate_editable_prompt_authority(node: CanvasNodeV2) -> None:
-    projection = node.prompt_presentation
-    if projection is None:
-        return
-    prompt = str(node.generation_prompt or "")
-    expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
-    review_revision = node.metadata.get("guided_review_node_revision")
-    revision_matches = projection.revision == node.revision or (
-        isinstance(review_revision, int)
-        and not isinstance(review_revision, bool)
-        and review_revision == node.revision
-        and projection.revision + 1 == node.revision
-    )
-    if (
-        projection.text != prompt
-        or not revision_matches
-        or projection.prompt_digest != expected_digest
-    ):
+    if projection_consistency(node) == "conflict":
         raise _error(
             "prompt_revision_conflict",
             "The editable prompt projection does not match the frozen Node revision.",

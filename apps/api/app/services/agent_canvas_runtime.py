@@ -104,6 +104,10 @@ from app.services.agent_canvas_prompt_assertion_policy import (
     prompt_assertion_admission_error,
 )
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_prompt_projection_lag import (
+    normalize_derived_parameter_prompt_authority,
+    projection_consistency,
+)
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
@@ -2374,6 +2378,8 @@ def _parameter_compilation_revision_is_current(
 
     if current.revision not in {original.revision, original.revision + 1}:
         return False
+    if current.revision != original.revision:
+        original = normalize_derived_parameter_prompt_authority(original)
     for field in (
         "node_id",
         "workflow_id",
@@ -2444,14 +2450,8 @@ def _parameter_snapshot_prompt_authority(
     """Restore the exact editable Prompt revision after a parameter-only refresh."""
 
     projection = node.prompt_presentation
-    prompt = str(node.generation_prompt or "")
-    expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
     if not (
-        projection is not None
-        and projection.revision + 1 == node.revision
-        and projection.text == prompt
-        and projection.prompt_digest == expected_digest
-        and node.metadata.get("guided_review_node_revision") == projection.revision
+        projection_consistency(node) == "derived_lag"
         and snapshot.workflow_id == node.workflow_id
         and snapshot.execution_id == execution_id
         and snapshot.member_id == member_id
@@ -2461,6 +2461,7 @@ def _parameter_snapshot_prompt_authority(
         and snapshot.parameter_provenance == _manual_authority_provenance(node)
     ):
         return node
+    assert projection is not None
     return node.model_copy(update={"revision": projection.revision})
 
 
