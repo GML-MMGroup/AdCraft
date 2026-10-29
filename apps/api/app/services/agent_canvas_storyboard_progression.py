@@ -64,6 +64,7 @@ from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_references import _validate_video_character_bindings
 from app.services.agent_canvas_guided_media_parameters import (
     resolve_video_audio_parameter,
 )
@@ -239,6 +240,36 @@ class ProgressiveStoryboardReadyService:
     ) -> tuple[str, ...]:
         """Publish accepted Plan topology without claiming a visual anchor."""
 
+        for attempt in range(3):
+            try:
+                return self._materialize_planned_drafts_once(
+                    workflow_id=workflow_id,
+                    plan_document_id=plan_document_id,
+                    expected_plan_revision=expected_plan_revision,
+                    limit=limit,
+                )
+            except V2PersistenceError as error:
+                if error.code != "workflow_revision_conflict":
+                    raise
+                if attempt == 2:
+                    raise V2PersistenceError(
+                        error.code,
+                        str(error),
+                        stage="storyboard_progression",
+                        details={**error.details, "retryable": True},
+                    ) from error
+                # Rebuild from fresh Node/Binding state. Never refresh the
+                # accepted Plan fence or reuse stale prepared members.
+        raise AssertionError("Storyboard publication retry loop exhausted.")
+
+    def _materialize_planned_drafts_once(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        expected_plan_revision: int,
+        limit: int | None,
+    ) -> tuple[str, ...]:
         plan = next(
             (
                 item
@@ -1583,6 +1614,7 @@ class ProgressiveStoryboardReadyService:
                     updated_at=now,
                 )
             )
+        nodes = {node.node_id: node for node in workflow.nodes}
         bindings = (
             CanvasBindingV2(
                 binding_id=_binding_id(video_id, "grid", 0),
@@ -1601,10 +1633,7 @@ class ProgressiveStoryboardReadyService:
                         "binding_id": _binding_id(video_id, "element", index),
                         "target_node_id": video.node_id,
                         "order": index,
-                        "metadata": _retarget_binding_metadata(
-                            binding,
-                            target_role=video.creative_role,
-                        ),
+                        "metadata": _video_binding_metadata(binding, nodes),
                         "created_at": now,
                         "updated_at": now,
                     }
@@ -1612,6 +1641,7 @@ class ProgressiveStoryboardReadyService:
                 for index, binding in enumerate(identity_bindings, start=1)
             ),
         )
+        _validate_video_character_bindings(video, bindings, nodes)
         return video, bindings
 
     def _ensure_video(
@@ -2232,6 +2262,38 @@ def _fanout_events(
             },
         ),
     )
+
+
+def _video_binding_metadata(
+    binding: CanvasBindingV2,
+    nodes: dict[str, CanvasNodeV2],
+) -> dict[str, object]:
+    """Carry the source's explicit occurrence identity into generated Video bindings."""
+
+    metadata = _retarget_binding_metadata(binding, target_role="storyboard_video")
+    source = nodes.get(getattr(binding.source, "source_node_id", None))
+    if source is None or source.creative_role != "character":
+        return metadata
+    occurrence_id = source.metadata.get("occurrence_id")
+    if (
+        not isinstance(occurrence_id, str)
+        or not occurrence_id.strip()
+        or source.metadata.get("character_phase") != "turnaround"
+        or metadata.get("occurrence_id") not in (None, occurrence_id)
+        or metadata.get("character_phase") not in (None, "turnaround")
+    ):
+        raise V2PersistenceError(
+            "character_reference_mapping_invalid",
+            "Video Character Binding requires an unambiguous source turnaround occurrence.",
+            stage="storyboard_progression",
+        )
+    return {
+        **metadata,
+        "occurrence_id": occurrence_id,
+        "character_phase": "turnaround",
+        "explicit_occurrence_mapping": True,
+        "source_node_revision": source.revision,
+    }
 
 
 def _retarget_binding_metadata(
