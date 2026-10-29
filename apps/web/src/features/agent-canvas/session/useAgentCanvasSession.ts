@@ -187,7 +187,7 @@ export function useAgentCanvasSession() {
   const patchNode = useCallback((
     nodeId: string,
     patch: CanvasNodePatchRequestV2,
-    options: { coalesce?: boolean; optimistic?: boolean } = {},
+    options: { coalesce?: boolean; optimistic?: boolean; expectedNodeRevision?: number; onSaved?: (node: CanvasNodeV2) => void } = {},
   ) => {
     if (!agentCanvasWorkflow) return Promise.reject(new Error("No active Agent Canvas workflow."));
     if (options.optimistic) {
@@ -199,8 +199,16 @@ export function useAgentCanvasSession() {
     return queueRef.current!.enqueue(
       options.coalesce ? `patch:${nodeId}` : createOperationKey(`patch:${nodeId}`),
       async () => {
-        const response = await agentCanvasApi.patchAgentCanvasNode(workflowId, nodeId, patch);
+        const current = workflowRef.current;
+        if (!current || current.workflow_id !== workflowId) {
+          throw new Error("The active Agent Canvas workflow changed before its node was saved.");
+        }
+        const node = current.nodes.find((item) => item.node_id === nodeId);
+        const response = await agentCanvasApi.patchAgentCanvasNode(workflowId, nodeId, patch, {
+          expectedNodeRevision: options.expectedNodeRevision ?? node?.revision,
+        });
         applyWorkflow(response.value.workflow);
+        if (response.value.node) options.onSaved?.(response.value.node);
         setAuthoringError(null);
       },
       { coalesce: options.coalesce },

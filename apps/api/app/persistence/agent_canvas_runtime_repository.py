@@ -98,6 +98,7 @@ class AgentCanvasRuntimeRepository:
     ) -> VideoParameterCompilationSnapshotV2:
         try:
             with self._database.engine.begin() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
                 existing = (
                     connection.execute(
                         select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
@@ -121,14 +122,16 @@ class AgentCanvasRuntimeRepository:
                     connection.execute(
                         select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
                             AgentCanvasVideoParameterCompilationSnapshotRow.member_id
-                            == snapshot.member_id
+                            == snapshot.member_id,
+                            AgentCanvasVideoParameterCompilationSnapshotRow.preparation_scope
+                            == (snapshot.run_intent_snapshot_id or "legacy"),
                         )
                     )
                     .mappings()
                     .one_or_none()
                 )
                 if owned is not None:
-                    # One immutable compilation owns each execution member.  A
+                    # One immutable compilation owns each preparation scope. A
                     # retry that recompiles the same frozen Node revision must
                     # reuse that authority instead of failing the Node.
                     if not _owns_same_compilation(owned, snapshot):
@@ -142,6 +145,7 @@ class AgentCanvasRuntimeRepository:
                 connection.execute(
                     insert(AgentCanvasVideoParameterCompilationSnapshotRow).values(
                         snapshot_id=snapshot.snapshot_id,
+                        preparation_scope=snapshot.run_intent_snapshot_id or "legacy",
                         workflow_id=snapshot.workflow_id,
                         execution_id=snapshot.execution_id,
                         member_id=snapshot.member_id,
@@ -164,6 +168,13 @@ class AgentCanvasRuntimeRepository:
                 "Execution storage is unavailable.",
             ) from error
         return snapshot
+
+    def find_execution_admission(
+        self, workflow_id: str, idempotency_key: str, request_digest: str
+    ) -> CanvasExecutionStartResultV2 | None:
+        """Replay an accepted request before mutable Node eligibility is checked."""
+        with self._database.engine.connect() as connection:
+            return self._read_admission(connection, workflow_id, idempotency_key, request_digest)
 
     def get_parameter_compilation_snapshot(
         self,
@@ -192,6 +203,19 @@ class AgentCanvasRuntimeRepository:
                 "Parameter compilation snapshot was not found.",
             )
         return VideoParameterCompilationSnapshotV2.model_validate_json(str(row["snapshot_json"]))
+
+    def find_parameter_compilation_snapshot(
+        self, member_id: str, run_intent_snapshot_id: str
+    ) -> VideoParameterCompilationSnapshotV2 | None:
+        with self._database.engine.connect() as connection:
+            payload = connection.execute(
+                select(AgentCanvasVideoParameterCompilationSnapshotRow.snapshot_json).where(
+                    AgentCanvasVideoParameterCompilationSnapshotRow.member_id == member_id,
+                    AgentCanvasVideoParameterCompilationSnapshotRow.preparation_scope
+                    == run_intent_snapshot_id,
+                )
+            ).scalar_one_or_none()
+        return VideoParameterCompilationSnapshotV2.model_validate_json(payload) if payload else None
 
     def create_execution(
         self,
@@ -645,6 +669,7 @@ class AgentCanvasRuntimeRepository:
         timestamp = now.isoformat()
         try:
             with self._database.engine.begin() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
                 current = (
                     connection.execute(
                         select(AgentCanvasExecutionMemberRow).where(
@@ -679,6 +704,70 @@ class AgentCanvasRuntimeRepository:
                     )
                     if lease is None or int(lease["generation"]) != expected_lease_generation:
                         return False
+                reset_preparation = (
+                    run_intent_snapshot is not None
+                    and current["run_intent_snapshot_id"] is not None
+                    and current["run_intent_snapshot_id"] != run_intent_snapshot.snapshot_id
+                )
+                reset_values: dict[str, object] = {}
+                if reset_preparation:
+                    submission = connection.execute(
+                        select(AgentCanvasProviderSubmissionIntentRow.intent_id)
+                        .where(
+                            AgentCanvasProviderSubmissionIntentRow.member_id == current["member_id"]
+                        )
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    if current["provider_task_id"] is not None or submission is not None:
+                        raise _error(
+                            "execution_snapshot_frozen",
+                            "Submitted provider work cannot change its preparation intent.",
+                        )
+                    # Keep historical snapshots; invalidate only the active preparation projections.
+                    metadata = dict(
+                        prompt_metadata
+                        if prompt_metadata is not None
+                        else json.loads(str(current["prompt_metadata_json"] or "{}"))
+                    )
+                    for key in (
+                        "resolved_input_manifest",
+                        "parameter_compilation_snapshot_id",
+                        "model_resolution",
+                        "execution_parameter_normalizations",
+                    ):
+                        metadata.pop(key, None)
+                    prompt_metadata = metadata
+                    reset_values = {
+                        "resolved_input_manifest_id": None,
+                        "resolved_input_manifest_json": None,
+                        "resolved_input_manifest_digest": None,
+                        "effective_parameters_json": None,
+                        "parameter_compilation_snapshot_id": None,
+                        "omitted_optional_inputs_json": "[]",
+                    }
+                if resolved_input_manifest is not None:
+                    for key in (
+                        "resolved_input_manifest_id",
+                        "resolved_input_manifest_json",
+                        "resolved_input_manifest_digest",
+                    ):
+                        reset_values.pop(key, None)
+                if effective_parameters is not None:
+                    reset_values.pop("effective_parameters_json", None)
+                if parameter_compilation_snapshot is not None:
+                    reset_values.pop("parameter_compilation_snapshot_id", None)
+                    scope = (
+                        run_intent_snapshot.snapshot_id
+                        if run_intent_snapshot is not None
+                        else current["run_intent_snapshot_id"]
+                    )
+                    if parameter_compilation_snapshot.run_intent_snapshot_id not in (None, scope):
+                        raise _error(
+                            "parameter_compilation_snapshot_conflict",
+                            "Parameters belong to another preparation intent.",
+                        )
+                if omitted_optional_inputs is not None:
+                    reset_values.pop("omitted_optional_inputs_json", None)
                 row = connection.execute(
                     update(AgentCanvasExecutionMemberRow)
                     .where(
@@ -686,6 +775,7 @@ class AgentCanvasRuntimeRepository:
                         AgentCanvasExecutionMemberRow.node_id == node_id,
                     )
                     .values(
+                        **reset_values,
                         state=state,
                         phase=phase,
                         waiting_for_node_ids_json=json.dumps(list(waiting_for_node_ids)),
@@ -1683,10 +1773,18 @@ class AgentCanvasRuntimeRepository:
         connection: Connection,
         command: CanvasExecutionStartCommandV2,
     ) -> CanvasExecutionStartResultV2 | None:
+        return AgentCanvasRuntimeRepository._read_admission(
+            connection, command.workflow_id, command.idempotency_key, command.request_digest
+        )
+
+    @staticmethod
+    def _read_admission(
+        connection: Connection, workflow_id: str, idempotency_key: str, request_digest: str
+    ) -> CanvasExecutionStartResultV2 | None:
         row = (
             connection.execute(
                 select(AgentCanvasExecutionAdmissionRow).where(
-                    AgentCanvasExecutionAdmissionRow.idempotency_key == command.idempotency_key
+                    AgentCanvasExecutionAdmissionRow.idempotency_key == idempotency_key
                 )
             )
             .mappings()
@@ -1694,10 +1792,7 @@ class AgentCanvasRuntimeRepository:
         )
         if row is None:
             return None
-        if (
-            str(row["workflow_id"]) != command.workflow_id
-            or str(row["request_digest"]) != command.request_digest
-        ):
+        if str(row["workflow_id"]) != workflow_id or str(row["request_digest"]) != request_digest:
             raise _error(
                 "idempotency_conflict",
                 "Idempotency key was reused with another run request.",
@@ -1716,7 +1811,7 @@ class AgentCanvasRuntimeRepository:
         ).scalar_one_or_none()
         if workflow_revision is None:
             raise _error("workflow_not_found", "Workflow was not found.")
-        if int(workflow_revision) != command.expected_workflow_revision:
+        if not command.node_scoped and int(workflow_revision) != command.expected_workflow_revision:
             raise _error(
                 "run_intent_stale",
                 "Workflow authoring changed before Run admission.",
@@ -1745,6 +1840,51 @@ class AgentCanvasRuntimeRepository:
             expected_ids = {binding.binding_id for binding in intent.binding_snapshots}
             if current_ids != expected_ids:
                 raise _error("run_intent_stale", "Bindings changed before Run admission.")
+            expected_bindings = {
+                binding.binding_id: binding for binding in intent.binding_snapshots
+            }
+            for row in current_bindings:
+                binding = expected_bindings[str(row["binding_id"])]
+                source_id = (
+                    row["source_node_id"]
+                    if row["source_kind"] == "node_output"
+                    else row["source_asset_id"]
+                )
+                if (
+                    row["source_kind"] != binding.source_kind
+                    or source_id != binding.source_id
+                    or row["input_role"] != binding.input_role
+                    or int(row["order_index"]) != binding.order
+                    or json.loads(str(row["metadata_json"])) != binding.binding_metadata
+                    or (
+                        binding.source_kind == "image_asset"
+                        and row["source_asset_version_id"] != binding.source_asset_version_id
+                    )
+                ):
+                    raise _error(
+                        "run_intent_stale", "Binding authoring changed before Run admission."
+                    )
+                if binding.source_kind == "node_output":
+                    source = (
+                        connection.execute(
+                            select(
+                                AgentCanvasNodeRow.revision, AgentCanvasNodeRow.output_asset_id
+                            ).where(
+                                AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                                AgentCanvasNodeRow.node_id == binding.source_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if (
+                        source is None
+                        or source["revision"] != binding.source_node_revision
+                        or source["output_asset_id"] != binding.source_asset_id
+                    ):
+                        raise _error(
+                            "run_intent_stale", "Source Node changed before Run admission."
+                        )
             for asset_id, expected_digest in intent.expected_source_asset_digests.items():
                 digest = connection.execute(
                     select(AssetVersionRow.sha256)

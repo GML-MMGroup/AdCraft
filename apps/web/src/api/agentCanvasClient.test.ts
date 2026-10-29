@@ -101,6 +101,16 @@ describe("Agent Canvas client", () => {
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"r6"');
   });
 
+  it("pins a node save to the draft revision independently of workflow ETags", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow-workflow-1-v99"');
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ workflow: emptyWorkflow, node: draftNode }));
+    vi.stubGlobal("fetch", fetchMock);
+    await v2Api.patchAgentCanvasNode("workflow-1", draftNode.node_id, { title: "Saved" }, { expectedNodeRevision: 7 });
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    expect(headers.get("If-Match-Node")).toBe("7");
+    expect(headers.get("If-Match")).toBe('"workflow-workflow-1-v99"');
+  });
+
   it("does not expose retired variation-draft operations", () => {
     expect("saveAgentCanvasVariationDraft" in v2Api).toBe(false);
     expect("discardAgentCanvasVariationDraft" in v2Api).toBe(false);
@@ -370,7 +380,7 @@ describe("Agent Canvas client", () => {
   });
 
   it.each(["workflow_state_conflict", "run_intent_stale"])(
-    "retries Run once with a refreshed ETag and new idempotency key after a 409 %s",
+    "retries Run once with a refreshed ETag and the same idempotency key after a 409 %s",
     async (code) => {
       v2EtagStore.set("workflow", "workflow-1", '"r7"');
       const accepted = {
@@ -412,7 +422,7 @@ describe("Agent Canvas client", () => {
       expect(secondPost?.[1].method).toBe("POST");
       expect(secondPost?.[1].body).toBe(firstPost?.[1].body);
       expect(new Headers(secondPost?.[1].headers).get("If-Match")).toBe('"r8"');
-      expect(new Headers(secondPost?.[1].headers).get("Idempotency-Key")).toBe("run-key:stale-retry");
+      expect(new Headers(secondPost?.[1].headers).get("Idempotency-Key")).toBe("run-key");
       expect(v2AuthoringConflictStore.current()).toBeNull();
     },
   );
@@ -669,7 +679,8 @@ describe("Agent Canvas client", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const headers = new Headers(init?.headers);
-      expect(headers.get("If-Match")).toBe('"workflow:workflow-1:revision:7"');
+      expect(headers.get("If-Match")).toBe(url.endsWith("/connected-nodes")
+        ? '"workflow:workflow-1:revision:7"' : '"workflow:workflow-1:revision:8"');
       expect(headers.get("Idempotency-Key")).toBeTruthy();
       if (url.endsWith("/connected-nodes")) {
         expect(JSON.parse(String(init?.body))).toMatchObject({

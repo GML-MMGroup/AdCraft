@@ -435,6 +435,12 @@ async function requestV2Response(
           operationPath: path,
           message,
           retry: async () => {
+            // Adopting a newer Node revision requires this explicit user action.
+            if (retryOptions.headers.has("If-Match-Node")) {
+              const latest = await requestV2Response(path);
+              const node = asRecord(latest.payload);
+              if (typeof node?.revision === "number") retryOptions.headers.set("If-Match-Node", String(node.revision));
+            }
             await requestV2Response(path, retryOptions, {
               ...optionsByBehavior,
               allowMissingAuthoringEtag: false,
@@ -827,10 +833,13 @@ export const v2Api = {
     workflowId: string,
     nodeId: string,
     request: CanvasNodePatchRequestV2,
+    options: { expectedNodeRevision?: number } = {},
   ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    const headers = new Headers();
+    if (options.expectedNodeRevision !== undefined) headers.set("If-Match-Node", String(options.expectedNodeRevision));
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`,
-      { method: "PATCH", body: JSON.stringify(request) },
+      { method: "PATCH", headers, body: JSON.stringify(request) },
       normalizeCanvasMutationResponseV2,
     );
   },
@@ -1366,7 +1375,7 @@ export const v2Api = {
       path,
       {
         method: "POST",
-        headers: idempotencyHeaders(`${idempotencyKey}:stale-retry`),
+        headers: idempotencyHeaders(idempotencyKey),
         body,
       },
       normalizeCanvasRunAcceptedV2,

@@ -2505,9 +2505,16 @@ def patch_node(
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    if_match_node: Annotated[int | None, Header(alias="If-Match-Node", ge=1)] = None,
 ) -> CanvasMutationResponseV2:
     try:
         current = runtime.workflows.get_node(workflow_id, node_id)
+        if if_match_node is not None and current.revision != if_match_node:
+            raise V2PersistenceError(
+                "node_revision_conflict",
+                "This Node changed since the draft was loaded. Review the latest version before saving.",
+                stage="agent_canvas_node_api",
+            )
         runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         expected_revision = _expected_revision(if_match, workflow_id)
         if current.node_type == "editing" and request.structured_content is not None:
@@ -2541,6 +2548,7 @@ def patch_node(
                 node_id,
                 request,
                 expected_revision=expected_revision,
+                expected_node_revision=if_match_node,
             )
         workflow = runtime.projects.get_workflow(workflow_id)
         workflow = runtime.editing_responses.project_workflow(workflow)
@@ -4471,6 +4479,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "locator_invalid": 422,
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
+        "node_revision_conflict": 412,
         "workflow_state_conflict": 409,
         "run_intent_stale": 409,
         "requirement_ledger_not_found": 404,

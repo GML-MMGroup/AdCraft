@@ -4115,6 +4115,7 @@ export interface AgentCanvasVideoSkillRunV2 {
 }
 
 export interface CanvasRunRequestV2 {
+  expected_node_revisions?: Record<string, number>;
   scope: "all_drafts" | "selected_nodes";
   node_ids: string[];
   retry_failed: boolean;

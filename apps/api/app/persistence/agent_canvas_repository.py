@@ -823,6 +823,7 @@ class AgentCanvasWorkflowRepository:
         *,
         expected_revision: int,
         expected_node_revision: int | None = None,
+        node_scoped: bool = False,
     ) -> AgentCanvasWorkflowV2:
         """Replace one node record and advance authoring once."""
 
@@ -835,7 +836,12 @@ class AgentCanvasWorkflowRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    current_revision = _require_workflow_revision(
+                    require_revision = (
+                        _require_workflow_revision_at_least
+                        if node_scoped and expected_node_revision is not None
+                        else _require_workflow_revision
+                    )
+                    current_revision = require_revision(
                         connection, node.workflow_id, expected_revision
                     )
                     current_row = (
@@ -856,7 +862,7 @@ class AgentCanvasWorkflowRepository:
                         and current_node.revision != expected_node_revision
                     ):
                         raise V2PersistenceError(
-                            "prompt_revision_conflict",
+                            "node_revision_conflict" if node_scoped else "prompt_revision_conflict",
                             "The editable prompt projection does not match the Node revision.",
                             stage="agent_canvas_workflow_repository",
                         )

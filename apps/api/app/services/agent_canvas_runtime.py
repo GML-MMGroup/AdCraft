@@ -46,8 +46,6 @@ from app.schemas.agent_canvas_prompt_assertion import (
     safe_provider_prompt_assertion_metadata,
 )
 from app.schemas.agent_canvas_video_parameters import (
-    CanvasParameterProvenanceV2,
-    CompiledVideoParametersV2,
     VideoParameterCompilationSnapshotV2,
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
@@ -103,9 +101,12 @@ from app.services.agent_canvas_prompt_assertion_policy import (
     current_source_snapshots_for_evidence,
     prompt_assertion_admission_error,
 )
+from app.services.agent_canvas_video_parameter_authority import (
+    _manual_authority_provenance,
+    parameter_compilation_revision_is_current as _parameter_compilation_revision_is_current,
+)
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
 from app.services.agent_canvas_prompt_projection_lag import (
-    normalize_derived_parameter_prompt_authority,
     projection_consistency,
 )
 from app.services.agent_canvas_role_reference_policy import (
@@ -176,13 +177,36 @@ class AgentCanvasRunService:
         idempotency_key: str,
         expected_revision: int | None = None,
     ) -> CanvasRunAcceptedV2:
+        replay = self._runtime.find_execution_admission(
+            workflow_id, idempotency_key, _fingerprint(request)
+        )
+        if replay is not None:
+            return CanvasRunAcceptedV2(
+                workflow_id=workflow_id,
+                execution_id=replay.execution.execution_id,
+                status=replay.execution.status,
+                accepted_node_ids=replay.accepted_node_ids,
+                joined_node_ids=replay.joined_node_ids,
+                run_intent_snapshot_ids=replay.snapshot_ids,
+                events_cursor=self._events.max_seq(workflow_id),
+            )
         workflow = self._workflows.get_workflow(workflow_id)
-        if expected_revision is not None and expected_revision != workflow.revision:
+        if (
+            not request.expected_node_revisions
+            and expected_revision is not None
+            and expected_revision != workflow.revision
+        ):
             raise _run_error(
                 "workflow_state_conflict",
                 "Workflow authoring changed before Run admission.",
             )
         nodes = {node.node_id: node for node in workflow.nodes}
+        for node_id, revision in request.expected_node_revisions.items():
+            if self._require_node(nodes, node_id).revision != revision:
+                raise _run_error(
+                    "node_revision_conflict",
+                    "The selected Node changed before Run. Review its latest version.",
+                )
         requested = (
             tuple(nodes.values())
             if request.scope == "all_drafts"
@@ -245,6 +269,7 @@ class AgentCanvasRunService:
         admission = self._runtime.start_or_join_execution(
             CanvasExecutionStartCommandV2(
                 workflow_id=workflow_id,
+                node_scoped=bool(request.expected_node_revisions),
                 expected_workflow_revision=(
                     workflow.revision if expected_revision is None else expected_revision
                 ),
@@ -897,6 +922,7 @@ class DynamicCanvasScheduler:
                     )
                 else:
                     compiled = self._video_parameter_compiler.compile(
+                        run_intent_snapshot_id=member.run_intent_snapshot_id,
                         node=node,
                         selected_model_ref=(
                             resolution.model_ref if resolution is not None else capability.model_id
@@ -969,6 +995,7 @@ class DynamicCanvasScheduler:
                     model_defaults=capability.default_parameters,
                 )
                 parameter_compilation_snapshot = build_direct_video_parameter_snapshot(
+                    run_intent_snapshot_id=member.run_intent_snapshot_id,
                     node=node,
                     selected_model_ref=(
                         resolution.model_ref if resolution is not None else capability.model_id
@@ -980,18 +1007,20 @@ class DynamicCanvasScheduler:
                     compiled=direct_compiled,
                     now=now,
                 )
-                self._runtime.put_parameter_compilation_snapshot(parameter_compilation_snapshot)
+                parameter_compilation_snapshot = self._runtime.put_parameter_compilation_snapshot(
+                    parameter_compilation_snapshot
+                )
                 effective_parameters = EffectiveMediaParameterSnapshotV2(
-                    requested=direct_compiled.requested_parameters,
-                    effective=direct_compiled.effective_parameters,
-                    normalizations=direct_compiled.normalizations,
+                    requested=parameter_compilation_snapshot.requested_parameters,
+                    effective=parameter_compilation_snapshot.effective_parameters,
+                    normalizations=parameter_compilation_snapshot.normalizations,
                     parameter_compilation_snapshot_id=parameter_compilation_snapshot.snapshot_id,
                     provider=capability.provider,
                     model_id=capability.model_id,
                     capability_revision=capability.capability_revision,
                     execution_mode=mode.execution_mode,
                     semantic_extraction=mode.semantic_extraction,
-                    parameter_source=direct_compiled.parameter_source,
+                    parameter_source=parameter_compilation_snapshot.parameter_source,
                 )
                 prompt_metadata["parameter_compilation_snapshot_id"] = (
                     parameter_compilation_snapshot.snapshot_id
@@ -1243,7 +1272,17 @@ class DynamicCanvasScheduler:
 
     @staticmethod
     def _is_dependency_barrier(error: Exception) -> bool:
-        return getattr(error, "code", None) == "execution_dependency_barrier_pending"
+        code = getattr(error, "code", None)
+        if code == "execution_dependency_barrier_pending":
+            return True
+        # A parameter writeback can lose its revision fence while semantic
+        # extraction is running. Refresh the member intent through the same
+        # durable barrier used for other authoring changes before dispatch.
+        return (
+            isinstance(error, V2PersistenceError)
+            and code == "node_parameter_compilation_failed"
+            and error.details.get("reason") == "authoring_revision_changed"
+        )
 
     def _defer_dependency_member(
         self,
@@ -2369,77 +2408,6 @@ def _prompt_preparation_waiting_sources(
     )
 
 
-def _parameter_compilation_revision_is_current(
-    original: CanvasNodeV2,
-    current: CanvasNodeV2,
-    compiled: CompiledVideoParametersV2,
-) -> bool:
-    """Allow only the compiler's own derived-parameter revision bump."""
-
-    if current.revision not in {original.revision, original.revision + 1}:
-        return False
-    if current.revision != original.revision:
-        original = normalize_derived_parameter_prompt_authority(original)
-    for field in (
-        "node_id",
-        "workflow_id",
-        "node_type",
-        "creative_role",
-        "role_contract_version",
-        "title",
-        "status",
-        "execution_mode",
-        "summary_prompt",
-        "generation_prompt",
-        "structured_content",
-        "model_selection_mode",
-        "model_ref",
-        "metadata",
-        "prompt_context_snapshot_id",
-        "output_asset_id",
-        "position",
-        "error",
-        "prompt_preparation",
-    ):
-        if getattr(current, field) != getattr(original, field):
-            return False
-    if current.revision == original.revision:
-        return (
-            current.parameters == original.parameters
-            and current.parameter_provenance == original.parameter_provenance
-        )
-    return (
-        current.parameters == compiled.authoring_parameters
-        and _manual_authority_provenance(current) == compiled.parameter_provenance
-    )
-
-
-def _manual_authority_provenance(
-    node: CanvasNodeV2,
-) -> dict[str, CanvasParameterProvenanceV2]:
-    """Read Node provenance with the resolver's manual-authority default.
-
-    Deterministic parameters can be authored without a provenance entry, and
-    the parameter resolver treats every such value as manual authority.  The
-    compiler's own derived write preserves those values without inventing an
-    entry, so the two projections must be compared through the same rule.
-    """
-
-    provenance: dict[str, CanvasParameterProvenanceV2] = {}
-    for field, value in node.parameters.items():
-        entry = node.parameter_provenance.get(field)
-        if entry is None:
-            if not isinstance(value, (str, int, float, bool)):
-                continue
-            entry = CanvasParameterProvenanceV2(
-                origin="manual",
-                requested_value=value,
-                effective_value=value,
-            )
-        provenance[field] = entry
-    return provenance
-
-
 def _parameter_snapshot_prompt_authority(
     node: CanvasNodeV2,
     snapshot: VideoParameterCompilationSnapshotV2,
@@ -2466,7 +2434,9 @@ def _parameter_snapshot_prompt_authority(
 
 
 def _fingerprint(request: CanvasRunRequestV2) -> str:
-    return hashlib.sha256(request.model_dump_json().encode()).hexdigest()
+    # Preserve replay identities accepted before Node-scoped admission existed.
+    exclude = {"expected_node_revisions"} if not request.expected_node_revisions else set()
+    return hashlib.sha256(request.model_dump_json(exclude=exclude).encode()).hexdigest()
 
 
 def _execution_fingerprint(context: NodeExecutionContext) -> str:

@@ -2376,7 +2376,8 @@ class AgentCanvasVideoParameterCompilationSnapshotRow(Base):
     __table_args__ = (
         UniqueConstraint(
             "member_id",
-            name="uq_agent_canvas_video_parameter_snapshot_member",
+            "preparation_scope",
+            name="uq_agent_canvas_video_parameter_snapshot_scope",
         ),
         Index(
             "ix_agent_canvas_video_parameter_snapshots_execution",
@@ -2386,6 +2387,7 @@ class AgentCanvasVideoParameterCompilationSnapshotRow(Base):
     )
 
     snapshot_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    preparation_scope: Mapped[str] = mapped_column(Text, nullable=False, server_default="legacy")
     workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
     execution_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_executions.execution_id"), nullable=False

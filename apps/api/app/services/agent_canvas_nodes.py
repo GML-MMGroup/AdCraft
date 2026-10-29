@@ -129,8 +129,15 @@ class AgentCanvasNodeService:
         request: CanvasNodePatchRequestV2,
         *,
         expected_revision: int,
+        expected_node_revision: int | None = None,
     ) -> CanvasNodeV2:
         current = self._repository.get_node(workflow_id, node_id)
+        if expected_node_revision is not None and current.revision != expected_node_revision:
+            raise V2PersistenceError(
+                "node_revision_conflict",
+                "This Node changed since the draft was loaded. Review the latest version before saving.",
+                stage="agent_canvas_nodes",
+            )
         workflow = self._repository.get_workflow(workflow_id)
         changes = request.model_dump(exclude_unset=True)
         if "generation_prompt" in changes:
@@ -146,6 +153,7 @@ class AgentCanvasNodeService:
                 current,
                 expected_revision=expected_revision,
                 expected_node_revision=current.revision,
+                node_scoped=expected_node_revision is not None,
             )
             return self._repository.get_node(workflow_id, node_id)
         if "position" in changes:
@@ -282,6 +290,7 @@ class AgentCanvasNodeService:
             updated,
             expected_revision=expected_revision,
             expected_node_revision=current.revision,
+            node_scoped=expected_node_revision is not None,
         )
         return self._repository.get_node(workflow_id, node_id)
 

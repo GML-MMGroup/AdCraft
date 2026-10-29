@@ -184,6 +184,7 @@ class CanvasRunRequestV2(_RuntimeModel):
     node_ids: tuple[str, ...] = ()
     retry_failed: bool = False
     source_action: str = Field(min_length=1, max_length=128)
+    expected_node_revisions: dict[str, int] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_scope(self) -> "CanvasRunRequestV2":
@@ -193,6 +194,14 @@ class CanvasRunRequestV2(_RuntimeModel):
             raise ValueError("all_drafts does not accept node IDs")
         if len(set(self.node_ids)) != len(self.node_ids):
             raise ValueError("node IDs must be unique")
+        if self.expected_node_revisions and (
+            self.scope != "selected_nodes"
+            or set(self.expected_node_revisions) != set(self.node_ids)
+            or any(value < 1 for value in self.expected_node_revisions.values())
+        ):
+            raise ValueError(
+                "Node revisions must cover exactly the selected Nodes with positive revisions"
+            )
         return self
 
 
