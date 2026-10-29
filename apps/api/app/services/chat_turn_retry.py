@@ -65,6 +65,23 @@ class ChatTurnRetryService:
         *,
         idempotency_key: str,
     ) -> ChatTurnAcceptedV2:
+        source = self._conversations.get_turn(turn_id)
+        if source.workflow_id != workflow_id:
+            raise _error("chat_turn_not_found", "Chat turn was not found.")
+        continuation = self._continuations.get_for_turn(turn_id)
+        if (
+            source.turn_kind == "proposal_action"
+            and continuation is not None
+            and continuation.operation == "capability_materialization"
+        ):
+            from app.persistence.agent_canvas_materialization_repository import (
+                AgentCanvasMaterializationRepository,
+            )
+
+            return AgentCanvasMaterializationRepository(
+                self._conversations.database,
+                self._conversations.events,
+            ).retry_storyboard_turn(workflow_id, turn_id, request, idempotency_key=idempotency_key)
         replay = self._conversations.get_turn_by_idempotency_key(idempotency_key)
         if replay is not None:
             source = self._conversations.get_turn(turn_id)

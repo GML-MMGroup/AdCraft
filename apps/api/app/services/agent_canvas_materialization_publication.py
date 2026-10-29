@@ -127,6 +127,7 @@ from app.services.agent_canvas_stage_authoring_context import (
 )
 from app.services.brand_production_context import project_brand_production_context
 from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.storyboard_authoring_retry import storyboard_authoring_request_identity
 
 
 logger = logging.getLogger(__name__)
@@ -1508,6 +1509,21 @@ class CapabilityMaterializationPublicationService:
             return normalization, ()
 
         requirement = self._requirements.get_current(envelope.workflow_id)
+        materialization = self._conversations.get_private_proposal(
+            envelope.proposal_id
+        ).materialization
+        attempt_no = (
+            materialization.attempt_no if materialization is not None else envelope.attempt_no
+        )
+
+        def request_identity(suffix: str, contract_name: str) -> str:
+            return storyboard_authoring_request_identity(
+                self._workflows.database,
+                request_identity=f"{envelope.materialization_id}:{suffix}",
+                contract_name=contract_name,
+                attempt_no=attempt_no,
+            )
+
         current = self._working_documents.get_by_kind(
             envelope.workflow_id,
             session_id,
@@ -1539,7 +1555,9 @@ class CapabilityMaterializationPublicationService:
                 )
                 outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
                     outline_context,
-                    request_identity=f"{envelope.materialization_id}:outline",
+                    request_identity=request_identity(
+                        "outline", "StoryboardSequenceOutlineDraftV2"
+                    ),
                 )
                 outlined = self._storyboard_authoring.build_outline_content(
                     outline,
@@ -1571,7 +1589,7 @@ class CapabilityMaterializationPublicationService:
             )
             outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
                 context,
-                request_identity=f"{envelope.materialization_id}:outline",
+                request_identity=request_identity("outline", "StoryboardSequenceOutlineDraftV2"),
             )
             legacy_outline = self._storyboard_authoring.build_outline_content(
                 outline,
@@ -1632,7 +1650,9 @@ class CapabilityMaterializationPublicationService:
             )
             segment_draft = self._storyboard_gateway.materialize_storyboard_segment(
                 segment_context,
-                request_identity=f"{envelope.materialization_id}:{sequence_id}",
+                request_identity=request_identity(
+                    sequence_id, "StoryboardSegmentMaterializationDraftV2"
+                ),
             )
             segment_drafts[sequence_id] = segment_draft
             content = self._storyboard_authoring.plan_materialized_sequence_v3(

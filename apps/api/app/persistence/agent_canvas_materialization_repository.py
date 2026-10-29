@@ -38,6 +38,7 @@ from app.persistence.agent_canvas_conversation_repository import (
     _now,
     _require_guidance_revision,
     _require_guidance_session_row,
+    _require_guidance_session_row_by_workflow,
     _require_turn,
 )
 from app.persistence.agent_canvas_operation_envelope_repository import (
@@ -85,7 +86,11 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
     ResolvedTextInputSnapshotV2,
 )
-from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
+from app.schemas.agent_canvas_conversation import (
+    ProposalMaterializationProjectionV2,
+    ChatTurnAcceptedV2,
+    ChatTurnRetryRequestV1,
+)
 from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
@@ -2839,6 +2844,169 @@ class AgentCanvasMaterializationRepository:
             )
         return persisted_envelope
 
+    def retry_storyboard_turn(
+        self,
+        workflow_id: str,
+        turn_id: str,
+        request: ChatTurnRetryRequestV1,
+        *,
+        idempotency_key: str,
+    ) -> ChatTurnAcceptedV2:
+        """Requeue the frozen selection; never create a conversational retry child."""
+
+        timestamp = _now()
+        fingerprint = _digest(
+            _dump(
+                {
+                    "workflow_id": workflow_id,
+                    "turn_id": turn_id,
+                    **request.model_dump(mode="json"),
+                }
+            )
+        )
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                turn = _require_turn(connection, turn_id)
+                if str(turn["workflow_id"]) != workflow_id:
+                    raise _error("chat_turn_not_found", "Chat turn was not found.")
+                replay = (
+                    connection.execute(
+                        select(AgentCanvasIdempotencyRow).where(
+                            AgentCanvasIdempotencyRow.operation == "storyboard_turn_retry",
+                            AgentCanvasIdempotencyRow.idempotency_key == idempotency_key,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if replay is not None:
+                    if str(replay["request_fingerprint"]) != fingerprint:
+                        raise _error("idempotency_conflict", "Idempotency key was reused.")
+                    return ChatTurnAcceptedV2.model_validate_json(
+                        str(replay["response_json"])
+                    ).model_copy(update={"replayed": True})
+                proposal = (
+                    connection.execute(
+                        select(AgentCanvasConceptProposalRow).where(
+                            AgentCanvasConceptProposalRow.materialization_turn_id == turn_id,
+                            AgentCanvasConceptProposalRow.capability_id == "storyboard_design",
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                committed = connection.execute(
+                    select(AgentCanvasMaterializationCommitRow.materialization_id).where(
+                        AgentCanvasMaterializationCommitRow.action_turn_id == turn_id,
+                    )
+                ).first()
+                if (
+                    proposal is None
+                    or committed is not None
+                    or proposal["materialization_status"] != "failed"
+                    or not proposal["materialization_retryable"]
+                    or proposal["availability"] != "open"
+                ):
+                    raise _error(
+                        "chat_turn_not_retryable",
+                        "This Storyboard materialization cannot be retried.",
+                    )
+                workflow_revision = connection.execute(
+                    select(AgentCanvasWorkflowRow.revision).where(
+                        AgentCanvasWorkflowRow.workflow_id == workflow_id,
+                    )
+                ).scalar_one()
+                session = _require_guidance_session_row_by_workflow(connection, workflow_id)
+                if (
+                    workflow_revision != request.expected_workflow_revision
+                    or session["revision"] != request.expected_session_revision
+                    or session["active_proposal_id"] != proposal["proposal_id"]
+                ):
+                    raise _error(
+                        "chat_turn_retry_stale",
+                        "The failed selection no longer matches current authoring state.",
+                    )
+                frozen = json.loads(str(turn["retry_snapshot_json"])).get(
+                    "materialization_authority"
+                )
+                current = _storyboard_retry_authority(connection, workflow_id)
+                if frozen is not None:
+                    stale = frozen != current
+                else:
+                    # Historical failures predate snapshots. Admit only state
+                    # that has not changed since the failed delivery.
+                    cutoff = datetime.fromisoformat(str(turn["updated_at"]).replace("Z", "+00:00"))
+                    stale = any(
+                        datetime.fromisoformat(value.replace("Z", "+00:00")) > cutoff
+                        for value in current["updated_at"]
+                    )
+                if stale:
+                    raise _error(
+                        "chat_turn_retry_stale", "The failed selection's authoring inputs changed."
+                    )
+                continuation = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow).where(
+                            AgentCanvasContinuationOutboxRow.continuation_turn_id == turn_id,
+                            AgentCanvasContinuationOutboxRow.operation
+                            == "capability_materialization",
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                envelope_id = json.loads(str(continuation["payload_json"]))["envelope_id"]
+                envelope = self._envelopes.get_in_transaction(connection, envelope_id)
+                journey = parse_production_journey(str(session["journey_state_json"]))
+                if journey.stage_revision != envelope.stage_revision:
+                    raise _error("chat_turn_retry_stale", "The Storyboard authoring stage changed.")
+                active = connection.execute(
+                    select(AgentCanvasContinuationOutboxRow.continuation_id).where(
+                        AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                        AgentCanvasContinuationOutboxRow.status.in_(
+                            ("queued", "leased", "retry_wait")
+                        ),
+                    )
+                ).first()
+                if active is not None:
+                    raise _error(
+                        "active_continuation_conflict",
+                        "Another continuation already owns this workflow.",
+                    )
+                if not self._resolve_storyboard_identity_in_transaction(
+                    connection,
+                    envelope,
+                    action_request=json.loads(str(turn["request_json"])),
+                    idempotency_key=idempotency_key,
+                    timestamp=timestamp,
+                ):
+                    raise _error(
+                        "guidance_action_lineage_invalid", "Storyboard retry lineage is missing."
+                    )
+                accepted = ChatTurnAcceptedV2(
+                    workflow_id=workflow_id,
+                    conversation_id=str(turn["conversation_id"]),
+                    turn_id=turn_id,
+                    message_id=None,
+                    events_cursor=0,
+                )
+                connection.execute(
+                    insert(AgentCanvasIdempotencyRow).values(
+                        record_id=f"idem_{uuid4().hex}",
+                        operation="storyboard_turn_retry",
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=fingerprint,
+                        response_json=accepted.model_dump_json(),
+                        created_at=timestamp,
+                    )
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return accepted
+
     def mark_working(
         self,
         envelope: MaterializationEnvelopeV1,
@@ -2885,6 +3053,11 @@ class AgentCanvasMaterializationRepository:
                     .where(AgentCanvasChatTurnRow.turn_id == envelope.action_turn_id)
                     .values(status="running", updated_at=now)
                 )
+                attempt_no = connection.execute(
+                    select(AgentCanvasConceptProposalRow.materialization_attempt_no).where(
+                        AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id
+                    )
+                ).scalar_one()
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
@@ -2893,7 +3066,9 @@ class AgentCanvasMaterializationRepository:
                         turn_id=envelope.action_turn_id,
                         action_id=envelope.action_turn_id,
                         event_type="proposal_materialization_started",
-                        transition_key=(f"materialization:{envelope.materialization_id}:started"),
+                        transition_key=(
+                            f"materialization:{envelope.materialization_id}:started:{attempt_no}"
+                        ),
                         created_at=now,
                         payload={
                             "proposal_id": envelope.proposal_id,
@@ -2947,6 +3122,12 @@ class AgentCanvasMaterializationRepository:
             )
             if proposal is None:
                 return False
+            turn = _require_turn(connection, turn_id)
+            retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
+            if proposal["capability_id"] == "storyboard_design":
+                retry_snapshot["materialization_authority"] = _storyboard_retry_authority(
+                    connection, str(proposal["workflow_id"])
+                )
             connection.execute(
                 update(AgentCanvasConceptProposalRow)
                 .where(AgentCanvasConceptProposalRow.proposal_id == proposal["proposal_id"])
@@ -2965,6 +3146,9 @@ class AgentCanvasMaterializationRepository:
                 .where(AgentCanvasChatTurnRow.turn_id == turn_id)
                 .values(
                     status="failed",
+                    retryable=retryable,
+                    operation_stage="failed",
+                    retry_snapshot_json=_dump(retry_snapshot),
                     error_code=error_code[:160],
                     error_message=error_message[:2_048],
                     updated_at=now,
@@ -3004,7 +3188,9 @@ class AgentCanvasMaterializationRepository:
                     turn_id=turn_id,
                     action_id=turn_id,
                     event_type="proposal_materialization_failed",
-                    transition_key=(f"materialization:{proposal['materialization_id']}:failed"),
+                    transition_key=(
+                        f"materialization:{proposal['materialization_id']}:failed:{proposal['materialization_attempt_no']}"
+                    ),
                     created_at=now,
                     payload={
                         "proposal_id": str(proposal["proposal_id"]),
@@ -3016,6 +3202,23 @@ class AgentCanvasMaterializationRepository:
                         "retryable": retryable,
                     },
                 ),
+            )
+            turn = _require_turn(connection, turn_id)
+            _append_timeline_entry(
+                connection,
+                conversation_id=str(turn["conversation_id"]),
+                workflow_id=str(proposal["workflow_id"]),
+                entry_type="planning_progress",
+                content="Preparing the selected direction failed.",
+                metadata={
+                    "presentation_key": f"planning:{proposal['materialization_id']}",
+                    "materialization_id": str(proposal["materialization_id"]),
+                    "proposal_id": str(proposal["proposal_id"]),
+                    "capability_id": str(proposal["capability_id"]),
+                    "turn_id": turn_id,
+                    "status": "failed",
+                },
+                created_at=now,
             )
         return True
 
@@ -4043,6 +4246,43 @@ def _insert_storyboard_alias(
     )
 
 
+def _storyboard_retry_authority(connection: Connection, workflow_id: str) -> dict[str, object]:
+    workflow = (
+        connection.execute(
+            select(
+                AgentCanvasWorkflowRow.revision,
+                AgentCanvasWorkflowRow.updated_at,
+            ).where(AgentCanvasWorkflowRow.workflow_id == workflow_id)
+        )
+        .mappings()
+        .one()
+    )
+    session = _require_guidance_session_row_by_workflow(connection, workflow_id)
+    documents = (
+        connection.execute(
+            select(
+                AgentWorkingDocumentRow.document_id,
+                AgentWorkingDocumentRow.revision,
+                AgentWorkingDocumentRow.updated_at,
+            ).where(AgentWorkingDocumentRow.workflow_id == workflow_id)
+        )
+        .mappings()
+        .all()
+    )
+    return {
+        "workflow_revision": int(workflow["revision"]),
+        "session_revision": int(session["revision"]),
+        "documents": {str(row["document_id"]): int(row["revision"]) for row in documents},
+        "updated_at": sorted(
+            [
+                str(workflow["updated_at"]),
+                str(session["updated_at"]),
+                *(str(row["updated_at"]) for row in documents),
+            ]
+        ),
+    }
+
+
 def _requeue_storyboard_lineage(
     connection: Connection,
     *,
@@ -4071,6 +4311,7 @@ def _requeue_storyboard_lineage(
         .values(
             availability=next_availability,
             materialization_status="queued",
+            materialization_attempt_no=AgentCanvasConceptProposalRow.materialization_attempt_no + 1,
             materialization_retryable=True,
             materialization_error_code=None,
             materialization_error_message=None,
@@ -4128,6 +4369,11 @@ def _requeue_storyboard_lineage(
             "guidance_action_lineage_invalid",
             "Canonical Storyboard retry lineage is incomplete.",
         )
+    attempt_no = connection.execute(
+        select(AgentCanvasConceptProposalRow.materialization_attempt_no).where(
+            AgentCanvasConceptProposalRow.proposal_id == proposal_id,
+        )
+    ).scalar_one()
     events.append_in_transaction(
         connection,
         V2EventInsert(
@@ -4135,7 +4381,7 @@ def _requeue_storyboard_lineage(
             turn_id=turn_id,
             action_id=turn_id,
             event_type="proposal_materialization_requeued",
-            transition_key=f"materialization:{materialization_id}:requeued",
+            transition_key=f"materialization:{materialization_id}:requeued:{attempt_no}",
             created_at=timestamp,
             payload={
                 "proposal_id": proposal_id,
