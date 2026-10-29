@@ -65,6 +65,7 @@ from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
 from app.services.agent_canvas_references import _validate_video_character_bindings
+from app.services.agent_canvas_human_style_rules import SELECTED_SEQUENCE_VISUAL_STYLE
 from app.services.agent_canvas_guided_media_parameters import (
     resolve_video_audio_parameter,
 )
@@ -1524,7 +1525,7 @@ class ProgressiveStoryboardReadyService:
                 style_prompt=(
                     "Fictional cinematic live-action with coherent lighting and materials"
                     if representation.mode == "illustration_to_live_action"
-                    else "Detailed semi-realistic advertising illustration"
+                    else SELECTED_SEQUENCE_VISUAL_STYLE
                 ),
                 source="platform_default",
             ),

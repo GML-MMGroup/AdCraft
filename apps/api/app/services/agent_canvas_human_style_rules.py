@@ -1,8 +1,8 @@
 """Human rendering rules written into Agent-prepared node prompts.
 
-Image face handling preserves the selected rendering style and applies only to
-realistic human faces and exposed human skin. Non-human characters retain their
-selected style. Video conversion rules require an explicit live-action mode.
+Character-reference face handling applies only to realistic human faces and
+exposed human skin. Storyboard grids follow the authored visual style without
+a face-rendering override. Video conversion rules require a live-action mode.
 Historical constants remain available for reading saved prompt evidence.
 
 The rules live only in the visible node prompt text. Nothing adds them at
@@ -15,6 +15,10 @@ from __future__ import annotations
 from app.schemas.agent_canvas_role_prompt_preparation import (
     CharacterMainRoleBriefV2,
     RolePromptPreparationContextV2,
+)
+
+SELECTED_SEQUENCE_VISUAL_STYLE = (
+    "Follow the user's requested visual style and the selected audiovisual Skill."
 )
 
 PAINTED_PEOPLE_RULE = (
@@ -89,8 +93,6 @@ def human_style_rule(
         return FACE_ONLY_CHARACTER_RULE if context.human_face is not False else None
     characters = tuple(item for item in context.bindings if item.source_role == "character")
     if any(item.character_human_face is not False for item in characters):
-        if context.role_variant == "storyboard_grid":
-            return FACE_ONLY_STORYBOARD_RULE
         if context.role_variant in {"video_segment", "free_video"} and (
             context.video_representation_mode == "illustration_to_live_action"
         ):

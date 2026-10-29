@@ -7,6 +7,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RolePromptPreparationContextV2,
 )
 from app.services.agent_canvas_prompt_assertion_policy import SCENE_MULTIVIEW_VIEWS
+from app.services.agent_canvas_human_style_rules import SELECTED_SEQUENCE_VISUAL_STYLE
 
 
 def deterministic_role_brief(
@@ -111,7 +112,7 @@ def deterministic_role_brief(
             or (
                 "Fictional cinematic live-action with coherent lighting and materials"
                 if context.video_representation_mode == "illustration_to_live_action"
-                else "Detailed semi-realistic advertising illustration"
+                else SELECTED_SEQUENCE_VISUAL_STYLE
             ),
         }
     elif variant == "bgm":

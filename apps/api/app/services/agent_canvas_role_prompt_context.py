@@ -360,7 +360,9 @@ class RolePromptContextProjector:
             context_blocks=resolved_context_blocks,
             world_view_block_id=world_view_block_id,
             video_representation_mode=(
-                representation.mode if role_variant in {"video_segment", "free_video"} else None
+                representation.mode
+                if representation is not None and representation.source != "platform_default"
+                else None
             ),
             style_expression=(
                 VideoStyleExpressionV2(

@@ -52,7 +52,10 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     VideoSegmentRoleBriefV2,
     WorldViewRoleBriefV2,
 )
-from app.services.agent_canvas_human_style_rules import human_style_rule
+from app.services.agent_canvas_human_style_rules import (
+    SELECTED_SEQUENCE_VISUAL_STYLE,
+    human_style_rule,
+)
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionPolicyRegistry,
     source_snapshots_from_context,
@@ -932,6 +935,8 @@ def _structured_content(
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
+    if isinstance(brief, (StoryboardGridRoleBriefV2, VideoSegmentRoleBriefV2)):
+        default_style = SELECTED_SEQUENCE_VISUAL_STYLE
     if isinstance(brief, CharacterMainRoleBriefV2):
         default_style = "Character reference in the selected visual style and bound Main treatment"
     if (

@@ -45,6 +45,7 @@ from app.services.agent_canvas_parent_derived_materialization import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.services.brand_decision_document import BrandDecisionDocumentService
+from app.services.agent_canvas_human_style_rules import SELECTED_SEQUENCE_VISUAL_STYLE
 from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
@@ -3575,7 +3576,11 @@ def _structured_content_for_proposal(
     description: str,
 ) -> dict[str, object]:
     style = {
-        "style_prompt": "Detailed semi-realistic advertising illustration",
+        "style_prompt": (
+            SELECTED_SEQUENCE_VISUAL_STYLE
+            if proposal_kind == "storyboard"
+            else "Detailed semi-realistic advertising illustration"
+        ),
         "source": "platform_default",
         "negative_style_constraints": [],
     }

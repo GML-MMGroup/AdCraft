@@ -33,6 +33,7 @@ from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequi
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_node_change_authority import creative_node_input_digest
+from app.services.agent_canvas_human_style_rules import SELECTED_SEQUENCE_VISUAL_STYLE
 from app.services.agent_canvas_parent_identity import parent_snapshot_matches
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_ad_media import (
@@ -1436,8 +1437,7 @@ class CapabilityMaterializationPublicationService:
         draft_key, _, _, title_suffix, _ = stage_definitions("storyboard_design")[0]
         summary = envelope.selected_option.public_summary
         style_prompt = (
-            combined_style_guidance(context.style_projection)
-            or "Detailed semi-realistic advertising illustration"
+            combined_style_guidance(context.style_projection) or SELECTED_SEQUENCE_VISUAL_STYLE
         )
         style = VisualStyleContractV2(
             style_prompt=style_prompt,
