@@ -266,9 +266,11 @@ def _compile_prompt(
         segments.append(
             "Use the other references (characters, scenes, products, props) for identity, "
             "hair, clothing, spatial identity, object shapes, materials, and colors. "
-            "Do not copy the drawing style, strokes, coloring, or texture of non-style references. "
-            "Render in the target Video medium requested by the saved prompt; for live action, "
-            "use real cinematic photography with natural skin, fabric detail, light, and depth of field."
+            "Render in the target Video medium requested by the saved prompt. "
+            "Only when the target Video requests live action, do not copy the drawing style, "
+            "strokes, coloring, or texture of non-style references; use real cinematic photography "
+            "with natural skin, fabric detail, light, and depth of field. Otherwise, preserve the "
+            "selected illustration, animation, or 3D style, including its intended strokes and texture."
         )
     if grounding_plan is not None and storyboard_grid is not None:
         panel_text = ", ".join(

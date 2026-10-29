@@ -766,38 +766,27 @@ def _render(
         accessories = (
             character_projection.accessories if character_projection else brief.accessories
         )
-        human_face = character_projection.human_face if character_projection else brief.human_face
-        medium = (
-            "detailed non-photorealistic semi-realistic commercial illustration"
-            if human_face is None
-            else "photographic studio character reference"
-        )
         return (
             "Use the exact bound Character Main as identity authority. Create the same "
-            f"{medium} in front, side, and back "
+            "character in the selected visual style, matching the bound Main's rendering "
+            "treatment, in front, side, and back "
             "full-body views on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",
-            ("No photorealistic human, " if human_face is None else "No ")
-            + "identity drift, labels, captions, annotation text, product, "
+            "No identity drift, labels, captions, annotation text, product, "
             "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
     if isinstance(brief, CharacterMainRoleBriefV2):
-        medium = (
-            "detailed semi-realistic commercial illustration"
-            if brief.human_face is None
-            else "photographic studio character reference"
-        )
         return (
-            f"Create exactly one full-body {medium} on a clean neutral background. "
+            "Create exactly one full-body character reference in the selected visual style "
+            "on a clean neutral background. "
             "Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
             f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}."
             f"{_optional_labeled_fragment('Accessories', brief.accessories)}",
-            ("No photograph, photorealistic human, " if brief.human_face is None else "No ")
-            + "product, prop, active scene, second person, "
+            "No product, prop, active scene, second character, "
             "text, labels, annotation, captions, or board layout.",
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
@@ -907,8 +896,8 @@ def _structured_content(
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
     default_style = "Detailed semi-realistic advertising illustration"
-    if isinstance(brief, CharacterMainRoleBriefV2) and brief.human_face is not None:
-        default_style = "Photographic studio character reference"
+    if isinstance(brief, CharacterMainRoleBriefV2):
+        default_style = "Character reference in the selected visual style and bound Main treatment"
     if (
         isinstance(brief, VideoSegmentRoleBriefV2)
         and context.video_representation_mode == "illustration_to_live_action"
@@ -1004,11 +993,7 @@ def _structured_content(
             ),
             style=style,
             explicit_inclusions=brief.views,
-            negative_constraints=(
-                ("photorealistic human", "text", "identity drift")
-                if human_face is None
-                else ("text", "identity drift")
-            ),
+            negative_constraints=("text", "identity drift"),
             character_asset_kind="turnaround",
             occurrence_id=context.occurrence_id,
             parent_source_node_id=(projection.source_node_id if projection is not None else None),
@@ -1040,11 +1025,7 @@ def _structured_content(
                 )
             ),
             style=style,
-            negative_constraints=(
-                ("photorealistic human", "text", "identity drift")
-                if brief.human_face is None
-                else ("text", "identity drift")
-            ),
+            negative_constraints=("text", "identity drift"),
             character_asset_kind="identity_master",
         ).model_dump(mode="json")
     if isinstance(brief, SceneBoardRoleBriefV2):

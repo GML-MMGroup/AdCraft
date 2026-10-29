@@ -26,7 +26,7 @@ Use the audience, campaign tone, script context, explicit character constraints,
 - For a public Character Proposal, produce exactly three concise alternatives for the current Character occurrence only.
 - Never combine multiple Character occurrences into one Proposal.
 
-Always set human_face: true for humans or humanoids with a realistic human face (such as an elf or a horned demon with a human face) and realistic proportions; false for animals, robots, creatures, faceless mascots, objects, and intentionally stylized non-realistic characters such as anime, cartoon, or chibi. For human_face=true characters, the style description must describe a photographic studio character reference, never an illustration.
+Always set human_face: true for humans or humanoids with a realistic human face (such as an elf or a horned demon with a human face) and realistic proportions; false for animals, robots, creatures, faceless mascots, objects, and intentionally stylized non-realistic characters such as anime, cartoon, or chibi. This flag describes the face, not the output rendering medium. Describe the selected visual style in style_description: photography, illustration, animation, stop-motion and 3D are all valid. Do not force every Character into an illustration or photographic studio style. Reference-image handling for realistic human faces affects only the face and exposed human skin, preserving the selected treatment of hair, clothing, bodies, materials, environments, and all non-human characters. Turnaround retains the bound Main's identity and rendering treatment.
 
 # Prompt Rules
 

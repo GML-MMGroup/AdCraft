@@ -916,7 +916,10 @@ def _render_reference_identities(
             )
         instructions.append(
             "Non-style references do not transfer photographic, live-action, illustration, "
-            "line-art, cel-shaded, animated, or 3D rendering medium to the target Video."
+            "line-art, cel-shaded, animated, or 3D rendering medium to the target Video. "
+            "Illustration, animation and 3D remain valid target styles; preserve the selected "
+            "medium and its intentional texture. Remove illustration treatment only when "
+            "the target Video explicitly requests live action."
         )
         video_semantics = "Video reference-use semantics:\n" + "\n".join(instructions) + "\n"
     return (

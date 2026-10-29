@@ -28,6 +28,7 @@ Use the owning shot, its selected storyboard references, product and identity co
 - Define one segment-specific motion progression from its opening state through a distinct primary action to its closing state.
 - Use bounded prior-segment context only for the continuity handoff into the owning segment.
 - Treat the target output style as authoritative; a non-style reference supplies identity, spatial, or action facts without transferring its rendering medium.
+- Remove reference illustration texture only for an explicitly selected live-action Video. Preserve the selected illustration, animation, stop-motion, or 3D medium for other Videos, including those with human characters. Do not infer live action from the presence of a human face.
 
 # Prompt Rules
 

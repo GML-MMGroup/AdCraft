@@ -40,6 +40,10 @@ from app.schemas.agent_canvas_world_setting import (
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_guided_media_parameters import resolve_video_audio_parameter
+from app.services.agent_canvas_character_reference_prompt_policy import (
+    CHARACTER_MAIN_PROMPT,
+    CHARACTER_TURNAROUND_PROMPT,
+)
 from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
@@ -50,9 +54,8 @@ from app.services.agent_canvas_storyboard_progression import (
 )
 
 
-_MAIN_PROMPT = """Create one detailed semi-realistic 2D commercial character illustration, clearly illustrated rather than photographed. Show exactly one full-body human in a natural standing pose with a slight three-quarter front view on a seamless light-neutral design background with no environmental objects. Use only a subtle grounding shadow. Preserve readable facial features, hair, wardrobe construction, body proportions, silhouette, and color palette."""
-
-_TURNAROUND_PROMPT = """Use the bound Character Main image as the sole identity master. Render one turnaround sheet with exactly three unlabeled full-body figures arranged left-to-right as forward-facing, exact side profile, and rear-facing on a seamless light-neutral design background. All three views are the same person with identical face, hair, wardrobe, proportions, silhouette, materials, palette, and detailed semi-realistic illustration treatment. Keep the sheet blank: no headings, orientation labels, captions, typography, logos, or watermarks anywhere. Do not reinterpret or redesign the identity."""
+_MAIN_PROMPT = CHARACTER_MAIN_PROMPT
+_TURNAROUND_PROMPT = CHARACTER_TURNAROUND_PROMPT
 
 _PROVENANCE_KEYS = {
     "materialization_mode",
