@@ -91,6 +91,8 @@ class CreativeDirectionService:
                 ),
                 "display_order": skill.manifest.display_order,
                 "video_representation_mode": skill.manifest.video_representation_mode,
+                "allows_meme_captions": skill.manifest.allows_meme_captions,
+                "allows_comedic_sound_effects": skill.manifest.allows_comedic_sound_effects,
             },
             "package_digest": skill.package_digest,
         }
@@ -171,6 +173,8 @@ class CreativeDirectionService:
                 (str(projection.get("digest") or "") or None) if projection else None
             ),
             video_representation_mode=mode,
+            allows_meme_captions=skill_metadata.get("allows_meme_captions", False),
+            allows_comedic_sound_effects=skill_metadata.get("allows_comedic_sound_effects", False),
             video_representation_source_id=(
                 f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
             ),

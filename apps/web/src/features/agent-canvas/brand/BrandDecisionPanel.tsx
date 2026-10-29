@@ -3,6 +3,7 @@ import type { UiMessageKey } from "../../../i18n/uiMessages";
 import { BrandDecisionContent } from "./BrandDecisionContent.tsx";
 import { DecisionChevron } from "./DecisionChevron.tsx";
 import { useId, useState } from "react";
+import type { PresentationStreamView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import type {
   BrandDecisionPanelV1,
   BrandStageV2,
@@ -69,11 +70,13 @@ function BrandDecisionPanelContent({
   refreshing,
   onRefresh,
   onChooseSkills,
+  presentationStreams = [],
 }: {
   decisions: BrandDecisionPanelV1;
   refreshing: boolean;
   onRefresh: () => void;
   onChooseSkills?: () => void;
+  presentationStreams?: readonly PresentationStreamView[];
 }) {
   const t = useTranslation();
   const [expandedStages, setExpandedStages] = useState<Partial<Record<BrandStageV2, boolean>>>({});
@@ -154,7 +157,7 @@ function BrandDecisionPanelContent({
                   {!hasContent ? <p className="brand-decision-panel__empty">{t(stage === "production"
                     ? "Continue production on the canvas. Your creative brief is available above."
                     : "Decisions will appear here as you complete this stage in chat.")}</p> : null}
-                  <BrandDecisionContent decisions={decisions} stage={stage}/>
+                  <BrandDecisionContent decisions={decisions} stage={stage} presentationStreams={presentationStreams}/>
                   {stage === "skill-stack" && isCurrent && onChooseSkills ? (
                     <button type="button" className="brand-decision-panel__option"
                       disabled={refreshing || decisions.open_card?.stage !== "skill-stack"}

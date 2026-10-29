@@ -24,6 +24,7 @@ from app.schemas.agent_canvas_guided_checkpoint import (
     guided_checkpoint_id,
 )
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
+from app.schemas.agent_canvas_role_prompt_preparation import is_user_edited_prompt
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptPreparationPairV1,
     StoryboardPromptReadyPromotionCommandV1,
@@ -133,7 +134,10 @@ class StoryboardPromptReadyPromotionService:
             expected_workflow_revision=workflow.revision,
             expected_session_revision=(self._session_revision(outcome.workflow_id, session_id)),
             expected_stage_revision=self._stage_revision(
-                outcome.workflow_id, session_id, tuple(nodes[item.node_id] for item in pairs)
+                outcome.workflow_id,
+                session_id,
+                tuple(nodes[item.node_id] for item in pairs),
+                outcome.materialization_id,
             ),
             preparations=tuple(pairs),
             execution_preparations=execution_preparations,
@@ -260,9 +264,19 @@ class StoryboardPromptReadyPromotionService:
         return session.revision
 
     def _stage_revision(
-        self, workflow_id: str, session_id: str, nodes: tuple[CanvasNodeV2, ...]
+        self,
+        workflow_id: str,
+        session_id: str,
+        nodes: tuple[CanvasNodeV2, ...],
+        materialization_id: str,
     ) -> int:
         session = self._session(workflow_id, session_id)
+        if any(is_user_edited_prompt(node.prompt_presentation) for node in nodes):
+            promoted_revision = self._repository.promoted_stage_revision(
+                workflow_id, materialization_id
+            )
+            if promoted_revision is not None:
+                return promoted_revision
         origins = tuple(
             GuidedCheckpointOriginV1.model_validate(node.metadata["guided_checkpoint"])
             for node in nodes

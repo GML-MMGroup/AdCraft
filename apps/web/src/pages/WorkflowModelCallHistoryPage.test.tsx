@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { WorkflowCallHistory } from "../features/model-call-history/WorkflowCallHistory";
 import { v2Api } from "../api/v2Client";
+import { LocaleProvider } from "../i18n/locale";
 
 const summaries = [
   { call_id: "first-call", run_id: "same-run", workflow_id: "w", operation: "decide_turn_intent", stage: "initial", status: "completed", started_at: "2026-10-08T08:00:00Z" },
@@ -14,7 +15,8 @@ function setup(outcome: unknown = { payload: { response: { choices: [{ message: 
     : { ...summaries[url.endsWith("repair-call") ? 1 : 0], request: { payload: { user_prompt: 'User request:\n滑板广告\n\nValidated typed operation context:\n{"recent_messages":[]}', model_ref: "recorded-model", provider: "recorded-provider", effective_timeout_ms: 90000 } }, outcome },
   }));
   vi.stubGlobal("fetch", fetchMock);
-  render(<MemoryRouter initialEntries={["/workflows/w/llm-calls"]}><Routes><Route path="/workflows/:workflowId/llm-calls" element={<div className="llm-call-history"><WorkflowCallHistory workflowId="w"/></div>}/></Routes></MemoryRouter>);
+  localStorage.removeItem("adcraft.locale");
+  render(<LocaleProvider initialLocale="zh-CN"><MemoryRouter initialEntries={["/workflows/w/llm-calls"]}><Routes><Route path="/workflows/:workflowId/llm-calls" element={<div className="llm-call-history"><WorkflowCallHistory workflowId="w"/></div>}/></Routes></MemoryRouter></LocaleProvider>);
   return fetchMock;
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

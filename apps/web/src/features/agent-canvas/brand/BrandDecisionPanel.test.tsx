@@ -46,4 +46,25 @@ describe("BrandDecisionPanel", () => {
   it("keeps refresh explicit and disables it while reading", () => {
     const { onRefresh, rerender } = setup(); expect(onRefresh).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Refresh" })); expect(onRefresh).toHaveBeenCalledOnce(); rerender(<BrandDecisionPanel decisions={decisions} refreshing onRefresh={onRefresh}/>); expect(screen.getByRole("button", { name: "Refreshing…" }).hasAttribute("disabled")).toBe(true);
   });
+  it("places persisted brand thinking directly above an open option card", () => {
+    const panel = normalizeBrandDecisionPanelV1({
+      ...decisions,
+      journey: { ...decisions.journey, stage: "brand-memory", stage_revision: 2 },
+      open_card: {
+        card_id: "card-memory", stage: "brand-memory", stage_revision: 2,
+        target_slot_id: "brand_tone", question: "Choose the brand tone",
+        options: [{ option_id: "tone-1", label: "Quiet confidence", why: null }],
+      },
+    });
+    render(<BrandDecisionPanel decisions={panel} refreshing={false} onRefresh={vi.fn()} presentationStreams={[{
+      stream_id: "stream-brand", status: "completed", generation_id: "brand-gen:workflow-1:2",
+      reasoning_text: "I compared the tone options.", text: "", reasoning_started_at: 1_000,
+      answer_started_at: 3_000, terminal_at_ms: 4_000, last_sequence_no: 3, stream_kind: "assistant",
+      turn_id: null, node_id: null, authoritative_id: "card-memory", error_code: null,
+      protocol_error: null, last_event_type: "committed", last_event: null,
+    }]} />);
+    const pending = screen.getByText("Choose the brand tone").closest(".brand-decision-pending")!;
+    expect(pending.previousElementSibling?.classList.contains("agent-chat__thinking")).toBe(true);
+    expect(screen.getByText("Thought for 3s")).toBeTruthy();
+  });
 });

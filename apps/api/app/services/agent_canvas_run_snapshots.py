@@ -24,6 +24,10 @@ from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
+from app.services.agent_canvas_video_parameter_authority import (
+    compiled_parameters_from_snapshot,
+    parameter_compilation_revision_is_current,
+)
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_execution_mode import classify_canvas_execution_mode
@@ -439,6 +443,30 @@ class AgentCanvasRunIntentSnapshotService:
                 stage="agent_canvas_run_snapshots",
             )
         intent = self.prepare_member_intents(workflow, (node,))[0]
+        if (
+            member.parameter_compilation_snapshot_id is not None
+            and member.run_intent_snapshot is not None
+        ):
+            stored = self._runtime.get_parameter_compilation_snapshot(
+                member.parameter_compilation_snapshot_id
+            )
+            frozen_node = member.prompt_metadata.get("frozen_node")
+            if (
+                isinstance(frozen_node, dict)
+                and intent.binding_snapshots == member.run_intent_snapshot.binding_snapshots
+            ):
+                original = CanvasNodeV2.model_validate(frozen_node).model_copy(
+                    update={
+                        "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
+                        "position": node.position,
+                    }
+                )
+                if parameter_compilation_revision_is_current(
+                    original, node, compiled_parameters_from_snapshot(stored)
+                ):
+                    # The compiler's own derived write is already represented by this scope.
+                    # Retain its input manifest, model choice and semantic compilation.
+                    return member.run_intent_snapshot
         frozen = intent.frozen_node
         snapshot = NodeRunIntentSnapshotV2(
             snapshot_id=f"run_intent_{intent.snapshot_digest[:24]}",

@@ -16,7 +16,7 @@ import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 export type PatchNode = (
   nodeId: string,
   patch: CanvasNodePatchRequestV2,
-  options?: { coalesce?: boolean; optimistic?: boolean },
+  options?: { coalesce?: boolean; optimistic?: boolean; expectedNodeRevision?: number; onSaved?: (node: CanvasNodeV2) => void },
 ) => Promise<void>;
 
 export type PatchBinding = (

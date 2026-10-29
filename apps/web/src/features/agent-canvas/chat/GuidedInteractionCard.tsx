@@ -20,12 +20,15 @@ export interface GuidedInteractionCardProps {
   selectedConceptOptionId?: string | null;
   referenceOccurrenceLabel?: string | null;
   onSelectConceptOption?: (optionId: string) => void;
+  onSelectConceptCustom?: () => void;
+  onSubmitCustom?: (text: string) => Promise<boolean>;
   brandFormAnswers?: BrandFormAnswers;
   onBrandFormAnswersChange?: (answers: BrandFormAnswers) => void;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   pendingProductMainHandoff?: ProductMainHandoff | null;
   onClearProductMainHandoff?: () => void;
   onProjectsRefresh?: () => Promise<boolean> | void;
+  conceptRoleName?: string | null;
 }
 
 export function GuidedInteractionCard({
@@ -36,12 +39,15 @@ export function GuidedInteractionCard({
   selectedConceptOptionId = null,
   referenceOccurrenceLabel = null,
   onSelectConceptOption,
+  onSelectConceptCustom,
+  onSubmitCustom,
   brandFormAnswers,
   onBrandFormAnswersChange,
   onSubmit,
   pendingProductMainHandoff = null,
   onClearProductMainHandoff,
   onProjectsRefresh,
+  conceptRoleName = null,
 }: GuidedInteractionCardProps) {
   if (interaction.status !== "open" && interaction.status !== "submitted") return null;
 
@@ -82,6 +88,9 @@ export function GuidedInteractionCard({
         issue={issue}
         selectedOptionId={selectedConceptOptionId}
         onSelectOption={onSelectConceptOption ?? (() => undefined)}
+        onSelectCustom={onSelectConceptCustom}
+        onSubmitCustom={onSubmitCustom}
+        roleName={conceptRoleName}
       />
     );
   }

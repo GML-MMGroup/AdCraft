@@ -1,0 +1,45 @@
+{
+  "skill_id": "shadiao-absurd-animation",
+  "version": "1.0.0",
+  "display_name": "沙雕抽象动画",
+  "description": "以粗线平涂的表情包式角色、物理规则失效、瞬间变形、冷面反应、短花字和喜剧音效组织无厘头抽象风格的二维动画广告。",
+  "content_locale": "zh-CN",
+  "category": "animation-illustration",
+  "tags": [
+    "抽象",
+    "沙雕动画",
+    "无厘头",
+    "二维动画",
+    "表情包"
+  ],
+  "supported_use_cases": [
+    "品牌宣传",
+    "产品广告",
+    "社交媒体短视频"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "沙雕抽象动画视觉预览。",
+    "media_url": "/api/v2/video-skills/shadiao-absurd-animation/preview?v=1.0.0"
+  },
+  "display_order": 390,
+  "video_representation_mode": "illustrated",
+  "allows_meme_captions": true,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "261c8f3fa1fec5a96ddfb5b8dfe7e098f1f021935d7afee3530b6d65706b7e15",
+    "previews/preview.webp": "23a4fdc70af808c2ea88aa205d761242fd8752d77c8913fa09ae5068a28b1274",
+    "references/bgm.md": "038f57cc409c60060bfe7f352ef2c23cf2b1006a1780ed10e2bdb97c7ff8fdc8",
+    "references/character.md": "43711e8071639b8979be08fbc5a1bfcc0481e81b6615707998c89f10e6e36214",
+    "references/script.md": "374105c07fbed2176eee19faec47e9a09bbb5a06bc0020ec32504253a6fc676a",
+    "references/storyboard.md": "7971a0d4a03526bebe491a47b1354dcaae8b39582002b3d8d70cc00798282ee9",
+    "references/video.md": "a3859c86b2822abfe76fc01f7ef0051ba9e480144dbe5517275fc42630927037"
+  },
+  "role_guidance": {
+    "bgm": "references/bgm.md",
+    "character": "references/character.md",
+    "script": "references/script.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
+  }
+}

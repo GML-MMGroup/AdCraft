@@ -137,6 +137,7 @@ class SeedanceDeliveredMediaInputV1(_SeedanceInputModel):
     byte_count: int | None = Field(default=None, ge=0)
     reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
     reference_instruction_transport: Literal["native_slot", "provider_only"] | None = None
+    storyboard_downscaled_for: Literal["seedance_2_5"] | None = None
 
 
 class SeedanceMediaInputV1(SeedanceDeliveredMediaInputV1):
@@ -159,6 +160,7 @@ class SeedanceInputManifestV1(_SeedanceInputModel):
     effective_duration_seconds: int = Field(ge=1, le=15)
     generate_audio: bool
     normalizations: tuple[str, ...] = ()
+    storyboard_reference_mode: Literal["loose_guidance"] | None = None
     grounding_plan: StoryboardGridGroundingPlanV1 | None = None
 
     @property
@@ -203,6 +205,8 @@ class SeedanceInputManifestAuditV1(_SeedanceInputModel):
     node_id: str
     model_id: str
     prompt_hash: str
+    storyboard_layout_only_instruction: bool = False
+    storyboard_reference_mode: Literal["loose_guidance"] | None = None
     text_inputs: tuple[SeedanceTextInputAuditV1, ...] = ()
     media_inputs: tuple[SeedanceMediaInputAuditV1, ...] = ()
     input_counts: dict[Literal["text", "script", "image", "video", "audio"], int]

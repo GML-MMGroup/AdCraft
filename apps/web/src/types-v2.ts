@@ -2378,6 +2378,7 @@ export interface CanvasRuntimeEventV2 {
 
 export type PresentationStreamKindV1 = "assistant" | "node_prompt";
 export type PresentationStreamStatusV1 = "open" | "completed" | "failed" | "superseded";
+export type PresentationStreamSegmentV1 = "reasoning" | "answer";
 export type PresentationStreamEventTypeV1 =
   | "started"
   | "delta"
@@ -2388,7 +2389,7 @@ export type PresentationStreamEventTypeV1 =
   | "heartbeat";
 
 export interface PresentationStreamResetV1 {
-  reason: "cursor_expired" | "store_recovered";
+  reason: "cursor_expired" | "store_recovered" | "attempt_restarted" | "final_replaced";
   authoritative_id: string | null;
   resource_kind: "message" | "prompt" | "workflow";
 }
@@ -2404,12 +2405,29 @@ export interface PresentationStreamEventV1 {
   node_id: string | null;
   generation_id: string;
   response_locale: string | null;
+  segment?: PresentationStreamSegmentV1;
   node_revision: number | null;
   delta: string | null;
   authoritative_id: string | null;
   content_digest: string | null;
   error_code: string | null;
   reset: PresentationStreamResetV1 | null;
+}
+
+export interface PresentationStreamSummaryV1 {
+  stream_id: string;
+  stream_kind: PresentationStreamKindV1;
+  generation_id: string;
+  turn_id: string | null;
+  node_id: string | null;
+  node_revision: number | null;
+  status: PresentationStreamStatusV1;
+  created_at: string;
+  terminal_at: string | null;
+}
+
+export interface PresentationStreamListResponseV1 {
+  streams: PresentationStreamSummaryV1[];
 }
 
 export interface ProviderResolvedTextInputAuditV2 {
@@ -3111,7 +3129,7 @@ export interface EditingSkippedInputV2 {
   reference_id: string;
   node_id: string | null;
   asset_id: string | null;
-  reason: "source_not_ready" | "source_failed" | "source_output_unavailable" | "source_media_invalid";
+  reason: "source_not_ready" | "source_failed" | "omitted_no_output" | "source_output_unavailable" | "source_media_invalid";
 }
 
 export interface EditingPreviewClipV2 {
@@ -3217,6 +3235,24 @@ export interface CanvasBindingCreateRequestV2 {
   order?: number | null;
   label?: string | null;
   metadata?: Record<string, unknown>;
+}
+
+export interface CanvasNodeRestoreResponseV2 {
+  workflow: AgentCanvasWorkflowV2;
+  node: CanvasNodeV2;
+  restored_binding_ids: string[];
+  skipped_binding_ids: string[];
+}
+
+export interface CanvasBindingRestoreRequestV2 {
+  binding_id: string;
+  source: CanvasBindingCreateRequestV2["source"];
+  target_node_id: string;
+  input_role: CanvasBindingInputRoleV2;
+  enabled: boolean;
+  order: number;
+  label?: string | null;
+  metadata: Record<string, unknown>;
 }
 
 export interface CanvasBindingPatchRequestV2 {
@@ -4079,6 +4115,7 @@ export interface AgentCanvasVideoSkillRunV2 {
 }
 
 export interface CanvasRunRequestV2 {
+  expected_node_revisions?: Record<string, number>;
   scope: "all_drafts" | "selected_nodes";
   node_ids: string[];
   retry_failed: boolean;

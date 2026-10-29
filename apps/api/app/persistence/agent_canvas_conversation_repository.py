@@ -14,6 +14,10 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.persistence.agent_canvas_storyboard_journey_recovery import (
+    recovery_conflict,
+    release_suppressed_reservation_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.agent_canvas_auto_run_repository import (
@@ -549,6 +553,59 @@ class AgentCanvasConversationRepository:
                 "conversation_persistence_unavailable",
                 "Conversation storage failed.",
             ) from error
+
+    def release_suppressed_storyboard_reservation(
+        self,
+        session_id: str,
+        *,
+        envelope_id: str,
+        expected_session_revision: int,
+        expected_action_id: str,
+    ) -> GuidedSessionStateV2:
+        """Repair an inspected historical suppression with exact revision/action fences."""
+
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            row = _require_guidance_session_row(connection, session_id)
+            journey = parse_production_journey(str(row["journey_state_json"]))
+            if (
+                int(row["revision"]) != expected_session_revision
+                or journey.active_action is None
+                or journey.active_action.action_id != expected_action_id
+            ):
+                raise recovery_conflict()
+            envelope = AgentCanvasOperationEnvelopeRepository(self._database).get_in_transaction(
+                connection, envelope_id
+            )
+            if (
+                not isinstance(envelope, CapabilityCommandEnvelopeV2)
+                or envelope.session_id != session_id
+                or envelope.workflow_id != row["workflow_id"]
+            ):
+                raise recovery_conflict()
+            suppressed = connection.execute(
+                select(WorkflowEventRow.payload_json).where(
+                    WorkflowEventRow.workflow_id == envelope.workflow_id,
+                    WorkflowEventRow.event_type == "storyboard_duplicate_proposal_suppressed",
+                )
+            ).scalars()
+            if not any(
+                json.loads(str(raw)).get("suppressed_turn_id") == envelope.capability_turn_id
+                for raw in suppressed
+            ):
+                raise recovery_conflict()
+            if not release_suppressed_reservation_in_transaction(
+                connection,
+                self._events,
+                envelope=envelope,
+                timestamp=_now(),
+            ):
+                raise recovery_conflict()
+            result = _guidance_session(
+                connection, _require_guidance_session_row(connection, session_id)
+            )
+            connection.commit()
+            return result
 
     def replace_guidance_journey(
         self,
@@ -4159,6 +4216,24 @@ class AgentCanvasConversationRepository:
             ),
         )
 
+    def get_latest_turn(self, workflow_id: str) -> ChatTurnV2 | None:
+        try:
+            with self._database.engine.connect() as connection:
+                turn_id = connection.execute(
+                    select(AgentCanvasChatTurnRow.turn_id)
+                    .where(AgentCanvasChatTurnRow.workflow_id == workflow_id)
+                    .order_by(
+                        AgentCanvasChatTurnRow.created_at.desc(),
+                        AgentCanvasChatTurnRow.turn_id.desc(),
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        return self.get_turn(str(turn_id)) if turn_id is not None else None
+
     def get_turn_by_idempotency_key(self, idempotency_key: str) -> ChatTurnV2 | None:
         try:
             with self._database.engine.connect() as connection:
@@ -4233,6 +4308,49 @@ class AgentCanvasConversationRepository:
                 parse_production_journey(str(session_journey)).journey_policy_id
                 == "proposal_submit_auto_result_v1"
             ),
+        )
+
+    def get_selected_world_option(
+        self, workflow_id: str, journey: GuidedProductionJourneyV2
+    ) -> ConceptOptionRecordV2 | None:
+        """Resolve the selected world's exact persisted option identity."""
+        evidence = next(
+            (
+                item
+                for item in reversed(journey.transition_evidence)
+                if item.evidence_kind
+                in {"world_view_selected", "world_view_excluded", "world_view_delegated"}
+            ),
+            None,
+        )
+        if evidence is None or evidence.evidence_kind != "world_view_selected":
+            return None
+        with self._database.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    select(
+                        AgentCanvasConceptProposalRow.proposal_id,
+                        AgentCanvasConceptProposalRow.materialization_option_id,
+                    ).where(
+                        AgentCanvasConceptProposalRow.workflow_id == workflow_id,
+                        AgentCanvasConceptProposalRow.capability_id == "world_setting",
+                        AgentCanvasConceptProposalRow.materialization_id == evidence.source_id,
+                        AgentCanvasConceptProposalRow.materialization_status == "completed",
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        proposal = self.get_private_proposal(str(row["proposal_id"]))
+        return next(
+            (
+                option
+                for option in proposal.options
+                if option.option_id == row["materialization_option_id"]
+            ),
+            None,
         )
 
     def get_private_proposal(self, proposal_id: str) -> ConceptProposalV2:
@@ -6256,7 +6374,10 @@ def _skill_run_with_public(
     if not isinstance(public_payload, dict):
         return _skill_run(row)
     public_payload = {
-        key: value for key, value in public_payload.items() if key != "video_representation_mode"
+        key: value
+        for key, value in public_payload.items()
+        if key
+        not in {"video_representation_mode", "allows_meme_captions", "allows_comedic_sound_effects"}
     }
     return _skill_run(
         row,
@@ -6679,6 +6800,8 @@ def _proposal(
                 option_id=str(option["option_id"]),
                 title=str(option["title"]),
                 public_summary=str(option["description"]),
+                creative_method_id=option["creative_method_id"],
+                creative_method_version=option["creative_method_version"],
                 key_decisions=(
                     tuple(json.loads(str(option["key_decisions_json"])))
                     if proposal_card_schema_version == 1

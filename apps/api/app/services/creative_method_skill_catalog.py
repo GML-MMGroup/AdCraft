@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 
 from app.persistence.brand_decision_repository import BrandDecisionRepository
@@ -57,6 +58,7 @@ class CreativeSkillSeed:
     title: str
     summary: str
     frontmatter: dict[str, str]
+    body: dict[str, str]
 
 
 def parse_seed_file(path: Path) -> CreativeSkillSeed:
@@ -80,6 +82,20 @@ def parse_seed_file(path: Path) -> CreativeSkillSeed:
         examples = _count_examples(frontmatter["cross_category_examples"])
         if examples < _CROSS_CATEGORY_MIN_EXAMPLES:
             raise _invalid(path, "at least two cross-category examples")
+    body = dict(frontmatter)
+    sections = re.split(r"^## ", text[end + 4 :], flags=re.MULTILINE)
+    by_heading = {
+        heading.strip(): content.strip()
+        for section in sections[1:]
+        for heading, _, content in [section.partition("\n")]
+    }
+    for heading, key in (
+        ("Why It Works", "why_it_works"),
+        ("How To Execute", "how_to_execute"),
+    ):
+        if not by_heading.get(heading):
+            raise _invalid(path, f"required section {heading}")
+        body[key] = by_heading[heading]
     return CreativeSkillSeed(
         skill_id=frontmatter["skill_id"],
         version=frontmatter["version"],
@@ -87,6 +103,7 @@ def parse_seed_file(path: Path) -> CreativeSkillSeed:
         title=frontmatter["title"],
         summary=frontmatter[_SUMMARY_FIELD_BY_KIND[skill_kind]].strip().replace("\n", " "),
         frontmatter=frontmatter,
+        body=body,
     )
 
 
@@ -103,15 +120,17 @@ class CreativeMethodSkillCatalogService:
         self._repository = BrandDecisionRepository(database)
 
     def import_seeds(self) -> int:
-        """Import every seed file once; return the count of new inserts."""
+        """Refresh seeds and retire absent methods; return the count of new inserts."""
 
         seeds = sorted(self._seed_dir.glob("*.md"))
         inserted = 0
+        identities: set[tuple[str, str]] = set()
         try:
             with self._database.engine.begin() as connection:
                 for path in seeds:
                     seed = parse_seed_file(path)
-                    body = json_dumps(seed.frontmatter)
+                    identities.add((seed.skill_id, seed.version))
+                    body = json_dumps(seed.body)
                     created = self._repository.upsert_creative_skill_in_transaction(
                         connection,
                         skill_id=seed.skill_id,
@@ -122,6 +141,9 @@ class CreativeMethodSkillCatalogService:
                         body_json=body,
                     )
                     inserted += 1 if created else 0
+                self._repository.retire_absent_creative_skills_in_transaction(
+                    connection, identities
+                )
         except V2PersistenceError:
             raise
         except Exception as error:

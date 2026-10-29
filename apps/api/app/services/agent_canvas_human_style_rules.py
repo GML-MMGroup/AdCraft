@@ -1,11 +1,9 @@
 """Human rendering rules written into Agent-prepared node prompts.
 
-User decision (2026-10-26, replacing the 2026-10-23 paint-every-person rules):
-characters with realistic human faces use heavy colored-pencil faces and exposed
-skin in photographic Character and Storyboard references so Seedance accepts
-them. Agent Videos render real people in photorealistic live action. Non-human
-and intentionally stylized characters get no special rule. Historical unknown
-human-face values retain the legacy painted-person rules.
+Image face handling preserves the selected rendering style and applies only to
+realistic human faces and exposed human skin. Non-human characters retain their
+selected style. Video conversion rules require an explicit live-action mode.
+Historical constants remain available for reading saved prompt evidence.
 
 The rules live only in the visible node prompt text. Nothing adds them at
 provider submission, so a user who edits or deletes a rule gets exactly what
@@ -63,24 +61,38 @@ REAL_PEOPLE_VIDEO_RULE = (
     "on skin. This rule overrides any instruction to keep people or the video illustrated."
 )
 
+FACE_ONLY_CHARACTER_RULE = (
+    "Mandatory rule: Preserve the selected visual style. If a realistic human face appears, "
+    "render only the human face, ears, neck and hands as an obvious colored-pencil drawing "
+    "with visible cross-hatching, outlines and paper grain, retaining natural skin tones and "
+    "accurate facial proportions. Preserve the selected treatment of hair, clothing, bodies, "
+    "materials and background. Do not apply this face treatment to animals, robots, creatures, "
+    "objects or other non-human characters, and do not turn an intentionally stylized face "
+    "into a realistic human face."
+)
+FACE_ONLY_STORYBOARD_RULE = (
+    "Mandatory rule: Preserve the selected visual style in every panel. If realistic human "
+    "faces appear, including background extras and crowds, render only their faces, ears, "
+    "necks and hands as obvious colored-pencil drawings with visible cross-hatching, outlines "
+    "and paper grain, retaining natural skin tones and accurate facial proportions. Preserve "
+    "the selected treatment of environments, lighting, materials, clothing, hair and bodies. "
+    "Keep animals, robots, creatures, objects and other non-human characters in their selected "
+    "style; do not restyle them or turn intentionally stylized faces into realistic human faces."
+)
+
 
 def human_style_rule(
     context: CharacterMainRoleBriefV2 | RolePromptPreparationContextV2,
 ) -> str | None:
     """Select from the Character brief or the downstream role's explicit Bindings."""
     if isinstance(context, CharacterMainRoleBriefV2):
-        if context.human_face is True:
-            return PENCIL_FACE_CHARACTER_RULE
-        return PAINTED_PEOPLE_RULE if context.human_face is None else None
+        return FACE_ONLY_CHARACTER_RULE if context.human_face is not False else None
     characters = tuple(item for item in context.bindings if item.source_role == "character")
-    if any(item.character_human_face is True for item in characters):
+    if any(item.character_human_face is not False for item in characters):
         if context.role_variant == "storyboard_grid":
-            return PENCIL_FACE_STORYBOARD_RULE
-        if context.role_variant in {"video_segment", "free_video"}:
+            return FACE_ONLY_STORYBOARD_RULE
+        if context.role_variant in {"video_segment", "free_video"} and (
+            context.video_representation_mode == "illustration_to_live_action"
+        ):
             return REAL_PEOPLE_VIDEO_RULE
-    elif any(item.character_human_face is None for item in characters):
-        if context.role_variant == "storyboard_grid":
-            return STORYBOARD_PAINTED_PEOPLE_RULE
-        if context.role_variant == "video_segment":
-            return VIDEO_REALISTIC_PEOPLE_RULE
     return None

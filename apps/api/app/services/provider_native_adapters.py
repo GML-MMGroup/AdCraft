@@ -6,10 +6,13 @@ import base64
 import binascii
 from dataclasses import dataclass
 import hashlib
+from http.client import HTTPException
 import json
+import re
 from typing import Any, Mapping, Protocol
-from urllib.parse import urlsplit
-from urllib.request import Request
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlsplit
+from urllib.request import BaseHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -29,6 +32,57 @@ from app.services.provider_credentials import (
 from app.services.provider_model_catalog import TEAMOROUTER_IMAGE_PROFILE
 from app.services.workflow_model_call_redaction import redact_model_call
 from app.tools.media_provider_protocol import MediaApiError
+
+
+class ProviderResponseContractError(ValueError):
+    """A stable public error code with bounded response-shape diagnostics."""
+
+    def __init__(self, contract_check: str, diagnostics: Mapping[str, Any] | None = None) -> None:
+        super().__init__("provider_response_contract_invalid")
+        self.diagnostics: dict[str, Any] = {
+            **dict(diagnostics or {}),
+            "stage": "provider_response",
+            "contract_check": contract_check,
+        }
+
+
+class _ImageResponse(dict[str, object]):
+    """Keep transport diagnostics outside the provider's result mapping."""
+
+    def __init__(self, body: Mapping[str, object], diagnostics: dict[str, Any]) -> None:
+        super().__init__(body)
+        self.diagnostics = diagnostics
+
+
+def _response_shape_diagnostics(
+    response: Mapping[str, object], *, api_key: str = "", prompt: str = ""
+) -> dict[str, Any]:
+    def keys(value: Mapping[str, object]) -> list[str]:
+        return sorted(
+            _safe_contract_text(key, api_key=api_key, prompt=prompt)[:40]
+            for key in value
+            if isinstance(key, str)
+        )[:10]
+
+    diagnostics: dict[str, Any] = {"response_top_level_keys": keys(response)}
+    data = response.get("data")
+    if isinstance(data, list):
+        diagnostics["data_item_count"] = len(data)
+        diagnostics["data_item_keys"] = (
+            keys(data[0]) if data and isinstance(data[0], Mapping) else []
+        )
+    return diagnostics
+
+
+def _safe_contract_text(value: str, *, api_key: str, prompt: str) -> str:
+    if prompt:
+        value = value.replace(prompt, "[REDACTED]")
+    safe, _ = redact_model_call(value, (api_key,))
+    safe = re.sub(r"(?i)\b(?:https?://|data:)[^\s\"'<>]+", "[REDACTED]", safe)
+    safe = re.sub(
+        r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])", "[REDACTED]", safe
+    )
+    return " ".join(safe.split())[:300]
 
 
 @dataclass(frozen=True, slots=True)
@@ -592,9 +646,23 @@ class RawHttpPostTransport(Protocol):
         max_response_bytes: int,
     ) -> ProviderHttpResponse: ...
 
+    def get(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse: ...
+
+
+class _NoImageRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
 
 class UrllibRawHttpPostTransport:
-    """POST prepared bytes with redirects disabled, optionally via one proxy."""
+    """POST prepared bytes or GET an HTTPS image, optionally via one proxy."""
 
     def __init__(self, *, proxy_url: str | None = None) -> None:
         self.proxy_url = proxy_url
@@ -614,6 +682,41 @@ class UrllibRawHttpPostTransport:
             max_response_bytes=max_response_bytes,
             proxy_url=self.proxy_url,
         )
+
+    def get(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse:
+        handlers: list[BaseHandler] = [_NoImageRedirectHandler()]
+        if self.proxy_url is not None:
+            handlers.append(ProxyHandler({"http": self.proxy_url, "https": self.proxy_url}))
+        opener = build_opener(*handlers)
+        redirects_remaining = 3
+        while True:
+            if not url.startswith("https://"):
+                raise ValueError("Image download requires HTTPS.")
+            try:
+                response = opener.open(
+                    Request(url, headers=headers, method="GET"), timeout=timeout_seconds
+                )
+            except HTTPError as error:
+                response = error
+            with response:
+                body = response.read(max_response_bytes + 1)
+                if len(body) > max_response_bytes:
+                    raise OSError("Image download exceeded the configured limit.")
+                status = int(response.status)
+                location = response.headers.get("Location")
+            if status not in {301, 302, 303, 307, 308} or not location:
+                return ProviderHttpResponse(status_code=status, body=body)
+            if not redirects_remaining:
+                raise OSError("Image download redirect limit exceeded.")
+            url = urljoin(url, location)
+            redirects_remaining -= 1
 
 
 class TeamoRouterImageTransport:
@@ -661,13 +764,71 @@ class TeamoRouterImageTransport:
         )
         if response.status_code < 200 or response.status_code >= 300:
             raise _image_http_error(response, api_key=self._api_key)
+        diagnostics: dict[str, Any] = {
+            "http_status": response.status_code,
+            "response_body_bytes": len(response.body),
+        }
         try:
             parsed = json.loads(response.body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ValueError("provider_response_contract_invalid") from error
+            raise ProviderResponseContractError("body_not_json", diagnostics) from error
         if not isinstance(parsed, Mapping):
-            raise ValueError("provider_response_contract_invalid")
-        return parsed
+            raise ProviderResponseContractError("body_not_object", diagnostics)
+        prompt = fields.get("prompt")
+        prompt = prompt if isinstance(prompt, str) else ""
+        diagnostics.update(
+            _response_shape_diagnostics(parsed, api_key=self._api_key, prompt=prompt)
+        )
+        nested = parsed.get("error")
+        sources = (nested, parsed) if isinstance(nested, Mapping) else (parsed,)
+        for source_key, diagnostic_key in (
+            ("code", "provider_error_code"),
+            ("message", "provider_message"),
+        ):
+            for source in sources:
+                value = source.get(source_key)
+                if isinstance(value, str) and value.strip():
+                    diagnostics[diagnostic_key] = _safe_contract_text(
+                        value, api_key=self._api_key, prompt=prompt
+                    )
+                    break
+        self._inline_image_url(parsed, diagnostics)
+        return _ImageResponse(parsed, diagnostics)
+
+    def _inline_image_url(
+        self, response: Mapping[str, object], diagnostics: dict[str, Any]
+    ) -> None:
+        data = response.get("data")
+        if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+            return
+        item = data[0]
+        value = item.get("b64_json")
+        if isinstance(value, str) and value:
+            return
+        url = item.get("url")
+        if not isinstance(url, str):
+            return
+        diagnostics["image_url"] = True
+        try:
+            if not url.startswith("https://"):
+                raise ValueError("Image download requires HTTPS.")
+            downloaded = self._http.get(
+                url=url,
+                headers={},
+                timeout_seconds=120.0,
+                max_response_bytes=_TEAMOROUTER_MAX_RESPONSE_BYTES,
+            )
+            if (
+                not 200 <= downloaded.status_code < 300
+                or len(downloaded.body) > _TEAMOROUTER_MAX_RESPONSE_BYTES
+            ):
+                raise ValueError("Image download response rejected.")
+        except (OSError, ValueError, HTTPException):
+            # Signed URLs and transport exception messages must never cross this boundary.
+            raise ProviderResponseContractError(
+                "image_url_download_failed", {**diagnostics, "retryable": True}
+            ) from None
+        item["b64_json"] = base64.b64encode(downloaded.body).decode("ascii")
 
     def poll(self, provider_task_id: str) -> Mapping[str, object]:
         del provider_task_id
@@ -828,18 +989,31 @@ def _layout_first_edit_prompt(prompt: str) -> str:
 
 
 def _single_b64_raster(response: Mapping[str, object]) -> tuple[str, str]:
+    diagnostics = (
+        response.diagnostics
+        if isinstance(response, _ImageResponse)
+        else _response_shape_diagnostics(response)
+        if isinstance(response, Mapping)
+        else {}
+    )
     data = response.get("data") if isinstance(response, Mapping) else None
     if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], Mapping):
-        raise ValueError("provider_response_contract_invalid")
+        raise ProviderResponseContractError("data_not_single_item", diagnostics)
     value = data[0].get("b64_json")
     if not isinstance(value, str) or not value:
-        raise ValueError("provider_response_contract_invalid")
+        raise ProviderResponseContractError("b64_json_missing", diagnostics)
     try:
         head = base64.b64decode(value[:64], validate=True)
     except (binascii.Error, ValueError) as error:
-        raise ValueError("provider_response_contract_invalid") from error
-    media_type = _raster_media_type(head)
-    _decode_raster(value, media_type)
+        raise ProviderResponseContractError("b64_json_invalid", diagnostics) from error
+    try:
+        media_type = _raster_media_type(head)
+    except ProviderResponseContractError as error:
+        raise ProviderResponseContractError("raster_type_unsupported", diagnostics) from error
+    try:
+        _decode_raster(value, media_type)
+    except ValueError as error:
+        raise ProviderResponseContractError("raster_decode_failed", diagnostics) from error
     return value, media_type
 
 
@@ -850,7 +1024,7 @@ def _raster_media_type(head: bytes) -> str:
         return "image/jpeg"
     if len(head) >= 12 and head.startswith(b"RIFF") and head[8:12] == b"WEBP":
         return "image/webp"
-    raise ValueError("provider_response_contract_invalid")
+    raise ProviderResponseContractError("raster_type_unsupported")
 
 
 def _data_url_file(value: object) -> tuple[str, bytes]:

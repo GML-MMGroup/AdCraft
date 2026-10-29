@@ -64,6 +64,7 @@ import type {
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
+  CanvasNodeRestoreResponseV2,
   CanvasParameterProvenanceV2,
   CanvasPositionV2,
   CanvasRuntimeEventV2,
@@ -114,6 +115,8 @@ import type {
   PresentationStreamEventTypeV1,
   PresentationStreamKindV1,
   PresentationStreamResetV1,
+  PresentationStreamListResponseV1,
+  PresentationStreamSummaryV1,
   ResolvedInputSnapshotV2,
   ResolvedMediaInputSnapshotV2,
   ResolvedTextInputSnapshotV2,
@@ -160,6 +163,7 @@ import type {
   VideoSkillPublicDetailV2,
 } from "../../../types-v2.ts";
 import { V2ContractValidationError } from "../../../api/v2ContractValidationError.ts";
+import { isBrandCustomInputCapabilityId } from "./brandCustomInput.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -445,6 +449,7 @@ const EDITING_EXPORT_STATUSES = new Set<EditingExportRuntimeV2["status"]>(["queu
 const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
   "source_not_ready",
   "source_failed",
+  "omitted_no_output",
   "source_output_unavailable",
   "source_media_invalid",
 ]);
@@ -1275,7 +1280,12 @@ function normalizePresentationStreamResetV1(
   return {
     reason: expectLiteral(
       record.reason,
-      new Set<PresentationStreamResetV1["reason"]>(["cursor_expired", "store_recovered"]),
+      new Set<PresentationStreamResetV1["reason"]>([
+        "cursor_expired",
+        "store_recovered",
+        "attempt_restarted",
+        "final_replaced",
+      ]),
       `${path}.reason`,
     ),
     authoritative_id: nullableStringWithDefault(record.authoritative_id, `${path}.authoritative_id`),
@@ -1337,6 +1347,7 @@ export function normalizePresentationStreamEventV1(
       "node_id",
       "generation_id",
       "response_locale",
+      "segment",
       "node_revision",
       "delta",
       "authoritative_id",
@@ -1357,6 +1368,9 @@ export function normalizePresentationStreamEventV1(
   const nodeRevision = record.node_revision === undefined || record.node_revision === null
     ? null
     : expectPositiveInteger(record.node_revision, `${path}.node_revision`);
+  const segment = record.segment === undefined
+    ? "answer"
+    : expectLiteral(record.segment, new Set<"reasoning" | "answer">(["reasoning", "answer"]), `${path}.segment`);
   if (streamKind === "assistant" && !turnId) fail(`${path}.turn_id`, "assistant stream requires turn_id");
   if (streamKind === "node_prompt" && (!nodeId || nodeRevision === null)) {
     fail(`${path}.node_id`, "prompt stream requires node identity");
@@ -1403,12 +1417,67 @@ export function normalizePresentationStreamEventV1(
     node_id: nodeId,
     generation_id: expectNonEmptyString(record.generation_id, `${path}.generation_id`),
     response_locale: nullableStringWithDefault(record.response_locale, `${path}.response_locale`),
+    segment,
     node_revision: nodeRevision,
     delta,
     authoritative_id: authoritativeId,
     content_digest: contentDigest,
     error_code: errorCode,
     reset,
+  };
+}
+
+function normalizePresentationStreamSummaryV1(
+  value: unknown,
+  path: string,
+): PresentationStreamSummaryV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "stream_id",
+    "stream_kind",
+    "generation_id",
+    "turn_id",
+    "node_id",
+    "node_revision",
+    "status",
+    "created_at",
+    "terminal_at",
+  ], path);
+  const streamKind = expectLiteral(record.stream_kind, PRESENTATION_STREAM_KINDS, `${path}.stream_kind`);
+  const turnId = nullableStringWithDefault(record.turn_id, `${path}.turn_id`);
+  const nodeId = nullableStringWithDefault(record.node_id, `${path}.node_id`);
+  const nodeRevision = record.node_revision === undefined || record.node_revision === null
+    ? null
+    : expectPositiveInteger(record.node_revision, `${path}.node_revision`);
+  if (streamKind === "assistant" && !turnId) fail(`${path}.turn_id`, "assistant stream requires turn_id");
+  if (streamKind === "node_prompt" && (!nodeId || nodeRevision === null)) {
+    fail(`${path}.node_id`, "prompt stream requires node identity");
+  }
+  return {
+    stream_id: expectNonEmptyString(record.stream_id, `${path}.stream_id`),
+    stream_kind: streamKind,
+    generation_id: expectNonEmptyString(record.generation_id, `${path}.generation_id`),
+    turn_id: turnId,
+    node_id: nodeId,
+    node_revision: nodeRevision,
+    status: expectLiteral(record.status, new Set(["open", "completed", "failed", "superseded"]), `${path}.status`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    terminal_at: record.terminal_at === undefined || record.terminal_at === null
+      ? null
+      : expectIsoDateTimeString(record.terminal_at, `${path}.terminal_at`),
+  };
+}
+
+export function normalizePresentationStreamListResponseV1(
+  value: unknown,
+  path = "presentationStreamList",
+): PresentationStreamListResponseV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["streams"], path);
+  const streams = expectArray(record.streams, `${path}.streams`);
+  if (streams.length > 50) fail(`${path}.streams`, "expected at most 50 streams");
+  return {
+    streams: streams.map((stream, index) => normalizePresentationStreamSummaryV1(stream, `${path}.streams[${index}]`)),
   };
 }
 
@@ -4663,6 +4732,20 @@ export function normalizeEditingNodeContentV2(value: unknown, path = "editing"):
   };
 }
 
+export function normalizeCanvasNodeRestoreResponseV2(
+  value: unknown,
+  path = "nodeRestore",
+): CanvasNodeRestoreResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow", "node", "restored_binding_ids", "skipped_binding_ids"], path);
+  return {
+    workflow: normalizeAgentCanvasWorkflowV2(record.workflow, `${path}.workflow`),
+    node: normalizeCanvasNodeV2(record.node, `${path}.node`),
+    restored_binding_ids: expectStringArray(record.restored_binding_ids, `${path}.restored_binding_ids`),
+    skipped_binding_ids: expectStringArray(record.skipped_binding_ids, `${path}.skipped_binding_ids`),
+  };
+}
+
 export function normalizeCanvasMutationResponseV2(
   value: unknown,
   path = "mutation",
@@ -5347,7 +5430,15 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       "allow_exclusion",
     ], path);
     const options = expectArray(record.options, `${path}.options`).map((item, index) => normalizeGuidedChoiceOptionV1(item, `${path}.options[${index}]`));
-    if (kind !== "concept_choice" || options.length !== 3) fail(path, "expected exactly three concept options");
+    const capabilityId = expectNonEmptyString(record.capability_id, `${path}.capability_id`);
+    const optionCountIsValid = isBrandCustomInputCapabilityId(capabilityId)
+      ? options.length >= 3 && options.length <= 12
+      : options.length === 3;
+    if (kind !== "concept_choice" || !optionCountIsValid) {
+      fail(path, isBrandCustomInputCapabilityId(capabilityId)
+        ? "expected between three and twelve concept options"
+        : "expected exactly three concept options");
+    }
     if (new Set(options.map((option) => option.option_id)).size !== options.length) {
       fail(`${path}.options`, "option IDs must be unique");
     }
@@ -5382,7 +5473,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       occurrence_index: occurrenceIndex,
       occurrence_count: occurrenceCount,
       character_phase: characterPhase,
-      capability_id: expectNonEmptyString(record.capability_id, `${path}.capability_id`),
+      capability_id: capabilityId,
       options,
       allow_custom: true,
       allow_exclusion: allowExclusion,

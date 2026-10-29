@@ -291,7 +291,7 @@ class BrandSkillRecommendationV1(BrandSkillReferenceV1):
 
 
 class BrandSkillRecommendationsV1(_BrandModel):
-    creative_methods: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=1, max_length=7)
+    creative_methods: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=1, max_length=2)
     audiovisual_styles: tuple[BrandSkillRecommendationV1, ...] = Field(min_length=3, max_length=3)
 
 
@@ -299,6 +299,21 @@ class BrandCreativeMethodV1(BrandSkillReferenceV1):
     skill_kind: Literal["creative_method"] = "creative_method"
     title: str
     summary: str
+
+
+class BrandSelectedCreativeMethodV1(BrandCreativeMethodV1):
+    """Stored method details disclosed only for selected Treatment methods."""
+
+    story_structure: str | None = None
+    hook_methods: str | None = None
+    product_role: str | None = None
+    common_mistakes: str | None = None
+    unsuitable_cases: str | None = None
+    consumer_psychology: str | None = None
+    cross_category_examples: str | None = None
+    suitable_categories_and_goals: str | None = None
+    why_it_works: str | None = None
+    how_to_execute: str | None = None
 
 
 class BrandCreativeMethodCatalogV1(_BrandModel):
@@ -310,7 +325,7 @@ class BrandSkillSelectionRequestV1(_BrandModel):
 
     card_id: str = Field(min_length=1, max_length=120)
     expected_stage_revision: int = Field(ge=1)
-    creative_methods: tuple[BrandSkillReferenceV1, ...] = Field(min_length=1, max_length=7)
+    creative_methods: tuple[BrandSkillReferenceV1, ...] = Field(min_length=1, max_length=2)
     audiovisual_style: BrandSkillReferenceV1
     confirm: bool = False
 

@@ -53,7 +53,7 @@ function structuredText(node: CanvasNodeV2): string {
 export function useNodeWorkbenchDraft({
   workflow,
   node,
-  patchNode,
+  patchNode: persistNode,
   onRun,
   onSaveImageToLibrary,
   onWorkflowRefresh,
@@ -95,6 +95,17 @@ export function useNodeWorkbenchDraft({
   const [errorAction, setErrorAction] = useState<WorkbenchErrorAction>(null);
   const [dirty, setDirty] = useState(false);
   const draftNodeIdRef = useRef(node.node_id);
+  const draftBaseRef = useRef(node);
+  const patchNode = useCallback<typeof persistNode>((nodeId, patch, options = {}) => (
+    persistNode(nodeId, patch, {
+      ...options,
+      expectedNodeRevision: draftBaseRef.current.revision,
+      onSaved: (saved) => {
+        if (draftBaseRef.current.node_id === saved.node_id) draftBaseRef.current = saved;
+        options.onSaved?.(saved);
+      },
+    })
+  ), [persistNode]);
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
@@ -113,7 +124,6 @@ export function useNodeWorkbenchDraft({
   const canAutosavePrompt = editsGenerationPrompt
     && ["draft", "failed", "ready", "working"].includes(effectiveStatus);
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
-  const nodeForRun = node;
 
   const handlePromptConflict = useCallback(async () => {
     setError("This prompt was changed elsewhere. Review the refreshed workflow, then retry or discard your local text.");
@@ -135,6 +145,7 @@ export function useNodeWorkbenchDraft({
   const acceptAuthoritativePrompt = promptAutosave.acceptAuthoritativeValue;
 
   const restoreFromNode = useCallback(() => {
+    draftBaseRef.current = node;
     setTitle(node.title);
     setPrompt(node.generation_prompt ?? "");
     setTextContent(structuredText(node));
@@ -259,8 +270,8 @@ export function useNodeWorkbenchDraft({
     }
     if ((dirty || parameterMigrationRequired) && !(await save())) return;
     const runNode = editsGenerationPrompt
-      ? { ...nodeForRun, generation_prompt: prompt.trim() || null }
-      : nodeForRun;
+      ? { ...draftBaseRef.current, generation_prompt: prompt.trim() || null }
+      : draftBaseRef.current;
     await perform(() => onRun(runNode));
   };
 

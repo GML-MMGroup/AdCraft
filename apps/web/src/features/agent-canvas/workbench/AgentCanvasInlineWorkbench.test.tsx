@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
@@ -16,6 +16,7 @@ import type {
   PresentationStreamEventV1,
 } from "../../../types-v2.ts";
 import { AgentCanvasInlineWorkbench } from "./AgentCanvasInlineWorkbench.tsx";
+import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import * as presentationStreams from "../runtime/useAgentCanvasPresentationStreams.ts";
 
 function makeNode(type: CanvasNodeTypeV2, status: CanvasNodeV2["status"] = "draft"): CanvasNodeV2 {
@@ -493,7 +494,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
       parameters: { duration_seconds: 8, generate_audio: false },
-    })));
+    }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) })));
   });
 
   it.each([false, true])("uses explicit video audio %s rather than the model default", (value) => {
@@ -1226,7 +1227,7 @@ describe("AgentCanvasInlineWorkbench", () => {
           authoring_provenance: { source_option_id: "option-script-1" },
           content: "A refined ready script.",
         },
-      }),
+      }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }),
     ));
     expect(props.onRun).not.toHaveBeenCalled();
   });
@@ -1260,7 +1261,7 @@ describe("AgentCanvasInlineWorkbench", () => {
       node.node_id,
       expect.objectContaining({
         structured_content: { content: "A recovered Script result." },
-      }),
+      }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }),
     ));
     expect(props.onRun).not.toHaveBeenCalled();
   });
@@ -1414,7 +1415,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     await waitFor(() => {
       expect(props.patchNode).toHaveBeenCalledWith(node.node_id, {
         generation_prompt: "A revised campaign brief",
-      }, { coalesce: true });
+      }, expect.objectContaining({ coalesce: true, expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }));
     });
     expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
       node_id: node.node_id,
@@ -1430,7 +1431,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     fireEvent.change(screen.getByLabelText("Text prompt"), { target: { value: "Updated text prompt" } });
     fireEvent.click(button);
     await waitFor(() => expect(props.onRun).toHaveBeenCalledTimes(1));
-    expect(props.patchNode).toHaveBeenCalledWith(node.node_id, { generation_prompt: "Updated text prompt" }, { coalesce: true });
+    expect(props.patchNode).toHaveBeenCalledWith(node.node_id, { generation_prompt: "Updated text prompt" }, expect.objectContaining({ coalesce: true, expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }));
     expect(props.patchNode.mock.invocationCallOrder[0]).toBeLessThan(props.onRun.mock.invocationCallOrder[0]);
   });
 
@@ -1443,7 +1444,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     fireEvent.click(button);
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
       structured_content: { content: "Updated content" },
-    })));
+    }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) })));
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
@@ -1519,7 +1520,7 @@ describe("AgentCanvasInlineWorkbench", () => {
           core,
           authoring_provenance: provenance,
         },
-      }),
+      }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }),
     ));
     expect(props.onRun).not.toHaveBeenCalled();
   });
@@ -1536,7 +1537,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     await waitFor(() => {
       expect(props.patchNode).toHaveBeenCalledWith(node.node_id, {
         generation_prompt: "A cinematic amber fragrance film",
-      }, { coalesce: true });
+      }, expect.objectContaining({ coalesce: true, expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }));
     });
     expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
       node_id: node.node_id,
@@ -1589,7 +1590,7 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, {
       generation_prompt: "Keep the prior framing and add a slower camera move.",
-    }, { coalesce: true }));
+    }, expect.objectContaining({ coalesce: true, expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) })));
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
@@ -1616,7 +1617,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
       model_selection_mode: "explicit",
       model_ref: "siliconflow:stable-image",
-    })));
+    }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) })));
     const request = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
     expect(request).not.toHaveProperty("model_id");
   });
@@ -1660,7 +1661,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
       parameters: { duration_seconds: 8, resolution: "1080p", aspect_ratio: "9:16", audio_mode: "native" },
-    })));
+    }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) })));
   });
 
   it("migrates legacy video duration parameters before running an existing node", async () => {
@@ -1680,7 +1681,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     await waitFor(() => {
       expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
         parameters: {},
-      }));
+      }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }));
     });
     expect(props.onRun).toHaveBeenCalledWith(node);
   });
@@ -1701,7 +1702,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     await waitFor(() => {
       expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
         parameters: { duration_seconds: 20 },
-      }));
+      }), expect.objectContaining({ expectedNodeRevision: expect.any(Number), onSaved: expect.any(Function) }));
     });
     expect(props.onRun).toHaveBeenCalledWith(node);
   });
@@ -1836,4 +1837,31 @@ describe("AgentCanvasInlineWorkbench", () => {
       ".agent-node-workbench__footer .agent-node-workbench__model-picker",
     )).toBeTruthy();
   });
+});
+
+
+it("retains the draft revision when a concurrent same-node update arrives", async () => {
+  const node = { ...makeNode("video"), parameters: { duration_seconds: 8 } };
+  const patchNode = vi.fn(async () => { throw new V2ApiError({ status: 412, code: "node_revision_conflict", message: "Node changed", details: {}, payload: {} }); });
+  const onRun = vi.fn();
+  const { result, rerender } = renderHook(({ current }) => useNodeWorkbenchDraft({
+    workflow: makeWorkflow(current), node: current, patchNode, onRun, onSaveImageToLibrary: vi.fn(),
+  }), { initialProps: { current: node } });
+  act(() => result.current.setParameters({ duration_seconds: 9 }));
+  rerender({ current: { ...node, revision: 2, parameters: { duration_seconds: 10 } } });
+  await act(async () => { await result.current.run(); });
+  expect(patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({ parameters: { duration_seconds: 9 } }), expect.objectContaining({ expectedNodeRevision: 1 }));
+  expect(onRun).not.toHaveBeenCalled();
+});
+
+it("runs the revision acknowledged by save before React receives the new node", async () => {
+  const node = { ...makeNode("video"), parameters: { duration_seconds: 8 } };
+  const patchNode = vi.fn(async (_id, patch, options) => { options.onSaved({ ...node, ...patch, revision: 2 }); });
+  const onRun = vi.fn();
+  const { result } = renderHook(() => useNodeWorkbenchDraft({
+    workflow: makeWorkflow(node), node, patchNode, onRun, onSaveImageToLibrary: vi.fn(),
+  }));
+  act(() => result.current.setParameters({ duration_seconds: 9 }));
+  await act(async () => { await result.current.run(); });
+  expect(onRun).toHaveBeenCalledWith(expect.objectContaining({ revision: 2, parameters: { duration_seconds: 9 } }));
 });

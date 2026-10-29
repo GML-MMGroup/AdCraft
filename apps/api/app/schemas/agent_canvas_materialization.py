@@ -32,6 +32,11 @@ class _MaterializationModel(BaseModel):
 
 
 class SelectedConceptOptionV1(_MaterializationModel):
+    creative_method_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    creative_method_version: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
     option_id: str = Field(min_length=1, max_length=160)
     title: str = Field(min_length=1, max_length=256)
     public_summary: str = Field(min_length=1, max_length=8_192)
@@ -43,6 +48,11 @@ class SelectedConceptOptionV1(_MaterializationModel):
 
 class SelectedProposalCardV2(_MaterializationModel):
     """Selected public card carried into private post-selection authoring."""
+
+    creative_method_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    creative_method_version: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     option_id: str = Field(min_length=1, max_length=160)
     title: str = Field(min_length=1, max_length=64)

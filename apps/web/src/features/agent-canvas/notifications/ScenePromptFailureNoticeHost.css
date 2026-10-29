@@ -1,0 +1,77 @@
+.scene-prompt-failure {
+  width: min(460px, calc(100vw - 40px));
+  max-height: calc(100dvh - 48px);
+  box-sizing: border-box;
+  padding: 24px;
+  overflow: auto;
+  color: #f5f5f5;
+  background: #151515;
+  border: 1px solid #555;
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+}
+
+.scene-prompt-failure::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+
+.scene-prompt-failure h2 {
+  margin: 0 0 16px;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.scene-prompt-failure__copy {
+  display: grid;
+  gap: 12px;
+  color: #d4d4d4;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.scene-prompt-failure__copy p {
+  margin: 0;
+}
+
+.scene-prompt-failure__node {
+  color: #f5f5f5;
+  font-weight: 600;
+}
+
+.scene-prompt-failure__guidance {
+  padding: 12px;
+  background: #24201a;
+  border-left: 3px solid #d6ac6b;
+}
+
+.scene-prompt-failure__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.scene-prompt-failure__actions button {
+  min-height: 38px;
+  padding: 0 16px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid #686868;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.scene-prompt-failure__actions button:last-child {
+  color: #151515;
+  background: #f5f5f5;
+  border-color: #f5f5f5;
+}
+
+.scene-prompt-failure__actions button:focus-visible {
+  outline: 2px solid #d6ac6b;
+  outline-offset: 3px;
+}

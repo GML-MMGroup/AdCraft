@@ -245,6 +245,25 @@ class StoryboardSequenceAuthoringService:
             raise _storyboard_error("Storyboard outline parameters do not match authority.")
         if len(draft.segments) != len(authority_plan.windows):
             raise _storyboard_error("Storyboard outline count does not match authority.")
+        if authority_plan.timing_mode == "adaptive":
+            try:
+                authority_plan = StoryboardSequenceAuthorityPlanV2.model_validate(
+                    {
+                        **authority_plan.model_dump(mode="json"),
+                        "windows": [
+                            {
+                                "order": item.order,
+                                "start_seconds": item.start_seconds,
+                                "end_seconds": item.end_seconds,
+                            }
+                            for item in draft.segments
+                        ],
+                    }
+                )
+            except ValueError as error:
+                raise _storyboard_error(
+                    "Storyboard outline timing must cover the duration contiguously within the segment duration limit."
+                ) from error
         segments: list[StoryboardNarrativeSegmentV2] = []
         for index, (item, window) in enumerate(zip(draft.segments, authority_plan.windows)):
             if item.order != window.order:

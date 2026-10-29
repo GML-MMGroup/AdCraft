@@ -13,8 +13,9 @@ import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
 import { FONT_CATALOG } from "../features/home-typography/fontCatalog";
 import { loadWebFont } from "../features/home-typography/webFontLoader";
 import { useLocale, localeText } from "../i18n/locale.tsx";
+import { useHomeHeroVideo } from "./useHomeHeroVideo";
 
-const homeProductPoster = "/assets/card1.webp";
+const homeProductPoster = "/assets/home-hero-poster.webp";
 const heroTitleLines = [
   "ONE SENTENCE",
   "BECOMES AN",
@@ -332,52 +333,46 @@ export function HomeShowcase({
   const isInteractive = mode === "interactive";
   const recentState = recentReveal?.revealState ?? "visible";
   const discoverState = discoverReveal?.revealState ?? "visible";
-  const productFilmRef = useRef<HTMLDivElement>(null);
-  const [productFilmLoaded, setProductFilmLoaded] = useState(false);
+  const heroVideo = useHomeHeroVideo(isInteractive, hasIntroVideo, productVideoUrl);
 
   useEffect(() => {
     const cardTitleFont = FONT_CATALOG.find((font) => font.id === "libre-baskerville");
     if (cardTitleFont) void loadWebFont(cardTitleFont).catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (!isInteractive || !hasIntroVideo || !productVideoUrl) {
-      setProductFilmLoaded(false);
-      return undefined;
-    }
-
-    const prefersReducedMotion = typeof window !== "undefined"
-      && typeof window.matchMedia === "function"
-      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReducedMotion) {
-      setProductFilmLoaded(true);
-      return undefined;
-    }
-
-    const film = productFilmRef.current;
-    if (!film) return undefined;
-
-    if (typeof IntersectionObserver === "undefined") {
-      setProductFilmLoaded(true);
-      return undefined;
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      setProductFilmLoaded(true);
-      observer.disconnect();
-    }, { rootMargin: "200px" });
-    observer.observe(film);
-    return () => observer.disconnect();
-  }, [hasIntroVideo, isInteractive, productVideoUrl]);
-
   return (
     <div className={`home-page home-page--${mode}`}>
       <section
-        className={`home-product-hero ${isInteractive ? "is-motion-enabled" : ""} ${heroMotionReady ? "is-motion-ready" : ""}`}
+        ref={heroVideo.heroRef}
+        className={`home-product-hero ${isInteractive && !heroVideo.reducedMotion ? "is-motion-enabled" : ""} ${heroMotionReady && !heroVideo.reducedMotion ? "is-motion-ready" : ""}`}
         aria-labelledby="home-product-title"
       >
-        <div className="home-product-hero__content">
+        <div className="home-product-hero__media" data-video-ready={heroVideo.videoReady ? "true" : "false"} aria-hidden="true">
+          <div className="home-product-hero__visual">
+            <img className="home-product-hero__poster" src={homeProductPoster} alt="" fetchPriority="high" />
+            {heroVideo.videoEnabled ? (
+              <video
+                ref={heroVideo.videoRef}
+                className="home-product-hero__video"
+                src={productVideoUrl}
+                autoPlay
+                loop
+                muted={heroVideo.muted}
+                playsInline
+                preload="auto"
+                poster={homeProductPoster}
+                onCanPlay={heroVideo.onVideoReady}
+                onPlaying={heroVideo.onVideoReady}
+                onError={() => {
+                  heroVideo.onVideoError();
+                  onProductVideoError?.();
+                }}
+              />
+            ) : null}
+          </div>
+          <div className="home-product-hero__overlay" />
+        </div>
+        <div ref={heroVideo.contentRef} className="home-product-hero__content">
           <HeroTitle />
           <p className="home-product-hero__description" data-home-typography-region="heroBody">{labels.heroDescription}</p>
           <div className="home-product-hero__create-stage">
@@ -393,28 +388,20 @@ export function HomeShowcase({
           </div>
         </div>
 
-        <div
-          ref={productFilmRef}
-          className="home-product-film"
-          aria-label="AdCraft product introduction media"
-          data-media-slot="product-introduction"
-          data-video-loaded={productFilmLoaded ? "true" : "false"}
-        >
-          {isInteractive && hasIntroVideo && productVideoUrl && productFilmLoaded ? (
-            <video
-              src={productVideoUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="metadata"
-              poster={homeProductPoster}
-              onError={onProductVideoError}
-            />
-          ) : (
-            <img src={homeProductPoster} alt="" />
-          )}
-        </div>
+        {heroVideo.videoEnabled ? (
+          <button
+            className="home-product-hero__mute"
+            type="button"
+            aria-label={heroVideo.muted ? labels.unmute : labels.mute}
+            aria-pressed={!heroVideo.muted}
+            onClick={heroVideo.toggleMuted}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+              {heroVideo.muted ? <path d="m16 9 6 6m0-6-6 6" /> : <path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" />}
+            </svg>
+          </button>
+        ) : null}
       </section>
 
       <div className="content-wrap">

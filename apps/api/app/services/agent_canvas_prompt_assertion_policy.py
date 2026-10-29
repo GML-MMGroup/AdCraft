@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_prompt_preparation import (
     PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
@@ -72,12 +73,13 @@ def _policy(
     required_document_kinds: tuple[str, ...] = (),
     sequence_scoped: bool = False,
     policy_ref: str | None = None,
+    policy_version: str = "1",
 ) -> PromptAssertionPolicyV1:
     fields = dict(engine_owned_fields or {})
     resolved_policy_ref = policy_ref or f"{recipe_id}.prompt_assertions"
     block = "\n".join(
         (
-            f"Deterministic production policy: {resolved_policy_ref}@1",
+            f"Deterministic production policy: {resolved_policy_ref}@{policy_version}",
             "Required assertions:",
             *(f"- [{item}] {clause}" for item, clause in zip(assertion_ids, positive)),
             "Prohibited behavior:",
@@ -86,7 +88,7 @@ def _policy(
     )
     canonical = {
         "policy_ref": resolved_policy_ref,
-        "policy_version": "1",
+        "policy_version": policy_version,
         "recipe_id": recipe_id,
         "recipe_version": recipe_version,
         "assertion_ids": assertion_ids,
@@ -120,18 +122,18 @@ _SPECIAL_POLICIES = {
     "product_multiview": {
         "assertion_ids": (
             "product_multiview.exact_product_main",
-            "product_multiview.canonical_views",
+            "product_multiview.authored_views",
             "product_multiview.isolated_presentation",
         ),
         "positive": (
             "Use the sole exact bound Product Main identity source.",
-            "Render front, side, back, three-quarter, and detail views in that order.",
+            "Render the authored views, preserving the bound product geometry and visible features.",
             "Use one clean neutral studio presentation.",
         ),
         "negative": (
             "No people, hands, active use, application scene, narrative scene, labels, captions, or visible text.",
         ),
-        "engine_owned_fields": {"views": PRODUCT_MULTIVIEW_VIEWS},
+        "engine_owned_fields": {},
         "required_reference_purposes": ("product_main_identity",),
     },
     "scene_board": {
@@ -150,9 +152,9 @@ _SPECIAL_POLICIES = {
             "video.native_audio_without_bgm",
         ),
         "positive": (
-            "Use the exact matching Storyboard Grid and sequence.",
+            "Use the matching Storyboard Grid as loose visual guidance for the written sequence; do not copy panel framing or timing.",
             "Use the matching current Storyboard Production Plan segment.",
-            "Use every current guided Product, Prop, Character Turnaround, and Scene reference.",
+            "Use bound references as identity authority for subjects that appear in the approved sequence; their availability does not require them to appear in every shot.",
             "Generate native ambience and synchronized action effects.",
         ),
         "negative": ("Do not generate or embed background music.",),
@@ -168,7 +170,12 @@ def _default_policy(recipe) -> PromptAssertionPolicyV1:
     role = recipe.role_variant
     special = _SPECIAL_POLICIES.get(role)
     if special is not None:
-        return _policy(recipe.recipe_id, recipe.recipe_version, **special)
+        return _policy(
+            recipe.recipe_id,
+            recipe.recipe_version,
+            **special,
+            policy_version="2" if role in {"product_multiview", "video_segment"} else "1",
+        )
     return _policy(
         recipe.recipe_id,
         recipe.recipe_version,
@@ -213,11 +220,38 @@ class PromptAssertionPolicyRegistry:
         recipe_version: str,
         *,
         native_audio_required: bool,
+        allows_comedic_sound_effects: bool = False,
         scene_asset_kind: str | None = None,
+        policy_version: str | None = None,
     ) -> PromptAssertionPolicyV1:
         """Resolve the Video policy with an applicable native-audio assertion."""
 
         policy = self.resolve(recipe_id, recipe_version)
+        if policy_version == "1" and recipe_id.endswith(".product_multiview"):
+            special = dict(_SPECIAL_POLICIES["product_multiview"])
+            special.update(
+                assertion_ids=(
+                    "product_multiview.exact_product_main",
+                    "product_multiview.canonical_views",
+                    "product_multiview.isolated_presentation",
+                ),
+                positive=(
+                    "Use the sole exact bound Product Main identity source.",
+                    "Render front, side, back, three-quarter, and detail views in that order.",
+                    "Use one clean neutral studio presentation.",
+                ),
+                engine_owned_fields={"views": PRODUCT_MULTIVIEW_VIEWS},
+            )
+            policy = _policy(recipe_id, recipe_version, **special)
+        elif policy_version == "1" and recipe_id.endswith(".video_segment"):
+            special = dict(_SPECIAL_POLICIES["video_segment"])
+            special["positive"] = (
+                "Use the exact matching Storyboard Grid and sequence.",
+                "Use the matching current Storyboard Production Plan segment.",
+                "Use every current guided Product, Prop, Character Turnaround, and Scene reference.",
+                "Generate native ambience and synchronized action effects.",
+            )
+            policy = _policy(recipe_id, recipe_version, **special)
         if recipe_id == "adcraft.agent_canvas.scene_board" and scene_asset_kind == "multi_view":
             policy = _policy(
                 recipe_id,
@@ -229,24 +263,40 @@ class PromptAssertionPolicyRegistry:
                 ),
                 (
                     "Use the bound Scene Main image as the sole environment identity source.",
-                    "Render one 3x3 grid of nine equal panels in the fixed viewpoint order.",
+                    "Render one 3x3 grid of nine equal panels in the fixed viewpoint order."
+                    if policy_version == "1"
+                    else "Render one 3x3 grid of nine equal panels following the authored view plan.",
                     "Show the same primary location from distinct viewpoints around and inside it.",
                 ),
                 ("No other locations, people, text, captions, or narrative action.",),
-                engine_owned_fields={"views": SCENE_MULTIVIEW_VIEWS},
+                engine_owned_fields=(
+                    {"views": SCENE_MULTIVIEW_VIEWS}
+                    if policy_version == "1"
+                    else {"layout": "3x3", "panel_count": 9}
+                ),
+                policy_version="1" if policy_version == "1" else "2",
                 required_reference_purposes=("scene_main_identity",),
                 policy_ref=f"{recipe_id}.multi_view.prompt_assertions",
             )
-        if native_audio_required or "video.native_audio_without_bgm" not in policy.assertion_ids:
+        if policy_version is not None and policy.policy_version != policy_version:
+            raise _error("Prompt assertion policy version is not registered.")
+        if "video.native_audio_without_bgm" not in policy.assertion_ids:
+            return policy
+        if native_audio_required and not allows_comedic_sound_effects:
             return policy
         retained = tuple(
-            (assertion_id, positive_clause)
+            (
+                assertion_id,
+                "Generate native ambience, synchronized action effects, and comedic sound stings."
+                if assertion_id == "video.native_audio_without_bgm" and allows_comedic_sound_effects
+                else positive_clause,
+            )
             for assertion_id, positive_clause in zip(
                 policy.assertion_ids,
                 policy.positive_clauses,
                 strict=True,
             )
-            if assertion_id != "video.native_audio_without_bgm"
+            if native_audio_required or assertion_id != "video.native_audio_without_bgm"
         )
         return _policy(
             policy.recipe_id,
@@ -258,6 +308,7 @@ class PromptAssertionPolicyRegistry:
             required_reference_purposes=policy.required_reference_purposes,
             required_document_kinds=policy.required_document_kinds,
             sequence_scoped=policy.sequence_scoped,
+            policy_version=policy.policy_version,
         )
 
 
@@ -431,6 +482,8 @@ def prompt_assertion_admission_error(node) -> str | None:
             preparation.recipe_id,
             preparation.recipe_version,
             native_audio_required=_node_requires_native_audio(node),
+            policy_version=preparation.assertion_evidence.policy_version,
+            allows_comedic_sound_effects=node_allows_comedic_sound_effects(node),
             scene_asset_kind=(
                 node.structured_content.get("scene_asset_kind")
                 or node.parameters.get("scene_asset_kind")
@@ -493,3 +546,14 @@ def _node_requires_native_audio(node) -> bool:
         if parameter.name == "generate_audio":
             return parameter.value is True
     return node.parameters.get("generate_audio") is True
+
+
+def node_allows_comedic_sound_effects(node: CanvasNodeV2) -> bool:
+    """Recover the prepared Video policy from its persisted typed style expression."""
+
+    expression = node.structured_content.get("style_expression")
+    return (
+        node.prompt_preparation.role_variant == "video_segment"
+        and isinstance(expression, dict)
+        and expression.get("allows_comedic_sound_effects") is True
+    )

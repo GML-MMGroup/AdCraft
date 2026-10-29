@@ -18,6 +18,8 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingCreateRequestV2,
+    CanvasBindingRestoreRequestV2,
+    CanvasMutationResponseV2,
     CanvasBindingPatchRequestV2,
     CanvasBindingMutationResponseV2,
     CanvasBindingSourceNodeV2,
@@ -98,6 +100,41 @@ class AgentCanvasBindingService:
         request: CanvasBindingCreateRequestV2,
         *,
         expected_revision: int,
+    ) -> CanvasBindingV2:
+        binding = self._prepare_create(workflow_id, request, binding_id=f"binding_{uuid4().hex}")
+        self._workflows.add_binding(
+            binding, expected_revision=expected_revision, user_authoring=True
+        )
+        return binding
+
+    def restore(
+        self,
+        workflow_id: str,
+        request: CanvasBindingRestoreRequestV2,
+        *,
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+        project_workflow: Callable[[AgentCanvasWorkflowV2], AgentCanvasWorkflowV2] | None = None,
+    ) -> CanvasMutationResponseV2:
+        return self._workflows.restore_binding(
+            workflow_id,
+            request.binding_id,
+            prepare_binding=lambda: self._prepare_create(
+                workflow_id, request, binding_id=request.binding_id
+            ),
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            project_workflow=project_workflow,
+        )
+
+    def _prepare_create(
+        self,
+        workflow_id: str,
+        request: CanvasBindingCreateRequestV2,
+        *,
+        binding_id: str,
     ) -> CanvasBindingV2:
         workflow = self._workflows.get_workflow(workflow_id)
         target = self._workflows.get_node(workflow_id, request.target_node_id)
@@ -222,7 +259,7 @@ class AgentCanvasBindingService:
                 raise _binding_model_incompatible_error(capability_decision)
         now = datetime.now(timezone.utc)
         binding = CanvasBindingV2(
-            binding_id=f"binding_{uuid4().hex}",
+            binding_id=binding_id,
             workflow_id=workflow_id,
             source=(
                 normalized_source
@@ -253,11 +290,6 @@ class AgentCanvasBindingService:
                     target_node_id=binding.target_node_id,
                 )
             )
-        self._workflows.add_binding(
-            binding,
-            expected_revision=expected_revision,
-            user_authoring=True,
-        )
         return binding
 
     def delete(

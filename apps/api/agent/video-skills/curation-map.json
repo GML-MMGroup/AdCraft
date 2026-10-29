@@ -758,6 +758,27 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "shadiao-absurd-animation",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "physics break",
+        "squash and stretch gag",
+        "instant transformation",
+        "deadpan reaction face",
+        "meme caption",
+        "comedic sound sting"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Authored in-house; no fixed tool, provider, model, duration, format or resolution."
+      ],
+      "naming_adaptation": "Authored in-house with a method-based title for absurd comedy.",
+      "commercial_adaptation": "Adapted in-house comedy methods for product-led advertising.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "mixed-media-collage-motion",
       "version": "1.0.0",
       "sources": [
@@ -891,6 +912,27 @@
       ],
       "naming_adaptation": "Published Miniature World Cinema as a neutral method-based title without named imitation.",
       "commercial_adaptation": "Adapted scale contrast, macro optics, handcrafted detail, and tiny-world action readability into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "deadpan-absurd-live-comedy",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "deadpan performance",
+        "absurd escalation",
+        "crash zoom freeze",
+        "meme caption",
+        "comedic sound sting",
+        "in-shot repetition"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Authored in-house; no fixed tool, provider, model, duration, format or resolution."
+      ],
+      "naming_adaptation": "Authored in-house with a method-based title for absurd comedy.",
+      "commercial_adaptation": "Adapted in-house comedy methods for product-led advertising.",
       "review_status": "approved"
     },
     {

@@ -217,6 +217,11 @@ class ChatTimelineListResponseV2(_ConversationModel):
 
 
 class ConceptOptionRecordV2(_ConversationModel):
+    creative_method_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    creative_method_version: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
     model_config = ConfigDict(extra="forbid", json_schema_extra=_compact_option_schema)
 
     option_id: str

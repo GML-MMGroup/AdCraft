@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_capabilities import (
     CharacterProposalResultV1,
     CompactTurnIntentDecisionV3,
     GuidedProposalAuthoringResultV4,
+    WorldSettingProposalAuthoringResultV1,
     GuidedProposalCardResultV3,
     NextActionCommandV1,
     ProductProposalResultV1,
@@ -128,6 +129,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     WorldSettingProposalResultV1,
     ProposalCardResultV2,
     GuidedProposalAuthoringResultV4,
+    WorldSettingProposalAuthoringResultV1,
     GuidedProposalCardResultV3,
     ProductProposalResultV1,
     PropProposalResultV1,
@@ -253,12 +255,18 @@ def validate_video_agent_contract_parity(
                     "validation_profile": str(definition.validation_profile),
                 }
             )
-        if is_proposal and definition.result_contract_name != "GuidedProposalAuthoringResultV4":
+        proposal_contract = (
+            "WorldSettingProposalAuthoringResultV1"
+            if definition.operation
+            in {"propose_world_setting_options", "revise_world_setting_options"}
+            else "GuidedProposalAuthoringResultV4"
+        )
+        if is_proposal and definition.result_contract_name != proposal_contract:
             errors.append(
                 {
                     "operation": definition.operation[:160],
                     "contract_name": definition.result_contract_name[:160],
-                    "required_contract_name": "GuidedProposalAuthoringResultV4",
+                    "required_contract_name": proposal_contract,
                 }
             )
         is_role_brief = definition.operation == "author_role_brief"

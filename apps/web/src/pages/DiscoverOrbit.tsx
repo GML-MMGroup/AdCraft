@@ -351,7 +351,6 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
 
     const onPointerDown = (event: globalThis.PointerEvent) => {
       if (!motionActive || event.button !== 0) return;
-      root.setPointerCapture(event.pointerId);
       dragRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -372,7 +371,11 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       if (!drag || drag.pointerId !== event.pointerId) return;
       const now = performance.now();
       const deltaX = event.clientX - drag.startX;
-      if (Math.abs(deltaX) > DRAG_THRESHOLD) didDragRef.current = true;
+      if (!didDragRef.current && Math.abs(deltaX) > DRAG_THRESHOLD) {
+        root.setPointerCapture(event.pointerId);
+        didDragRef.current = true;
+      }
+      if (!didDragRef.current) return;
       targetRef.current = drag.startTarget - deltaX / spacingFor();
       drag.velocity = (event.clientX - drag.lastX) / Math.max(8, now - drag.lastTime);
       drag.lastX = event.clientX;
@@ -411,14 +414,14 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     const onPointerCancel = (event: globalThis.PointerEvent) => finishDrag(event, true);
     root.addEventListener("pointerdown", onPointerDown);
     root.addEventListener("pointermove", onPointerMove);
-    root.addEventListener("pointerup", finishDrag);
-    root.addEventListener("pointercancel", onPointerCancel);
+    window.addEventListener("pointerup", finishDrag);
+    window.addEventListener("pointercancel", onPointerCancel);
     root.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("pointermove", onPointerMove);
-      root.removeEventListener("pointerup", finishDrag);
-      root.removeEventListener("pointercancel", onPointerCancel);
+      window.removeEventListener("pointerup", finishDrag);
+      window.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("wheel", onWheel);
     };
     // Event listeners bind to a shared mutable motion model.

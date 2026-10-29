@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -31,22 +32,26 @@ from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
 from app.schemas.agent_canvas_reference_conditioning import ReferenceConditioningPlanV1
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
+from app.services.agent_canvas_prompt_projection_lag import projection_consistency
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_role_prompt_compiler import (
-    role_prompt_failure_disposition,
     role_prompt_text_violation,
 )
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionEvidenceValidator,
     PromptAssertionPolicyRegistry,
+    node_allows_comedic_sound_effects,
 )
 from app.services.agent_canvas_reference_semantics import (
     compile_provider_reference_instruction,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +89,7 @@ _ROLE_BOUNDARIES = {
         "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
     ),
     "storyboard_video": (
-        "Render one video segment from the complete bound storyboard grid.",
+        "Render one video segment from the written story beats, using the bound storyboard grid as loose guidance.",
         "Do not generate background music; preserve declared dialogue, ambience, and effects.",
     ),
     "bgm": (
@@ -172,6 +177,11 @@ class AgentCanvasProviderPromptCompiler:
                 "adcraft.agent_canvas.scene_board",
                 "1",
                 native_audio_required=False,
+                policy_version=(
+                    node.prompt_preparation.assertion_evidence.policy_version
+                    if node.prompt_preparation.assertion_evidence is not None
+                    else None
+                ),
                 scene_asset_kind=(
                     node.structured_content.get("scene_asset_kind")
                     or node.parameters.get("scene_asset_kind")
@@ -189,20 +199,18 @@ class AgentCanvasProviderPromptCompiler:
                 field_path="generation_prompt",
             )
             if violation is not None:
-                disposition = role_prompt_failure_disposition(
-                    user_authored=not has_managed_prompt_preparation(node)
-                )
-                raise V2PersistenceError(
-                    "node_prompt_role_contract_invalid",
-                    "The Scene prompt conflicts with its environment-only role contract.",
-                    stage="agent_canvas_provider_prompt_compiler",
-                    details={
-                        "role_variant": violation.role_variant,
-                        "violation_category": violation.violation_category,
-                        "field_path": violation.field_path,
-                        "actionable_failure": disposition.model_dump(mode="json"),
-                        "retryable": disposition.retryable,
-                    },
+                logger.warning(
+                    "%s",
+                    json.dumps(
+                        {
+                            "event": "role_prompt_soft_violation",
+                            **violation.model_dump(mode="json"),
+                            "call_site": "provider_submission",
+                            "node_id": node.node_id,
+                            "workflow_id": node.workflow_id,
+                        },
+                        sort_keys=True,
+                    ),
                 )
         if role_contract.semantic_role != node.semantic_role:
             raise _error(
@@ -240,6 +248,8 @@ class AgentCanvasProviderPromptCompiler:
                 preparation.recipe_id,
                 preparation.recipe_version,
                 native_audio_required=native_audio_required,
+                policy_version=evidence.policy_version,
+                allows_comedic_sound_effects=node_allows_comedic_sound_effects(node),
                 scene_asset_kind=(
                     node.structured_content.get("scene_asset_kind")
                     or node.parameters.get("scene_asset_kind")
@@ -603,6 +613,13 @@ def _reference_description(
         )
     semantic_role = reference.semantic_reference_role
     if semantic_role == "storyboard_visual_reference":
+        if target_semantic_role in {"storyboard_video", "general_video"}:
+            return (
+                "Storyboard grid for this segment: use as loose narrative guidance. "
+                "Follow the written action beats and target Video style. Do not match panels "
+                "one-to-one or copy their exact framing, camera moves, or timing. "
+                "Do not show the grid itself."
+            )
         return (
             "Storyboard grid for this segment: follow its panel order, composition, action, "
             "and timing. Do not show the grid itself."
@@ -895,7 +912,8 @@ def _render_reference_identities(
             )
         if "storyboard_visual_reference" in roles:
             instructions.append(
-                "Storyboard references control frame order, composition, action, and continuity."
+                "Storyboard references provide loose narrative guidance; written action beats "
+                "and the target Video style take priority over panel composition and camera matching."
             )
         if roles.intersection({"style_reference", "style_composition_reference"}):
             instructions.append(
@@ -904,14 +922,18 @@ def _render_reference_identities(
             )
         instructions.append(
             "Non-style references do not transfer photographic, live-action, illustration, "
-            "line-art, cel-shaded, animated, or 3D rendering medium to the target Video."
+            "line-art, cel-shaded, animated, or 3D rendering medium to the target Video. "
+            "Illustration, animation and 3D remain valid target styles; preserve the selected "
+            "medium and its intentional texture. Remove illustration treatment only when "
+            "the target Video explicitly requests live action."
         )
         video_semantics = "Video reference-use semantics:\n" + "\n".join(instructions) + "\n"
     return (
         video_semantics + "Authoritative bound reference identities:\n"
-        "These persisted Binding facts override conflicting model-authored details. "
-        "Keep their identities and environments unchanged while retaining creative "
-        "freedom for panel action, composition, and camera.\n"
+        "These persisted Binding facts are base identity authority. Preserve them except for "
+        "state changes explicitly approved in the written sequence, such as wardrobe or lighting "
+        "transitions. Retain creative freedom for panel action, composition, and camera. "
+        "Reference availability does not require every subject to appear in every shot.\n"
         + turnaround_clause
         + "\n".join(
             f"- {json.dumps(identity, sort_keys=True, ensure_ascii=True)}"
@@ -927,23 +949,7 @@ def _digest(value: object) -> str:
 
 
 def _validate_editable_prompt_authority(node: CanvasNodeV2) -> None:
-    projection = node.prompt_presentation
-    if projection is None:
-        return
-    prompt = str(node.generation_prompt or "")
-    expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
-    review_revision = node.metadata.get("guided_review_node_revision")
-    revision_matches = projection.revision == node.revision or (
-        isinstance(review_revision, int)
-        and not isinstance(review_revision, bool)
-        and review_revision == node.revision
-        and projection.revision + 1 == node.revision
-    )
-    if (
-        projection.text != prompt
-        or not revision_matches
-        or projection.prompt_digest != expected_digest
-    ):
+    if projection_consistency(node) == "conflict":
         raise _error(
             "prompt_revision_conflict",
             "The editable prompt projection does not match the frozen Node revision.",

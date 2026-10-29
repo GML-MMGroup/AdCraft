@@ -44,6 +44,7 @@ export interface StructuredModelInputDependencies {
   readonly getPromptDescriptor: (
     operation: string,
     contractName: string,
+    context?: Readonly<Record<string, unknown>>,
   ) => Pick<PromptDescriptor, "system_prompt">;
   readonly getOperationDescriptor: (operation: string) => OperationDescriptor;
   readonly loadRequiredSkills: (
@@ -76,6 +77,7 @@ export async function prepareStructuredModelInput<
   const promptDescriptor = dependencies.getPromptDescriptor(
     request.operation,
     request.contract_name ?? "",
+    request.context as Readonly<Record<string, unknown>>,
   );
   const schema = contractSchemaForRequest(request);
   if (

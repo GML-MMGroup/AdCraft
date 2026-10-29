@@ -1439,6 +1439,66 @@ describe("Agent Canvas normalizers", () => {
     expect(session.awaiting?.kind).toBe("concept_selection");
   });
 
+  it("allows expanded option counts only for Brand hypothesis and Treatment cards", () => {
+    const options = (count: number) => Array.from({ length: count }, (_, index) => ({
+      option_id: `option-${index + 1}`,
+      title: `Option ${index + 1}`,
+      summary: `Summary ${index + 1}`,
+      recommended: index === 0,
+    }));
+    const payload = (capabilityId: string, count: number) => ({
+      ...progressiveGuidanceSessionPayload(),
+      interaction: {
+        interaction_id: "interaction-brand-options",
+        workflow_id: "workflow-1",
+        session_id: "guidance-1",
+        checkpoint_id: "checkpoint-1",
+        kind: "concept_choice",
+        status: "open",
+        response_locale: "zh-CN",
+        expected_session_revision: 3,
+        revision: 2,
+        title: "Choose a direction",
+        context: "Pick a direction.",
+        content: {
+          content_kind: "concept_choice",
+          proposal_id: null,
+          stage: "intake",
+          stage_revision: 4,
+          action_id: "action-brand-options",
+          occurrence_id: null,
+          capability_id: capabilityId,
+          allow_custom: true,
+          allow_exclusion: false,
+          options: options(count),
+        },
+        allowed_actions: ["select", "custom"],
+        submit_path: "/submit",
+        created_at: "2026-08-15T10:00:00Z",
+        updated_at: "2026-08-15T10:00:00Z",
+      },
+    });
+
+    expect(normalizeGuidedSessionStateV2(payload("brand_hypothesis", 12)).interaction?.content).toMatchObject({
+      content_kind: "concept_choice",
+      options: expect.arrayContaining([expect.objectContaining({ option_id: "option-12" })]),
+    });
+    expect(normalizeGuidedSessionStateV2(payload("brand_treatment_step", 3)).interaction?.content.content_kind).toBe("concept_choice");
+    expect(() => normalizeGuidedSessionStateV2(payload("brand_hypothesis", 13))).toThrow(/twelve concept options/);
+    expect(() => normalizeGuidedSessionStateV2(payload("brand_adspec", 4))).toThrow(/exactly three concept options/);
+    expect(() => normalizeGuidedSessionStateV2(payload("brand_skill-stack", 4))).toThrow(/exactly three concept options/);
+    expect(() => normalizeGuidedSessionStateV2(payload("brand_treatment_step", 4))).not.toThrow();
+    const invalidRecommendationPayload = payload("brand_treatment_step", 3);
+    invalidRecommendationPayload.interaction = {
+      ...invalidRecommendationPayload.interaction,
+      content: {
+        ...invalidRecommendationPayload.interaction.content,
+        options: options(3).map((option, index) => ({ ...option, recommended: index < 2 })),
+      },
+    };
+    expect(() => normalizeGuidedSessionStateV2(invalidRecommendationPayload)).toThrow(/exactly one recommended/);
+  });
+
   it("accepts the canonical Product source interaction and upload handoff", () => {
     const upload = normalizeProjectAssetUploadResponseV2({
       workflow_id: "workflow-1",

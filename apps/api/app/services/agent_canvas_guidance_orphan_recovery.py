@@ -13,6 +13,9 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_guided_interaction_repository import (
     AgentCanvasGuidedInteractionRepository,
 )
+from app.persistence.agent_canvas_conversation_repository import AgentCanvasConversationRepository
+from app.services.agent_canvas_next_action_dispatch import NextActionDispatchService
+from app.services.agent_canvas_production_journey import GuidedProductionJourneyPolicyService
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.schemas.v2_persistence import V2EventInsert
@@ -25,7 +28,7 @@ class GuidanceOrphanRecoveryResult:
 
 
 class GuidanceOrphanRecoveryService:
-    """Recover only persisted continuation work with an existing durable identity."""
+    """Recover durable continuations and idle authoring behind independent media waits."""
 
     def __init__(
         self,
@@ -41,6 +44,8 @@ class GuidanceOrphanRecoveryService:
         self._interactions = interactions
         self._continuations = continuations
         self._events = events
+        self._conversations = AgentCanvasConversationRepository(interactions.database, events)
+        self._next_action_dispatch = NextActionDispatchService(interactions.database, events)
 
     def recover_promised_progress(
         self,
@@ -49,10 +54,36 @@ class GuidanceOrphanRecoveryService:
         drain_continuation: Callable[[str], object],
     ) -> GuidanceOrphanRecoveryResult:
         awaiting = self._interactions.get_awaiting(workflow_id)
-        if awaiting is not None:
+        if awaiting is not None and awaiting.kind not in {"manual_node_run", "media_review"}:
             return GuidanceOrphanRecoveryResult(status="legal_wait")
 
+        session = (
+            self._conversations.get_guidance_session(workflow_id) if awaiting is not None else None
+        )
+        # Freeze the source before checking ownership. A concurrent refresh that
+        # observes a newly queued Next Action must also observe its delivery.
+        source = self._conversations.get_latest_turn(workflow_id) if session is not None else None
         deliveries = self._continuations.list_nonterminal_for_workflow(workflow_id)
+        if session is not None and not deliveries:
+            journey = session.journey
+            if (
+                session.status != "active"
+                or journey.active_action is not None
+                or journey.suspended_action is not None
+                or journey.stage_status != "ready"
+                or GuidedProductionJourneyPolicyService().evaluate(journey).action
+                not in {"invoke_capability", "invoke_internal_checkpoint"}
+            ):
+                return GuidanceOrphanRecoveryResult(status="legal_wait")
+            if source is None:
+                return GuidanceOrphanRecoveryResult(status="legal_wait")
+            self._next_action_dispatch.dispatch(
+                source,
+                session_id=session.session_id,
+                expected_session_revision=session.revision,
+                objective=session.goal.summary,
+            )
+            deliveries = self._continuations.list_nonterminal_for_workflow(workflow_id)
         recoverable = tuple(
             delivery for delivery in deliveries if delivery.status in {"queued", "retry_wait"}
         )

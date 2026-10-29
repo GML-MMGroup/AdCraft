@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
@@ -17,7 +17,11 @@ vi.mock("../app/useHealth", () => ({
 describe("HomePage hero title", () => {
   beforeEach(() => {
     startNewProject.mockReset();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   });
+
+  afterEach(() => cleanup());
 
   it("renders the brand statement as three deliberate lines", () => {
     render(<HomePage navigate={vi.fn()} />);
@@ -61,9 +65,9 @@ describe("HomePage hero title", () => {
   it("plays the bundled product film when no environment override is configured", () => {
     const view = render(<HomePage navigate={vi.fn()} />);
 
-    const media = view.container.querySelector<HTMLElement>(".home-product-film");
-    expect(media.querySelector("video")?.getAttribute("src")).toBe(
-      "/assets/home-product-film.mp4",
+    const media = view.container.querySelector<HTMLElement>(".home-product-hero__media");
+    expect(media?.querySelector("video")?.getAttribute("src")).toBe(
+      "/assets/home-hero-loop.mp4",
     );
   });
 
@@ -72,16 +76,16 @@ describe("HomePage hero title", () => {
       /\.home-page\s*\{[^}]*--home-font-display:\s*"Trebuchet MS"[^;]*;[^}]*--home-font-accent:\s*"Water Brush"[^;]*;[^}]*--home-font-ui:\s*Arial[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
     );
     expect(styles).toMatch(
-      /\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-family:\s*"Trebuchet MS"[^}]*font-size:\s*60px;[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;[^}]*line-height:\s*1\.1;[^}]*letter-spacing:\s*0\.016em;/s,
+      /\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-family:\s*"Trebuchet MS"[^}]*font-size:\s*clamp\(60px, 6\.4vw, 96px\);[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;[^}]*line-height:\s*1\.1;[^}]*letter-spacing:\s*0\.05em;/s,
     );
     expect(styles).toMatch(
-      /@media \(max-width: 620px\)\s*\{\s*\.home-page \.home-product-hero__title\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-size:\s*40px;/s,
+      /@media \(max-width: 620px\)\s*\{\s*\.home-page \.home-product-hero__title\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-size:\s*clamp\(30px, 10\.4vw, 48px\);/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\[data-home-typography-region="heroAccent"\]\s*\{[^}]*font-family:\s*"Water Brush"[^}]*font-size:\s*80px;[^}]*font-weight:\s*400;[^}]*font-style:\s*normal;[^}]*line-height:\s*1\.25;[^}]*letter-spacing:\s*0\.100em;/s,
+      /\[data-home-typography-region="heroAccent"\]\s*\{[^}]*font-family:\s*"Water Brush"[^}]*font-size:\s*clamp\(80px, 8\.6vw, 128px\);[^}]*font-weight:\s*400;[^}]*font-style:\s*normal;[^}]*line-height:\s*1\.25;[^}]*letter-spacing:\s*0\.12em;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__accent::after\s*\{[^}]*content:\s*attr\(data-accent-text\);[^}]*background-size:\s*240% 100%;[^}]*-webkit-background-clip:\s*text;[^}]*background-clip:\s*text;[^}]*-webkit-text-fill-color:\s*transparent;[^}]*pointer-events:\s*none;/s,
@@ -114,17 +118,23 @@ describe("HomePage hero title", () => {
     expect(styles).not.toContain("Clash Display");
   });
 
-  it("matches the approved wide desktop hero proportions", () => {
+  it("centers the hero over a full viewport video with light text", () => {
     render(<HomePage navigate={vi.fn()} />);
 
     expect(styles).toMatch(
-      /\.home-product-hero\s*\{[^}]*--home-product-hero-height:\s*607px;[^}]*--home-product-media-height:\s*458px;[^}]*width:\s*min\(1230px, calc\(100vw - 180px\)\);/s,
+      /\.home-product-hero\s*\{[^}]*width:\s*100%;[^}]*height:\s*100svh;[^}]*min-height:\s*560px;[^}]*place-items:\s*center;/s,
     );
     expect(styles).toMatch(
       /\.home-page > \.content-wrap\s*\{[^}]*width:\s*min\(1230px, calc\(100vw - 180px\)\);/s,
     );
     expect(styles).toMatch(
-      /\.home-product-film\s*\{[^}]*margin-bottom:\s*22px;/s,
+      /\.home-product-hero__content\s*\{[^}]*text-align:\s*center;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero__visual > :is\(img, video\)\s*\{[^}]*object-fit:\s*cover;/s,
+    );
+    expect(styles).toMatch(
+      /:root \.home-product-hero__title\s*\{[^}]*color:\s*var\(--text-primary\);/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__create\s*\{[^}]*min-height:\s*44px;[^}]*gap:\s*8px;[^}]*padding:\s*0 18px 0 15px;/s,
@@ -148,9 +158,9 @@ describe("HomePage hero title", () => {
     );
   });
 
-  it("keeps the dark home CTA transparent until interaction", () => {
+  it("gives the dark home CTA a readable glass surface over the film", () => {
     expect(styles).toMatch(
-      /:root \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.075\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*0 8px 22px rgba\(0, 13, 24, 0\.12\);[^}]*-webkit-backdrop-filter:\s*none;[^}]*backdrop-filter:\s*none;[^}]*will-change:\s*auto;[^}]*color:\s*rgba\(255, 255, 255, 0\.96\);/s,
+      /:root \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.32\);[^}]*background:\s*rgba\(157, 175, 230, 0\.18\);[^}]*backdrop-filter:\s*blur\(18px\);[^}]*color:\s*rgba\(255, 255, 255, 0\.96\);/s,
     );
     expect(styles).toMatch(
       /:root \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*color-mix\(in srgb, var\(--brand\) 30%, transparent\);[^}]*border-color:\s*color-mix\(in srgb, var\(--brand\) 72%, white\);/s,

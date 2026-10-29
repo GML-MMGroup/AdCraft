@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
 
+import { useTranslation } from "../../../i18n/useTranslation";
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import { failureUserAction } from "../chat/actionableFailure.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import { useAgentCanvasPresentationStreams } from "../runtime/useAgentCanvasPresentationStreams.ts";
+import { AgentThinkingBlock } from "../chat/AgentThinkingBlock.tsx";
+import { useTypewriterText } from "../chat/useTypewriterText.ts";
 
 const PREPARATION_LABELS = {
   queued: "Preparing generation prompt",
@@ -26,6 +29,7 @@ export function NodePromptPreparationState({
   onRevise?: () => void;
   hideActiveStatus?: boolean;
 }) {
+  const t = useTranslation();
   const preparation = promptPreparationForNode(node);
   const presentationStreamId = preparation?.status === "queued" || preparation?.status === "working"
     ? preparation.presentation_stream_id
@@ -34,6 +38,11 @@ export function NodePromptPreparationState({
     node.workflow_id,
     presentationStreamId ? [presentationStreamId] : [],
   );
+  const streamView = presentationStreamId ? presentationStreams[presentationStreamId] : null;
+  const streamPreview = streamView?.text.trim() ?? "";
+  const typedPreview = useTypewriterText(streamPreview, {
+    animate: preparation?.status === "queued" || preparation?.status === "working",
+  });
   const handledTerminalEventRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -51,29 +60,34 @@ export function NodePromptPreparationState({
   if (preparation?.status === "ready" || preparation?.status === "not_applicable") return null;
 
   const summary = preparation.status === "waiting_user"
-    ? "Enter a prompt to continue."
-    : node.summary_prompt?.trim() || "Preparing the detailed generation prompt.";
+      ? t("Enter a prompt to continue.")
+    : node.summary_prompt?.trim() || t("Preparing the detailed generation prompt.");
   const status = preparation?.status ?? "queued";
   const error = preparation?.error ?? null;
   const userAction = failureUserAction(error?.actionable_failure);
-  const streamPreview = presentationStreamId
-    ? presentationStreams[presentationStreamId]?.text.trim()
-    : "";
+  const activePreparation = status === "queued" || status === "working";
 
   return (
     <section
       className={`agent-node-workbench__prompt-preparation is-${status}`}
       role={status === "failed" ? "alert" : "status"}
-      aria-label="Prompt preparation status"
+      aria-label={t("Prompt preparation status")}
     >
-      <span>{PREPARATION_LABELS[status]}</span>
-      <p>{streamPreview || summary}</p>
+      <span>{t(PREPARATION_LABELS[status])}</span>
+      {activePreparation && streamView?.reasoning_text ? (
+        <AgentThinkingBlock
+          reasoningText={streamView.reasoning_text}
+          phase="thinking"
+          durationSeconds={null}
+        />
+      ) : null}
+      <p>{typedPreview || summary}{activePreparation && typedPreview ? <span className="agent-node-workbench__prompt-caret" aria-hidden="true">▍</span> : null}</p>
       {error ? (
         <small>{error.message}</small>
       ) : null}
       {status === "failed" && userAction === "revise" && onRevise ? (
         <button type="button" onClick={onRevise}>
-          Revise generation prompt
+          {t("Revise generation prompt")}
         </button>
       ) : null}
     </section>

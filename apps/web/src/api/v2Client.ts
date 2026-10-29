@@ -26,6 +26,7 @@ import type {
   VideoSkillCatalogResponseV2,
   VideoSkillPublicDetailV2,
   AgentCanvasWorkflowV2,
+  PresentationStreamListResponseV1,
   AgentExecutionSettingsPatchV2,
   AgentExecutionSettingsV2,
   AgentWorkingDocumentKindV2,
@@ -33,6 +34,7 @@ import type {
   AgentWorkingDocumentV2,
   AssetOwnerResponseV2,
   CanvasBindingCreateRequestV2,
+  CanvasBindingRestoreRequestV2,
   CanvasBindingMutationResponseV2,
   CanvasBindingPatchRequestV2,
   CanvasConnectedNodeCreateRequestV2,
@@ -47,6 +49,7 @@ import type {
   CanvasNodeCreateRequestV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
+  CanvasNodeRestoreResponseV2,
   ConceptProposalV2,
   CanvasRunAcceptedV2,
   CanvasRunCancelRequestV2,
@@ -200,6 +203,7 @@ import {
   normalizeCanvasConnectionPolicyV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasNodeRestoreResponseV2,
   normalizeCanvasPostReadyCheckpointV2,
   normalizeCanvasRunAcceptedV2,
   normalizeCanvasRunCancelResponseV2,
@@ -212,6 +216,7 @@ import {
   normalizeProjectAssetListResponseV2,
   normalizeProjectAssetUploadResponseV2,
   normalizeProviderModelCapabilityListV2,
+  normalizePresentationStreamListResponseV1,
 } from "../features/agent-canvas/model/normalizers.ts";
 import {
   normalizeBrandJourneyStateV1,
@@ -430,6 +435,12 @@ async function requestV2Response(
           operationPath: path,
           message,
           retry: async () => {
+            // Adopting a newer Node revision requires this explicit user action.
+            if (retryOptions.headers.has("If-Match-Node")) {
+              const latest = await requestV2Response(path);
+              const node = asRecord(latest.payload);
+              if (typeof node?.revision === "number") retryOptions.headers.set("If-Match-Node", String(node.revision));
+            }
             await requestV2Response(path, retryOptions, {
               ...optionsByBehavior,
               allowMissingAuthoringEtag: false,
@@ -794,15 +805,17 @@ export const v2Api = {
   patchAgentCanvasLayout(
     workflowId: string,
     request: CanvasLayoutPatchRequestV2,
+    behavior: Pick<V2RequestBehavior, "conflictHandling"> = {},
   ): Promise<CanvasLayoutPatchResponseV2> {
-    return requestV2(
+    return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/layout`,
       {
         method: "PATCH",
         body: JSON.stringify(request),
       },
       normalizeCanvasLayoutPatchResponseV2,
-    );
+      behavior,
+    ).then((response) => response.value);
   },
 
   createAgentCanvasNode(
@@ -820,10 +833,13 @@ export const v2Api = {
     workflowId: string,
     nodeId: string,
     request: CanvasNodePatchRequestV2,
+    options: { expectedNodeRevision?: number } = {},
   ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    const headers = new Headers();
+    if (options.expectedNodeRevision !== undefined) headers.set("If-Match-Node", String(options.expectedNodeRevision));
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`,
-      { method: "PATCH", body: JSON.stringify(request) },
+      { method: "PATCH", headers, body: JSON.stringify(request) },
       normalizeCanvasMutationResponseV2,
     );
   },
@@ -831,11 +847,41 @@ export const v2Api = {
   deleteAgentCanvasNode(
     workflowId: string,
     nodeId: string,
+    behavior: Pick<V2RequestBehavior, "conflictHandling"> = {},
   ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`,
       { method: "DELETE" },
       normalizeCanvasMutationResponseV2,
+      behavior,
+    );
+  },
+
+  restoreAgentCanvasNode(
+    workflowId: string,
+    nodeId: string,
+    idempotencyKey: string,
+    behavior: Pick<V2RequestBehavior, "conflictHandling"> = {},
+  ): Promise<V2EtaggedResponse<CanvasNodeRestoreResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/restore`,
+      { method: "POST", headers: idempotencyHeaders(idempotencyKey), body: JSON.stringify({}) },
+      normalizeCanvasNodeRestoreResponseV2,
+      behavior,
+    );
+  },
+
+  restoreAgentCanvasBinding(
+    workflowId: string,
+    request: CanvasBindingRestoreRequestV2,
+    idempotencyKey: string,
+    behavior: Pick<V2RequestBehavior, "conflictHandling"> = {},
+  ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/bindings/restore`,
+      { method: "POST", headers: idempotencyHeaders(idempotencyKey), body: JSON.stringify(request) },
+      normalizeCanvasMutationResponseV2,
+      behavior,
     );
   },
 
@@ -896,11 +942,13 @@ export const v2Api = {
   deleteAgentCanvasBinding(
     workflowId: string,
     bindingId: string,
+    behavior: Pick<V2RequestBehavior, "conflictHandling"> = {},
   ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/bindings/${encodeURIComponent(bindingId)}`,
       { method: "DELETE" },
       normalizeCanvasMutationResponseV2,
+      behavior,
     );
   },
 
@@ -1302,17 +1350,33 @@ export const v2Api = {
     );
   },
 
-  runAgentCanvas(
+  async runAgentCanvas(
     workflowId: string,
     request: CanvasRunRequestV2,
     idempotencyKey: string,
   ): Promise<CanvasRunAcceptedV2> {
+    const path = `/workflows/${encodeURIComponent(workflowId)}/runs`;
+    const body = JSON.stringify(request);
+    try {
+      return await requestV2(
+        path,
+        { method: "POST", headers: idempotencyHeaders(idempotencyKey), body },
+        normalizeCanvasRunAcceptedV2,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof V2ApiError)
+        || error.status !== 409
+        || (error.code !== "workflow_state_conflict" && error.code !== "run_intent_stale")
+      ) throw error;
+    }
+    await fetchCurrentAuthoringEtag({ resource: "workflow", id: workflowId });
     return requestV2(
-      `/workflows/${encodeURIComponent(workflowId)}/runs`,
+      path,
       {
         method: "POST",
         headers: idempotencyHeaders(idempotencyKey),
-        body: JSON.stringify(request),
+        body,
       },
       normalizeCanvasRunAcceptedV2,
     );
@@ -1370,7 +1434,19 @@ export const v2Api = {
     afterSeq = 0,
   ): EventSource {
     return new EventSource(
-      `${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/presentation/streams/${encodeURIComponent(streamId)}?after_seq=${encodeURIComponent(String(afterSeq))}`,
+      `${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/presentation/streams/${encodeURIComponent(streamId)}?after_seq=${encodeURIComponent(String(afterSeq))}&segments=1`,
+    );
+  },
+
+  listAgentCanvasPresentationStreams(
+    workflowId: string,
+    limit = 20,
+  ): Promise<PresentationStreamListResponseV1> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/presentation/streams?${query.toString()}`,
+      {},
+      normalizePresentationStreamListResponseV1,
     );
   },
 

@@ -23,6 +23,12 @@ function event(eventType: string, overrides: Partial<CanvasRuntimeEventV2> = {})
 }
 
 describe("runtimeEventPolicy", () => {
+  it("refreshes authoring state after node_restored", () => {
+    expect(runtimeEventPolicy(event("node_restored", { payload: { revision: 4, restored_binding_ids: ["b1"], skipped_binding_ids: [] } }))).toMatchObject({
+      refreshWorkflow: true, refreshRuntime: false, refreshChat: false,
+    });
+  });
+
   it("refreshes the asset read model for final project_asset_published events", () => {
     expect(runtimeEventPolicy(event("project_asset_published", {
       asset_id: "asset-1",

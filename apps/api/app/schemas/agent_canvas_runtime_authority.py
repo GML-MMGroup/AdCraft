@@ -54,6 +54,7 @@ class CanvasExecutionMemberIntentV2(_AuthorityModel):
 class CanvasExecutionStartCommandV2(_AuthorityModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     expected_workflow_revision: int = Field(ge=1)
+    node_scoped: bool = False
     scope: CanvasRunScopeV2
     idempotency_key: str = Field(min_length=1, max_length=320)
     request_digest: str = Field(pattern=r"^[a-f0-9]{64}$")

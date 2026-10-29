@@ -5,6 +5,7 @@ import {
   validateModelParameters,
 } from "./modelParameterDescriptors.ts";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { resolutionAspectRatio } from "./resolutionAspectRatio.ts";
 
 function updateParameter(
   parameters: Readonly<Record<string, unknown>>,
@@ -110,7 +111,11 @@ export function ModelParameterControls({
                   <option value={value}>{t("{value} (unsupported)", { value })}</option>
                 ) : null}
                 {descriptor.allowed_values.map((option) => (
-                  <option value={option} key={option}>{option}</option>
+                  <option value={option} key={option}>
+                    {resolutionAspectRatio(option)
+                      ? t("{value} ({ratio})", { value: option, ratio: resolutionAspectRatio(option)! })
+                      : option}
+                  </option>
                 ))}
               </select>
             ) : descriptor.value_type === "string" ? (

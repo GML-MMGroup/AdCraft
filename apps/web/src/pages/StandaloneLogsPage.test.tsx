@@ -4,17 +4,19 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { LegacyCallHistoryRedirect, WorkflowModelCallHistoryPage } from "./WorkflowModelCallHistoryPage";
 import { agentModelCallHistoryApi as api } from "../api/agentModelCallHistoryApi";
 import type { ProjectV2Summary } from "../types-v2";
+import { LocaleProvider } from "../i18n/locale";
 vi.mock("../api/agentModelCallHistoryApi", () => ({ agentModelCallHistoryApi: { projects: vi.fn(), list: vi.fn(), detail: vi.fn() } }));
 function project(id: string): ProjectV2Summary {
   return { project_id: `p-${id}`, workflow_id: id, name: `Project ${id}`, status: "active", is_favorite: false, cover_asset_id: null, project_version: 1, updated_at: "2026-10-12T01:00:00Z" };
 }
 function HistoryBack() { const navigate = useNavigate(); return <button onClick={() => navigate(-1)}>Back</button>; }
 function setup(path = "/logs") {
-  return render(<MemoryRouter initialEntries={[path]}><HistoryBack/><Routes>
+  localStorage.removeItem("adcraft.locale");
+  return render(<LocaleProvider initialLocale="zh-CN"><MemoryRouter initialEntries={[path]}><HistoryBack/><Routes>
     <Route path="/logs" element={<WorkflowModelCallHistoryPage/>}/>
     <Route path="/logs/:workflowId" element={<WorkflowModelCallHistoryPage/>}/>
     <Route path="/workflows/:workflowId/llm-calls" element={<LegacyCallHistoryRedirect/>}/>
-  </Routes></MemoryRouter>);
+  </Routes></MemoryRouter></LocaleProvider>);
 }
 beforeEach(() => {
   vi.resetAllMocks();

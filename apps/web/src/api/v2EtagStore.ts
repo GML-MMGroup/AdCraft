@@ -10,7 +10,17 @@ class V2EtagStore {
 
   set(resource: V2AuthoringResource, id: string, etag: string | null): void {
     const values = resource === "project" ? this.projects : this.workflows;
-    if (etag) values.set(id, etag);
+    if (etag) {
+      // Background reads may arrive out of order; retain the newest canonical revision.
+      const revision = (value: string | undefined) => {
+        const match = value?.match(/(?:-v|:revision:|-r)(\d+)"?$/);
+        return match ? Number(match[1]) : null;
+      };
+      const incoming = revision(etag);
+      const current = revision(values.get(id));
+      if (incoming !== null && current !== null && incoming < current) return;
+      values.set(id, etag);
+    }
     else values.delete(id);
   }
 

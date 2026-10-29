@@ -111,6 +111,30 @@ describe("useAgentCanvasNodeRevealQueue", () => {
     expect(result.current.visibleNodeIds).toEqual(new Set(["world"]));
   });
 
+  it("shows a released canonical node without waiting for another canonical sync", () => {
+    // Production (2026-10-20): an Agent-planned Video draft arrives through a
+    // workflow refresh without an action receipt, so no placement plan ever
+    // queues it; releasing it must make it visible immediately.
+    const flow = createFlowRef();
+    const { result } = renderHook(() => useAgentCanvasNodeRevealQueue({
+      workflowId: "workflow-1",
+      flowRef: flow.ref,
+      onFocusNode: vi.fn(),
+      reducedMotion: true,
+    }));
+
+    act(() => {
+      result.current.reserveNodeIds(["video-2"]);
+      result.current.syncCanonicalNodeIds(["video-2"]);
+    });
+    expect(result.current.visibleNodeIds).toEqual(new Set());
+
+    act(() => {
+      result.current.releaseNodeIds(["video-2", "not-on-canvas"]);
+    });
+    expect(result.current.visibleNodeIds).toEqual(new Set(["video-2"]));
+  });
+
   it("interrupts pending focus without hiding revealed nodes", () => {
     const focus = vi.fn();
     const flow = createFlowRef();

@@ -203,7 +203,7 @@ describe("AgentCanvasPage chrome", () => {
       'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}${canvasInteracting ? " is-interacting" : ""}`}',
     );
     expect(source).toContain("<LayoutIcon />");
-    expect(source).toContain('aria-label="Organize canvas"');
+    expect(source).toContain('aria-label={t("Organize canvas")}');
     expect(source).toContain("updateNodePositions");
     expect(source).toContain("rollbackPositions: rollbackNodePositions");
     expect(source).not.toContain("layoutKeepSucceededRef");
@@ -281,7 +281,7 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("pendingDragNodeChangesRef");
     expect(source).toContain("flushPendingDragNodeChanges();");
     expect(source).toMatch(
-      /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?updateNodePositions\(dragResult\.positions\)/,
+      /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?moveNodes\(dragStartPositionsRef\.current, dragResult\.positions\)/,
     );
   });
 
@@ -303,7 +303,7 @@ describe("AgentCanvasPage chrome", () => {
       /onNodeDragStop=\{\(_event, node, draggedNodes\) => \{[\s\S]*?if \(dragCancellationPendingRef\.current\) \{[\s\S]*?dragCancellationPendingRef\.current = false;[\s\S]*?return;/,
     );
     expect(source).toMatch(
-      /updateNodePositions\(dragResult\.positions\)[\s\S]*?catch\(\(\) => \{[\s\S]*?refreshWorkflow\(\)/,
+      /moveNodes\(dragStartPositionsRef\.current, dragResult\.positions\)[\s\S]*?catch\(\(\) => \{[\s\S]*?refreshWorkflow\(\)/,
     );
   });
 
@@ -323,7 +323,7 @@ describe("AgentCanvasPage chrome", () => {
 
     expect(source).toContain("captureFrozenCanvasEdges(");
     expect(source).toContain("edges={renderedEdges}");
-    expect(source).toContain("<FrozenCanvasEdgesOverlay snapshots={dragEdgeProjection.frozenSnapshots} />");
+    expect(source).toContain("<FrozenCanvasEdgesOverlay snapshots={visibleFrozenSnapshots} />");
     expect(overlaySource).toContain("className=\"agent-canvas-frozen-edges\"");
     expect(canvasCss).toMatch(/\.agent-canvas-frozen-edges \{[\s\S]*?pointer-events: none;/);
   });

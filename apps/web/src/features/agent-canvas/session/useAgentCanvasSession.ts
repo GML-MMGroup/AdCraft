@@ -19,6 +19,7 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { buildAgentCanvasPreRevealLayout } from "../canvas/agentCanvasPreRevealLayout.ts";
+import { useAgentCanvasHistory } from "../history/useAgentCanvasHistory.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
 import { assertValidCanvasBindingWrite } from "./bindingWriteValidation.ts";
 import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
@@ -86,6 +87,19 @@ export function useAgentCanvasSession() {
     new Map<string, Map<string, CanvasLayoutPositionV2>>(),
   );
   const editingExportImportKeysRef = useRef(new Map<string, string>());
+  // Queue tasks can finish before React commits a render. Keep the session read
+  // reference current immediately, while retaining functional state merges for
+  // runtime updates that React may already have queued.
+  const updateWorkflow = useCallback((
+    update: (current: AgentCanvasWorkflowV2 | null) => AgentCanvasWorkflowV2 | null,
+  ) => {
+    workflowRef.current = update(workflowRef.current);
+    setAgentCanvasWorkflow((current) => {
+      const next = update(current);
+      workflowRef.current = next;
+      return next;
+    });
+  }, [setAgentCanvasWorkflow]);
   const layoutQueueForWorkflow = useCallback((workflowId: string) => {
     let layoutQueue = layoutQueuesRef.current.get(workflowId);
     if (!layoutQueue) {
@@ -104,16 +118,15 @@ export function useAgentCanvasSession() {
     });
   }
   const applyWorkflow = useCallback((next: AgentCanvasWorkflowV2) => {
-    setAgentCanvasWorkflow((current) => {
+    updateWorkflow((current) => {
       const merged = mergeAgentCanvasWorkflow(current, next);
       const pending = Array.from(
         pendingLayoutPositionsRef.current.get(merged.workflow_id)?.values() ?? [],
       );
       const withPending = overlayAgentCanvasPositions(merged, pending);
-      workflowRef.current = withPending;
       return withPending;
     });
-  }, [setAgentCanvasWorkflow]);
+  }, [updateWorkflow]);
 
   const applyLayout = useCallback((
     response: CanvasLayoutPatchResponseV2,
@@ -130,17 +143,16 @@ export function useAgentCanvasSession() {
       pendingLayoutPositionsRef.current.delete(response.workflow_id);
     }
     const remainingPending = Array.from(pendingByNode?.values() ?? []);
-    setAgentCanvasWorkflow((current) => {
+    updateWorkflow((current) => {
       if (!current || current.workflow_id !== response.workflow_id) return current;
       const merged = mergeAgentCanvasLayout(current, response);
       const next = overlayAgentCanvasPositions(
         merged,
         remainingPending,
       );
-      workflowRef.current = next;
       return next;
     });
-  }, [setAgentCanvasWorkflow]);
+  }, [updateWorkflow]);
 
   flushLayoutRef.current = async (workflowId, positions) => {
     const assertActiveWorkflow = () => {
@@ -160,7 +172,7 @@ export function useAgentCanvasSession() {
       },
       patchLayout: (request) => {
         assertActiveWorkflow();
-        return agentCanvasApi.patchAgentCanvasLayout(workflowId, request);
+        return agentCanvasApi.patchAgentCanvasLayout(workflowId, request, { conflictHandling: "caller" });
       },
       applyWorkflow,
       applyLayout: (response) => applyLayout(response, positions),
@@ -170,14 +182,16 @@ export function useAgentCanvasSession() {
     }
   };
 
+  const readWorkflow = useCallback(() => workflowRef.current, []);
+
   const patchNode = useCallback((
     nodeId: string,
     patch: CanvasNodePatchRequestV2,
-    options: { coalesce?: boolean; optimistic?: boolean } = {},
+    options: { coalesce?: boolean; optimistic?: boolean; expectedNodeRevision?: number; onSaved?: (node: CanvasNodeV2) => void } = {},
   ) => {
     if (!agentCanvasWorkflow) return Promise.reject(new Error("No active Agent Canvas workflow."));
     if (options.optimistic) {
-      setAgentCanvasWorkflow((current) => current
+      updateWorkflow((current) => current
         ? withNodePatch(current, nodeId, patch)
         : current);
     }
@@ -185,13 +199,21 @@ export function useAgentCanvasSession() {
     return queueRef.current!.enqueue(
       options.coalesce ? `patch:${nodeId}` : createOperationKey(`patch:${nodeId}`),
       async () => {
-        const response = await agentCanvasApi.patchAgentCanvasNode(workflowId, nodeId, patch);
+        const current = workflowRef.current;
+        if (!current || current.workflow_id !== workflowId) {
+          throw new Error("The active Agent Canvas workflow changed before its node was saved.");
+        }
+        const node = current.nodes.find((item) => item.node_id === nodeId);
+        const response = await agentCanvasApi.patchAgentCanvasNode(workflowId, nodeId, patch, {
+          expectedNodeRevision: options.expectedNodeRevision ?? node?.revision,
+        });
         applyWorkflow(response.value.workflow);
+        if (response.value.node) options.onSaved?.(response.value.node);
         setAuthoringError(null);
       },
       { coalesce: options.coalesce },
     );
-  }, [agentCanvasWorkflow, applyWorkflow, setAgentCanvasWorkflow]);
+  }, [agentCanvasWorkflow, applyWorkflow, updateWorkflow]);
 
   const updateNodePositions = useCallback((positions: CanvasLayoutPositionV2[]) => {
     if (!positions.length) return Promise.resolve();
@@ -202,10 +224,9 @@ export function useAgentCanvasSession() {
       ?? new Map<string, CanvasLayoutPositionV2>();
     positions.forEach((position) => pendingByNode.set(position.node_id, position));
     pendingLayoutPositionsRef.current.set(workflowId, pendingByNode);
-    setAgentCanvasWorkflow((current) => {
+    updateWorkflow((current) => {
       if (!current || current.workflow_id !== workflowId) return current;
       const next = overlayAgentCanvasPositions(current, positions);
-      workflowRef.current = next;
       return next;
     });
     const layoutQueue = layoutQueueForWorkflow(workflowId);
@@ -223,7 +244,7 @@ export function useAgentCanvasSession() {
       setAuthoringError(error instanceof Error ? error.message : "Canvas layout could not be saved.");
       throw error;
     });
-  }, [layoutQueueForWorkflow, setAgentCanvasWorkflow]);
+  }, [layoutQueueForWorkflow, updateWorkflow]);
 
   const updateNodePosition = useCallback((nodeId: string, position: CanvasPositionV2) => (
     updateNodePositions([{ node_id: nodeId, ...position }])
@@ -247,10 +268,9 @@ export function useAgentCanvasSession() {
           agentCanvasApi.patchAgentCanvasLayout(scopedWorkflowId, request)
         ),
         applyWorkflow: (next) => {
-          setAgentCanvasWorkflow((current) => {
+          updateWorkflow((current) => {
             if (!current || current.workflow_id !== next.workflow_id) return current;
             const merged = mergeAgentCanvasWorkflow(current, next);
-            workflowRef.current = merged;
             return merged;
           });
         },
@@ -261,7 +281,7 @@ export function useAgentCanvasSession() {
         setAuthoringError(null);
       }
     });
-  }, [applyLayout, layoutQueueForWorkflow, setAgentCanvasWorkflow]);
+  }, [applyLayout, layoutQueueForWorkflow, updateWorkflow]);
 
   const rollbackNodePositions = useCallback((
     workflowId: string,
@@ -270,24 +290,36 @@ export function useAgentCanvasSession() {
     const pending = pendingLayoutPositionsRef.current.get(workflowId);
     positions.forEach((position) => pending?.delete(position.node_id));
     if (pending && !pending.size) pendingLayoutPositionsRef.current.delete(workflowId);
-    setAgentCanvasWorkflow((current) => {
+    updateWorkflow((current) => {
       if (!current || current.workflow_id !== workflowId) return current;
       const next = overlayAgentCanvasPositions(current, positions);
-      workflowRef.current = next;
       return next;
     });
-  }, [setAgentCanvasWorkflow]);
+  }, [updateWorkflow]);
+
+  const history = useAgentCanvasHistory({
+    workflowId: agentCanvasWorkflow?.workflow_id ?? null,
+    readWorkflow,
+    applyWorkflow,
+    authoringQueue: queueRef.current,
+    updateNodePositions,
+    rollbackNodePositions,
+  });
+  const { record: recordHistory, deleteEntities } = history;
 
   const createNode = useCallback(async (request: CanvasNodeCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     return queueRef.current!.enqueue(createOperationKey("create-node"), async () => {
       const response = await agentCanvasApi.createAgentCanvasNode(agentCanvasWorkflow.workflow_id, request);
       applyWorkflow(response.value.workflow);
-      if (response.value.node) setSelectedNodeId(response.value.node.node_id);
+      if (response.value.node) {
+        setSelectedNodeId(response.value.node.node_id);
+        recordHistory({ kind: "create", node_id: response.value.node.node_id });
+      }
       setAuthoringError(null);
       return response.value.node;
     });
-  }, [agentCanvasWorkflow, applyWorkflow]);
+  }, [agentCanvasWorkflow, applyWorkflow, recordHistory]);
 
   const placeActionReceiptNodes = useCallback(async (
     receipt: AgentActionReceiptV2,
@@ -316,14 +348,10 @@ export function useAgentCanvasSession() {
   }, [applyWorkflow, updateNodePositions]);
 
   const deleteNode = useCallback(async (nodeId: string) => {
-    if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
-    await queueRef.current!.enqueue(createOperationKey("delete-node"), async () => {
-      const response = await agentCanvasApi.deleteAgentCanvasNode(agentCanvasWorkflow.workflow_id, nodeId);
-      applyWorkflow(response.value.workflow);
-      setSelectedNodeId((current) => current === nodeId ? null : current);
-      setAuthoringError(null);
-    });
-  }, [agentCanvasWorkflow, applyWorkflow]);
+    await deleteEntities([nodeId], []);
+    setSelectedNodeId((current) => current === nodeId ? null : current);
+    setAuthoringError(null);
+  }, [deleteEntities]);
 
   const createBinding = useCallback(async (
     request: CanvasBindingCreateRequestV2,
@@ -341,6 +369,7 @@ export function useAgentCanvasSession() {
           options?.isCurrent ? { conflictHandling: "caller" } : undefined);
         if (!isCurrent()) return null;
         applyWorkflow(response.value.workflow);
+        if (response.value.binding) recordHistory({ kind: "connect", binding: response.value.binding });
         setAuthoringError(null);
         return response.value.binding;
       } catch (error) {
@@ -348,7 +377,7 @@ export function useAgentCanvasSession() {
         throw error;
       }
     });
-  }, [agentCanvasWorkflow, applyWorkflow]);
+  }, [agentCanvasWorkflow, applyWorkflow, recordHistory]);
 
   const createConnectedNode = useCallback(async (
     request: CanvasConnectedNodeCreateRequestV2,
@@ -361,17 +390,17 @@ export function useAgentCanvasSession() {
         request,
         createOperationKey("create-connected-node-request"),
       );
-      setAgentCanvasWorkflow((current) => {
+      updateWorkflow((current) => {
         if (!current || current.workflow_id !== workflowId) return current;
         const next = mergeAgentCanvasConnectedNode(current, response.value);
-        workflowRef.current = next;
         return next;
       });
+      recordHistory({ kind: "create", node_id: response.value.node.node_id });
       setSelectedNodeId(response.value.node.node_id);
       setAuthoringError(null);
       return response.value.node;
     });
-  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+  }, [agentCanvasWorkflow, recordHistory, updateWorkflow]);
 
   const importEditingExport = useCallback(async (
     editingNodeId: string,
@@ -398,18 +427,18 @@ export function useAgentCanvasSession() {
           request,
           idempotencyKey,
         );
-        setAgentCanvasWorkflow((current) => {
+        updateWorkflow((current) => {
           if (!current || current.workflow_id !== workflowId) return current;
           const next = mergeAgentCanvasEditingExportImport(current, response.value);
-          workflowRef.current = next;
           return next;
         });
+        recordHistory({ kind: "create", node_id: response.value.node.node_id });
         setSelectedNodeId(response.value.node.node_id);
         setAuthoringError(null);
         return response.value;
       },
     );
-  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+  }, [agentCanvasWorkflow, recordHistory, updateWorkflow]);
 
   const patchBinding = useCallback(async (
     bindingId: string,
@@ -426,29 +455,24 @@ export function useAgentCanvasSession() {
           request,
           createOperationKey("patch-binding-request"),
         );
-        setAgentCanvasWorkflow((current) => {
+        updateWorkflow((current) => {
           if (!current || current.workflow_id !== workflowId) return current;
           const next = mergeAgentCanvasBindingMutation(current, response.value);
-          workflowRef.current = next;
           return next;
         });
         setAuthoringError(null);
         return response.value.binding;
       },
     );
-  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+  }, [agentCanvasWorkflow, updateWorkflow]);
 
   const deleteBinding = useCallback(async (bindingId: string) => {
-    if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
-    await queueRef.current!.enqueue(createOperationKey("delete-binding"), async () => {
-      const response = await agentCanvasApi.deleteAgentCanvasBinding(agentCanvasWorkflow.workflow_id, bindingId);
-      applyWorkflow(response.value.workflow);
-      setAuthoringError(null);
-    });
-  }, [agentCanvasWorkflow, applyWorkflow]);
+    await deleteEntities([], [bindingId]);
+    setAuthoringError(null);
+  }, [deleteEntities]);
 
   const mergePublishedAsset = useCallback((asset: ProjectAssetSummaryV2, nodeId?: string | null) => {
-    setAgentCanvasWorkflow((current) => {
+    updateWorkflow((current) => {
       if (!current) return current;
       return {
         ...current,
@@ -466,14 +490,14 @@ export function useAgentCanvasSession() {
           : current.nodes,
       };
     });
-  }, [setAgentCanvasWorkflow]);
+  }, [updateWorkflow]);
 
   const mergeNode = useCallback((nextNode: CanvasNodeV2) => {
-    setAgentCanvasWorkflow((current) => {
+    updateWorkflow((current) => {
       if (!current || current.workflow_id !== nextNode.workflow_id) return current;
       return mergeExistingAgentCanvasNode(current, nextNode);
     });
-  }, [setAgentCanvasWorkflow]);
+  }, [updateWorkflow]);
 
   const selectedNode = useMemo(
     () => agentCanvasWorkflow?.nodes.find((node) => node.node_id === selectedNodeId) ?? null,
@@ -481,6 +505,7 @@ export function useAgentCanvasSession() {
   );
 
   return {
+    history,
     state: {
       workflow: agentCanvasWorkflow,
       selectedNode,
@@ -496,6 +521,7 @@ export function useAgentCanvasSession() {
       patchNode,
       updateNodePosition,
       updateNodePositions,
+      moveNodes: history.moveNodes,
       persistLayoutPreviewPositions,
       rollbackNodePositions,
       createNode,

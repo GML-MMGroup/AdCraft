@@ -25,7 +25,12 @@ export type PresentationStreamViewStatus =
 export interface PresentationStreamView {
   stream_id: string;
   status: PresentationStreamViewStatus;
+  generation_id: string | null;
+  reasoning_text: string;
   text: string;
+  reasoning_started_at: number | null;
+  answer_started_at: number | null;
+  terminal_at_ms: number | null;
   last_sequence_no: number;
   stream_kind: PresentationStreamEventV1["stream_kind"] | null;
   turn_id: string | null;
@@ -41,7 +46,12 @@ function initialView(streamId: string): PresentationStreamView {
   return {
     stream_id: streamId,
     status: "connecting",
+    generation_id: null,
+    reasoning_text: "",
     text: "",
+    reasoning_started_at: null,
+    answer_started_at: null,
+    terminal_at_ms: null,
     last_sequence_no: 0,
     stream_kind: null,
     turn_id: null,
@@ -166,14 +176,37 @@ export function useAgentCanvasPresentationStreams(
           const previous = viewsRef.current.get(streamId) ?? initialView(streamId);
           if (event.sequence_no <= previous.last_sequence_no) return;
           const terminal = isTerminalEvent(event.event_type);
+          const segment = event.segment ?? "answer";
+          const now = typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
           updateView(streamId, (view) => ({
             ...view,
             status: statusForEvent(event.event_type),
+            generation_id: event.generation_id,
+            reasoning_text: event.event_type === "reset"
+              ? ""
+              : event.event_type === "delta" && segment === "reasoning"
+                ? `${view.reasoning_text}${event.delta ?? ""}`
+                : view.reasoning_text,
             text: event.event_type === "reset"
               ? ""
-              : event.event_type === "delta"
+              : event.event_type === "delta" && segment === "answer"
                 ? `${view.text}${event.delta ?? ""}`
                 : view.text,
+            reasoning_started_at: event.event_type === "reset"
+              ? null
+              : event.event_type === "delta" && segment === "reasoning"
+                ? (view.reasoning_started_at ?? now)
+                : view.reasoning_started_at,
+            answer_started_at: event.event_type === "reset"
+              ? null
+              : event.event_type === "delta" && segment === "answer"
+                ? (view.answer_started_at ?? now)
+                : view.answer_started_at,
+            terminal_at_ms: terminal && (view.reasoning_started_at !== null || view.answer_started_at !== null)
+              ? now
+              : view.terminal_at_ms,
             last_sequence_no: event.sequence_no,
             stream_kind: event.stream_kind,
             turn_id: event.turn_id,

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDownIcon, ChevronUpIcon } from "../../../icons.tsx";
 import { useWorkbenchMenu } from "./useWorkbenchMenu.ts";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { resolutionAspectRatio } from "./resolutionAspectRatio.ts";
 
 export function InlineParameterSelect({
   label,
@@ -20,8 +21,12 @@ export function InlineParameterSelect({
   const t = useTranslation("en-US");
   const menuId = useId();
   const { open, setOpen, menuStyle, triggerRef, menuRef } = useWorkbenchMenu(disabled, options.length);
+  const optionLabel = (option: string) => {
+    const ratio = resolutionAspectRatio(option);
+    return ratio ? t("{value} ({ratio})", { value: option, ratio }) : option;
+  };
   const unsupported = Boolean(value) && !options.includes(value);
-  const selectedLabel = unsupported ? t("{value} (unsupported)", { value }) : value || t("Not set");
+  const selectedLabel = unsupported ? t("{value} (unsupported)", { value }) : value ? optionLabel(value) : t("Not set");
   const select = (next: string | undefined) => {
     if (disabled) return;
     onChange(next);
@@ -77,7 +82,7 @@ export function InlineParameterSelect({
               disabled={disabled}
               onClick={() => select(option)}
             >
-              <strong>{option}</strong>
+              <strong>{optionLabel(option)}</strong>
             </button>
           ))}
         </div>,

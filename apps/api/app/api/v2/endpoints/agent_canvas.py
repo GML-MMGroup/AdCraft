@@ -113,6 +113,7 @@ from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     AgentTargetResolutionV2,
     CanvasBindingCreateRequestV2,
+    CanvasBindingRestoreRequestV2,
     CanvasBindingMutationResponseV2,
     CanvasBindingPatchRequestV2,
     CanvasConnectedNodeCreateRequestV2,
@@ -123,6 +124,8 @@ from app.schemas.agent_canvas import (
     CanvasMutationResponseV2,
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
+    CanvasNodeRestoreRequestV2,
+    CanvasNodeRestoreResponseV2,
     CanvasNodeV2,
     ImageLibraryListResponseV2,
     ProjectAssetListResponseV2,
@@ -371,6 +374,7 @@ from app.services.agent_canvas_guided_production_closure import (
 )
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.services.agent_canvas_guidance_orphan_recovery import GuidanceOrphanRecoveryService
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
 from app.services.agent_canvas_prompt_preparation_worker import (
     AgentCanvasPromptPreparationWorker,
@@ -407,6 +411,7 @@ from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
 )
 from app.services.agent_canvas_guided_editing import GuidedEditingPreparationService
+from app.services.agent_canvas_guided_editing_trigger import GuidedEditingTrigger
 from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_next_action_dispatch import NextActionDispatchService
@@ -562,6 +567,7 @@ class AgentCanvasRuntime:
     accepted_background: AgentCanvasAcceptedBackgroundRunner
     presentation_streams: PresentationStreamRepository
     presentation_publisher: PresentationStreamPublisher
+    guidance_orphan_recovery: GuidanceOrphanRecoveryService
     prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
 
 
@@ -1128,6 +1134,9 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
+        identity_safety_decision_resolver=lambda workflow_id: _current_identity_safety_decision(
+            requirement_service, workflow_id
+        ),
         on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
             _advance_after_storyboard_pipeline(workflow_id, plan_document_id)
         ),
@@ -1472,6 +1481,13 @@ def create_agent_canvas_runtime(
         continuation_worker.run_once()
         return result
 
+    next_action_dispatch = NextActionDispatchService(database, event_repository)
+    guided_editing_trigger = GuidedEditingTrigger(
+        conversations=conversation_repository,
+        plans=storyboard_authoring,
+        workflows=workflow_repository,
+        next_action_dispatch=next_action_dispatch,
+    )
     guided_media_reviews = GuidedMediaReviewCoordinator(
         interactions=guided_interaction_repository,
         conversations=conversation_repository,
@@ -1485,6 +1501,7 @@ def create_agent_canvas_runtime(
         node_resolver=workflow_repository.get_node,
         execution_settings=execution_settings.get_or_create,
         prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
+        media_complete=guided_editing_trigger.continue_when_media_complete,
     )
 
     def persist_script_document(effect) -> CanvasPostReadyEffectDispositionV1:
@@ -1707,7 +1724,6 @@ def create_agent_canvas_runtime(
         decision_bundles=decision_bundles,
         editing_preparer=prepare_current_editing,
     )
-    next_action_dispatch = NextActionDispatchService(database, event_repository)
     materialization_repository = AgentCanvasMaterializationRepository(
         database,
         event_repository,
@@ -1734,12 +1750,10 @@ def create_agent_canvas_runtime(
         envelope: ProposalPublicationEnvelopeV1,
         outcome: MaterializationOutcomeV1,
     ) -> object | None:
-        """Resume the fixed Journey after parent-derived prompt preparation.
+        """Resume the Journey after guided materialization and prompt publication.
 
-        The derivative materialization is the authoritative stage transition,
-        while its capability-materialization continuation owns prompt
-        preparation.  Queueing the next action here keeps the two durable
-        boundaries ordered and idempotent.
+        The publication owns prompt preparation before the next authoring action.
+        The dispatcher preserves the source Turn and session revision replay key.
         """
 
         del outcome
@@ -2103,6 +2117,9 @@ def create_agent_canvas_runtime(
         presentation_streams=presentation_streams,
         presentation_publisher=presentation_publisher,
         prompt_preparation_worker=prompt_preparation_worker,
+        guidance_orphan_recovery=GuidanceOrphanRecoveryService(
+            guided_interaction_repository, continuation_outbox, event_repository
+        ),
     )
 
 
@@ -2488,9 +2505,16 @@ def patch_node(
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    if_match_node: Annotated[int | None, Header(alias="If-Match-Node", ge=1)] = None,
 ) -> CanvasMutationResponseV2:
     try:
         current = runtime.workflows.get_node(workflow_id, node_id)
+        if if_match_node is not None and current.revision != if_match_node:
+            raise V2PersistenceError(
+                "node_revision_conflict",
+                "This Node changed since the draft was loaded. Review the latest version before saving.",
+                stage="agent_canvas_node_api",
+            )
         runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         expected_revision = _expected_revision(if_match, workflow_id)
         if current.node_type == "editing" and request.structured_content is not None:
@@ -2524,6 +2548,7 @@ def patch_node(
                 node_id,
                 request,
                 expected_revision=expected_revision,
+                expected_node_revision=if_match_node,
             )
         workflow = runtime.projects.get_workflow(workflow_id)
         workflow = runtime.editing_responses.project_workflow(workflow)
@@ -2619,6 +2644,38 @@ def delete_node(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return CanvasMutationResponseV2(workflow=workflow)
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes/{node_id}/restore",
+    response_model=CanvasNodeRestoreResponseV2,
+)
+def restore_node(
+    workflow_id: str,
+    node_id: str,
+    request: CanvasNodeRestoreRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> CanvasNodeRestoreResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        restored = runtime.nodes.restore(
+            workflow_id,
+            node_id,
+            expected_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+            request_fingerprint=sha256(request.model_dump_json().encode()).hexdigest(),
+            project_workflow=lambda workflow: runtime.editing_responses.project_workflow(
+                runtime.projects.project_workflow(workflow)
+            ),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, restored.workflow.revision)
+    return restored
 
 
 @router.post(
@@ -2725,6 +2782,42 @@ def create_binding(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return CanvasMutationResponseV2(workflow=workflow, binding=binding)
+
+
+@router.post(
+    "/workflows/{workflow_id}/bindings/restore",
+    response_model=CanvasMutationResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def restore_binding(
+    workflow_id: str,
+    request: CanvasBindingRestoreRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> CanvasMutationResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        restored = runtime.bindings.restore(
+            workflow_id,
+            request,
+            expected_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+            request_fingerprint=sha256(
+                json.dumps(
+                    request.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+            project_workflow=lambda workflow: runtime.editing_responses.project_workflow(
+                runtime.projects.project_workflow(workflow)
+            ),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, restored.workflow.revision)
+    return restored
 
 
 @router.delete(
@@ -3032,11 +3125,34 @@ def get_agent_working_document(
 )
 def get_chat_timeline(
     workflow_id: str,
+    background_tasks: BackgroundTasks,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     after_seq: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> ChatTimelineListResponseV2:
     try:
+        session = runtime.conversation_repository.get_guidance_session_or_none(workflow_id)
+        if (
+            session is not None
+            and session.awaiting is not None
+            and session.awaiting.kind in {"manual_node_run", "media_review"}
+        ):
+
+            def schedule_continuation(continuation_id: str) -> None:
+                background_tasks.add_task(
+                    runtime.accepted_background.run,
+                    AcceptedBackgroundWork(
+                        operation=AcceptedBackgroundOperation.GUIDANCE_CONTINUATION_DRAIN,
+                        workflow_id=workflow_id,
+                        resource_type=AcceptedBackgroundResourceType.DELIVERY,
+                        resource_id=continuation_id,
+                        callback=runtime.continuation_worker.run_once,
+                    ),
+                )
+
+            runtime.guidance_orphan_recovery.recover_promised_progress(
+                workflow_id, drain_continuation=schedule_continuation
+            )
         timeline = runtime.conversations.get_timeline(
             workflow_id,
             after_seq=after_seq,
@@ -4218,6 +4334,14 @@ def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
     return presentation_stream_id(workflow_id, generation_id)
 
 
+def _current_identity_safety_decision(
+    requirements: AgentCanvasRequirementService,
+    workflow_id: str,
+) -> dict[str, object] | None:
+    decision = requirements.get_current_revision(workflow_id).ledger.identity_safety_decision
+    return decision.model_dump(mode="json") if decision is not None else None
+
+
 def _expected_revision(value: str | None, workflow_id: str) -> int:
     try:
         parsed = parse_workflow_if_match(value, workflow_id, required=True)
@@ -4307,6 +4431,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "agent_document_cross_workflow_reference": 409,
         "pagination_invalid": 422,
         "node_not_found": 404,
+        "node_not_deleted": 409,
+        "binding_id_conflict": 409,
         "binding_not_found": 404,
         "asset_not_found": 404,
         "guided_interaction_action_not_allowed": 422,
@@ -4353,7 +4479,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "locator_invalid": 422,
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
+        "node_revision_conflict": 412,
         "workflow_state_conflict": 409,
+        "run_intent_stale": 409,
         "requirement_ledger_not_found": 404,
         "requirement_revision_conflict": 412,
         "requirement_patch_invalid": 422,

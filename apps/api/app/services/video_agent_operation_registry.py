@@ -23,7 +23,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "world_setting",
         "world_setting",
-        "GuidedProposalAuthoringResultV4",
+        "WorldSettingProposalAuthoringResultV1",
         "video_agent_world_setting",
         "world_setting",
         "World Setting Designer",

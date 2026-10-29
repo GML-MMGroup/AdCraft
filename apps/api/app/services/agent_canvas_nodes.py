@@ -18,6 +18,7 @@ from app.schemas.agent_canvas import (
     CanvasBindingV2,
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
+    CanvasNodeRestoreResponseV2,
     CanvasNodeV2,
     USER_AUTHORING_ORIGIN,
     USER_AUTHORING_ORIGIN_KEY,
@@ -28,6 +29,10 @@ from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProje
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
+from app.services.agent_canvas_prompt_projection_lag import (
+    projection_consistency,
+    resync_derived_parameter_lag,
+)
 from app.services.model_selection import ModelSelectionService
 
 
@@ -124,8 +129,15 @@ class AgentCanvasNodeService:
         request: CanvasNodePatchRequestV2,
         *,
         expected_revision: int,
+        expected_node_revision: int | None = None,
     ) -> CanvasNodeV2:
         current = self._repository.get_node(workflow_id, node_id)
+        if expected_node_revision is not None and current.revision != expected_node_revision:
+            raise V2PersistenceError(
+                "node_revision_conflict",
+                "This Node changed since the draft was loaded. Review the latest version before saving.",
+                stage="agent_canvas_nodes",
+            )
         workflow = self._repository.get_workflow(workflow_id)
         changes = request.model_dump(exclude_unset=True)
         if "generation_prompt" in changes:
@@ -141,6 +153,7 @@ class AgentCanvasNodeService:
                 current,
                 expected_revision=expected_revision,
                 expected_node_revision=current.revision,
+                node_scoped=expected_node_revision is not None,
             )
             return self._repository.get_node(workflow_id, node_id)
         if "position" in changes:
@@ -235,6 +248,7 @@ class AgentCanvasNodeService:
             and current.prompt_presentation is not None
             and current.prompt_preparation.status == "ready"
         ):
+            current = resync_derived_parameter_lag(current)
             _validate_inherited_prompt_projection(current)
             changes["prompt_presentation"] = current.prompt_presentation.model_copy(
                 update={"revision": current.revision + 1}
@@ -276,8 +290,28 @@ class AgentCanvasNodeService:
             updated,
             expected_revision=expected_revision,
             expected_node_revision=current.revision,
+            node_scoped=expected_node_revision is not None,
         )
         return self._repository.get_node(workflow_id, node_id)
+
+    def restore(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+        project_workflow: Callable[[AgentCanvasWorkflowV2], AgentCanvasWorkflowV2] | None = None,
+    ) -> CanvasNodeRestoreResponseV2:
+        return self._repository.restore_node(
+            workflow_id,
+            node_id,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            project_workflow=project_workflow,
+        )
 
     def delete(
         self,
@@ -375,22 +409,7 @@ def _editable_prompt_projection(
 
 
 def _validate_inherited_prompt_projection(node: CanvasNodeV2) -> None:
-    projection = node.prompt_presentation
-    if projection is None:
-        return
-    prompt = node.generation_prompt or ""
-    review_revision = node.metadata.get("guided_review_node_revision")
-    revision_matches = projection.revision == node.revision or (
-        isinstance(review_revision, int)
-        and not isinstance(review_revision, bool)
-        and review_revision == node.revision
-        and projection.revision + 1 == node.revision
-    )
-    if (
-        projection.text != prompt
-        or projection.prompt_digest != f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}"
-        or not revision_matches
-    ):
+    if projection_consistency(node) == "conflict":
         raise V2PersistenceError(
             "prompt_revision_conflict",
             "The editable prompt projection does not match the Node revision.",

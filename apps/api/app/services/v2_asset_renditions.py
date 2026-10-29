@@ -6,6 +6,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from app.persistence.errors import V2PersistenceError
@@ -66,11 +67,23 @@ class V2AssetRenditionService:
         media_type: str,
         kind: str,
         max_dimension: int | None = None,
+        min_short_side: int | None = None,
+        image_processing: Literal["storyboard_soften_v1"] | None = None,
     ) -> AssetRendition:
         if kind not in {"preview", "poster", "provider_reference"}:
             raise V2PersistenceError(
                 "asset_rendition_kind_invalid",
                 "Asset rendition kind is invalid.",
+                stage="v2_asset_rendition_service",
+            )
+        if image_processing is not None and (
+            image_processing != "storyboard_soften_v1"
+            or kind != "provider_reference"
+            or media_type != "image"
+        ):
+            raise V2PersistenceError(
+                "asset_rendition_processing_invalid",
+                "Storyboard softening requires an image provider reference rendition.",
                 stage="v2_asset_rendition_service",
             )
         if media_type not in {"image", "video"}:
@@ -93,13 +106,32 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         if kind == "provider_reference":
-            if max_dimension not in {None, 2048}:
+            if max_dimension not in {None, 2048, 1536, 1024, 768, 512, 320}:
                 raise V2PersistenceError(
                     "asset_rendition_size_invalid",
-                    "Provider reference renditions require a 2048px maximum dimension.",
+                    (
+                        "Provider reference renditions require a 2048px, 1536px, 1024px, "
+                        "768px, 512px, or 320px maximum dimension."
+                    ),
                     stage="v2_asset_rendition_service",
                 )
-            max_dimension = 2048
+            max_dimension = max_dimension or 2048
+            if min_short_side is not None and (
+                max_dimension not in {1024, 768, 512, 320}
+                or not 300 <= min_short_side <= max_dimension
+            ):
+                raise V2PersistenceError(
+                    "asset_rendition_size_invalid",
+                    "A minimum short side needs a 1024px, 768px, 512px, or 320px rendition "
+                    "and 300px or more.",
+                    stage="v2_asset_rendition_service",
+                )
+        elif min_short_side is not None:
+            raise V2PersistenceError(
+                "asset_rendition_size_invalid",
+                "Only provider reference renditions accept a minimum short side.",
+                stage="v2_asset_rendition_service",
+            )
         elif max_dimension is not None and max_dimension not in {320, 640}:
             raise V2PersistenceError(
                 "asset_rendition_size_invalid",
@@ -108,8 +140,14 @@ class V2AssetRenditionService:
             )
         extension = "jpg"
         target_name = (
-            f"{kind}-{max_dimension}.jpg" if max_dimension is not None else f"{kind}.{extension}"
+            f"{kind}-{max_dimension}-short{min_short_side}.jpg"
+            if min_short_side is not None
+            else f"{kind}-{max_dimension}.jpg"
+            if max_dimension is not None
+            else f"{kind}.{extension}"
         )
+        if image_processing is not None:
+            target_name = f"{Path(target_name).stem}-{image_processing}.jpg"
         target = validate_v2_data_path(
             self._data_dir,
             self._data_dir / "v2" / "renditions" / asset_id / version_id / target_name,
@@ -122,11 +160,23 @@ class V2AssetRenditionService:
         if media_type == "image":
             dimension = max_dimension or 640
             filters = (
-                "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease"
+                # Long side at the target, but never a short side below the
+                # provider minimum (Seedance rejects images under 300px).
+                f"scale=w='if(gte(iw\\,ih)\\,min(iw\\,max({dimension}\\,"
+                f"ceil({min_short_side}*iw/ih/2)*2))\\,-2)'"
+                f":h='if(gte(iw\\,ih)\\,-2\\,min(ih\\,max({dimension}\\,"
+                f"ceil({min_short_side}*ih/iw/2)*2)))'"
+                if kind == "provider_reference" and min_short_side is not None
+                else f"scale='min({dimension},iw)':'min({dimension},ih)':force_original_aspect_ratio=decrease"
                 if kind == "provider_reference"
                 else f"scale={dimension}:{dimension}:force_original_aspect_ratio=decrease"
             )
             quality = "3" if kind == "provider_reference" else "5"
+            if image_processing == "storyboard_soften_v1":
+                # Remove fine strokes and facial detail from the provider copy.
+                # Scale sigma with delivery size to keep the same visual treatment.
+                sigma = 4 * dimension / 320
+                filters += f",gblur=sigma={sigma}:steps=3"
             command = [
                 self._ffmpeg_path,
                 "-y",

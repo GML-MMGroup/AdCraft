@@ -41,6 +41,7 @@ ReferenceConditioningAllowedDimensionV1 = Literal[
     "framing",
     "background",
     "content",
+    "style",
 ]
 
 

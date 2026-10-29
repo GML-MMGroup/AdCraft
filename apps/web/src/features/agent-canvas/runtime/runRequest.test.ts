@@ -32,6 +32,7 @@ describe("nodeRunRequest", () => {
     expect(nodeRunRequest(draftNode(), true)).toEqual({
       scope: "selected_nodes",
       node_ids: ["node-video-1"],
+      expected_node_revisions: { "node-video-1": 1 },
       retry_failed: true,
       source_action: "retry_failed",
     });
@@ -41,6 +42,7 @@ describe("nodeRunRequest", () => {
     expect(nodeRunRequest(draftNode())).toEqual({
       scope: "selected_nodes",
       node_ids: ["node-video-1"],
+      expected_node_revisions: { "node-video-1": 1 },
       retry_failed: false,
       source_action: "node_run",
     });

@@ -393,6 +393,16 @@ class StoryboardFanoutActivationService:
                 else "agent/skills/video_agent_video_direction/SKILL.md"
             ),
             style_snapshot_id=snapshot_id,
+            allows_meme_captions=(
+                public_skill.get("allows_meme_captions", False)
+                if isinstance(public_skill, dict)
+                else False
+            ),
+            allows_comedic_sound_effects=(
+                public_skill.get("allows_comedic_sound_effects", False)
+                if isinstance(public_skill, dict)
+                else False
+            ),
             style_projection=(
                 combined_style_guidance(guidance.model_dump())
                 if guidance is not None

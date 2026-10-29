@@ -60,6 +60,7 @@ const AUTHORING_EVENTS = new Set([
   "node_created",
   "node_updated",
   "node_deleted",
+  "node_restored",
   "binding_created",
   "binding_updated",
   "binding_deleted",

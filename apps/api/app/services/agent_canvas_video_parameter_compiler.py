@@ -11,6 +11,7 @@ from typing import Protocol, cast
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
+from app.services.agent_canvas_video_parameter_authority import compiled_parameters_from_snapshot
 from app.schemas.agent_canvas import CanvasNodeV2, ResolvedTextBindingInputV2
 from app.schemas.agent_canvas_runtime import CanvasProviderModelCapabilityV2
 from app.schemas.agent_canvas_video_parameters import (
@@ -165,7 +166,23 @@ class AgentCanvasVideoParameterCompiler:
         member_id: str,
         model_defaults: dict[str, object],
         now: datetime,
+        run_intent_snapshot_id: str | None = None,
     ) -> CompiledVideoParametersV2:
+        if run_intent_snapshot_id is not None:
+            stored = self._runtime.find_parameter_compilation_snapshot(
+                member_id, run_intent_snapshot_id
+            )
+            if stored is not None:
+                if (
+                    stored.model_ref != selected_model_ref
+                    or stored.capability_revision != capability.capability_revision
+                ):
+                    raise V2PersistenceError(
+                        "parameter_compilation_snapshot_conflict",
+                        "The prepared model authority changed before parameter recovery.",
+                        stage="parameter_compilation",
+                    )
+                return compiled_parameters_from_snapshot(stored)
         plan = _compilation_plan(node, direct_text_inputs, capability)
         gateway_result: VideoParameterIntentGatewayResult | None = None
         candidates: tuple[VideoParameterCandidateV2, ...] = ()
@@ -223,6 +240,7 @@ class AgentCanvasVideoParameterCompiler:
                 now=now,
             )
         snapshot = _snapshot(
+            run_intent_snapshot_id=run_intent_snapshot_id,
             node=node,
             selected_model_ref=selected_model_ref,
             capability=capability,
@@ -234,7 +252,9 @@ class AgentCanvasVideoParameterCompiler:
             gateway_result=gateway_result,
             now=now,
         )
-        self._runtime.put_parameter_compilation_snapshot(snapshot)
+        # A resumed member may already own an immutable compilation. Use the
+        # persisted identity returned by the repository, not the discarded candidate.
+        snapshot = self._runtime.put_parameter_compilation_snapshot(snapshot)
         return compiled.model_copy(
             update={"parameter_compilation_snapshot_id": snapshot.snapshot_id}
         )
@@ -402,6 +422,7 @@ def _snapshot(
     now: datetime,
     execution_mode: str = "agent_assisted",
     parameter_source: str = "mixed",
+    run_intent_snapshot_id: str | None = None,
 ) -> VideoParameterCompilationSnapshotV2:
     sources: list[VideoParameterSourceSnapshotV2] = []
     if node.generation_prompt and node.generation_prompt.strip():
@@ -430,6 +451,7 @@ def _snapshot(
         or node.parameter_provenance[field].origin == "manual"
     }
     payload = {
+        **({"run_intent_snapshot_id": run_intent_snapshot_id} if run_intent_snapshot_id else {}),
         "workflow_id": node.workflow_id,
         "execution_id": execution_id,
         "member_id": member_id,
@@ -452,6 +474,7 @@ def _snapshot(
     }
     digest = _digest(payload)
     return VideoParameterCompilationSnapshotV2(
+        run_intent_snapshot_id=run_intent_snapshot_id,
         snapshot_id=f"video_params_{digest[:24]}",
         snapshot_digest=digest,
         workflow_id=node.workflow_id,
@@ -463,6 +486,7 @@ def _snapshot(
         capability_revision=capability.capability_revision,
         source_snapshots=tuple(sources),
         manual_parameters=cast(dict[str, object], manual),
+        authoring_parameters=compiled.authoring_parameters,
         accepted_candidates=compiled.accepted_candidates,
         rejected_lower_priority_candidates=compiled.rejected_lower_priority_candidates,
         requested_parameters=compiled.requested_parameters,
@@ -490,10 +514,12 @@ def build_direct_video_parameter_snapshot(
     model_defaults: dict[str, object],
     compiled: CompiledVideoParametersV2,
     now: datetime,
+    run_intent_snapshot_id: str | None = None,
 ) -> VideoParameterCompilationSnapshotV2:
     """Build the existing immutable parameter snapshot for a direct attempt."""
 
     return _snapshot(
+        run_intent_snapshot_id=run_intent_snapshot_id,
         node=node,
         selected_model_ref=selected_model_ref,
         capability=capability,

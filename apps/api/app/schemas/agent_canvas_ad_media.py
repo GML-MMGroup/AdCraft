@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from app.schemas.agent_canvas import StorageAccessDescriptorV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
 from app.schemas.agent_canvas_role_prompt_preparation import CharacterGenderPresentationV1
+from app.schemas.agent_canvas_video_skills import VideoStyleExpressionV2
 
 
 AdMediaSemanticRoleV2 = Literal[
@@ -149,6 +150,7 @@ class StoryboardPanelV2(_AdMediaModel):
 
 
 class StoryboardGridContentV2(_AdMediaModel):
+    production_handoff: tuple[str, ...] = Field(default=(), max_length=32)
     sequence_summary: str = Field(min_length=1, max_length=8_192)
     narrative_goal: str = Field(min_length=1, max_length=4_096)
     style: VisualStyleContractV2
@@ -172,10 +174,12 @@ class StoryboardGridContentV2(_AdMediaModel):
 
 
 class VideoSegmentContentV2(_AdMediaModel):
+    production_handoff: tuple[str, ...] = Field(default=(), max_length=32)
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=3_600)
     storyboard_content: str = Field(min_length=1, max_length=16_384)
     representation_mode: VideoRepresentationModeV2 = "illustrated"
+    style_expression: VideoStyleExpressionV2 | None = None
     style: VisualStyleContractV2 | None = None
     dialogue: str = Field(default="", max_length=8_192)
     voice_style: str = Field(default="", max_length=2_048)

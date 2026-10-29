@@ -8,6 +8,7 @@ export function ProposalOptionRow({
   title,
   summary,
   recommended = false,
+  badge,
   selected = false,
   disabled = false,
   readOnly = false,
@@ -20,6 +21,7 @@ export function ProposalOptionRow({
   title: string;
   summary: string;
   recommended?: boolean;
+  badge?: string;
   selected?: boolean;
   disabled?: boolean;
   readOnly?: boolean;
@@ -34,6 +36,7 @@ export function ProposalOptionRow({
         <strong>
           {title}
           {recommended ? <em>Recommended</em> : null}
+          {badge ? <em>{badge}</em> : null}
         </strong>
         <span>{summary}</span>
       </span>

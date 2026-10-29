@@ -1,4 +1,4 @@
-"""Provider-boundary rendering policy for human Character reference images."""
+"""Style-preserving layout policy for Character reference images."""
 
 from __future__ import annotations
 
@@ -17,77 +17,44 @@ class CompiledCharacterReferencePolicyV1:
     negative_boundary: str
 
 
-class CharacterReferencePromptPolicy:
-    """Compile fixed image-only Character medium and layout constraints."""
+CHARACTER_MAIN_PROMPT = (
+    "Create one full-body character reference in the selected visual style. Show exactly one "
+    "character in a natural standing pose with a slight three-quarter front view on a seamless "
+    "light-neutral design background with no environmental objects. Use only a subtle grounding "
+    "shadow. Preserve distinctive facial or surface features, hair where present, wardrobe "
+    "construction, body proportions, silhouette, materials and color palette."
+)
+CHARACTER_TURNAROUND_PROMPT = (
+    "Use the bound Character Main image as the sole identity master. Render one turnaround "
+    "sheet with exactly three unlabeled full-body figures arranged left-to-right as "
+    "forward-facing, exact side profile, and rear-facing on a seamless light-neutral design "
+    "background. All three views show the same character with identical features, hair where "
+    "present, wardrobe, proportions, silhouette, materials, palette, and the same selected "
+    "rendering treatment as the bound Main. Keep the sheet blank: no headings, orientation "
+    "labels, captions, typography, logos, or watermarks anywhere. Do not reinterpret or "
+    "redesign the identity."
+)
 
-    policy_id = "adcraft.agent_canvas.character_reference.v1"
+
+class CharacterReferencePromptPolicy:
+    """Compile image layout constraints without overriding the selected medium."""
+
+    policy_id = "adcraft.agent_canvas.character_reference.v2"
 
     def compile(
         self,
         content: CharacterDesignAssetContentV2,
     ) -> CompiledCharacterReferencePolicyV1:
-        if content.human_face is not None:
-            if content.character_asset_kind == "identity_master":
-                positive = (
-                    "Create one full-body photographic studio character reference of exactly one "
-                    "character in a natural standing pose with a slight three-quarter front view "
-                    "on a seamless light-neutral design background with no environmental objects. "
-                    "Use only a subtle grounding shadow. Preserve readable facial features, hair, "
-                    "wardrobe construction, body proportions, silhouette, and color palette."
-                )
-                negative = (
-                    "No multiple people, product placement, environment, action sequence, "
-                    "environmental object, contact sheet, or turnaround sheet."
-                )
-            else:
-                positive = (
-                    "Use the bound Character Main image as the sole identity master. Render one "
-                    "turnaround sheet with exactly three unlabeled full-body figures arranged "
-                    "left-to-right as forward-facing, exact side profile, and rear-facing on a "
-                    "seamless light-neutral design background. All three views are the same person "
-                    "with identical face, hair, wardrobe, proportions, silhouette, materials, "
-                    "palette, and the same photographic studio treatment. Keep the sheet blank: "
-                    "no headings, orientation labels, captions, typography, logos, or watermarks "
-                    "anywhere. Do not reinterpret or redesign the identity."
-                )
-                negative = (
-                    "No identity drift, wardrobe change, extra person, extra view, "
-                    "head panel, detail panel, material panel, action pose, product, scene, label, "
-                    "heading, orientation label, caption, typography, logo, or watermark."
-                )
-        elif content.character_asset_kind == "identity_master":
-            positive = (
-                "Create one detailed semi-realistic 2D commercial character illustration, "
-                "clearly illustrated rather than photographed. Show exactly one full-body "
-                "human in a natural standing pose with a slight three-quarter front view on "
-                "a seamless light-neutral design background with no environmental objects. "
-                "Use only a subtle grounding shadow. Preserve readable facial features, hair, "
-                "wardrobe construction, body proportions, silhouette, and color palette. "
-                "Any photographic or live-action campaign direction applies only to eventual "
-                "Video output, not this Character reference image."
-            )
+        if content.character_asset_kind == "identity_master":
+            positive = CHARACTER_MAIN_PROMPT
             negative = (
-                "No photographic portrait, photorealistic skin, live-action capture, real-person "
-                "likeness, multiple people, product placement, environment, action sequence, "
+                "No multiple characters, product placement, environment, action sequence, "
                 "environmental object, contact sheet, or turnaround sheet."
             )
         else:
-            positive = (
-                "Use the bound Character Main image as the sole identity master. Render one "
-                "turnaround sheet with exactly three unlabeled full-body figures arranged "
-                "left-to-right as forward-facing, exact side profile, and rear-facing on a "
-                "seamless light-neutral design background. All three views are the same person "
-                "with identical face, hair, "
-                "wardrobe, proportions, silhouette, materials, palette, and detailed "
-                "semi-realistic illustration treatment, clearly illustrated rather than "
-                "photographed. Keep the sheet blank: no headings, orientation labels, captions, "
-                "typography, logos, or watermarks anywhere. Do not reinterpret or redesign the "
-                "identity. Any photographic or live-action campaign direction applies only to "
-                "eventual Video output, not this Character reference image."
-            )
+            positive = CHARACTER_TURNAROUND_PROMPT
             negative = (
-                "No photographic rendering, photography, live-action capture, identity drift, "
-                "wardrobe change, extra person, extra view, "
+                "No identity drift, wardrobe change, extra character, extra view, "
                 "head panel, detail panel, material panel, action pose, product, scene, label, "
                 "heading, orientation label, caption, typography, logo, or watermark."
             )

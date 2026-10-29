@@ -93,8 +93,10 @@ class AgentCanvasPublicConceptProjector:
                         option_id=option.option_id,
                         title=option.title,
                         public_summary=option.summary,
+                        creative_method_id=proposal.options[index].creative_method_id,
+                        creative_method_version=proposal.options[index].creative_method_version,
                     )
-                    for option in projection.options
+                    for index, option in enumerate(projection.options)
                 )
             }
         )
@@ -115,6 +117,8 @@ class AgentCanvasPublicConceptProjector:
             option_id=option.option_id,
             title=_compact_text(option.title, limit=_TITLE_LIMIT),
             public_summary=_compact_summary(option.public_summary),
+            creative_method_id=option.creative_method_id,
+            creative_method_version=option.creative_method_version,
             key_decisions=(),
         )
         self._locale_resolver.resolve(response_locale)

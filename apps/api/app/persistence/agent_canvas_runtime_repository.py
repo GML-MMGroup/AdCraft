@@ -98,6 +98,7 @@ class AgentCanvasRuntimeRepository:
     ) -> VideoParameterCompilationSnapshotV2:
         try:
             with self._database.engine.begin() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
                 existing = (
                     connection.execute(
                         select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
@@ -121,14 +122,16 @@ class AgentCanvasRuntimeRepository:
                     connection.execute(
                         select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
                             AgentCanvasVideoParameterCompilationSnapshotRow.member_id
-                            == snapshot.member_id
+                            == snapshot.member_id,
+                            AgentCanvasVideoParameterCompilationSnapshotRow.preparation_scope
+                            == (snapshot.run_intent_snapshot_id or "legacy"),
                         )
                     )
                     .mappings()
                     .one_or_none()
                 )
                 if owned is not None:
-                    # One immutable compilation owns each execution member.  A
+                    # One immutable compilation owns each preparation scope. A
                     # retry that recompiles the same frozen Node revision must
                     # reuse that authority instead of failing the Node.
                     if not _owns_same_compilation(owned, snapshot):
@@ -142,6 +145,7 @@ class AgentCanvasRuntimeRepository:
                 connection.execute(
                     insert(AgentCanvasVideoParameterCompilationSnapshotRow).values(
                         snapshot_id=snapshot.snapshot_id,
+                        preparation_scope=snapshot.run_intent_snapshot_id or "legacy",
                         workflow_id=snapshot.workflow_id,
                         execution_id=snapshot.execution_id,
                         member_id=snapshot.member_id,
@@ -164,6 +168,13 @@ class AgentCanvasRuntimeRepository:
                 "Execution storage is unavailable.",
             ) from error
         return snapshot
+
+    def find_execution_admission(
+        self, workflow_id: str, idempotency_key: str, request_digest: str
+    ) -> CanvasExecutionStartResultV2 | None:
+        """Replay an accepted request before mutable Node eligibility is checked."""
+        with self._database.engine.connect() as connection:
+            return self._read_admission(connection, workflow_id, idempotency_key, request_digest)
 
     def get_parameter_compilation_snapshot(
         self,
@@ -192,6 +203,19 @@ class AgentCanvasRuntimeRepository:
                 "Parameter compilation snapshot was not found.",
             )
         return VideoParameterCompilationSnapshotV2.model_validate_json(str(row["snapshot_json"]))
+
+    def find_parameter_compilation_snapshot(
+        self, member_id: str, run_intent_snapshot_id: str
+    ) -> VideoParameterCompilationSnapshotV2 | None:
+        with self._database.engine.connect() as connection:
+            payload = connection.execute(
+                select(AgentCanvasVideoParameterCompilationSnapshotRow.snapshot_json).where(
+                    AgentCanvasVideoParameterCompilationSnapshotRow.member_id == member_id,
+                    AgentCanvasVideoParameterCompilationSnapshotRow.preparation_scope
+                    == run_intent_snapshot_id,
+                )
+            ).scalar_one_or_none()
+        return VideoParameterCompilationSnapshotV2.model_validate_json(payload) if payload else None
 
     def create_execution(
         self,
@@ -645,6 +669,7 @@ class AgentCanvasRuntimeRepository:
         timestamp = now.isoformat()
         try:
             with self._database.engine.begin() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
                 current = (
                     connection.execute(
                         select(AgentCanvasExecutionMemberRow).where(
@@ -679,6 +704,70 @@ class AgentCanvasRuntimeRepository:
                     )
                     if lease is None or int(lease["generation"]) != expected_lease_generation:
                         return False
+                reset_preparation = (
+                    run_intent_snapshot is not None
+                    and current["run_intent_snapshot_id"] is not None
+                    and current["run_intent_snapshot_id"] != run_intent_snapshot.snapshot_id
+                )
+                reset_values: dict[str, object] = {}
+                if reset_preparation:
+                    submission = connection.execute(
+                        select(AgentCanvasProviderSubmissionIntentRow.intent_id)
+                        .where(
+                            AgentCanvasProviderSubmissionIntentRow.member_id == current["member_id"]
+                        )
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    if current["provider_task_id"] is not None or submission is not None:
+                        raise _error(
+                            "execution_snapshot_frozen",
+                            "Submitted provider work cannot change its preparation intent.",
+                        )
+                    # Keep historical snapshots; invalidate only the active preparation projections.
+                    metadata = dict(
+                        prompt_metadata
+                        if prompt_metadata is not None
+                        else json.loads(str(current["prompt_metadata_json"] or "{}"))
+                    )
+                    for key in (
+                        "resolved_input_manifest",
+                        "parameter_compilation_snapshot_id",
+                        "model_resolution",
+                        "execution_parameter_normalizations",
+                    ):
+                        metadata.pop(key, None)
+                    prompt_metadata = metadata
+                    reset_values = {
+                        "resolved_input_manifest_id": None,
+                        "resolved_input_manifest_json": None,
+                        "resolved_input_manifest_digest": None,
+                        "effective_parameters_json": None,
+                        "parameter_compilation_snapshot_id": None,
+                        "omitted_optional_inputs_json": "[]",
+                    }
+                if resolved_input_manifest is not None:
+                    for key in (
+                        "resolved_input_manifest_id",
+                        "resolved_input_manifest_json",
+                        "resolved_input_manifest_digest",
+                    ):
+                        reset_values.pop(key, None)
+                if effective_parameters is not None:
+                    reset_values.pop("effective_parameters_json", None)
+                if parameter_compilation_snapshot is not None:
+                    reset_values.pop("parameter_compilation_snapshot_id", None)
+                    scope = (
+                        run_intent_snapshot.snapshot_id
+                        if run_intent_snapshot is not None
+                        else current["run_intent_snapshot_id"]
+                    )
+                    if parameter_compilation_snapshot.run_intent_snapshot_id not in (None, scope):
+                        raise _error(
+                            "parameter_compilation_snapshot_conflict",
+                            "Parameters belong to another preparation intent.",
+                        )
+                if omitted_optional_inputs is not None:
+                    reset_values.pop("omitted_optional_inputs_json", None)
                 row = connection.execute(
                     update(AgentCanvasExecutionMemberRow)
                     .where(
@@ -686,6 +775,7 @@ class AgentCanvasRuntimeRepository:
                         AgentCanvasExecutionMemberRow.node_id == node_id,
                     )
                     .values(
+                        **reset_values,
                         state=state,
                         phase=phase,
                         waiting_for_node_ids_json=json.dumps(list(waiting_for_node_ids)),
@@ -1067,15 +1157,7 @@ class AgentCanvasRuntimeRepository:
     def put_provider_task(self, task: CanvasProviderTaskV2, *, now: datetime) -> bool:
         """Persist one provider transition unless a newer terminal lease won."""
 
-        values = {
-            **task.model_dump(mode="json"),
-            "result_descriptor_json": json.dumps(task.result_descriptor, sort_keys=True),
-            "error_json": task.error.model_dump_json() if task.error else None,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat(),
-        }
-        values.pop("result_descriptor")
-        values.pop("error")
+        values = _provider_task_values(task, now=now)
         try:
             with self._database.engine.begin() as connection:
                 existing = (
@@ -1105,6 +1187,259 @@ class AgentCanvasRuntimeRepository:
         except SQLAlchemyError as error:
             raise _error("execution_persistence_failed", "Provider task storage failed.") from error
         return True
+
+    def checkpoint_provider_submission(
+        self,
+        intent: ProviderSubmissionIntentV2,
+        task: CanvasProviderTaskV2,
+        lease: NodeExecutionLeaseV2,
+        *,
+        now: datetime,
+    ) -> ProviderSubmissionIntentV2:
+        """Record a paid remote result even when its submitting worker lost ownership.
+
+        Only a current lease can change the member. An expired lease without a
+        successor may hand its task to recovery; cancellation or a newer owner
+        retains a cancelled task as evidence without scheduling publication.
+        """
+
+        if (
+            task.status != "submitted"
+            or not task.remote_task_id
+            or task.submission_intent_id != intent.intent_id
+            or (task.workflow_id, task.execution_id, task.node_id)
+            != (intent.workflow_id, intent.execution_id, intent.node_id)
+            or (lease.workflow_id, lease.execution_id, lease.node_id, lease.generation)
+            != (task.workflow_id, task.execution_id, task.node_id, task.lease_generation)
+        ):
+            raise _error(
+                "provider_submission_checkpoint_invalid", "Submission identity is invalid."
+            )
+        timestamp = now.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    intent_row = (
+                        connection.execute(
+                            select(AgentCanvasProviderSubmissionIntentRow).where(
+                                AgentCanvasProviderSubmissionIntentRow.intent_id == intent.intent_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if intent_row is None:
+                        raise _error(
+                            "provider_submission_intent_not_found",
+                            "Submission intent was not found.",
+                        )
+                    stored = _submission_intent(intent_row)
+                    if (
+                        stored.request_digest != intent.request_digest
+                        or stored.member_id != intent.member_id
+                        or (stored.workflow_id, stored.execution_id, stored.node_id)
+                        != (task.workflow_id, task.execution_id, task.node_id)
+                    ):
+                        raise _error(
+                            "provider_submission_intent_conflict",
+                            "Submission identity is immutable.",
+                        )
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasProviderTaskRow).where(
+                                AgentCanvasProviderTaskRow.task_id == task.task_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    recorded = None
+                    if existing is not None:
+                        recorded = _provider_task(existing)
+                        if (
+                            recorded.submission_intent_id != intent.intent_id
+                            or recorded.remote_task_id != task.remote_task_id
+                            or (recorded.workflow_id, recorded.execution_id, recorded.node_id)
+                            != (task.workflow_id, task.execution_id, task.node_id)
+                        ):
+                            raise _error(
+                                "provider_submission_intent_conflict",
+                                "Provider task identity is immutable.",
+                            )
+                    execution = self._execution_in_transaction(connection, task.execution_id)
+                    member_row = (
+                        connection.execute(
+                            select(AgentCanvasExecutionMemberRow).where(
+                                AgentCanvasExecutionMemberRow.member_id == stored.member_id,
+                                AgentCanvasExecutionMemberRow.execution_id == task.execution_id,
+                                AgentCanvasExecutionMemberRow.node_id == task.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if member_row is None:
+                        raise _error(
+                            "execution_member_not_found", "Execution member was not found."
+                        )
+                    member = _member(member_row)
+                    current = (
+                        connection.execute(
+                            select(AgentCanvasNodeLeaseRow).where(
+                                AgentCanvasNodeLeaseRow.execution_id == task.execution_id,
+                                AgentCanvasNodeLeaseRow.node_id == task.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    same_owner = (
+                        current is not None
+                        and int(current["generation"]) == lease.generation
+                        and str(current["owner_id"]) == lease.owner_id
+                    )
+                    current_lease = (
+                        same_owner
+                        and current["state"] == "claimed"
+                        and datetime.fromisoformat(str(current["expires_at"])) > now
+                    )
+                    expired_lease = (
+                        same_owner
+                        and current["state"] in {"claimed", "expired"}
+                        and datetime.fromisoformat(str(current["expires_at"])) <= now
+                    )
+                    remote_conflict = (
+                        stored.remote_task_id is not None
+                        and stored.remote_task_id != task.remote_task_id
+                        or stored.provider_task_id is not None
+                        and stored.provider_task_id != task.task_id
+                    )
+                    inactive = (
+                        execution.cancel_requested
+                        or execution.status in _TERMINAL_EXECUTION_STATES
+                        or member.state not in {"queued", "waiting", "running"}
+                        or member.attempt_no + 1 != stored.attempt_no
+                        or stored.state == "completed"
+                    )
+                    superseded = (
+                        remote_conflict
+                        or not (current_lease or expired_lease)
+                        or member.provider_task_id not in {None, task.task_id}
+                    )
+                    recoverable = not inactive and not superseded
+                    if recorded is not None:
+                        adopt_superseded = (
+                            recoverable
+                            and current_lease
+                            and recorded.status == "cancelled"
+                            and recorded.error is not None
+                            and recorded.error.code == "provider_submission_superseded"
+                            and lease.generation > recorded.lease_generation
+                        )
+                        if not adopt_superseded:
+                            # Preserve polled/terminal tasks. Only the actual
+                            # newer owner can adopt a superseded-response record
+                            # when provider idempotency returns the same task ID.
+                            connection.commit()
+                            return stored
+                    recorded = task
+                    if not recoverable:
+                        recorded = task.model_copy(
+                            update={
+                                "status": "cancelled",
+                                "next_poll_at": None,
+                                "error": CanvasNodeErrorV2(
+                                    code="provider_submission_cancelled"
+                                    if inactive
+                                    else "provider_submission_superseded",
+                                    message=(
+                                        "The remote submission was recorded "
+                                        "without scheduling publication."
+                                    ),
+                                    retryable=False,
+                                ),
+                            }
+                        )
+                    values = _provider_task_values(recorded, now=now)
+                    if existing is None:
+                        connection.execute(insert(AgentCanvasProviderTaskRow).values(**values))
+                    else:
+                        values.pop("created_at")
+                        values.pop("task_id")
+                        connection.execute(
+                            update(AgentCanvasProviderTaskRow)
+                            .where(AgentCanvasProviderTaskRow.task_id == task.task_id)
+                            .values(**values)
+                        )
+                    confirmed = stored
+                    if recoverable:
+                        confirmed = stored.model_copy(
+                            update={
+                                "provider_task_id": task.task_id,
+                                "remote_task_id": task.remote_task_id,
+                                "state": "submitted",
+                                "updated_at": now,
+                            }
+                        )
+                        connection.execute(
+                            update(AgentCanvasProviderSubmissionIntentRow)
+                            .where(
+                                AgentCanvasProviderSubmissionIntentRow.intent_id == stored.intent_id
+                            )
+                            .values(
+                                provider_task_id=task.task_id,
+                                remote_task_id=task.remote_task_id,
+                                state="submitted",
+                                updated_at=timestamp,
+                            )
+                        )
+                    if recoverable and current_lease:
+                        connection.execute(
+                            update(AgentCanvasExecutionMemberRow)
+                            .where(AgentCanvasExecutionMemberRow.member_id == member.member_id)
+                            .values(
+                                state="running",
+                                phase="waiting_provider",
+                                provider_task_id=task.task_id,
+                                error_json=None,
+                                updated_at=timestamp,
+                            )
+                        )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=task.workflow_id,
+                            execution_id=task.execution_id,
+                            node_id=task.node_id,
+                            transition_key=f"provider-submission:{task.task_id}:{lease.generation}",
+                            event_type="provider_task_submitted"
+                            if recoverable and current_lease
+                            else "provider_submission_recorded",
+                            created_at=timestamp,
+                            payload={
+                                "provider_task_id": task.task_id,
+                                "remote_task_id": task.remote_task_id,
+                                "status": recorded.status,
+                                "lease_generation": lease.generation,
+                                "model_resolution": task.result_descriptor.get("model_resolution"),
+                                "parameter_compilation_snapshot_id": task.result_descriptor.get(
+                                    "parameter_compilation_snapshot_id"
+                                ),
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return confirmed
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed", "Submission checkpoint storage failed."
+            ) from error
 
     def put_submission_intent(
         self,
@@ -1438,10 +1773,18 @@ class AgentCanvasRuntimeRepository:
         connection: Connection,
         command: CanvasExecutionStartCommandV2,
     ) -> CanvasExecutionStartResultV2 | None:
+        return AgentCanvasRuntimeRepository._read_admission(
+            connection, command.workflow_id, command.idempotency_key, command.request_digest
+        )
+
+    @staticmethod
+    def _read_admission(
+        connection: Connection, workflow_id: str, idempotency_key: str, request_digest: str
+    ) -> CanvasExecutionStartResultV2 | None:
         row = (
             connection.execute(
                 select(AgentCanvasExecutionAdmissionRow).where(
-                    AgentCanvasExecutionAdmissionRow.idempotency_key == command.idempotency_key
+                    AgentCanvasExecutionAdmissionRow.idempotency_key == idempotency_key
                 )
             )
             .mappings()
@@ -1449,10 +1792,7 @@ class AgentCanvasRuntimeRepository:
         )
         if row is None:
             return None
-        if (
-            str(row["workflow_id"]) != command.workflow_id
-            or str(row["request_digest"]) != command.request_digest
-        ):
+        if str(row["workflow_id"]) != workflow_id or str(row["request_digest"]) != request_digest:
             raise _error(
                 "idempotency_conflict",
                 "Idempotency key was reused with another run request.",
@@ -1471,7 +1811,7 @@ class AgentCanvasRuntimeRepository:
         ).scalar_one_or_none()
         if workflow_revision is None:
             raise _error("workflow_not_found", "Workflow was not found.")
-        if int(workflow_revision) != command.expected_workflow_revision:
+        if not command.node_scoped and int(workflow_revision) != command.expected_workflow_revision:
             raise _error(
                 "run_intent_stale",
                 "Workflow authoring changed before Run admission.",
@@ -1500,6 +1840,51 @@ class AgentCanvasRuntimeRepository:
             expected_ids = {binding.binding_id for binding in intent.binding_snapshots}
             if current_ids != expected_ids:
                 raise _error("run_intent_stale", "Bindings changed before Run admission.")
+            expected_bindings = {
+                binding.binding_id: binding for binding in intent.binding_snapshots
+            }
+            for row in current_bindings:
+                binding = expected_bindings[str(row["binding_id"])]
+                source_id = (
+                    row["source_node_id"]
+                    if row["source_kind"] == "node_output"
+                    else row["source_asset_id"]
+                )
+                if (
+                    row["source_kind"] != binding.source_kind
+                    or source_id != binding.source_id
+                    or row["input_role"] != binding.input_role
+                    or int(row["order_index"]) != binding.order
+                    or json.loads(str(row["metadata_json"])) != binding.binding_metadata
+                    or (
+                        binding.source_kind == "image_asset"
+                        and row["source_asset_version_id"] != binding.source_asset_version_id
+                    )
+                ):
+                    raise _error(
+                        "run_intent_stale", "Binding authoring changed before Run admission."
+                    )
+                if binding.source_kind == "node_output":
+                    source = (
+                        connection.execute(
+                            select(
+                                AgentCanvasNodeRow.revision, AgentCanvasNodeRow.output_asset_id
+                            ).where(
+                                AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                                AgentCanvasNodeRow.node_id == binding.source_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if (
+                        source is None
+                        or source["revision"] != binding.source_node_revision
+                        or source["output_asset_id"] != binding.source_asset_id
+                    ):
+                        raise _error(
+                            "run_intent_stale", "Source Node changed before Run admission."
+                        )
             for asset_id, expected_digest in intent.expected_source_asset_digests.items():
                 digest = connection.execute(
                     select(AssetVersionRow.sha256)
@@ -1618,6 +2003,19 @@ def _member(row: RowMapping) -> CanvasExecutionMembershipV2:
         error=CanvasNodeErrorV2.model_validate_json(error_json) if error_json else None,
         updated_at=str(row["updated_at"]),
     )
+
+
+def _provider_task_values(task: CanvasProviderTaskV2, *, now: datetime) -> dict[str, object]:
+    values = {
+        **task.model_dump(mode="json"),
+        "result_descriptor_json": json.dumps(task.result_descriptor, sort_keys=True),
+        "error_json": task.error.model_dump_json() if task.error else None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+    }
+    values.pop("result_descriptor")
+    values.pop("error")
+    return values
 
 
 def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:

@@ -85,11 +85,15 @@ def stage_authoring_context_from_materialization(
             option_id=selected.option_id,
             title=selected.title,
             public_summary=selected.public_summary,
+            creative_method_id=selected.creative_method_id,
+            creative_method_version=selected.creative_method_version,
             key_decisions=tuple(getattr(selected, "key_decisions", ())),
         ),
         style_snapshot_id=style_snapshot_id,
         internal_skill_ref=_SKILL_REFS[context.capability_id],
         style_projection=style_projection,
+        allows_meme_captions=style.get("allows_meme_captions", False),
+        allows_comedic_sound_effects=style.get("allows_comedic_sound_effects", False),
         style_guidance=(
             StyleGuidanceContextV2.model_validate(style)
             if style.get("source") == "creative_direction_snapshot"

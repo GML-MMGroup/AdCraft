@@ -1095,3 +1095,16 @@
   .agent-node-workbench__library { grid-template-columns: 1fr auto; }
   .agent-node-workbench__library label { grid-column: 1 / -1; }
 }
+.agent-node-workbench__prompt-caret {
+  display: inline-block;
+  margin-left: 2px;
+  animation: agent-node-prompt-caret 900ms steps(2, jump-none) infinite;
+}
+
+@keyframes agent-node-prompt-caret {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-node-workbench__prompt-caret { animation: none; }
+}

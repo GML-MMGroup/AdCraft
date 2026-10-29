@@ -4,6 +4,9 @@ import type { ReactNode } from "react";
 import type { BrandDecisionPanelV1, BrandHypothesisCandidateV1, BrandStageV2 } from "./brandDecisions.ts";
 import { TreatmentSections } from "./TreatmentSections.tsx";
 import { DecisionChevron } from "./DecisionChevron.tsx";
+import type { PresentationStreamView } from "../runtime/useAgentCanvasPresentationStreams.ts";
+import { AgentThinkingBlock } from "../chat/AgentThinkingBlock.tsx";
+import { brandThinkingAnchor } from "../chat/thinkingAnchors.ts";
 
 const SLOT_LABELS: Record<string, UiMessageKey> = {
   brand_name: "Brand name", brand_audience: "Audience", brand_tone: "Brand tone",
@@ -38,12 +41,21 @@ function HypothesisDetail({ candidate, selected }: { candidate: BrandHypothesisC
   </DecisionDetail>;
 }
 
-export function BrandDecisionContent({ decisions, stage }: { decisions: BrandDecisionPanelV1; stage: BrandStageV2 }) {
+export function BrandDecisionContent({
+  decisions,
+  stage,
+  presentationStreams = [],
+}: {
+  decisions: BrandDecisionPanelV1;
+  stage: BrandStageV2;
+  presentationStreams?: readonly PresentationStreamView[];
+}) {
   const t = useTranslation();
   const slots = decisions.slot_values.filter(slot => slot.stage === stage);
   const card = decisions.open_card?.stage === stage ? decisions.open_card : null;
   const selected = decisions.hypotheses.find(candidate => candidate.candidate_id === decisions.selected_hypothesis_id);
   const alternatives = decisions.hypotheses.filter(candidate => candidate.candidate_id !== decisions.selected_hypothesis_id);
+  const thinking = card ? brandThinkingAnchor(presentationStreams, [card.card_id]) : null;
   return <>
     {slots.length ? <dl className="brand-decision-fields">
       {slots.map(slot => <div key={slot.slot_id}>
@@ -51,12 +63,21 @@ export function BrandDecisionContent({ decisions, stage }: { decisions: BrandDec
         <dd>{slot.value}{slot.provenance === "agent_recommended" ? <small className="brand-decision-source">{t("Agent recommended")}</small> : null}</dd>
       </div>)}
     </dl> : null}
-    {card ? <div className="brand-decision-pending">
-      <p className="brand-decision-caption">{t("Pending your choice")}</p><p>{card.question}</p>
-      {card.options.map(option => <DecisionDetail key={option.option_id} title={option.label}>
-        {option.why ? <p>{option.why}</p> : null}<TreatmentSections detail={option.detail}/>
-      </DecisionDetail>)}
-    </div> : null}
+    {card ? <>
+      {thinking ? <AgentThinkingBlock
+        reasoningText={thinking.reasoning_text}
+        phase="done"
+        durationSeconds={thinking.reasoning_started_at !== null && thinking.terminal_at_ms !== null
+          ? Math.max(0, (thinking.terminal_at_ms - thinking.reasoning_started_at) / 1_000)
+          : null}
+      /> : null}
+      <div className="brand-decision-pending">
+        <p className="brand-decision-caption">{t("Pending your choice")}</p><p>{card.question}</p>
+        {card.options.map(option => <DecisionDetail key={option.option_id} title={option.label}>
+          {option.why ? <p>{option.why}</p> : null}<TreatmentSections detail={option.detail}/>
+        </DecisionDetail>)}
+      </div>
+    </> : null}
     {stage === "hypothesis" ? <>
       {selected ? <HypothesisDetail key={selected.candidate_id} candidate={selected} selected/> : null}
       {alternatives.length ? <DecisionDetail title={t(selected ? "Other directions ({count})" : "Candidate directions ({count})", { count: alternatives.length })}>

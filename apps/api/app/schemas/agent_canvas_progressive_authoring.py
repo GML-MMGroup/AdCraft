@@ -75,6 +75,8 @@ class StageAuthoringContextV1(_ProgressiveAuthoringModel):
     style_projection: str | None = Field(default=None, max_length=8_192)
     style_guidance: StyleGuidanceContextV2 | None = None
     video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
+    allows_meme_captions: bool = False
+    allows_comedic_sound_effects: bool = False
     video_representation_source_id: str | None = Field(default=None, max_length=160)
     working_document_excerpts: tuple[AgentDocumentContextExcerptV2, ...] = Field(
         default=(),

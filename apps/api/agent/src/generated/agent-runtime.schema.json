@@ -8357,6 +8357,166 @@
       "title": "BrandQuestionImpactV1",
       "type": "object"
     },
+    "BrandSelectedCreativeMethodV1": {
+      "additionalProperties": false,
+      "description": "Stored method details disclosed only for selected Treatment methods.",
+      "properties": {
+        "common_mistakes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Common Mistakes"
+        },
+        "consumer_psychology": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consumer Psychology"
+        },
+        "cross_category_examples": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cross Category Examples"
+        },
+        "hook_methods": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hook Methods"
+        },
+        "how_to_execute": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "How To Execute"
+        },
+        "product_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Product Role"
+        },
+        "skill_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_kind": {
+          "const": "creative_method",
+          "default": "creative_method",
+          "title": "Skill Kind",
+          "type": "string"
+        },
+        "story_structure": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Story Structure"
+        },
+        "suitable_categories_and_goals": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suitable Categories And Goals"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "unsuitable_cases": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unsuitable Cases"
+        },
+        "version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "why_it_works": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why It Works"
+        }
+      },
+      "required": [
+        "skill_id",
+        "summary",
+        "title",
+        "version"
+      ],
+      "title": "BrandSelectedCreativeMethodV1",
+      "type": "object"
+    },
     "BrandShortOptionV1": {
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",
@@ -8451,7 +8611,7 @@
           "items": {
             "$ref": "#/$defs/BrandSkillRecommendationV1"
           },
-          "maxItems": 7,
+          "maxItems": 2,
           "minItems": 1,
           "title": "Creative Methods",
           "type": "array"
@@ -10380,6 +10540,32 @@
           "minLength": 1,
           "title": "Conversation Id",
           "type": "string"
+        },
+        "creative_method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeMethodContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creative_method_catalog": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CreativeMethodSummaryV1"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Catalog"
         },
         "objective": {
           "maxLength": 4096,
@@ -13659,6 +13845,58 @@
       "title": "CompiledNodePromptV2",
       "type": "object"
     },
+    "ConceptOptionRecordV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_method_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Id"
+        },
+        "creative_method_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Version"
+        },
+        "option_id": {
+          "title": "Option Id",
+          "type": "string"
+        },
+        "public_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "public_summary",
+        "title"
+      ],
+      "title": "ConceptOptionRecordV2",
+      "type": "object"
+    },
     "ConversationQueryV1": {
       "additionalProperties": false,
       "properties": {
@@ -14409,6 +14647,139 @@
         "product_role"
       ],
       "title": "CreativeHypothesisCandidateV1",
+      "type": "object"
+    },
+    "CreativeMethodContextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "common_mistakes": {
+          "title": "Common Mistakes",
+          "type": "string"
+        },
+        "consumer_psychology": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consumer Psychology"
+        },
+        "core_principle": {
+          "title": "Core Principle",
+          "type": "string"
+        },
+        "cross_category_examples": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cross Category Examples"
+        },
+        "hook_methods": {
+          "title": "Hook Methods",
+          "type": "string"
+        },
+        "how_to_execute": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "How To Execute"
+        },
+        "product_role": {
+          "title": "Product Role",
+          "type": "string"
+        },
+        "skill_id": {
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "story_structure": {
+          "title": "Story Structure",
+          "type": "string"
+        },
+        "suitable_categories_and_goals": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suitable Categories And Goals"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "why_it_works": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why It Works"
+        }
+      },
+      "required": [
+        "common_mistakes",
+        "core_principle",
+        "hook_methods",
+        "product_role",
+        "skill_id",
+        "story_structure",
+        "title",
+        "version"
+      ],
+      "title": "CreativeMethodContextV1",
+      "type": "object"
+    },
+    "CreativeMethodSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "skill_id": {
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id",
+        "summary",
+        "title"
+      ],
+      "title": "CreativeMethodSummaryV1",
       "type": "object"
     },
     "CreativeStrategyOutputV1": {
@@ -27734,6 +28105,7 @@
               "content",
               "framing",
               "pose",
+              "style",
               "view"
             ],
             "type": "string"
@@ -30439,6 +30811,17 @@
           ],
           "default": null
         },
+        "style_expression": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoStyleExpressionV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "style_parameters": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -30855,6 +31238,15 @@
           ],
           "default": null,
           "title": "Style Description"
+        },
+        "view_plan": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SceneViewDirectionV2"
+          },
+          "maxItems": 9,
+          "title": "View Plan",
+          "type": "array"
         },
         "views": {
           "items": {
@@ -31453,6 +31845,61 @@
       "title": "SceneProposalResultV1",
       "type": "object"
     },
+    "SceneViewDirectionV2": {
+      "additionalProperties": false,
+      "description": "Authored presentation of one view, separate from frozen environment identity.",
+      "properties": {
+        "camera_direction": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Camera Direction",
+          "type": "string"
+        },
+        "camera_position": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Camera Position",
+          "type": "string"
+        },
+        "framing": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Framing",
+          "type": "string"
+        },
+        "spatial_details": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Spatial Details",
+          "type": "string"
+        },
+        "view_or_zone": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "View Or Zone",
+          "type": "string"
+        },
+        "visible_anchors": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Visible Anchors",
+          "type": "array"
+        }
+      },
+      "required": [
+        "camera_direction",
+        "camera_position",
+        "framing",
+        "spatial_details",
+        "view_or_zone",
+        "visible_anchors"
+      ],
+      "title": "SceneViewDirectionV2",
+      "type": "object"
+    },
     "ScriptDraftContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -31592,6 +32039,18 @@
           "title": "Narrative",
           "type": "string"
         },
+        "production_handoff": {
+          "default": [],
+          "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
+        },
         "role_variant": {
           "const": "script",
           "default": "script",
@@ -31713,6 +32172,30 @@
     "SelectedConceptOptionV1": {
       "additionalProperties": false,
       "properties": {
+        "creative_method_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Id"
+        },
+        "creative_method_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Version"
+        },
         "custom_text": {
           "anyOf": [
             {
@@ -31769,6 +32252,30 @@
       "additionalProperties": false,
       "description": "Selected public card carried into private post-selection authoring.",
       "properties": {
+        "creative_method_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Id"
+        },
+        "creative_method_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Method Version"
+        },
         "custom_text": {
           "anyOf": [
             {
@@ -32974,6 +33481,15 @@
           "title": "Panels",
           "type": "array"
         },
+        "production_handoff": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
+        },
         "sequence_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -33010,6 +33526,18 @@
           "minLength": 1,
           "title": "Editable Prompt",
           "type": "string"
+        },
+        "production_handoff": {
+          "default": [],
+          "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
         },
         "role_variant": {
           "const": "storyboard_grid",
@@ -34320,6 +34848,16 @@
     "StyleGuidanceContextV2": {
       "additionalProperties": false,
       "properties": {
+        "allows_comedic_sound_effects": {
+          "default": false,
+          "title": "Allows Comedic Sound Effects",
+          "type": "boolean"
+        },
+        "allows_meme_captions": {
+          "default": false,
+          "title": "Allows Meme Captions",
+          "type": "boolean"
+        },
         "creative_direction_snapshot_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -37309,6 +37847,15 @@
           "title": "Negative Constraints",
           "type": "string"
         },
+        "production_handoff": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
+        },
         "representation_mode": {
           "default": "illustrated",
           "enum": [
@@ -37334,6 +37881,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/VisualStyleContractV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "style_expression": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoStyleExpressionV2"
             },
             {
               "type": "null"
@@ -37554,6 +38112,18 @@
           "title": "Editable Prompt",
           "type": "string"
         },
+        "production_handoff": {
+          "default": [],
+          "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
+        },
         "role_variant": {
           "const": "video_segment",
           "default": "video_segment",
@@ -37601,6 +38171,23 @@
         "target_style"
       ],
       "title": "VideoSegmentRoleBriefV2",
+      "type": "object"
+    },
+    "VideoStyleExpressionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "allows_comedic_sound_effects": {
+          "default": false,
+          "title": "Allows Comedic Sound Effects",
+          "type": "boolean"
+        },
+        "allows_meme_captions": {
+          "default": false,
+          "title": "Allows Meme Captions",
+          "type": "boolean"
+        }
+      },
+      "title": "VideoStyleExpressionV2",
       "type": "object"
     },
     "VisualStyleContractV2": {
@@ -38998,6 +39585,62 @@
       "title": "WorldSettingMaterializationResultV1",
       "type": "object"
     },
+    "WorldSettingProposalAuthoringOptionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_method_id": {
+          "default": null,
+          "minLength": 1,
+          "title": "Creative Method Id",
+          "type": "string"
+        },
+        "public_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "WorldSettingProposalAuthoringOptionV1",
+      "type": "object"
+    },
+    "WorldSettingProposalAuthoringResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/WorldSettingProposalAuthoringOptionV1"
+            },
+            {
+              "$ref": "#/$defs/WorldSettingProposalAuthoringOptionV1"
+            },
+            {
+              "$ref": "#/$defs/WorldSettingProposalAuthoringOptionV1"
+            }
+          ],
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "WorldSettingProposalAuthoringResultV1",
+      "type": "object"
+    },
     "WorldSettingProposalOptionV1": {
       "additionalProperties": false,
       "properties": {
@@ -39253,6 +39896,7 @@
     "WorldSettingProposalResultV1",
     "ProposalCardResultV2",
     "GuidedProposalAuthoringResultV4",
+    "WorldSettingProposalAuthoringResultV1",
     "GuidedProposalCardResultV3",
     "ProductProposalResultV1",
     "PropProposalResultV1",
@@ -39438,7 +40082,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_world_setting_options",
-      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "result_contract_name": "WorldSettingProposalAuthoringResultV1",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -39450,7 +40094,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_world_setting_options",
-      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "result_contract_name": "WorldSettingProposalAuthoringResultV1",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },

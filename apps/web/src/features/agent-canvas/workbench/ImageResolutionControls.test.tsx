@@ -50,7 +50,7 @@ describe("ImageResolutionControls", () => {
     const select = screen.getByLabelText("Size");
     expect(select.textContent).toContain("2048x2048");
     fireEvent.click(select);
-    fireEvent.click(screen.getByRole("option", { name: "2560x1440" }));
+    fireEvent.click(screen.getByRole("option", { name: "2560x1440 (16:9)" }));
     expect(onChange).toHaveBeenLastCalledWith({ size: "2560x1440" });
   });
 

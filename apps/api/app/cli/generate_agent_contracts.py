@@ -9,11 +9,14 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
+from app.schemas import creative_method_context
+from app.schemas import agent_canvas_conversation
 from app.schemas import agent_capabilities
 from app.schemas import agent_runtime
 from app.schemas import agent_model_trace
 from app.schemas import workflow_model_calls
 from app.schemas import agent_canvas_video_parameters
+from app.schemas import agent_canvas_video_skills
 from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_canvas_editing
@@ -55,6 +58,11 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    creative_method_context.CreativeMethodSummaryV1,
+    creative_method_context.CreativeMethodContextV1,
+    agent_canvas_conversation.ConceptOptionRecordV2,
+    agent_canvas_capabilities.WorldSettingProposalAuthoringOptionV1,
+    agent_canvas_capabilities.WorldSettingProposalAuthoringResultV1,
     brand_production_context.BrandProductionStepV1,
     brand_production_context.BrandProductionContextV1,
     brand_treatment_detail.TreatmentSectionV1,
@@ -68,6 +76,7 @@ CONTRACT_MODELS = (
     brand_professional_mode.AdSpecStateV1,
     brand_professional_mode.SkillStackEntryV1,
     brand_professional_mode.SkillStackV1,
+    brand_professional_mode.BrandSelectedCreativeMethodV1,
     workflow_model_calls.WorkflowModelCallWriteV1,
     workflow_model_calls.WorkflowModelCallReceiptV1,
     brand_professional_mode.BrandSkillRecommendationV1,
@@ -177,6 +186,7 @@ CONTRACT_MODELS = (
     agent_canvas_role_prompt_preparation.RolePromptCompactionPolicyV2,
     agent_canvas_role_prompt_preparation.RolePromptCompactionDecisionV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationContextV2,
+    agent_canvas_video_skills.VideoStyleExpressionV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationRequestV2,
     agent_canvas_role_prompt_preparation.NodePromptPreparationV2,
     agent_canvas_role_prompt_preparation.EditablePromptProjectionV1,
@@ -188,6 +198,7 @@ CONTRACT_MODELS = (
     agent_canvas_role_prompt_preparation.CharacterMainRoleBriefV2,
     agent_canvas_role_prompt_preparation.CharacterTurnaroundRoleBriefV2,
     agent_canvas_role_prompt_preparation.SceneBoardRoleBriefV2,
+    agent_canvas_role_prompt_preparation.SceneViewDirectionV2,
     agent_canvas_role_prompt_preparation.ScriptRoleBriefV2,
     agent_canvas_role_prompt_preparation.StoryboardGridRoleBriefV2,
     agent_canvas_role_prompt_preparation.VideoSegmentRoleBriefV2,

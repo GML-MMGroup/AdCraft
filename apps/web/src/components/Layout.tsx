@@ -104,7 +104,7 @@ export function Layout({ children, workflowControls, workflowId }: LayoutProps) 
       <PrimaryNavigation clearGlass={usesClearGlassRail} />
 
       <div
-        className={`app-shell${isWorkflowRoute ? " app-shell--workflow" : " app-shell--cosmic"}`}
+        className={`app-shell${isWorkflowRoute ? " app-shell--workflow" : " app-shell--cosmic"}${location.pathname === "/" ? " app-shell--home" : ""}`}
         id="app"
       >
         <header className="topbar">

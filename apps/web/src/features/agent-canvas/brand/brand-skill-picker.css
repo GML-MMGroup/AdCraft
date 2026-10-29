@@ -45,3 +45,26 @@
 .brand-skill-picker .agent-chat__style-trigger { width: auto; height: auto; gap: 8px; }
 .brand-skill-picker footer { justify-content: flex-end; }
 .brand-skill-picker footer button:last-child { background: #e7e7e7; color: #111; }
+
+.brand-skill-picker-notice {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 98;
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid #383838;
+  border-radius: 8px;
+  background: #181818;
+  color: #f2f2f2;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  font: inherit;
+  font-size: 13px;
+}
+
+.brand-skill-picker-notice p { margin: 0 0 12px; line-height: 1.6; }
+.brand-skill-picker-notice [role="alert"] { color: #e89c9c; }
+.brand-skill-picker-notice > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.brand-skill-picker-notice button { padding: 6px 10px; border: 1px solid #383838; border-radius: 6px; background: #222; color: inherit; font: inherit; cursor: pointer; }
+.brand-skill-picker-notice :focus-visible { outline: 2px solid #9cc9e8; outline-offset: 3px; }
