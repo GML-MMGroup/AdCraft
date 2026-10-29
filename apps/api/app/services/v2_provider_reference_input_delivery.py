@@ -193,6 +193,7 @@ class V2DeliveredProviderReference(BaseModel):
     rendition_width: int | None = None
     rendition_height: int | None = None
     storyboard_downscaled_for: Literal["seedance_2_5"] | None = None
+    image_processing: Literal["storyboard_soften_v1"] | None = None
     max_dimension: int | None = None
     reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
     reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
@@ -300,6 +301,11 @@ class V2DeliveredReferenceSet(BaseModel):
                     "rendition_byte_count": reference.rendition_byte_count,
                     "rendition_width": reference.rendition_width,
                     "rendition_height": reference.rendition_height,
+                    **(
+                        {"image_processing": reference.image_processing}
+                        if reference.image_processing is not None
+                        else {}
+                    ),
                     **(
                         {
                             "storyboard_downscaled_for": reference.storyboard_downscaled_for,
@@ -731,6 +737,11 @@ class V2ProviderReferenceInputDeliveryService:
                     kind="provider_reference",
                     max_dimension=dimension,
                     **({"min_short_side": min_short_side} if min_short_side is not None else {}),
+                    **(
+                        {"image_processing": original.image_processing}
+                        if original.image_processing is not None
+                        else {}
+                    ),
                 )
                 content = rendition.path.read_bytes()
                 width, height = read_image_dimensions(rendition.path)
@@ -776,7 +787,7 @@ class V2ProviderReferenceInputDeliveryService:
                 input_type="data_url",
                 input_value="",
                 source="local_file",
-            )
+            ).model_copy(update={"image_processing": "storyboard_soften_v1"})
             rendition = self._deliver_canvas_provider_reference_rendition(
                 input_snapshot,
                 version,
