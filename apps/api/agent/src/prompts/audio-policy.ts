@@ -1,5 +1,5 @@
 export const nativeVideoAudioPolicy = [
-  "Comedic sound stings are permitted only when style_expression.allows_comedic_sound_effects is true and are not background music.",
+  "Comedic sound stings follow the approved creative plan and actual native-audio capability; style_expression flags are suggestions, not permission gates. Stings are not background music.",
   'Audio ownership: audio_mode="bgm_only" controls standalone audio generation: only the separate BGM node creates music. It does not mean silent Video or prohibit dialogue, voiceover, ambience, or synchronized action effects.',
   "Video renders required non-music sound natively when supported and enabled. Do not generate or embed background music in Video. BGM must remain instrumental and must not take over speech or sound effects.",
   "Preserve confirmed spoken lines through Script, Storyboard planning, and Video: retain the speaker, exact words, language, timing, and delivery within the owning segment. Do not convert confirmed spoken lines into subtitles, captions, or silent acting. A prohibition on on-screen text does not prohibit audible words.",

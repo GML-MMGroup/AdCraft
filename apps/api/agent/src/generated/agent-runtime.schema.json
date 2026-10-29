@@ -28105,6 +28105,7 @@
               "content",
               "framing",
               "pose",
+              "style",
               "view"
             ],
             "type": "string"
@@ -31238,6 +31239,15 @@
           "default": null,
           "title": "Style Description"
         },
+        "view_plan": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SceneViewDirectionV2"
+          },
+          "maxItems": 9,
+          "title": "View Plan",
+          "type": "array"
+        },
         "views": {
           "items": {
             "type": "string"
@@ -31835,6 +31845,61 @@
       "title": "SceneProposalResultV1",
       "type": "object"
     },
+    "SceneViewDirectionV2": {
+      "additionalProperties": false,
+      "description": "Authored presentation of one view, separate from frozen environment identity.",
+      "properties": {
+        "camera_direction": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Camera Direction",
+          "type": "string"
+        },
+        "camera_position": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Camera Position",
+          "type": "string"
+        },
+        "framing": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Framing",
+          "type": "string"
+        },
+        "spatial_details": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Spatial Details",
+          "type": "string"
+        },
+        "view_or_zone": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "View Or Zone",
+          "type": "string"
+        },
+        "visible_anchors": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Visible Anchors",
+          "type": "array"
+        }
+      },
+      "required": [
+        "camera_direction",
+        "camera_position",
+        "framing",
+        "spatial_details",
+        "view_or_zone",
+        "visible_anchors"
+      ],
+      "title": "SceneViewDirectionV2",
+      "type": "object"
+    },
     "ScriptDraftContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -31973,6 +32038,18 @@
           "minLength": 1,
           "title": "Narrative",
           "type": "string"
+        },
+        "production_handoff": {
+          "default": [],
+          "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
         },
         "role_variant": {
           "const": "script",
@@ -33404,6 +33481,15 @@
           "title": "Panels",
           "type": "array"
         },
+        "production_handoff": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
+        },
         "sequence_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -33440,6 +33526,18 @@
           "minLength": 1,
           "title": "Editable Prompt",
           "type": "string"
+        },
+        "production_handoff": {
+          "default": [],
+          "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
         },
         "role_variant": {
           "const": "storyboard_grid",
@@ -37749,6 +37847,15 @@
           "title": "Negative Constraints",
           "type": "string"
         },
+        "production_handoff": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
+        },
         "representation_mode": {
           "default": "illustrated",
           "enum": [
@@ -38004,6 +38111,18 @@
           "minLength": 1,
           "title": "Editable Prompt",
           "type": "string"
+        },
+        "production_handoff": {
+          "default": [],
+          "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Production Handoff",
+          "type": "array"
         },
         "role_variant": {
           "const": "video_segment",

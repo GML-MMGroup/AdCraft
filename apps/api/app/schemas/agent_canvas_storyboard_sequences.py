@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.language import BCP47Tag
 
@@ -42,6 +44,7 @@ class StoryboardSequenceAuthorityPlanV2(_FrozenStoryboardSequenceModel):
     aspect_ratio: str = Field(min_length=1, max_length=32)
     total_duration_seconds: float = Field(gt=0, le=3_600)
     max_sequence_duration_seconds: float = Field(default=15, gt=0, le=15)
+    timing_mode: Literal["fixed", "adaptive"] = "fixed"
     windows: tuple[StoryboardSequenceWindowV2, ...] = Field(
         min_length=1,
         max_length=128,
@@ -53,23 +56,20 @@ class StoryboardSequenceAuthorityPlanV2(_FrozenStoryboardSequenceModel):
             raise ValueError("Storyboard aspect ratio must be normalized.")
         if round(self.total_duration_seconds, 3) != self.total_duration_seconds:
             raise ValueError("Storyboard duration requires millisecond precision.")
-        if self.max_sequence_duration_seconds != 15:
-            raise ValueError("Storyboard sequence duration policy must be 15 seconds.")
         if [window.order for window in self.windows] != list(range(1, len(self.windows) + 1)):
             raise ValueError("Storyboard sequence window order must be contiguous.")
         expected_start = 0.0
-        count = len(self.windows)
-        for index, window in enumerate(self.windows, start=1):
-            expected_end = (
-                self.total_duration_seconds
-                if index == count
-                else round(self.total_duration_seconds * index / count, 3)
-            )
-            if window.start_seconds != expected_start or window.end_seconds != expected_end:
-                raise ValueError("Storyboard sequence windows must be equal and contiguous.")
-            if window.end_seconds - window.start_seconds > self.max_sequence_duration_seconds:
+        for window in self.windows:
+            if window.start_seconds != expected_start:
+                raise ValueError("Storyboard sequence windows must be contiguous.")
+            if (
+                round(window.end_seconds - window.start_seconds, 3)
+                > self.max_sequence_duration_seconds
+            ):
                 raise ValueError("Storyboard sequence window exceeds the duration policy.")
-            expected_start = expected_end
+            expected_start = window.end_seconds
+        if expected_start != self.total_duration_seconds:
+            raise ValueError("Storyboard sequence windows must cover the total duration.")
         return self
 
 

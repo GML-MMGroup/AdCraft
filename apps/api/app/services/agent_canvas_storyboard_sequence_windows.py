@@ -62,6 +62,7 @@ class StoryboardSequenceWindowPlanner:
                 aspect_ratio=normalized_aspect_ratio,
                 total_duration_seconds=duration,
                 windows=windows,
+                timing_mode="adaptive",
             )
         except ValueError as error:
             raise cls._invalid("Storyboard sequence windows are invalid.") from error

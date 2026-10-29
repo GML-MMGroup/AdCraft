@@ -198,6 +198,7 @@ CONTRACT_MODELS = (
     agent_canvas_role_prompt_preparation.CharacterMainRoleBriefV2,
     agent_canvas_role_prompt_preparation.CharacterTurnaroundRoleBriefV2,
     agent_canvas_role_prompt_preparation.SceneBoardRoleBriefV2,
+    agent_canvas_role_prompt_preparation.SceneViewDirectionV2,
     agent_canvas_role_prompt_preparation.ScriptRoleBriefV2,
     agent_canvas_role_prompt_preparation.StoryboardGridRoleBriefV2,
     agent_canvas_role_prompt_preparation.VideoSegmentRoleBriefV2,

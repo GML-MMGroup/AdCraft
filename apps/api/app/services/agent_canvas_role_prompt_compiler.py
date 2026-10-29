@@ -54,8 +54,6 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 )
 from app.services.agent_canvas_human_style_rules import human_style_rule
 from app.services.agent_canvas_prompt_assertion_policy import (
-    PRODUCT_MULTIVIEW_VIEWS,
-    SCENE_MULTIVIEW_VIEWS,
     PromptAssertionPolicyRegistry,
     source_snapshots_from_context,
 )
@@ -187,6 +185,12 @@ class AgentCanvasRolePromptCompiler:
         policy = self._assertion_policies.resolve_for_video_audio(
             recipe.recipe_id,
             recipe.recipe_version,
+            policy_version=(
+                preserved_node.prompt_preparation.assertion_evidence.policy_version
+                if preserved_node is not None
+                and preserved_node.prompt_preparation.assertion_evidence is not None
+                else None
+            ),
             native_audio_required=(
                 context.role_variant == "video_segment"
                 and any(item.name == "generate_audio" and item.value is True for item in parameters)
@@ -202,8 +206,6 @@ class AgentCanvasRolePromptCompiler:
             ),
         )
         role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
-        if isinstance(concrete_brief, ProductMultiviewRoleBriefV2):
-            concrete_brief = concrete_brief.model_copy(update={"views": PRODUCT_MULTIVIEW_VIEWS})
         brief_payload = concrete_brief.model_dump(mode="json")
         brief_digest = _digest(brief_payload)
         compaction_decisions = _compaction_decisions(
@@ -217,10 +219,6 @@ class AgentCanvasRolePromptCompiler:
         )
         rendered_prompt, negative = _render(
             concrete_brief,
-            allows_meme_captions=(
-                context.style_expression is not None
-                and context.style_expression.allows_meme_captions
-            ),
             scene_multiview=(
                 context.role_variant == "scene_board"
                 and context.node_parameters.get("scene_asset_kind") == "multi_view"
@@ -234,22 +232,7 @@ class AgentCanvasRolePromptCompiler:
             if editable_prompt_override is not None
             else concrete_brief.editable_prompt
         )
-        engine_owned_identity_render = (
-            isinstance(
-                concrete_brief,
-                (
-                    ProductMainRoleBriefV2,
-                    PropRoleBriefV2,
-                    CharacterMainRoleBriefV2,
-                    CharacterTurnaroundRoleBriefV2,
-                ),
-            )
-            or (
-                context.role_variant == "scene_board"
-                and context.node_parameters.get("scene_asset_kind") == "multi_view"
-            )
-        ) and editable_prompt_override is None
-        if editable_prompt is not None and not engine_owned_identity_render:
+        if editable_prompt is not None:
             prompt = editable_prompt.strip()
             if not prompt:
                 raise _error(
@@ -258,6 +241,23 @@ class AgentCanvasRolePromptCompiler:
                 )
         else:
             prompt = rendered_prompt
+        if (
+            editable_prompt is not None
+            and editable_prompt_override is None
+            and isinstance(
+                concrete_brief,
+                (
+                    ProductMainRoleBriefV2,
+                    PropRoleBriefV2,
+                    CharacterMainRoleBriefV2,
+                    SceneBoardRoleBriefV2,
+                ),
+            )
+        ):
+            prompt += (
+                "\n\nReference identity and output format (preserve authored presentation): "
+                + rendered_prompt
+            )
         if isinstance(concrete_brief, VideoSegmentRoleBriefV2) and editable_prompt_override is None:
             prompt = _retain_video_audio(prompt, concrete_brief)
         _validate_role_prompt_text(
@@ -369,7 +369,11 @@ class AgentCanvasRolePromptCompiler:
             scene_projection=scene_projection,
             product_projection=product_projection,
         )
-        if conditioning_plan is not None and isinstance(structured.get("style"), dict):
+        if (
+            conditioning_plan is not None
+            and not authored_style
+            and isinstance(structured.get("style"), dict)
+        ):
             structured = {
                 **structured,
                 "style": {
@@ -710,7 +714,6 @@ def _semantic_projections(
 def _render(
     brief: RoleCreativeBriefMemberV2,
     *,
-    allows_meme_captions: bool = False,
     scene_multiview: bool = False,
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
@@ -732,7 +735,7 @@ def _render(
         )
         return (
             f"Use the exact bound Product Main as identity authority. Preserve {identity}; "
-            f"{design_summary}. Render {', '.join(PRODUCT_MULTIVIEW_VIEWS)} on a clean neutral "
+            f"{design_summary}. Render {', '.join(brief.views)} on a clean neutral "
             "studio background.",
             "No people, hands, active use, application scene, unrelated prop, labels, captions, "
             "storyboard layout, or Product Main prompt reuse.",
@@ -799,7 +802,9 @@ def _render(
         lighting = scene_projection.lighting if scene_projection else brief.lighting
         materials = scene_projection.materials if scene_projection else brief.materials
         atmosphere = scene_projection.atmosphere if scene_projection else brief.atmosphere
-        views = SCENE_MULTIVIEW_VIEWS if scene_multiview else ()
+        views = (
+            tuple(_scene_view_text(view) for view in _scene_views(brief)) if scene_multiview else ()
+        )
         prompt = (
             (
                 "Use the bound Scene Main image as the sole environment identity source. "
@@ -840,8 +845,7 @@ def _render(
             f"{brief.segment_summary} Action: {brief.action}. Dialogue: {brief.dialogue}. "
             f"Voiceover: {brief.voiceover}. Ambience: {brief.ambience}. Synchronized action "
             f"effects: {brief.action_effects}. Target output style: {brief.target_style}.",
-            "No background music, identity drift, unrelated action"
-            + ("." if allows_meme_captions else ", or visible text."),
+            "No background music, identity drift, or unrelated action.",
         )
     if isinstance(brief, BgmRoleBriefV2):
         return (
@@ -853,6 +857,38 @@ def _render(
     if isinstance(brief, FreeMediaRoleBriefV2):
         return brief.prompt, "No undeclared identities, references, or hidden context."
     raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
+
+
+def _scene_views(brief: SceneBoardRoleBriefV2) -> tuple[SceneEnvironmentViewV1, ...]:
+    """Keep authored camera geometry outside the bound environment identity."""
+    if brief.view_plan:
+        views = tuple(
+            SceneEnvironmentViewV1(
+                view_or_zone=view.view_or_zone,
+                spatial_details=(
+                    f"Camera position: {view.camera_position}. Direction: {view.camera_direction}. "
+                    f"Framing: {view.framing}. Visible anchors: {'; '.join(view.visible_anchors)}. "
+                    f"{view.spatial_details}"
+                ),
+                allowed_environment_elements=view.visible_anchors,
+            )
+            for view in brief.view_plan
+        )
+    else:
+        # Historical briefs can carry complete view directions in the original field.
+        views = tuple(
+            SceneEnvironmentViewV1(view_or_zone=view, spatial_details=view) for view in brief.views
+        )
+    if len(views) != 9 or len({view.spatial_details for view in views}) != 9:
+        raise _error(
+            "node_prompt_brief_invalid",
+            "Scene Multi-view requires nine distinct authored view directions.",
+        )
+    return views
+
+
+def _scene_view_text(view: SceneEnvironmentViewV1) -> str:
+    return f"{view.view_or_zone}: {view.spatial_details}"
 
 
 def _optional_labeled_fragment(label: str, value: str) -> str:
@@ -1038,14 +1074,7 @@ def _structured_content(
         materials = projection.materials if projection else brief.materials
         atmosphere = projection.atmosphere if projection else brief.atmosphere
         if context.node_parameters.get("scene_asset_kind") == "multi_view":
-            scene_views = tuple(
-                SceneEnvironmentViewV1(
-                    view_or_zone=view,
-                    spatial_details=f"{spatial_logic} View: {view}.",
-                    allowed_environment_elements=(),
-                )
-                for view in SCENE_MULTIVIEW_VIEWS
-            )
+            scene_views = _scene_views(brief)
         elif projection is not None:
             scene_views = projection.views[:1]
         else:
@@ -1089,10 +1118,17 @@ def _structured_content(
         ).model_dump(mode="json")
     if isinstance(brief, ScriptRoleBriefV2):
         return {
+            "production_handoff": list(brief.production_handoff),
             "content": (
                 f"{brief.narrative}\n\nTiming: {brief.timing}\n"
                 f"Dialogue: {brief.dialogue}\nVoiceover: {brief.voiceover}"
-            )
+                + (
+                    "\nProduction handoff (planned; separate execution required): "
+                    + "; ".join(brief.production_handoff)
+                    if brief.production_handoff
+                    else ""
+                )
+            ),
         }
     if isinstance(brief, StoryboardGridRoleBriefV2):
         projection = context.storyboard_projection
@@ -1126,6 +1162,7 @@ def _structured_content(
                 for row in projection.rows
             )
         return StoryboardGridContentV2(
+            production_handoff=brief.production_handoff,
             sequence_summary=(
                 projection.sequence.narrative_goal if projection else brief.sequence_summary
             ),
@@ -1143,6 +1180,7 @@ def _structured_content(
             source="video_skill" if context.style_projection else "platform_default",
         )
         return VideoSegmentContentV2(
+            production_handoff=brief.production_handoff,
             segment_summary=brief.segment_summary,
             duration_seconds=brief.duration_seconds,
             storyboard_content=brief.action,

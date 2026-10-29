@@ -15,31 +15,27 @@ from app.schemas.agent_canvas_reference_style import (
 )
 
 
-_CHARACTER_PROTECTED = (
-    "identity",
-    "face_and_hair",
-    "silhouette_and_proportions",
-    "accessories",
+VISUAL_PRESENTATION_DIMENSIONS = (
     "medium",
     "linework",
     "palette",
     "shading",
     "texture",
     "shape_language",
+    "lighting",
+    "atmosphere",
+)
+_CHARACTER_PROTECTED = (
+    "identity",
+    "face_and_hair",
+    "silhouette_and_proportions",
+    "accessories",
     "wardrobe",
 )
 _SCENE_PROTECTED = (
     "environment_identity",
     "architecture",
     "materials",
-    "lighting",
-    "atmosphere",
-    "medium",
-    "linework",
-    "palette",
-    "shading",
-    "texture",
-    "shape_language",
     "spatial_layout",
 )
 
@@ -74,7 +70,13 @@ class ReferenceStyleAuthorityPolicyResolver:
             return None
         raw_overrides = context.explicit_controls.get("visual_overrides", {})
         overrides = (
-            tuple(sorted(str(key) for key in raw_overrides if str(key) in protected))
+            tuple(
+                sorted(
+                    str(key)
+                    for key in raw_overrides
+                    if str(key) in (*protected, *VISUAL_PRESENTATION_DIMENSIONS)
+                )
+            )
             if isinstance(raw_overrides, Mapping)
             else ()
         )
@@ -98,7 +100,7 @@ class ReferenceStyleAuthorityPolicyResolver:
         )
         return ReferenceStyleAuthorityPolicyV1(
             policy_id=f"reference-style:{reference_kind}:{binding.binding_id}",
-            policy_version="reference_style_authority_v1",
+            policy_version="reference_style_authority_v2",
             reference_kind=reference_kind,
             semantic_reference_role=expected[0] + "_reference",
             reference_purpose=expected[1],
@@ -138,7 +140,7 @@ class ReferenceAwareAssetPromptRenderer:
                 + conditioning_plan.reference_label
                 + "): use this as the primary "
                 + conditioning_plan.target_role.replace("_", " ")
-                + " identity/style reference."
+                + " identity reference; the authored visual style governs rendering."
             )
             parts.append(
                 "Preserve protected dimensions: "
@@ -162,6 +164,8 @@ class ReferenceAwareAssetPromptRenderer:
             ]
             if values:
                 parts.append("Explicit visual overrides: " + "; ".join(values) + ".")
+        if style_projection:
+            parts.append("Visual style: " + style_projection.strip())
         if conditioning_plan is not None:
             parts.append("Do not substitute an unrelated subject or environment.")
         return "\n\n".join(part for part in parts if part)

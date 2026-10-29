@@ -177,6 +177,11 @@ class AgentCanvasProviderPromptCompiler:
                 "adcraft.agent_canvas.scene_board",
                 "1",
                 native_audio_required=False,
+                policy_version=(
+                    node.prompt_preparation.assertion_evidence.policy_version
+                    if node.prompt_preparation.assertion_evidence is not None
+                    else None
+                ),
                 scene_asset_kind=(
                     node.structured_content.get("scene_asset_kind")
                     or node.parameters.get("scene_asset_kind")
@@ -243,6 +248,7 @@ class AgentCanvasProviderPromptCompiler:
                 preparation.recipe_id,
                 preparation.recipe_version,
                 native_audio_required=native_audio_required,
+                policy_version=evidence.policy_version,
                 allows_comedic_sound_effects=node_allows_comedic_sound_effects(node),
                 scene_asset_kind=(
                     node.structured_content.get("scene_asset_kind")
@@ -924,9 +930,10 @@ def _render_reference_identities(
         video_semantics = "Video reference-use semantics:\n" + "\n".join(instructions) + "\n"
     return (
         video_semantics + "Authoritative bound reference identities:\n"
-        "These persisted Binding facts override conflicting model-authored details. "
-        "Keep their identities and environments unchanged while retaining creative "
-        "freedom for panel action, composition, and camera.\n"
+        "These persisted Binding facts are base identity authority. Preserve them except for "
+        "state changes explicitly approved in the written sequence, such as wardrobe or lighting "
+        "transitions. Retain creative freedom for panel action, composition, and camera. "
+        "Reference availability does not require every subject to appear in every shot.\n"
         + turnaround_clause
         + "\n".join(
             f"- {json.dumps(identity, sort_keys=True, ensure_ascii=True)}"

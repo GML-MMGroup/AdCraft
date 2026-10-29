@@ -600,6 +600,17 @@ class CharacterTurnaroundRoleBriefV2(CharacterMainRoleBriefV2):
         return self
 
 
+class SceneViewDirectionV2(_RolePromptModel):
+    """Authored presentation of one view, separate from frozen environment identity."""
+
+    view_or_zone: str = Field(min_length=1, max_length=1_024)
+    camera_position: str = Field(min_length=1, max_length=1_024)
+    camera_direction: str = Field(min_length=1, max_length=1_024)
+    framing: str = Field(min_length=1, max_length=1_024)
+    visible_anchors: tuple[str, ...] = Field(min_length=1, max_length=16)
+    spatial_details: str = Field(min_length=1, max_length=4_096)
+
+
 class SceneBoardRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["scene_board"] = "scene_board"
     environment_identity: str = Field(min_length=1, max_length=4_096)
@@ -608,12 +619,18 @@ class SceneBoardRoleBriefV2(_RoleBriefModel):
     materials: str = Field(min_length=1, max_length=2_048)
     atmosphere: str = Field(min_length=1, max_length=2_048)
     views: tuple[str, ...] = Field(min_length=1, max_length=9)
+    view_plan: tuple[SceneViewDirectionV2, ...] = Field(default=(), max_length=9)
     entity_references: tuple[str, ...] = Field(default=(), max_length=32)
     action_references: tuple[str, ...] = Field(default=(), max_length=32)
     environment_only: Literal[True] = True
 
 
 class ScriptRoleBriefV2(_RoleBriefModel):
+    production_handoff: tuple[Annotated[str, Field(min_length=1, max_length=2_048)], ...] = Field(
+        default=(),
+        max_length=32,
+        description="Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+    )
     role_variant: Literal["script"] = "script"
     narrative: str = Field(min_length=1, max_length=16_384)
     timing: str = Field(min_length=1, max_length=2_048)
@@ -622,6 +639,11 @@ class ScriptRoleBriefV2(_RoleBriefModel):
 
 
 class StoryboardGridRoleBriefV2(_RoleBriefModel):
+    production_handoff: tuple[Annotated[str, Field(min_length=1, max_length=2_048)], ...] = Field(
+        default=(),
+        max_length=32,
+        description="Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+    )
     role_variant: Literal["storyboard_grid"] = "storyboard_grid"
     sequence_summary: str = Field(min_length=1, max_length=8_192)
     beats: tuple[str, ...] = Field(min_length=9, max_length=9)
@@ -629,6 +651,11 @@ class StoryboardGridRoleBriefV2(_RoleBriefModel):
 
 
 class VideoSegmentRoleBriefV2(_RoleBriefModel):
+    production_handoff: tuple[Annotated[str, Field(min_length=1, max_length=2_048)], ...] = Field(
+        default=(),
+        max_length=32,
+        description="Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
+    )
     role_variant: Literal["video_segment"] = "video_segment"
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=15)

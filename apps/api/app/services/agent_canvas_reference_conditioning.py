@@ -11,11 +11,12 @@ from app.schemas.agent_canvas_reference_conditioning import ReferenceConditionin
 from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
 from app.services.agent_canvas_reference_style_authority import (
     ReferenceStyleAuthorityPolicyResolver,
+    VISUAL_PRESENTATION_DIMENSIONS,
 )
 
 
-_CHARACTER_ALLOWED = ("view", "pose", "camera", "framing", "background", "content")
-_SCENE_ALLOWED = ("view", "camera", "framing", "content")
+_CHARACTER_ALLOWED = ("view", "pose", "camera", "framing", "background", "content", "style")
+_SCENE_ALLOWED = ("view", "camera", "framing", "content", "style")
 
 
 def _digest(value: Any) -> str:
@@ -62,7 +63,7 @@ class ReferenceConditioningPlanResolver:
             return
         if not isinstance(raw, Mapping):
             raise ValueError("reference_conditioning_override_invalid")
-        protected = set(protected_dimensions)
+        protected = set(protected_dimensions) | set(VISUAL_PRESENTATION_DIMENSIONS)
         for key, value in raw.items():
             if not isinstance(key, str) or key not in protected:
                 raise ValueError("reference_conditioning_override_invalid")

@@ -150,6 +150,7 @@ class StoryboardPanelV2(_AdMediaModel):
 
 
 class StoryboardGridContentV2(_AdMediaModel):
+    production_handoff: tuple[str, ...] = Field(default=(), max_length=32)
     sequence_summary: str = Field(min_length=1, max_length=8_192)
     narrative_goal: str = Field(min_length=1, max_length=4_096)
     style: VisualStyleContractV2
@@ -173,6 +174,7 @@ class StoryboardGridContentV2(_AdMediaModel):
 
 
 class VideoSegmentContentV2(_AdMediaModel):
+    production_handoff: tuple[str, ...] = Field(default=(), max_length=32)
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=3_600)
     storyboard_content: str = Field(min_length=1, max_length=16_384)
