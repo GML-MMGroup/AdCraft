@@ -66,6 +66,9 @@ import {
   resizeChatComposerTextarea,
   snapChatComposerScroll,
 } from "./chatComposerTextarea.ts";
+import type { BrandDecisionPanelV1 } from "../brand/brandDecisions.ts";
+import { normalizeBrandDecisionPanelV1 } from "../brand/brandDecisionNormalizers.ts";
+import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
 
 function mockChatResult(
   items: ChatTimelineItemV2[] = [],
@@ -91,6 +94,7 @@ function mockChatResult(
       guidedAnswerBubbles: [],
       messageSkillTitles: {},
       guidanceSession: null,
+      hasGuidedProductionIntent: false,
       guidedInteraction: null,
       guidanceAwaiting: null,
       currentSessionActions: [],
@@ -2079,6 +2083,72 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit guided direction" }));
   }
 
+  it("asks the campaign question before its form loads and keeps it when the confirmed answer arrives", async () => {
+    const question = "Now the campaign brief: what should this ad achieve, and where will it run?";
+    const chat = mockChatResult();
+    chat.actions.submitGuidedInteraction.mockResolvedValue(true);
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    let decisions: BrandDecisionPanelV1 = {
+      project_id: "project-1", workflow_id: roleMotionWorkflow.workflow_id, mode: "brand",
+      journey: { policy_version: "brand_professional_v1", stage: "campaign", stage_revision: 2,
+        treatment_substep: null, stage_status: "ready" },
+      brand_name: "Volt", slot_values: [], open_card: null, hypotheses: [],
+      selected_hypothesis_id: null, adspec: null, skill_stack: null, treatment_steps: [],
+      treatment_locked: false,
+    };
+    const panel = () => <AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1}
+      chatEvents={[]} onFocusNode={vi.fn()} brandMode brandStage={decisions.journey.stage}
+      brandDecisions={decisions} />;
+    const view = render(panel());
+    expect(screen.queryByText(question)).toBeNull();
+    chat.state.hasGuidedProductionIntent = true;
+    view.rerender(panel());
+    const questionBubble = screen.getByText(question).closest("article");
+    expect(screen.queryByRole("article", { name: "Your selections" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm entire form" })).toBeNull();
+
+    chat.state.guidedInteraction = {
+      ...openInteraction(), kind: "brand_form", title: "Campaign details",
+      allowed_actions: ["select", "custom"],
+      content: {
+        content_kind: "brand_form", form_id: "campaign-form", stage: "campaign", revision: 2,
+        response_locale: "en-US", context_digest: "a".repeat(64), title: "Campaign details",
+        instructions: "Choose the campaign goal.",
+        rows: [{ question_id: "goal", slot_id: "campaign_goal", prompt: "Campaign goal",
+          options: [{ option_id: "launch", label: "Launch", why: null },
+            { option_id: "custom", label: "Custom", why: null }],
+          custom_option_id: "custom", required: true }],
+      },
+    };
+    view.rerender(panel());
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
+    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
+    fireEvent.click(screen.getByRole("button", { name: /Campaign details/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Launch/ }));
+    expect(screen.queryByRole("article", { name: "Your selections" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm entire form" }));
+    await waitFor(() => expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledOnce());
+    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
+    expect(screen.queryByRole("article", { name: "Your selections" })).toBeNull();
+
+    chat.state.guidedInteraction = null;
+    decisions = { ...decisions, journey: { ...decisions.journey, stage: "hypothesis" },
+      campaign_brief: { values: [{ slot_id: "campaign_goal", stage: "campaign", value: "Launch",
+        kind: "fact", provenance: "user_confirmed", confirmed_at: "2026-10-23T03:00:00Z" }],
+      inherited_values: [], unresolved_fields: [] } };
+    view.rerender(panel());
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
+    expect(screen.getByRole("article", { name: "Your selections" }).textContent).toContain("Launch");
+
+    view.unmount();
+    render(panel());
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "Your selections" }).textContent).toContain("Launch");
+  });
+
   it("opens brand Skill adjustment without submitting the old chat choice", () => {
     const interaction = directionInteraction();
     if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
@@ -2261,5 +2331,78 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
 
     expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(false);
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+});
+
+describe("brand treatment confirmation readiness", () => {
+  afterEach(cleanup);
+
+  it.each([false, true])("requires confirmed treatment steps even during recovery review (ready: %s)", brandTreatmentReady => {
+    const chat = mockChatResult();
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: { ...chat.state,
+      brandCardRecovery: { interactionId: "old", phase: "review", needsQuestion: false, error: null },
+    } });
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
+      brandMode brandStage="treatment" brandTreatmentReady={brandTreatmentReady} />);
+    expect(Boolean(screen.queryByRole("region", { name: "Treatment confirmation" }))).toBe(brandTreatmentReady);
+    expect(Boolean(screen.queryByRole("button", { name: "Review treatment" }))).toBe(brandTreatmentReady);
+  });
+
+  it("opens confirmation for completed treatment without recovery", () => {
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
+      brandMode brandStage="treatment" brandTreatmentReady />);
+    expect(screen.getByRole("button", { name: "Review treatment" })).toBeTruthy();
+  });
+});
+
+describe("brand Skill sending outside the modal", () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it("keeps sending when the Skill panel closes and the chat is collapsed", async () => {
+    const decisions = normalizeBrandDecisionPanelV1({
+      project_id: roleMotionWorkflow.project_id, workflow_id: roleMotionWorkflow.workflow_id,
+      mode: "brand", brand_name: "Brand",
+      journey: { stage: "skill-stack", stage_revision: 5, stage_status: "waiting_user" },
+      open_card: { card_id: "skills-5", stage: "skill-stack", stage_revision: 5, question: "Choose", options: [] },
+      skill_stack: { entries: [
+        { skill_id: "metaphor", version: "1.0.0", skill_kind: "creative_method", title: "Metaphor", selected: true },
+        { skill_id: "quiet", version: "1.0.0", skill_kind: "audiovisual_style", title: "Quiet", selected: true },
+      ] },
+    });
+    const confirmed = { ...decisions, journey: { ...decisions.journey, stage: "treatment" as const, stage_revision: 6 }, open_card: null };
+    let accept!: (value: BrandDecisionPanelV1) => void;
+    let generate!: (value: null) => void;
+    vi.spyOn(agentCanvasApi, "brandCreativeMethodSkills").mockResolvedValue({ items: [{
+      skill_id: "metaphor", version: "1.0.0", skill_kind: "creative_method", title: "Metaphor", summary: "A method",
+    }] });
+    vi.spyOn(agentCanvasApi, "brandSelectSkills").mockReturnValue(new Promise(resolve => { accept = resolve; }));
+    vi.spyOn(agentCanvasApi, "brandNextQuestion").mockReturnValue(new Promise(resolve => { generate = resolve; }));
+    vi.spyOn(agentCanvasApi, "brandDecisions").mockResolvedValue(confirmed);
+    const chat = mockChatResult();
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const onUpdated = vi.fn();
+    const onClose = vi.fn();
+    const panel = (open: boolean, collapsed: boolean) => <AgentCanvasChatPanel workflow={roleMotionWorkflow}
+      chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} brandMode brandStage="skill-stack"
+      brandDecisions={decisions} brandSkillPickerOpen={open} collapsed={collapsed}
+      onBrandSkillPickerClose={onClose} onBrandDecisionsUpdated={onUpdated} />;
+    const view = render(panel(true, false));
+    await screen.findByLabelText(/Metaphor/);
+    fireEvent.click(screen.getByRole("button", { name: "Save and send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    view.rerender(panel(false, true));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("Proposal sent");
+    expect(screen.getByRole("button", { name: "Open AdCraft Bot panel" })).toBeTruthy();
+    await act(async () => accept(confirmed));
+    expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledOnce();
+    expect(onUpdated).toHaveBeenCalledWith(confirmed);
+    await act(async () => generate(null));
+    expect(chat.actions.refresh).toHaveBeenCalledOnce();
+    expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
+    view.rerender(panel(true, false));
+    expect(screen.getByRole("button", { name: "Proposal sent" }).hasAttribute("disabled")).toBe(true);
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

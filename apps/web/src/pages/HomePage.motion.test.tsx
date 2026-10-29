@@ -69,6 +69,8 @@ class IntersectionObserverMock {
 describe("HomePage motion", () => {
   beforeEach(() => {
     startNewProject.mockReset();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     IntersectionObserverMock.instances = [];
     document.documentElement.removeAttribute("data-theme");
     vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
@@ -236,7 +238,9 @@ describe("HomePage motion", () => {
       })),
     );
 
-    render(<HomePage navigate={vi.fn()} />);
+    const view = render(<HomePage navigate={vi.fn()} />);
+    expect(view.container.querySelector("video")).toBeNull();
+    expect(view.container.querySelector(".home-product-hero__poster")).toBeTruthy();
 
     const recentSection = screen
       .getByRole("heading", { level: 2, name: "Recent Projects" })
@@ -260,7 +264,7 @@ describe("HomePage motion", () => {
       /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
+      /\.home-product-hero__media\s*\{[^}]*position:\s*fixed;[^}]*opacity:\s*calc\(1 - var\(--hero-progress\)\);[^}]*mask-image:\s*linear-gradient/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__title-character__glyph\s*\{[^}]*opacity:\s*1;[^}]*transform:\s*none;/s,

@@ -138,7 +138,19 @@ export function useAgentCanvasNodeRevealQueue({
 
   const releaseNodeIds = useCallback((nodeIds: readonly string[]) => {
     nodeIds.forEach((nodeId) => reservedNodeIdsRef.current.delete(nodeId));
-  }, []);
+    // A released node may already be canonical; without a later canonical
+    // sync it would otherwise stay hidden until a page reload.
+    const released = nodeIds.filter((nodeId) => (
+      canonicalNodeIdsRef.current.has(nodeId)
+      && !visibleNodeIdsRef.current.has(nodeId)
+      && !queuedNodeIdsRef.current.includes(nodeId)
+      && activeNodeIdRef.current !== nodeId
+    ));
+    if (!released.length) return;
+    const nextVisible = new Set(visibleNodeIdsRef.current);
+    released.forEach((nodeId) => nextVisible.add(nodeId));
+    updateVisibleNodeIds(nextVisible);
+  }, [updateVisibleNodeIds]);
 
   const syncCanonicalNodeIds = useCallback((nodeIds: readonly string[]) => {
     const canonical = new Set(nodeIds);

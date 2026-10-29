@@ -73,6 +73,25 @@ describe("useAgentCanvasPresentationStreams", () => {
     vi.useRealTimers();
   });
 
+  it("does not reopen an ended stream when another stream joins", async () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useAgentCanvasPresentationStreams("workflow-1", ids),
+      { initialProps: { ids: ["stream-1"] } },
+    );
+    await waitFor(() => expect(EventSourceStub.instances).toHaveLength(1));
+    act(() => {
+      EventSourceStub.instances[0]!.emit("delta", event());
+      EventSourceStub.instances[0]!.emit("committed", event({ event_type: "committed", sequence_no: 2, delta: null, authoritative_id: "msg-1", content_digest: "a".repeat(64) }));
+    });
+    expect(result.current["stream-1"]?.status).toBe("completed");
+
+    rerender({ ids: ["stream-1", "stream-2"] });
+    await waitFor(() => expect(EventSourceStub.instances).toHaveLength(2));
+
+    expect(EventSourceStub.instances[1]!.url).toContain("/streams/stream-2?");
+    expect(result.current["stream-1"]).toMatchObject({ status: "completed", text: "Hello" });
+  });
+
   it("assembles deltas once and keeps the stream cursor monotonic", async () => {
     const { result } = renderHook(() => useAgentCanvasPresentationStreams("workflow-1", ["stream-1"]));
     await waitFor(() => expect(EventSourceStub.instances).toHaveLength(1));

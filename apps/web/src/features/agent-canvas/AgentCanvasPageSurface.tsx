@@ -99,6 +99,8 @@ import {
 import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
 import { BrandDecisionPanel } from "./brand/BrandDecisionPanel.tsx";
 import type { BrandDecisionPanelV1 } from "./brand/brandDecisions.ts";
+import { brandTreatmentStepsComplete } from "./brand/brandTreatmentStepsComplete.ts";
+import type { PresentationStreamView } from "./runtime/useAgentCanvasPresentationStreams.ts";
 import {
   installAgentCanvasWorkflowViewport,
   readAgentCanvasViewport,
@@ -154,7 +156,10 @@ import {
   reportProviderBalanceNotice,
 } from "./notifications/providerBalanceNoticeStore.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
+import { workflowRefreshRevealNodeIds } from "./workflowRefreshReveal.ts";
+import { useAgentCanvasHistoryKeyboard } from "./history/useAgentCanvasHistoryKeyboard.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
+import { ScenePromptFailureNoticeHost } from "./notifications/ScenePromptFailureNoticeHost.tsx";
 
 const nodeTypes = { agentCanvas: AgentCanvasNodeRenderer };
 const edgeTypes = { [AGENT_CANVAS_EDGE_TYPE]: AgentCanvasEdge };
@@ -210,6 +215,7 @@ export function AgentCanvasPage() {
     importEditingExport,
     mergeNode,
     mergePublishedAsset,
+    moveNodes,
     patchNode,
     patchBinding,
     persistLayoutPreviewPositions,
@@ -219,21 +225,34 @@ export function AgentCanvasPage() {
     updateNodePositions,
   } = session.actions;
   const reserveRevealNodeIdsRef = useRef<(nodeIds: readonly string[]) => void>(() => undefined);
+  const releaseRevealNodeIdsRef = useRef<(nodeIds: readonly string[]) => void>(() => undefined);
+  const plainCreatedNodeIdsRef = useRef(new Set<string>());
+  useLayoutEffect(() => {
+    plainCreatedNodeIdsRef.current.clear();
+  }, [workflow?.workflow_id]);
   const runtimeCallbacks = useMemo(() => ({
     applyWorkflow,
     mergePublishedAsset,
     mergeNode,
     onRuntimeEvent: (event: CanvasRuntimeEventV2) => {
       reportProviderBalanceNotice(providerBalanceNoticeFromRuntimeEvent(event));
+      // The event arrives before its workflow refresh. Remember plain creations
+      // so that refresh does not reserve them after this early release.
+      if (event.event_type === "node_created" && event.node_id) {
+        plainCreatedNodeIdsRef.current.add(event.node_id);
+        releaseRevealNodeIdsRef.current([event.node_id]);
+      }
     },
     beforeWorkflowApply: (nextWorkflow: AgentCanvasWorkflowV2) => {
       // Reserve nodes that first appear through a workflow refresh before the
       // canonical sync layout effect can render them at backend coordinates.
-      const knownNodeIds = new Set(workflowNodesRef.current.map((node) => node.node_id));
-      const createdNodeIds = nextWorkflow.nodes
-        .filter((node) => !knownNodeIds.has(node.node_id))
-        .map((node) => node.node_id);
+      const createdNodeIds = workflowRefreshRevealNodeIds(
+        workflowNodesRef.current,
+        nextWorkflow.nodes,
+        plainCreatedNodeIdsRef.current,
+      );
       if (createdNodeIds.length) reserveRevealNodeIdsRef.current(createdNodeIds);
+      nextWorkflow.nodes.forEach((node) => plainCreatedNodeIdsRef.current.delete(node.node_id));
     },
   }), [
     applyWorkflow,
@@ -283,6 +302,7 @@ export function AgentCanvasPage() {
   const [brandDecisionsRefreshing, setBrandDecisionsRefreshing] = useState(false);
   const [brandDecisionsResolved, setBrandDecisionsResolved] = useState(false);
   const [brandSkillsWorkflowId, setBrandSkillsWorkflowId] = useState<string | null>(null);
+  const [presentationStreams, setPresentationStreams] = useState<Record<string, PresentationStreamView>>({});
   const brandWorkflowId = workflow?.workflow_id ?? null;
   const refreshBrandDecisions = useCallback(async () => {
     if (!brandWorkflowId) return null;
@@ -349,6 +369,7 @@ export function AgentCanvasPage() {
   const previewPrefetchRef = useRef<CanvasPreviewPrefetchHandle | null>(null);
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
   const workflowNodesRef = useRef(workflow?.nodes ?? []);
+  const dragStartPositionsRef = useRef<CanvasLayoutPositionV2[]>([]);
   const canonicalNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const visibleCanonicalNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const visibleCanonicalNodeIdsRef = useRef<readonly string[]>([]);
@@ -447,6 +468,7 @@ export function AgentCanvasPage() {
     keep: persistLayoutPreview,
     overlay: overlayLayoutPreview,
   } = layoutPreview;
+  useAgentCanvasHistoryKeyboard(session.history, layoutPreviewActive);
   const undoLayoutPreview = useCallback(() => cancelLayoutPreview("explicit"), [cancelLayoutPreview]);
   const dismissLayoutPreview = useCallback(() => cancelLayoutPreview("implicit"), [cancelLayoutPreview]);
   const keepLayoutPreview = useCallback(() => {
@@ -488,6 +510,7 @@ export function AgentCanvasPage() {
     visibleNodeIds: visibleRevealNodeIds,
   } = revealQueue;
   reserveRevealNodeIdsRef.current = reserveRevealNodeIds;
+  releaseRevealNodeIdsRef.current = releaseRevealNodeIds;
   const revealAvailableCanvasNodes = useCallback((nodeIds: string[]) => {
     const visibleNodeIds = new Set(flowNodesRef.current.map((node) => node.id));
     revealCanvasNodes(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));
@@ -1388,11 +1411,14 @@ export function AgentCanvasPage() {
   const running = Boolean(live.state.runtime?.active_execution_id);
   return (
     <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}${brandDecisions ? " is-brand-mode" : ""}`}>
+      <ScenePromptFailureNoticeHost nodes={workflow.nodes} runtime={live.state.runtime}
+        onInspect={nodeId => { setSelectedNodeId(nodeId); focusCanvasNode(nodeId); }} />
       {brandDecisions ? (
         <ResizableBrandPanel><BrandDecisionPanel
           decisions={brandDecisions}
           refreshing={brandDecisionsRefreshing}
           onChooseSkills={() => setBrandSkillsWorkflowId(brandDecisions.workflow_id)}
+          presentationStreams={Object.values(presentationStreams)}
           onRefresh={() => {
             void refreshBrandDecisions();
           }}
@@ -1467,6 +1493,9 @@ export function AgentCanvasPage() {
               node.id,
               ...draggedNodes.map((item) => item.id),
             ]);
+            dragStartPositionsRef.current = workflow.nodes
+              .filter((item) => draggedNodeIds.has(item.node_id))
+              .map((item) => ({ node_id: item.node_id, ...item.position }));
             beginNodeDrag(
               activeDraggedNodeIdsRef.current,
               node.id,
@@ -1506,7 +1535,7 @@ export function AgentCanvasPage() {
             flowNodesRef.current = dragResult.nodes;
             setNodes(dragResult.nodes);
             if (dragResult.positions.length) {
-              void updateNodePositions(dragResult.positions).catch(() => {
+              void moveNodes(dragStartPositionsRef.current, dragResult.positions).catch(() => {
                 void refreshWorkflow().catch(() => {});
               });
             }
@@ -1643,7 +1672,11 @@ export function AgentCanvasPage() {
           </div>
         ) : null}
 
-        {(canvasMediaUpload.error || surfaceError || session.state.authoringError || live.state.runtimeError) ? (
+        {session.history.notice ? (
+          <div className="agent-canvas-notice" role="status">{session.history.notice}</div>
+        ) : null}
+
+        {!session.history.notice && (canvasMediaUpload.error || surfaceError || session.state.authoringError || live.state.runtimeError) ? (
           <button
             type="button"
             className="agent-canvas-notice"
@@ -1789,6 +1822,7 @@ export function AgentCanvasPage() {
           onBrandSkillPickerOpen={() => setBrandSkillsWorkflowId(workflow.workflow_id)}
           onBrandSkillPickerClose={() => setBrandSkillsWorkflowId(null)}
           onBrandDecisionsUpdated={setBrandDecisions}
+          onPresentationStreamsChange={setPresentationStreams}
           brandContextReady={Boolean(
             !brandWorkflowId
             || (
@@ -1796,9 +1830,7 @@ export function AgentCanvasPage() {
               && (brandDecisions === null || brandDecisions.workflow_id === brandWorkflowId)
             )
           )}
-          brandTreatmentReady={Boolean(brandDecisions && [
-            "hook", "story", "character", "scene", "visual", "camera", "editing", "sound",
-          ].every((key) => brandDecisions.treatment_steps.some((step) => step.step_key === key)))}
+          brandTreatmentReady={brandTreatmentStepsComplete(brandDecisions)}
           onBrandDecisionsRefresh={refreshBrandDecisions}
           onProjectsRefresh={refreshProjects}
           collapsed={chatCollapsed}

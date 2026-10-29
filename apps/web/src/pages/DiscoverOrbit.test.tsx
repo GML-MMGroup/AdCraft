@@ -240,15 +240,18 @@ describe("DiscoverOrbit motion activity", () => {
 
   it("releases pointer capture and clears interaction when motion suspends", () => {
     const { root, unmount } = renderOrbit();
-    const setPointerCapture = vi.fn();
-    const releasePointerCapture = vi.fn();
+    let captured = false;
+    const setPointerCapture = vi.fn(() => { captured = true; });
+    const releasePointerCapture = vi.fn(() => { captured = false; });
     Object.assign(root, {
       setPointerCapture,
       releasePointerCapture,
-      hasPointerCapture: () => true,
+      hasPointerCapture: () => captured,
     });
     enterViewport();
     fireEvent.pointerDown(root, { button: 0, pointerId: 7, clientX: 100 });
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    fireEvent.pointerMove(root, { pointerId: 7, clientX: 120 });
     expect(setPointerCapture).toHaveBeenCalledWith(7);
     expect(root.getAttribute("data-paused")).toBe("true");
 
@@ -259,8 +262,36 @@ describe("DiscoverOrbit motion activity", () => {
 
     enterViewport();
     fireEvent.pointerDown(root, { button: 0, pointerId: 8, clientX: 120 });
+    fireEvent.pointerMove(root, { pointerId: 8, clientX: 140 });
     unmount();
     expect(releasePointerCapture).toHaveBeenCalledWith(8);
+  });
+
+  it("leaves clicks on the card until the pointer moves beyond the drag threshold", () => {
+    const { root, onSelect } = renderOrbit();
+    const setPointerCapture = vi.fn();
+    Object.assign(root, { setPointerCapture, hasPointerCapture: () => false });
+    enterViewport();
+    const card = screen.getByRole("button", { name: "upper One" });
+
+    fireEvent.pointerDown(card, { button: 0, pointerId: 7, clientX: 100 });
+    fireEvent.pointerMove(card, { pointerId: 7, clientX: 103 });
+    fireEvent.pointerUp(card, { pointerId: 7, clientX: 103 });
+    fireEvent.click(card);
+
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
+  it("clears a pending click when the pointer is released outside the gallery", () => {
+    const { root } = renderOrbit();
+    Object.assign(root, { hasPointerCapture: () => false });
+    enterViewport();
+
+    fireEvent.pointerDown(root, { button: 0, pointerId: 7, clientX: 100 });
+    expect(root.getAttribute("data-paused")).toBe("true");
+    fireEvent.pointerUp(window, { pointerId: 7, clientX: 97 });
+    expect(root.getAttribute("data-paused")).toBe("false");
   });
 
   it("keeps one observer and one RAF after StrictMode effect remounting", () => {

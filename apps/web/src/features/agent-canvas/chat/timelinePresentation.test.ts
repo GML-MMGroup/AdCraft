@@ -193,6 +193,22 @@ describe("expert activity timeline presentation", () => {
 });
 
 describe("timeline presentation reconciliation", () => {
+  it("tells the user to reply continue after a prompt preparation failure", () => {
+    const failure = (locale: string, errorCode: string) => localizeTimelinePresentationItem({
+      ...mediaReviewPresentation(locale, []),
+      presentation_key: "planning:prompt:dispatch-1",
+      message_key: "prompt_preparation.failed",
+      message_args: { node_title: "Storyboard Grid 2", error_code: errorCode },
+    });
+
+    expect(failure("zh-CN", "agent_provider_timeout")).toMatchObject({
+      text: "「Storyboard Grid 2」的提示词生成失败（模型服务响应超时）。回复「继续」即可重试。",
+    });
+    expect(failure("en", "agent_unknown")).toMatchObject({
+      text: 'Storyboard Grid 2: prompt preparation failed (agent_unknown). Reply "continue" to retry.',
+    });
+  });
+
   it("uses the later sequence when the same key has the same revision", () => {
     const earlier = acknowledgementPresentation({
       sequence: 20,

@@ -15,9 +15,11 @@ function selectionFrom(panel: BrandDecisionPanelV1) {
   };
 }
 
-export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated, onConversationRefresh }: {
+export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpen, onClose, onUpdated, onConversationRefresh }: {
   decisions: BrandDecisionPanelV1;
   responseLocale: string;
+  open?: boolean;
+  onOpen?: () => void;
   onClose: () => void;
   onUpdated: (panel: BrandDecisionPanelV1) => void;
   onConversationRefresh: () => Promise<void> | void;
@@ -31,6 +33,8 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   const pending = pendingAction !== null;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [continuation, setContinuation] = useState<"generate" | "refresh" | null>(null);
   const inFlight = useRef(false);
@@ -41,6 +45,11 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
 
   useEffect(() => {
     mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
     const focusTarget = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -48,7 +57,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
     const onKey = (event: KeyboardEvent) => {
       // The existing style picker can sit above this dialog.
       if (Array.from(document.querySelectorAll('[role="dialog"]')).at(-1) !== dialogRef.current) return;
-      if (event.key === "Escape" && !inFlight.current) closeRef.current();
+      if (event.key === "Escape") closeRef.current();
       if (event.key !== "Tab") return;
       const controls = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]');
       const first = controls?.[0];
@@ -58,12 +67,11 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      mounted.current = false;
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKey);
       if (focusTarget?.isConnected) focusTarget.focus();
     };
-  }, []);
+  }, [open]);
 
   async function loadCatalog() {
     try {
@@ -75,6 +83,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
   }
 
   useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     agentCanvasApi.brandCreativeMethodSkills().then((response) => {
       if (!cancelled) setCatalog(response.items);
@@ -82,7 +91,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
       if (!cancelled) setError(zh ? "创意方法加载失败，请重试。" : "Creative methods could not be loaded. Retry.");
     });
     return () => { cancelled = true; };
-  }, [zh]);
+  }, [open, zh]);
 
   function replacePanel(next: BrandDecisionPanelV1) {
     setPanel(next);
@@ -98,8 +107,8 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
     const selection = selectionFrom(decisions);
     setMethods(selection.methods);
     setStyle(selection.style);
-    setNotice(zh ? "选择已更新，请检查最新组合。" : "The selection changed. Review the latest combination.");
-  }, [decisions, panel.journey.stage_revision, zh]);
+    if (!sent) setNotice(zh ? "选择已更新，请检查最新组合。" : "The selection changed. Review the latest combination.");
+  }, [decisions, panel.journey.stage_revision, sent, zh]);
 
   async function refreshPanel() {
     setPendingAction("refresh");
@@ -114,14 +123,14 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
 
   async function continueJourney() {
     if (continuation !== "refresh") {
-      setPendingAction("generate");
+      if (mounted.current) setPendingAction("generate");
       await agentCanvasApi.brandNextQuestion(panel.workflow_id);
       if (!mounted.current) return;
       // Once generation succeeds, recovery must only repeat the reads.
       setContinuation("refresh");
     }
     await refreshPanel();
-    if (mounted.current) onClose();
+    if (mounted.current) setContinuation(null);
   }
 
   const editable = panel.journey.stage === "skill-stack" && panel.open_card?.stage === "skill-stack"
@@ -130,11 +139,13 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
     && methods.every((method) => catalog.some((entry) => entry.skill_id === method.skill_id && entry.version === method.version)));
 
   async function submit(confirm: boolean) {
-    if (inFlight.current || !editable || !valid || !style?.version || !panel.open_card || needsRefresh) return;
+    if (inFlight.current || sent || !editable || !valid || !style?.version || !panel.open_card || needsRefresh) return;
     inFlight.current = true;
     setPendingAction(confirm ? "confirm" : "save");
     setError(null);
-    setNotice(null);
+    setSent(confirm);
+    setNotice(confirm ? (zh ? "方案已发送" : "Proposal sent") : null);
+    setNoticeDismissed(false);
     let committed = false;
     try {
       const next = await agentCanvasApi.brandSelectSkills(panel.workflow_id, {
@@ -145,18 +156,22 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
         confirm,
       });
       committed = true;
-      if (!mounted.current) return;
-      replacePanel(next);
+      if (mounted.current) replacePanel(next);
       if (confirm) {
-        setContinuation("generate");
+        if (mounted.current) setContinuation("generate");
         await continueJourney();
-      } else {
+      } else if (mounted.current) {
         setNotice(zh ? "已保存，尚未激活或进入下一阶段。" : "Saved. No style activated or stage advanced.");
         setPendingAction("refresh");
         await onConversationRefresh();
       }
     } catch (failure) {
       if (!mounted.current) return;
+      setNoticeDismissed(false);
+      if (!committed) {
+        setSent(false);
+        setNotice(null);
+      }
       if (!committed && isV2ApiError(failure) && failure.status === 409) {
         try {
           const latest = await refreshPanel();
@@ -210,24 +225,35 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
       : pendingAction === "catalog"
         ? (zh ? "正在加载创意方法…" : "Loading creative methods…")
         : (zh ? "正在保存 Skills 选择…" : "Saving your Skills selection…");
-  const confirmLabel = pendingAction === "confirm"
-    ? (zh ? "正在确认…" : "Confirming…")
-    : pendingAction === "generate"
-      ? (zh ? "正在生成下一步…" : "Generating next step…")
-      : pendingAction === "refresh" && continuation
-        ? (zh ? "正在同步对话…" : "Syncing conversation…")
-        : (zh ? "确认并继续" : "Confirm and continue");
+  const confirmLabel = sent ? (zh ? "方案已发送" : "Proposal sent") : (zh ? "保存并发送" : "Save and send");
+  const statusMessage = sent ? (zh ? "方案已发送" : "Proposal sent") : pending ? progressMessage : notice;
+
+  if (!open) {
+    if (noticeDismissed || (!statusMessage && !error)) return null;
+    return createPortal(
+      <aside className="brand-skill-picker-notice" aria-label={zh ? "Skills 方案状态" : "Skills proposal status"}>
+        <p role={error ? "alert" : "status"}>{error ?? statusMessage}</p>
+        {pending ? <p>{zh ? "正在后台处理，你可以继续浏览其他内容。" : "Processing in the background. You can keep browsing."}</p> : null}
+        <div>
+          {onOpen ? <button type="button" onClick={onOpen}>{zh ? "查看方案" : "View proposal"}</button> : null}
+          {!pending && (continuation || needsRefresh) ? <button type="button" onClick={() => void retry()}>{zh ? "重试" : "Retry"}</button> : null}
+          <button type="button" onClick={() => setNoticeDismissed(true)}>{zh ? "收起提示" : "Dismiss notice"}</button>
+        </div>
+      </aside>, document.body,
+    );
+  }
 
   return createPortal(
     <div className="brand-skill-picker-overlay">
       <section ref={dialogRef} className="brand-skill-picker" role="dialog" aria-modal="true" aria-label={zh ? "选择品牌 Skills" : "Choose brand Skills"}>
-        <header><h2>{zh ? "选择品牌 Skills" : "Choose brand Skills"}</h2><button type="button" disabled={pending} onClick={onClose}>{zh ? "取消" : "Cancel"}</button></header>
+        <header><h2>{zh ? "选择品牌 Skills" : "Choose brand Skills"}</h2><button type="button" onClick={onClose}>{pending || sent ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button></header>
         <p>{zh ? "创意方法可多选，视听风格只选一个。确认后进入创意方案。" : "Choose one or more creative methods and one audiovisual style. Confirm to enter Treatment."}</p>
         {error ? <p role="alert">{error}</p> : null}
-        {pending ? <p role="status">{progressMessage}</p> : notice ? <p role="status">{notice}</p> : null}
+        {statusMessage && !error ? <p role="status">{statusMessage}</p> : null}
+        {sent && pending ? <p>{zh ? "正在后台处理，你可以关闭面板，也可以留在这里查看。" : "Processing in the background. You can close this panel or stay here."}</p> : null}
         {!pending && (!catalog || needsRefresh || continuation) ? <button type="button" onClick={() => void retry()}>{continuation === "generate" ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
         {!editable && !continuation ? <p>{zh ? "当前阶段不可修改 Skills。" : "Skills cannot be edited at the current stage."}</p> : null}
-        <fieldset disabled={pending || !editable || needsRefresh}>
+        <fieldset disabled={pending || sent || !editable || needsRefresh}>
           <legend>{zh ? "创意方法（多选）" : "Creative methods (multiple)"}</legend>
           {!catalog ? <p role="status">{zh ? "正在加载创意方法…" : "Loading creative methods…"}</p> : null}
           {catalog?.map((method) => {
@@ -238,7 +264,7 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
             </label>;
           })}
         </fieldset>
-        <fieldset disabled={pending || !editable || needsRefresh}>
+        <fieldset disabled={pending || sent || !editable || needsRefresh}>
           <legend>{zh ? "视听风格（单选）" : "Audiovisual style (one)"}</legend>
           {panel.skill_stack?.entries.filter((entry) => entry.skill_kind === "audiovisual_style").map((entry) => (
             <label key={`${entry.skill_id}@${entry.version}`} className="brand-skill-picker__choice">
@@ -252,8 +278,8 @@ export function BrandSkillPicker({ decisions, responseLocale, onClose, onUpdated
             draftSelection={{ selected: style?.version ? { skill_id: style.skill_id, version: style.version } : null, onSelect: setStyle }} />
         </fieldset>
         <footer>
-          <button type="button" disabled={pending || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pendingAction === "save" ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
-          <button type="button" disabled={pending || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{confirmLabel}</button>
+          <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pendingAction === "save" ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
+          <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{confirmLabel}</button>
         </footer>
       </section>
     </div>, document.body,

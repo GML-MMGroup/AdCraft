@@ -7,7 +7,7 @@ import { useHomeSectionReveal } from "./useHomeSectionReveal";
 import "./home.css";
 
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim()
-  || "/assets/home-product-film.mp4";
+  || "/assets/home-hero-loop.mp4";
 const HomeRecentProjects = lazy(() => import("./home/HomeRecentProjects").then((module) => ({ default: module.HomeRecentProjects })));
 const recentLoading = <HomeRecentLoading />;
 

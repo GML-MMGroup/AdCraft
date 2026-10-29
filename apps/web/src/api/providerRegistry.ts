@@ -16,6 +16,7 @@ export type ProviderTransportKindV1 =
   | "litellm_openai_image"
   | "openai_images_native"
   | "openrouter_images_native"
+  | "teamorouter_images_native"
   | "ark_image_native"
   | "ark_video_native"
   | "minimax_video_native"

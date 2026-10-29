@@ -120,4 +120,34 @@ describe("buildAgentCanvasPreRevealLayout", () => {
     expect(result.revealPlan.positions).toHaveLength(2);
     expect(result.revealPlan.orderedNodeIds).toEqual(["root", "child"]);
   });
+
+  it("never moves user-created nodes and places Agent nodes clear of them", () => {
+    const mine = {
+      ...node("mine", "image", { x: 120, y: 120 }),
+      metadata: { authoring_origin: "user" },
+    };
+    const nodes = [mine, node("root", "text"), node("created", "video")];
+    const result = buildAgentCanvasPreRevealLayout({
+      nodes,
+      bindings: [binding("root-created", "root", "created")],
+      affectedNodeIds: ["root", "created"],
+    });
+
+    expect(result.positions.map((position) => position.node_id).sort()).toEqual([
+      "created",
+      "root",
+    ]);
+    const box = (item: CanvasNodeV2, position: CanvasPositionV2) => {
+      const size = agentCanvasLayoutNodeFromCanvasNode(item).size;
+      return { left: position.x, top: position.y, right: position.x + size.width, bottom: position.y + size.height };
+    };
+    const mineBox = box(mine, mine.position);
+    for (const position of result.positions) {
+      const agentNode = nodes.find((item) => item.node_id === position.node_id)!;
+      const agentBox = box(agentNode, position);
+      const overlaps = agentBox.left < mineBox.right && agentBox.right > mineBox.left
+        && agentBox.top < mineBox.bottom && agentBox.bottom > mineBox.top;
+      expect(overlaps).toBe(false);
+    }
+  });
 });

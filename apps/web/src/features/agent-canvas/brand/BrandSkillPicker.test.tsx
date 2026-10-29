@@ -52,8 +52,8 @@ it("saves multiple methods and one style, then confirms using the new card", asy
   expect(agentCanvasApi.brandSelectSkills).toHaveBeenLastCalledWith("w1", expect.objectContaining({ card_id: "card-5", confirm: false, creative_methods: methods.map(({ skill_id, version }) => ({ skill_id, version })), audiovisual_style: { skill_id: "style-b", version: "1.0.0" } }));
   expect(agentCanvasApi.brandNextQuestion).not.toHaveBeenCalled();
   vi.mocked(agentCanvasApi.brandSelectSkills).mockResolvedValue(confirmed);
-  await waitFor(() => expect(screen.getByRole("button", { name: "确认并继续" }).hasAttribute("disabled")).toBe(false));
-  fireEvent.click(screen.getByRole("button", { name: "确认并继续" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存并发送" }).hasAttribute("disabled")).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
   await waitFor(() => expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledOnce());
   expect(agentCanvasApi.brandSelectSkills).toHaveBeenLastCalledWith("w1", expect.objectContaining({ card_id: "card-6", expected_stage_revision: 6, confirm: true }));
 });
@@ -85,40 +85,123 @@ it("retries only the next question after a committed confirmation", async () => 
   await screen.findByLabelText(/metaphor/);
   vi.mocked(agentCanvasApi.brandSelectSkills).mockResolvedValue(confirmed);
   vi.mocked(agentCanvasApi.brandNextQuestion).mockRejectedValueOnce(new Error("Unavailable"));
-  fireEvent.click(screen.getByRole("button", { name: "确认并继续" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
   fireEvent.click(await screen.findByRole("button", { name: "重试下一步" }));
   await waitFor(() => expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledTimes(2));
   expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
 });
 
-it("distinguishes confirmation, generation and conversation refresh while preventing duplicate actions", async () => {
+it("optimistically acknowledges sending and continues after the panel is closed", async () => {
   let confirm!: (value: typeof confirmed) => void;
   let generate!: (value: null) => void;
   let refresh!: () => void;
   vi.mocked(agentCanvasApi.brandSelectSkills).mockReturnValue(new Promise((resolve) => { confirm = resolve; }));
   vi.mocked(agentCanvasApi.brandNextQuestion).mockReturnValue(new Promise((resolve) => { generate = resolve; }));
   vi.mocked(agentCanvasApi.brandDecisions).mockResolvedValue(confirmed);
-  const { onClose, onConversationRefresh } = setup();
-  onConversationRefresh.mockImplementation(() => new Promise<void>((resolve) => { refresh = resolve; }));
+  const onClose = vi.fn();
+  const onUpdated = vi.fn();
+  const onConversationRefresh = vi.fn(() => new Promise<void>((resolve) => { refresh = resolve; }));
+  const panel = (open: boolean) => <BrandSkillPicker open={open} decisions={initial} responseLocale="zh-CN"
+    onClose={onClose} onUpdated={onUpdated} onConversationRefresh={onConversationRefresh} />;
+  const view = render(panel(true));
   await screen.findByLabelText(/metaphor/);
-  fireEvent.click(screen.getByRole("button", { name: "确认并继续" }));
-  expect(screen.getByRole("button", { name: "正在确认…" }).hasAttribute("disabled")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
+  expect(screen.getByRole("status").textContent).toContain("方案已发送");
+  fireEvent.click(screen.getByRole("button", { name: "方案已发送" }));
+  expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
   expect(agentCanvasApi.brandNextQuestion).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+  expect(onClose).toHaveBeenCalledOnce();
+  view.rerender(panel(false));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.body.style.overflow).not.toBe("hidden");
+  expect(screen.getByRole("status").textContent).toContain("方案已发送");
 
   await act(async () => confirm(confirmed));
-  expect(screen.getByRole("status").textContent).toContain("Skills 已确认");
-  fireEvent.click(screen.getByRole("button", { name: "正在生成下一步…" }));
-  expect(screen.queryByRole("button", { name: "重试下一步" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "正在保存…" })).toBeNull();
-  expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
+  expect(onUpdated).toHaveBeenCalledWith(confirmed);
   expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledOnce();
-  expect(onClose).not.toHaveBeenCalled();
-
   await act(async () => generate(null));
-  expect(screen.getByRole("button", { name: "正在同步对话…" }).hasAttribute("disabled")).toBe(true);
-  expect(onClose).not.toHaveBeenCalled();
+  expect(onConversationRefresh).toHaveBeenCalledOnce();
   await act(async () => refresh());
   expect(onClose).toHaveBeenCalledOnce();
+  expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
+
+  view.rerender(panel(true));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain("方案已发送");
+  expect(screen.getByRole("button", { name: "方案已发送" }).hasAttribute("disabled")).toBe(true);
+});
+
+it("allows Escape while sending and keeps the panel open when background work completes", async () => {
+  let confirm!: (value: typeof confirmed) => void;
+  vi.mocked(agentCanvasApi.brandSelectSkills).mockReturnValue(new Promise((resolve) => { confirm = resolve; }));
+  vi.mocked(agentCanvasApi.brandDecisions).mockResolvedValue(confirmed);
+  const { onClose, onConversationRefresh } = setup();
+  await screen.findByLabelText(/metaphor/);
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(onClose).toHaveBeenCalledOnce();
+  await act(async () => confirm(confirmed));
+  await waitFor(() => expect(onConversationRefresh).toHaveBeenCalledOnce());
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(screen.getByRole("dialog")).toBeTruthy();
+});
+
+it("reports a failed optimistic send while closed and preserves the selection for retry", async () => {
+  let reject!: (reason: Error) => void;
+  vi.mocked(agentCanvasApi.brandSelectSkills).mockReturnValue(new Promise((_, fail) => { reject = fail; }));
+  const onOpen = vi.fn();
+  const panel = (open: boolean) => <BrandSkillPicker open={open} onOpen={onOpen} decisions={initial} responseLocale="zh-CN"
+    onClose={vi.fn()} onUpdated={vi.fn()} onConversationRefresh={vi.fn()} />;
+  const view = render(panel(true));
+  fireEvent.click(await screen.findByLabelText(/ritual/));
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
+  view.rerender(panel(false));
+  await act(async () => reject(new Error("Offline")));
+  expect(screen.getByRole("alert").textContent).toContain("保存失败");
+  expect(screen.queryByText("方案已发送")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "查看方案" }));
+  expect(onOpen).toHaveBeenCalledOnce();
+  view.rerender(panel(true));
+  expect((screen.getByLabelText(/ritual/) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole("button", { name: "保存并发送" }).hasAttribute("disabled")).toBe(false);
+  expect(agentCanvasApi.brandNextQuestion).not.toHaveBeenCalled();
+});
+
+it("starts the continuation even if the user leaves before confirmation returns", async () => {
+  let confirm!: (value: typeof confirmed) => void;
+  vi.mocked(agentCanvasApi.brandSelectSkills).mockReturnValue(new Promise(resolve => { confirm = resolve; }));
+  const onUpdated = vi.fn();
+  const onConversationRefresh = vi.fn();
+  const view = render(<BrandSkillPicker decisions={initial} responseLocale="en-US" onClose={vi.fn()}
+    onUpdated={onUpdated} onConversationRefresh={onConversationRefresh} />);
+  await screen.findByLabelText(/metaphor/);
+  fireEvent.click(screen.getByRole("button", { name: "Save and send" }));
+  view.unmount();
+  await act(async () => confirm(confirmed));
+  expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledOnce();
+  expect(onUpdated).not.toHaveBeenCalled();
+  expect(onConversationRefresh).not.toHaveBeenCalled();
+});
+
+it("reports and retries a continuation failure from the closed-panel notice without resending", async () => {
+  vi.mocked(agentCanvasApi.brandSelectSkills).mockResolvedValue(confirmed);
+  vi.mocked(agentCanvasApi.brandNextQuestion).mockRejectedValueOnce(new Error("Offline"));
+  vi.mocked(agentCanvasApi.brandDecisions).mockResolvedValue(confirmed);
+  const onConversationRefresh = vi.fn();
+  const panel = (open: boolean) => <BrandSkillPicker open={open} decisions={initial} responseLocale="zh-CN"
+    onClose={vi.fn()} onUpdated={vi.fn()} onConversationRefresh={onConversationRefresh} />;
+  const view = render(panel(true));
+  await screen.findByLabelText(/metaphor/);
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
+  view.rerender(panel(false));
+  expect((await screen.findByRole("alert")).textContent).toContain("选择已保存");
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() => expect(onConversationRefresh).toHaveBeenCalledOnce());
+  expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
+  expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("status").textContent).toContain("方案已发送");
 });
 
 it.each(["decisions", "conversation"])("retries only reads after generation succeeds and %s refresh fails", async (failedRead) => {
@@ -131,12 +214,12 @@ it.each(["decisions", "conversation"])("retries only reads after generation succ
     onConversationRefresh.mockRejectedValueOnce(new Error("Offline"));
   }
   await screen.findByLabelText(/metaphor/);
-  fireEvent.click(screen.getByRole("button", { name: "确认并继续" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存并发送" }));
   await screen.findByRole("alert");
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "重试下一步" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
-  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  await waitFor(() => expect(onConversationRefresh).toHaveBeenCalledTimes(failedRead === "conversation" ? 2 : 1));
   expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
   expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledOnce();
   expect(agentCanvasApi.brandDecisions).toHaveBeenCalledTimes(2);
@@ -170,7 +253,7 @@ it("does not auto-upgrade unversioned historical choices", async () => {
   const legacy = { ...initial, skill_stack: { entries: initial.skill_stack!.entries.map((entry) => ({ ...entry, version: null })) } };
   render(<BrandSkillPicker decisions={legacy} responseLocale="zh-CN" onClose={vi.fn()} onUpdated={vi.fn()} onConversationRefresh={vi.fn()} />);
   await screen.findByLabelText(/metaphor/);
-  expect(screen.getByRole("button", { name: "确认并继续" }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: "保存并发送" }).hasAttribute("disabled")).toBe(true);
   expect((screen.getByLabelText(/metaphor/) as HTMLInputElement).checked).toBe(false);
 });
 

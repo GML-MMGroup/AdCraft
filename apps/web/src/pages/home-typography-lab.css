@@ -46,10 +46,9 @@
 
 .home-typography-lab__preview .home-product-hero {
   width: min(920px, calc(100% - 36px));
-  height: 514px;
-  gap: 40px;
-  padding: 46px 0 42px;
-  grid-template-columns: minmax(0, 0.94fr) minmax(340px, 1.06fr);
+  height: 620px;
+  margin: 0 auto;
+  padding: 46px 32px 42px;
 }
 
 .home-typography-lab__preview .home-product-hero__title {
@@ -638,10 +637,6 @@
   background: var(--lab-brand);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
   color: var(--lab-page-background);
-}
-
-.home-typography-lab--dark .home-product-film::after {
-  background: rgba(8, 9, 13, 0.08);
 }
 
 .home-typography-lab--dark .recent-strip {

@@ -29,6 +29,63 @@
   -webkit-backdrop-filter: none;
 }
 
+.agent-chat__thinking {
+  width: min(100%, 350px);
+  margin: 4px 0 8px;
+  color: var(--agent-chat-secondary);
+}
+
+.agent-chat__thinking-toggle {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.agent-chat__thinking-toggle svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.agent-chat__thinking-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--agent-chat-muted);
+  border-top-color: var(--agent-chat-primary);
+  border-radius: 50%;
+  animation: agent-chat-thinking-spin 900ms linear infinite;
+}
+
+.agent-chat__thinking-body {
+  max-height: 240px;
+  overflow: auto;
+  padding: 3px 10px 5px 19px;
+  color: var(--agent-chat-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@keyframes agent-chat-thinking-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__thinking-spinner { animation: none; }
+  .agent-chat__thinking-body { transition: none; }
+}
+
 .agent-chat.is-resizing {
   user-select: none;
 }
@@ -669,6 +726,48 @@
   font-size: 13px;
   font-weight: 620;
   line-height: 1.4;
+}
+
+.agent-chat__exchange-letter {
+  margin-right: 6px;
+  color: var(--agent-chat-secondary);
+  font-weight: 700;
+}
+
+.agent-chat__selection-heading {
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.agent-chat__selection-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.agent-chat__selection-list > div {
+  display: grid;
+  grid-template-columns: minmax(56px, auto) 1fr;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-chat__selection-list dt {
+  color: var(--agent-chat-secondary);
+}
+
+.agent-chat__selection-list dd {
+  margin: 0;
+  color: var(--agent-chat-primary);
+  font-weight: 560;
+}
+
+.agent-chat__proposal-reply {
+  display: grid;
+  /* Keep the answer tail inside the virtualized item's paint boundary. */
+  padding-bottom: 8px;
 }
 
 .agent-chat__message-skill {
@@ -2157,12 +2256,17 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__current-interaction--overlay.agent-chat__current-interaction--brand-form-expanded,
+.agent-chat__current-interaction--overlay.agent-chat__current-interaction--brand-custom-input-expanded,
 .agent-chat__decision-dock--brand-form.is-expanded {
   max-height: min(68vh, 620px);
 }
 
 .agent-chat__decision-dock--brand-form:not(.is-expanded) {
   max-height: min(50vh, 480px);
+}
+
+.agent-chat__decision-dock--brand-custom-input.is-expanded {
+  max-height: min(68vh, 620px);
 }
 
 .agent-chat__current-interaction--overlay[hidden] {
@@ -3035,6 +3139,8 @@ button.agent-chat__node-links--related:hover {
   display: grid;
   max-height: min(50vh, 480px);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
+  /* Long unbreakable text must wrap instead of widening the dock past the panel. */
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--agent-chat-border);
   border-radius: 10px;
@@ -3045,6 +3151,7 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__decision-dock-header {
   display: grid;
   gap: 4px;
+  overflow-wrap: anywhere;
   padding: 12px 12px 10px;
   border-bottom: 1px solid var(--agent-chat-border);
 }
@@ -3578,6 +3685,70 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__brand-form-custom-input input:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.agent-chat__concept-choice-custom-input {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.agent-chat__concept-choice-custom-input label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.agent-chat__concept-choice-custom-input label > span {
+  color: var(--agent-chat-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.agent-chat__concept-choice-custom-input textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 68px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 7px 8px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-primary);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.agent-chat__concept-choice-custom-input textarea:focus {
+  border-color: var(--agent-chat-strong-line);
+}
+
+.agent-chat__concept-choice-custom-input textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.agent-chat__concept-choice-custom-input > button {
+  justify-self: end;
+  min-height: 29px;
+  padding: 0 11px;
+  border: 1px solid var(--agent-chat-primary);
+  border-radius: 7px;
+  background: var(--agent-chat-primary);
+  color: var(--agent-chat-panel);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.agent-chat__concept-choice-custom-input > button:disabled {
+  border-color: var(--agent-chat-strong-line);
+  background: var(--agent-chat-strong-line);
+  color: var(--agent-chat-muted);
+  cursor: not-allowed;
 }
 
 .agent-chat__brand-form-jump {

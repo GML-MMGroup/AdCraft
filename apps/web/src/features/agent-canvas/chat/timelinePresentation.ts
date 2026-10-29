@@ -13,7 +13,8 @@ type PresentationMessageKey =
   | "draft.materialized"
   | "media_review.pending_action"
   | "action.topic_deferred"
-  | "action.element_excluded";
+  | "action.element_excluded"
+  | "prompt_preparation.failed";
 
 type PresentationTemplate = (
   args: Record<string, unknown>,
@@ -36,6 +37,7 @@ const EN_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   "media_review.pending_action": (args) => mediaReviewMessage(args, "en"),
   "action.topic_deferred": () => "This topic was deferred.",
   "action.element_excluded": () => "This element was excluded.",
+  "prompt_preparation.failed": (args) => promptFailureMessage(args, "en"),
 };
 
 const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
@@ -55,6 +57,7 @@ const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   "media_review.pending_action": (args) => mediaReviewMessage(args, "zh"),
   "action.topic_deferred": () => "该主题已暂缓处理。",
   "action.element_excluded": () => "该元素已排除。",
+  "prompt_preparation.failed": (args) => promptFailureMessage(args, "zh"),
 };
 
 const MEDIA_REVIEW_ACTION_LABELS = {
@@ -91,6 +94,31 @@ function mediaReviewMessage(
   return locale === "zh"
     ? `${mediaTitle.trim()} 正在等待审核。可用操作：${actionList}。`
     : `${mediaTitle.trim()} is waiting for review. Available actions: ${actionList}.`;
+}
+
+const PROMPT_FAILURE_REASONS: Record<string, { en: string; zh: string }> = {
+  agent_provider_timeout: {
+    en: "the model service timed out",
+    zh: "模型服务响应超时",
+  },
+  agent_provider_insufficient_balance: {
+    en: "the model service balance is too low",
+    zh: "模型服务余额不足",
+  },
+};
+
+function promptFailureMessage(
+  args: Record<string, unknown>,
+  locale: "en" | "zh",
+): string | null {
+  const title = args.node_title;
+  if (typeof title !== "string" || !title.trim()) return null;
+  const code = typeof args.error_code === "string" ? args.error_code : "";
+  const reason = PROMPT_FAILURE_REASONS[code]?.[locale] ?? code;
+  if (locale === "zh") {
+    return `「${title.trim()}」的提示词生成失败${reason ? `（${reason}）` : ""}。回复「继续」即可重试。`;
+  }
+  return `${title.trim()}: prompt preparation failed${reason ? ` (${reason})` : ""}. Reply "continue" to retry.`;
 }
 
 function localizedList(values: string[], locale: "en" | "zh"): string {

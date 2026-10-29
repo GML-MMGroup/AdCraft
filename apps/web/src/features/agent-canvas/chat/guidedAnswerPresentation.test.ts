@@ -192,6 +192,7 @@ describe("buildGuidedAnswerBubbles", () => {
 
     expect(buildGuidedAnswerBubbles(conceptInteraction(), request, 12)).toEqual([{
       bubble_id: "guided-answer:concept-interaction-1:concept-choice",
+      proposal_id: null,
       interaction_id: "concept-interaction-1",
       question_id: "brand-direction",
       label: "Choose a brand direction",

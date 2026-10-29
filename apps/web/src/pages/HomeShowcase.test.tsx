@@ -1,15 +1,28 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { Profiler } from "react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LocaleProvider } from "../i18n/locale";
 import { HomeShowcase } from "./HomeShowcase";
 
 describe("HomeShowcase", () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    localStorage.clear();
+  });
+
   afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
   it("renders the Home composition without functional controls in static mode", () => {
-    render(<HomeShowcase mode="static" />);
+    const view = render(<HomeShowcase mode="static" hasIntroVideo productVideoUrl="/assets/home-hero-loop.mp4" />);
 
+    expect(view.container.querySelector("video")).toBeNull();
+    expect(view.container.querySelector(".home-product-hero__poster")?.getAttribute("src")).toBe("/assets/home-hero-poster.webp");
+    expect(screen.queryByRole("button", { name: "Unmute" })).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: "One Sentence Becomes an Ad film." })).toBeTruthy();
     expect(screen.getByTestId("home-hero-accent").textContent).toBe("Ad film.");
     expect(screen.getByTestId("home-hero-accent").querySelector("svg")).toBeNull();
@@ -70,16 +83,91 @@ describe("HomeShowcase", () => {
     expect(openPreview).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the product film unloaded until its hero media enters the viewport", () => {
+  it.each(["canPlay", "playing"])("keeps the poster visible until the video emits %s", (event) => {
+    const view = render(<HomeShowcase mode="interactive" hasIntroVideo productVideoUrl="/assets/home-hero-loop.mp4" />);
+    const media = view.container.querySelector<HTMLElement>(".home-product-hero__media")!;
+    const video = media.querySelector("video")!;
+
+    expect(media.dataset.videoReady).toBe("false");
+    expect(media.querySelector("img")?.getAttribute("src")).toBe("/assets/home-hero-poster.webp");
+    expect(video.poster).toContain("/assets/home-hero-poster.webp");
+    expect(video.autoplay).toBe(true);
+    expect(video.loop).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.playsInline).toBe(true);
+
+    if (event === "canPlay") fireEvent.canPlay(video);
+    else fireEvent.playing(video);
+    expect(media.dataset.videoReady).toBe("true");
+  });
+
+  it("returns to the poster and removes the audio control on video failure", () => {
+    const onError = vi.fn();
+    const view = render(<HomeShowcase mode="interactive" hasIntroVideo productVideoUrl="/film.mp4" onProductVideoError={onError} />);
+    const video = view.container.querySelector("video")!;
+    fireEvent.canPlay(video);
+    fireEvent.error(video);
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(view.container.querySelector("video")).toBeNull();
+    expect(view.container.querySelector(".home-product-hero__poster")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Unmute" })).toBeNull();
+  });
+
+  it("recognizes a video failure that happened before its effects mounted", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "error");
+    Object.defineProperty(HTMLMediaElement.prototype, "error", {
+      configurable: true,
+      value: { code: 4, message: "Unsupported media" },
+    });
+    try {
+      const view = render(<HomeShowcase mode="interactive" hasIntroVideo productVideoUrl="/film.mp4" />);
+      expect(view.container.querySelector("video")).toBeNull();
+      expect(view.container.querySelector(".home-product-hero__poster")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Unmute" })).toBeNull();
+    } finally {
+      if (descriptor) Object.defineProperty(HTMLMediaElement.prototype, "error", descriptor);
+      else Reflect.deleteProperty(HTMLMediaElement.prototype, "error");
+    }
+  });
+
+  it.each([
+    ["en-US", "Unmute", "Mute"],
+    ["zh-CN", "取消静音", "静音"],
+  ] as const)("toggles audio with localized labels in %s and resumes paused playback", (locale, unmute, mute) => {
+    const view = render(
+      <LocaleProvider initialLocale={locale}>
+        <HomeShowcase mode="interactive" hasIntroVideo productVideoUrl="/film.mp4" />
+      </LocaleProvider>,
+    );
+    const video = view.container.querySelector("video")!;
+    const button = screen.getByRole("button", { name: unmute });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(button);
+    expect(video.muted).toBe(false);
+    expect(video.play).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: mute }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(button);
+    expect(video.muted).toBe(true);
+    expect(screen.getByRole("button", { name: unmute }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("pauses and mutes offscreen, then resumes muted when the hero returns", () => {
     let notifyIntersection: ((entries: IntersectionObserverEntry[]) => void) | undefined;
+    let disconnect = vi.fn();
     class MockIntersectionObserver {
-      constructor(callback: IntersectionObserverCallback) {
-        notifyIntersection = callback;
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+
+      observe(target: Element) {
+        if (target.classList.contains("home-product-hero")) {
+          notifyIntersection = this.callback;
+          disconnect = this.disconnect;
+        }
       }
 
-      observe() {}
-
-      disconnect() {}
+      disconnect = vi.fn();
     }
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
 
@@ -87,21 +175,119 @@ describe("HomeShowcase", () => {
       <HomeShowcase
         mode="interactive"
         hasIntroVideo
-        productVideoUrl="/assets/home-product-film.mp4"
+        productVideoUrl="/assets/home-hero-loop.mp4"
       />,
     );
-    const media = view.container.querySelector<HTMLElement>(".home-product-film");
-
-    expect(media?.querySelector("video")).toBeNull();
-    expect(media?.querySelector("img")?.getAttribute("src")).toBe("/assets/card1.webp");
+    const hero = view.container.querySelector(".home-product-hero")!;
+    const video = hero.querySelector("video")!;
+    fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    expect(video.muted).toBe(false);
 
     act(() => {
-      notifyIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry]);
+      notifyIntersection?.([{ target: hero, isIntersecting: false } as IntersectionObserverEntry]);
     });
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(video.muted).toBe(true);
+    expect(screen.getByRole("button", { name: "Unmute" }).getAttribute("aria-pressed")).toBe("false");
 
-    expect(media?.querySelector("video")?.getAttribute("src")).toBe(
-      "/assets/home-product-film.mp4",
-    );
+    vi.mocked(video.play).mockClear();
+    act(() => {
+      notifyIntersection?.([{ target: hero, isIntersecting: true } as IntersectionObserverEntry]);
+    });
+    expect(video.play).toHaveBeenCalledOnce();
+    expect(video.muted).toBe(true);
+    view.unmount();
+    expect(disconnect).toHaveBeenCalledOnce();
   });
 
+  it.each(["window", "container"])("updates scroll progress on the %s once per frame without rerendering", (scrollMode) => {
+    let nextFrame: FrameRequestCallback | undefined;
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      nextFrame = callback;
+      return 1;
+    });
+    const cancelFrame = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", requestFrame);
+    vi.stubGlobal("cancelAnimationFrame", cancelFrame);
+    const onRender = vi.fn();
+    const view = render(
+      <div style={{ overflowY: scrollMode === "container" ? "auto" : "visible" }}>
+        <Profiler id="hero" onRender={onRender}>
+          <HomeShowcase mode="interactive" />
+        </Profiler>
+      </div>,
+    );
+    const hero = view.container.querySelector<HTMLElement>(".home-product-hero")!;
+    const content = hero.querySelector<HTMLElement>(".home-product-hero__content")!;
+    const scrollTarget = scrollMode === "container" ? hero.parentElement!.parentElement! : window;
+    const rootTop = scrollMode === "container" ? 100 : 0;
+    if (scrollTarget instanceof HTMLElement) {
+      vi.spyOn(scrollTarget, "getBoundingClientRect").mockReturnValue(new DOMRect(0, rootTop, 1440, 900));
+    }
+    let scroll = 0;
+    vi.spyOn(hero, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, rootTop - scroll, 1440, 900));
+    onRender.mockClear();
+    expect(hero.style.getPropertyValue("--hero-progress")).toBe("0");
+
+    scroll = 450;
+    fireEvent.scroll(scrollTarget);
+    fireEvent.scroll(scrollTarget);
+    expect(requestFrame).toHaveBeenCalledOnce();
+    act(() => nextFrame?.(0));
+    expect(hero.style.getPropertyValue("--hero-progress")).toBe("0.5");
+    expect(content.inert).toBe(false);
+
+    scroll = 540;
+    fireEvent.scroll(scrollTarget);
+    act(() => nextFrame?.(16));
+    expect(hero.style.getPropertyValue("--hero-progress")).toBe("0.6");
+    expect(content.inert).toBe(true);
+
+    scroll = 1200;
+    fireEvent.scroll(scrollTarget);
+    act(() => nextFrame?.(32));
+    expect(hero.style.getPropertyValue("--hero-progress")).toBe("1");
+
+    scroll = -100;
+    fireEvent.scroll(scrollTarget);
+    act(() => nextFrame?.(48));
+    expect(hero.style.getPropertyValue("--hero-progress")).toBe("0");
+    expect(content.inert).toBe(false);
+    expect(onRender).not.toHaveBeenCalled();
+
+    fireEvent.scroll(scrollTarget);
+    view.unmount();
+    expect(cancelFrame).toHaveBeenCalledWith(1);
+    requestFrame.mockClear();
+    fireEvent.scroll(scrollTarget);
+    expect(requestFrame).not.toHaveBeenCalled();
+  });
+
+  it("uses only the poster and leaves text visible when reduced motion changes", () => {
+    const query = new EventTarget() as EventTarget & { matches: boolean };
+    query.matches = false;
+    vi.stubGlobal("matchMedia", vi.fn(() => query));
+    const view = render(<HomeShowcase mode="interactive" hasIntroVideo productVideoUrl="/film.mp4" heroMotionReady />);
+    const hero = view.container.querySelector<HTMLElement>(".home-product-hero")!;
+    const video = hero.querySelector("video")!;
+    expect(video).toBeTruthy();
+
+    act(() => {
+      query.matches = true;
+      query.dispatchEvent(new Event("change"));
+    });
+    expect(video.pause).toHaveBeenCalled();
+    expect(hero.querySelector("video")).toBeNull();
+    expect(hero.querySelector(".home-product-hero__poster")).toBeTruthy();
+    expect(hero.classList.contains("is-motion-enabled")).toBe(false);
+    expect(hero.style.getPropertyValue("--hero-progress")).toBe("0");
+    expect(screen.queryByRole("button", { name: "Unmute" })).toBeNull();
+
+    act(() => {
+      query.matches = false;
+      query.dispatchEvent(new Event("change"));
+    });
+    expect(hero.querySelector("video")?.muted).toBe(true);
+    expect(hero.querySelector<HTMLElement>(".home-product-hero__media")?.dataset.videoReady).toBe("false");
+  });
 });

@@ -23,6 +23,7 @@ import type {
   ChatMessageV2,
   ChatTimelineItemV2,
   ChatTimelinePresentationViewItemV2,
+  PresentationStreamSummaryV1,
   ConceptProposalV2,
   DecisionBundleV2,
   DecisionBundleActionRequestV2,
@@ -264,6 +265,7 @@ export function useAgentCanvasChat({
   const [messageSkillTitles, setMessageSkillTitles] = useState<Record<string, string>>({});
   const [pendingAgentTurnIds, setPendingAgentTurnIds] = useState<string[]>([]);
   const [presentationStreamIds, setPresentationStreamIds] = useState<string[]>([]);
+  const [presentationStreamSummaries, setPresentationStreamSummaries] = useState<PresentationStreamSummaryV1[]>([]);
   const [usingTimelinePresentation, setUsingTimelinePresentation] = useState(false);
   const [turnsById, setTurnsById] = useState<Record<string, AgentCanvasChatTurnV2>>({});
   const [retryingSourceTurnIds, setRetryingSourceTurnIds] = useState<Record<string, string>>({});
@@ -320,6 +322,7 @@ export function useAgentCanvasChat({
   const latestTimelineSequenceRef = useRef(-1);
   const guidedInteractionIdempotencyKeysRef = useRef(new Map<string, string>());
   const guidedInteractionSubmissionIdentityRef = useRef<string | null>(null);
+  const pendingInteractionRevisionRef = useRef<{ interactionId: string; revision: number } | null>(null);
   const brandNextQuestionInFlightRef = useRef<Promise<void> | null>(null);
   const brandGuidedTurnIdRef = useRef<string | null>(null);
   const previousInteractionIdRef = useRef<string | null>(null);
@@ -896,6 +899,9 @@ export function useAgentCanvasChat({
       const eventKey = `${event.stream_id}:${event.sequence_no}`;
       if (handledPresentationEventsRef.current.has(eventKey)) return;
       handledPresentationEventsRef.current.add(eventKey);
+      if (event.event_type === "reset" && (
+        event.reset?.reason === "attempt_restarted" || event.reset?.reason === "final_replaced"
+      )) return;
       if (event.stream_kind === "node_prompt") {
         void onWorkflowRefresh?.();
       } else {
@@ -903,6 +909,46 @@ export function useAgentCanvasChat({
       }
     });
   }, [onWorkflowRefresh, presentationStreams, refresh]);
+
+  const presentationWorking = sending
+    || advancingGuidance
+    || brandNextQuestionPending
+    || brandRecovery.pending
+    || Boolean(actingInteractionId)
+    || Boolean(postReadyBarrier)
+    || pendingAgentTurnIds.length > 0;
+
+  useEffect(() => {
+    if (!workflowId) {
+      setPresentationStreamSummaries([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const loadStreams = async () => {
+      if (typeof agentCanvasApi.listAgentCanvasPresentationStreams !== "function") return;
+      try {
+        const response = await agentCanvasApi.listAgentCanvasPresentationStreams(workflowId, 20);
+        if (cancelled) return;
+        const summaries = response.streams.slice(0, 20);
+        setPresentationStreamSummaries(summaries);
+        const assistantIds = summaries
+          .filter((summary) => summary.stream_kind === "assistant")
+          .map((summary) => summary.stream_id);
+        setPresentationStreamIds((current) => (
+          [...new Set([...assistantIds, ...current])].slice(0, 20)
+        ));
+      } catch {
+        // Stream discovery is best effort and should never interrupt chat.
+      }
+    };
+    void loadStreams();
+    if (!presentationWorking) return () => { cancelled = true; };
+    const timer = window.setInterval(() => { void loadStreams(); }, 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [brandNextQuestionPending, brandRecovery.pending, actingInteractionId, advancingGuidance, pendingAgentTurnIds.length, postReadyBarrier, presentationWorking, sending, workflowId]);
 
   const handleStructuredActionError = useCallback((actionError: unknown): boolean => {
     if (!isV2ApiError(actionError)) return false;
@@ -1029,6 +1075,7 @@ export function useAgentCanvasChat({
     latestTimelineSequenceRef.current = -1;
     guidedInteractionIdempotencyKeysRef.current.clear();
     guidedInteractionSubmissionIdentityRef.current = null;
+    pendingInteractionRevisionRef.current = null;
     brandNextQuestionInFlightRef.current = null;
     brandGuidedTurnIdRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
@@ -1109,6 +1156,10 @@ export function useAgentCanvasChat({
     }
     if (!actingInteractionId) {
       if (authoritativeInteraction?.status === "submitted") {
+        pendingInteractionRevisionRef.current = {
+          interactionId: authoritativeInteraction.interaction_id,
+          revision: authoritativeInteraction.revision,
+        };
         setActingInteractionId(authoritativeInteraction.interaction_id);
       }
       return;
@@ -1119,8 +1170,16 @@ export function useAgentCanvasChat({
         authoritativeInteraction.status === "open"
         || authoritativeInteraction.status === "submitted"
       )
-    ) return;
+    ) {
+      const pendingRevision = pendingInteractionRevisionRef.current;
+      // Option expansion republishes the same card identity at a newer revision.
+      const republished = authoritativeInteraction.status === "open"
+        && pendingRevision?.interactionId === actingInteractionId
+        && authoritativeInteraction.revision > pendingRevision.revision;
+      if (!republished) return;
+    }
     guidedInteractionSubmitSeqRef.current = null;
+    pendingInteractionRevisionRef.current = null;
     setActingInteractionId(null);
   }, [actingInteractionId, brandStage, guidanceSession, submittedBrandFormInteraction]);
 
@@ -1212,6 +1271,12 @@ export function useAgentCanvasChat({
       void refresh();
     } catch (advanceError) {
       if (workflowGeneration !== workflowGenerationRef.current) return;
+      if (isV2ApiError(advanceError) && advanceError.code === "active_continuation_conflict") {
+        guidanceAdvanceRebaseRef.current = null;
+        void refresh();
+        void onWorkflowRefresh?.();
+        return;
+      }
       if (isV2ApiError(advanceError) && advanceError.code === "guidance_post_ready_pending") {
         const barrier = pendingPostReadyBarrier(advanceError, precondition, idempotencyKey);
         if (!barrier) {
@@ -1746,11 +1811,15 @@ export function useAgentCanvasChat({
   ) => {
     if (!workflowId || productionGateReason || actingInteractionId || interaction.status !== "open" || blocksSubmission(interaction.interaction_id)) return false;
     if (brandMode && brandStage === "treatment" && request.submission_kind === "concept_choice"
-      && (request.action === "custom" || request.action === "delegate")) {
+      && request.action === "delegate") {
       setGuidedInteractionIssue({ code: "guided_interaction_action_not_allowed", summary: "请先选择候选方案，再通过最终审阅中的步骤编辑器修改内容。", detail: null, fieldId: null, retryable: false });
       return false;
     }
     const workflowGeneration = workflowGenerationRef.current;
+    pendingInteractionRevisionRef.current = {
+      interactionId: interaction.interaction_id,
+      revision: interaction.revision,
+    };
     setActingInteractionId(interaction.interaction_id);
     guidedInteractionSubmitSeqRef.current = chatEvents.reduce(
       (latest, event) => Math.max(latest, event.seq),
@@ -2011,6 +2080,7 @@ export function useAgentCanvasChat({
       guidedAnswerBubbles,
       messageSkillTitles,
       guidanceSession,
+      hasGuidedProductionIntent,
       guidedInteraction: visibleGuidedInteraction,
       guidanceAwaiting: guidanceSession?.awaiting ?? null,
       currentSessionActions,
@@ -2018,15 +2088,11 @@ export function useAgentCanvasChat({
       turnsById,
       retryingSourceTurnIds,
       presentationStreams,
+      presentationStreamSummaries,
       loading,
       sending,
       // Guided submission can precede the next Turn; keep feedback until authority releases its lock.
-      agentWorking: sending
-        || advancingGuidance
-        || brandNextQuestionPending || brandRecovery.pending
-        || Boolean(actingInteractionId)
-        || Boolean(postReadyBarrier)
-        || pendingAgentTurnIds.length > 0,
+      agentWorking: presentationWorking,
       postReadyCheckpoint,
       agentWaitingForModel,
       actingProposalId,

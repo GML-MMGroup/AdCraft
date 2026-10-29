@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { agentCanvasApi } from "../../../api/agentCanvasApi";
+import { useTranslation } from "../../../i18n/useTranslation";
 import type { GuidedSessionStateV2 } from "../../../types-v2";
 import type { BrandDecisionPanelV1 } from "../brand/brandDecisions";
+import { brandTreatmentStepsComplete } from "../brand/brandTreatmentStepsComplete";
 
 export type BrandCardRecoveryState = {
   interactionId: string;
@@ -20,6 +22,7 @@ type Options = {
 
 /** Recovery never submits a choice. Only an explicit user action can generate a replacement. */
 export function useBrandCardRecovery(options: Options) {
+  const t = useTranslation();
   const { workflowId } = options;
   const latest = useRef(options);
   latest.current = options;
@@ -81,7 +84,12 @@ export function useBrandCardRecovery(options: Options) {
         publish(null);
       } else if (!panel.open_card && panel.journey.stage === "treatment"
         && (!interaction || interaction.status !== "open")) {
-        publish({ ...next, phase: "review" });
+        if (brandTreatmentStepsComplete(panel)) {
+          publish({ ...next, phase: "review" });
+        } else {
+          publish({ ...next, phase: "error", needsQuestion: true,
+            error: t("The next treatment question is still being prepared. Refresh again in a moment.") });
+        }
       } else {
         throw new Error("The current question is not ready yet. Reload the latest state before choosing.");
       }
@@ -91,7 +99,7 @@ export function useBrandCardRecovery(options: Options) {
     } finally {
       scope.inFlight = false;
     }
-  }, [publish, scope, workflowId]);
+  }, [publish, scope, t, workflowId]);
 
   const blocksSubmission = useCallback((interactionId: string) => scope.recovery !== null
     || scope.blockedIds.has(interactionId), [scope]);

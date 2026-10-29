@@ -3,6 +3,7 @@ export const localeText = {
     home: "Home", projects: "Projects", assets: "Assets", trash: "Trash", tutorial: "Tutorial", language: "中文",
     account: { allProjects: "All Projects", myAssets: "My Assets", apiSpace: "API Space", signOut: "Sign Out", menu: "Account menu" },
     homePage: {
+      unmute: "Unmute", mute: "Mute",
       recentProjects: "Recent Projects", discover: "Discover", createProject: "Create Your Project",
       heroDescription: "AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.",
       previewCase: "Preview Case", close: "Close", newProject: "New Project", continueEditing: "Continue editing the current workflow canvas.",
@@ -30,6 +31,7 @@ export const localeText = {
     home: "主页", projects: "项目", assets: "素材", trash: "回收站", tutorial: "教程", language: "English",
     account: { allProjects: "全部项目", myAssets: "我的素材", apiSpace: "API 空间", signOut: "退出登录", menu: "账户菜单" },
     homePage: {
+      unmute: "取消静音", mute: "静音",
       recentProjects: "最近项目", discover: "探索", createProject: "创建项目",
       heroDescription: "AdCraft — 面向营销与广告的智能视频制作平台。从灵感到成片，借助无限画布、逐镜复刻与自动化流程完成创作。",
       previewCase: "预览案例", close: "关闭", newProject: "新项目", continueEditing: "继续编辑当前工作流画布。",

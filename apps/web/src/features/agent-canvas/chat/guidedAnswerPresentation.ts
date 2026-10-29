@@ -8,6 +8,8 @@ import type {
 export interface GuidedAnswerBubbleV1 {
   bubble_id: string;
   submission_id?: string;
+  /** Set for concept choices so the role thread does not repeat this answer. */
+  proposal_id?: string | null;
   interaction_id: string;
   question_id: string;
   label: string;
@@ -71,6 +73,7 @@ export function buildGuidedAnswerBubbles(
 
     return [{
       bubble_id: `guided-answer:${interaction.interaction_id}:concept-choice`,
+      proposal_id: interaction.content.proposal_id,
       interaction_id: interaction.interaction_id,
       question_id: interaction.content.action_id,
       label: interaction.title || interaction.context || "Decision",

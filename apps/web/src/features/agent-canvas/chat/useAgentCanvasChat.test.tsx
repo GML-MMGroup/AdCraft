@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentCanvasChatViewTimelineV2,
   AgentCanvasWorkflowV2,
+  BrandStageV2,
   CanvasRuntimeEventV2,
   ChatMessageV2,
   GuidedSessionStateV2,
@@ -656,6 +657,151 @@ describe("useAgentCanvasChat", () => {
       await Promise.resolve();
     });
     expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes silently when another continuation owns the workflow after treatment lock", async () => {
+    const precondition = guidanceAdvancePrecondition();
+    api.agentCanvasChatTimeline.mockImplementation(async () => timelineWithGuidanceAdvance());
+    api.advanceAgentCanvasGuidance.mockRejectedValueOnce({
+      status: 409,
+      code: "active_continuation_conflict",
+      message: "Another continuation already owns this workflow.",
+    });
+    const onWorkflowRefresh = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      ({ brandStage, chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+        brandMode: true,
+        brandStage,
+        onWorkflowRefresh,
+      }),
+      { initialProps: { brandStage: "treatment" as BrandStageV2, chatRevision: 0 } },
+    );
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+    const timelineReadsBeforeLock = api.agentCanvasChatTimeline.mock.calls.length;
+
+    rerender({ brandStage: "production", chatRevision: 0 });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledExactlyOnceWith(
+      "workflow-1",
+      { precondition },
+      expect.stringContaining(precondition.authority_digest),
+    );
+    expect(result.current.state.workflowRecovery).toBeNull();
+    expect(result.current.state.notice).toBeNull();
+    expect(result.current.state.agentWorking).toBe(false);
+    expect(api.agentCanvasChatTimeline.mock.calls.length).toBeGreaterThan(timelineReadsBeforeLock);
+    expect(onWorkflowRefresh).toHaveBeenCalledOnce();
+
+    // A new timeline object with the same authority must not resubmit the stale command.
+    rerender({ brandStage: "production", chatRevision: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+    expect(result.current.state.workflowRecovery).toBeNull();
+    expect(result.current.state.notice).toBeNull();
+  });
+
+  it.each([
+    "让解说员一本正经地为鸡腿颁奖，最后才揭示奖杯也是鸡腿。",
+    "再给我几个更荒诞的方案",
+  ])("submits Treatment custom input through the advertised interaction: %s", async (text) => {
+    const original = guidedBrandConceptInteraction();
+    const interaction = {
+      ...original,
+      content: { ...original.content, capability_id: "brand_treatment" },
+    };
+    const session = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockResolvedValue(session);
+    api.submitAgentCanvasGuidedInteraction.mockResolvedValueOnce({ replayed: false });
+    const onBrandDecisionsRefresh = vi.fn().mockResolvedValue("treatment");
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents: [],
+      brandMode: true, brandStage: "treatment", onBrandDecisionsRefresh,
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    const request = buildConceptChoiceSubmitRequest({
+      interaction, selectedOptionId: null, customText: text, proposalReferences: null,
+    })!;
+    let accepted = false;
+    await act(async () => {
+      accepted = await result.current.actions.submitGuidedInteraction(interaction, request);
+    });
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledExactlyOnceWith(
+      "workflow-1", interaction.interaction_id,
+      expect.objectContaining({
+        action: "custom", custom_text: text, option_id: null,
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+      }),
+      expect.any(String),
+    );
+    expect(accepted).toBe(true);
+    expect(result.current.state.guidedInteractionIssue).toBeNull();
+    expect(onBrandDecisionsRefresh).toHaveBeenCalled();
+    expect(api.brandNextQuestion).toHaveBeenCalled();
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+  });
+
+  it.each(["option-1", "option-new"])("unlocks a republished Treatment card and submits %s with its new revision", async (optionId) => {
+    const original = guidedBrandConceptInteraction();
+    const interaction = {
+      ...original,
+      content: { ...original.content, capability_id: "brand_treatment" },
+    };
+    let session = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockImplementation(async () => emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockImplementation(async () => session);
+    api.submitAgentCanvasGuidedInteraction.mockResolvedValue({ replayed: false });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents: [], brandMode: true, brandStage: "treatment",
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    const custom = buildConceptChoiceSubmitRequest({
+      interaction, selectedOptionId: null, customText: "再给我几个方案", proposalReferences: null,
+    })!;
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(interaction, custom);
+    });
+    // An old open snapshot is not evidence that the accepted submission finished.
+    expect(result.current.state.actingInteractionId).toBe(interaction.interaction_id);
+    const expanded = {
+      ...interaction,
+      revision: interaction.revision + 1,
+      content: {
+        ...interaction.content,
+        options: [...interaction.content.options, {
+          ...interaction.content.options[0], option_id: "option-new", title: "Another direction",
+        }],
+      },
+    };
+    session = { ...session, interaction: { ...expanded, status: "submitted" } };
+    await act(async () => { await result.current.actions.refresh(); });
+    expect(result.current.state.actingInteractionId).toBe(interaction.interaction_id);
+    session = { ...session, interaction: expanded };
+    await act(async () => { await result.current.actions.refresh(); });
+    expect(result.current.state.guidanceSession?.interaction?.revision).toBe(expanded.revision);
+    expect(result.current.state.actingInteractionId).toBeNull();
+    expect(result.current.state.brandCardLocked).toBe(false);
+    const choice = buildConceptChoiceSubmitRequest({
+      interaction: expanded, selectedOptionId: optionId, customText: "", proposalReferences: null,
+    })!;
+    await act(async () => {
+      expect(await result.current.actions.submitGuidedInteraction(expanded, choice)).toBe(true);
+    });
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledTimes(2);
+    expect(api.submitAgentCanvasGuidedInteraction.mock.calls[1][2]).toMatchObject({
+      action: "select", option_id: optionId, expected_interaction_revision: expanded.revision,
+    });
+    expect(api.submitAgentCanvasGuidedInteraction.mock.calls[1][3])
+      .not.toBe(api.submitAgentCanvasGuidedInteraction.mock.calls[0][3]);
   });
 
   it("recovers a context-stale Brand card only on explicit refresh, then submits the new authority", async () => {

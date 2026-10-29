@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { v2Api } from "./v2Client.ts";
+import { V2ApiError, v2Api } from "./v2Client.ts";
 import { v2AuthoringConflictStore } from "./v2AuthoringConflictStore.ts";
 import { v2EtagStore } from "./v2EtagStore.ts";
 
@@ -62,6 +62,45 @@ afterEach(() => {
 });
 
 describe("Agent Canvas client", () => {
+  it("restores a node with its original id, workflow ETag and idempotency key", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"r4"');
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      workflow: { ...emptyWorkflow, revision: 5, nodes: [draftNode] },
+      node: draftNode, restored_binding_ids: ["b1"], skipped_binding_ids: ["b2"],
+    }, { etag: '"r5"' }));
+    vi.stubGlobal("fetch", fetchMock);
+    const restored = await v2Api.restoreAgentCanvasNode("workflow-1", "node-image-1", "restore-node-key", { conflictHandling: "caller" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v2/workflows/workflow-1/nodes/node-image-1/restore");
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({});
+    expect(new Headers(init.headers).get("If-Match")).toBe('"r4"');
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("restore-node-key");
+    expect(restored.value).toMatchObject({ node: { node_id: "node-image-1" }, restored_binding_ids: ["b1"], skipped_binding_ids: ["b2"] });
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"r5"');
+  });
+
+  it("restores a binding snapshot with a stable id and all authoring fields", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"r5"');
+    const request = {
+      binding_id: "binding-old", source: { kind: "image_asset" as const, source_asset_id: "asset-1", source_asset_version_id: "v1" },
+      target_node_id: "node-image-1", input_role: "image_reference" as const, enabled: false, order: 4,
+      label: "Front", metadata: { view: "front" },
+    };
+    const binding = { ...request, workflow_id: "workflow-1", created_at: "2026-07-28T00:00:00Z", updated_at: "2026-07-28T00:00:00Z" };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ workflow: { ...emptyWorkflow, revision: 6, bindings: [binding] }, binding }, { status: 201, etag: '"r6"' }));
+    vi.stubGlobal("fetch", fetchMock);
+    const restored = await v2Api.restoreAgentCanvasBinding("workflow-1", request, "restore-binding-key", { conflictHandling: "caller" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v2/workflows/workflow-1/bindings/restore");
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual(request);
+    expect(new Headers(init.headers).get("If-Match")).toBe('"r5"');
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("restore-binding-key");
+    expect(restored.value.binding).toEqual(binding);
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"r6"');
+  });
+
   it("does not expose retired variation-draft operations", () => {
     expect("saveAgentCanvasVariationDraft" in v2Api).toBe(false);
     expect("discardAgentCanvasVariationDraft" in v2Api).toBe(false);
@@ -77,7 +116,7 @@ describe("Agent Canvas client", () => {
     const source = v2Api.openAgentCanvasPresentationStream("workflow/1", "stream/2", 7);
 
     expect(source.url).toBe(
-      "/api/v2/workflows/workflow%2F1/presentation/streams/stream%2F2?after_seq=7",
+      "/api/v2/workflows/workflow%2F1/presentation/streams/stream%2F2?after_seq=7&segments=1",
     );
   });
 
@@ -328,6 +367,98 @@ describe("Agent Canvas client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:8"');
+  });
+
+  it.each(["workflow_state_conflict", "run_intent_stale"])(
+    "retries Run once with a refreshed ETag and new idempotency key after a 409 %s",
+    async (code) => {
+      v2EtagStore.set("workflow", "workflow-1", '"r7"');
+      const accepted = {
+        workflow_id: "workflow-1",
+        execution_id: "execution-stale-retry",
+        status: "queued",
+        accepted_node_ids: [draftNode.node_id],
+        joined_node_ids: [],
+        skipped: [],
+        waiting_node_ids: [],
+        run_intent_snapshot_ids: { [draftNode.node_id]: "snapshot-stale-retry" },
+        events_cursor: 22,
+      };
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(jsonResponse({ detail: { code, message: "Run is stale." } }, { status: 409 }))
+        .mockResolvedValueOnce(jsonResponse({ ...emptyWorkflow, revision: 8 }, { etag: '"r8"' }))
+        .mockResolvedValueOnce(jsonResponse(accepted, { status: 202 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const request = {
+        scope: "selected_nodes" as const,
+        node_ids: [draftNode.node_id],
+        retry_failed: true,
+        source_action: "retry_failed" as const,
+      };
+
+      const result = await v2Api.runAgentCanvas("workflow-1", request, "run-key");
+
+      expect(result).toEqual(accepted);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const [firstPost, refresh, secondPost] = fetchMock.mock.calls;
+      expect(firstPost?.[0]).toBe("/api/v2/workflows/workflow-1/runs");
+      expect(firstPost?.[1].method).toBe("POST");
+      expect(firstPost?.[1].body).toBe(JSON.stringify(request));
+      expect(new Headers(firstPost?.[1].headers).get("If-Match")).toBe('"r7"');
+      expect(new Headers(firstPost?.[1].headers).get("Idempotency-Key")).toBe("run-key");
+      expect(refresh?.[0]).toBe("/api/v2/workflows/workflow-1");
+      expect(refresh?.[1].method ?? "GET").toBe("GET");
+      expect(secondPost?.[0]).toBe(firstPost?.[0]);
+      expect(secondPost?.[1].method).toBe("POST");
+      expect(secondPost?.[1].body).toBe(firstPost?.[1].body);
+      expect(new Headers(secondPost?.[1].headers).get("If-Match")).toBe('"r8"');
+      expect(new Headers(secondPost?.[1].headers).get("Idempotency-Key")).toBe("run-key:stale-retry");
+      expect(v2AuthoringConflictStore.current()).toBeNull();
+    },
+  );
+
+  it.each(["workflow_state_conflict", "run_intent_stale"])(
+    "throws the second stale 409 %s without another Run retry",
+    async (code) => {
+      v2EtagStore.set("workflow", "workflow-1", '"r7"');
+      const retryDetail = { code, message: "Run is still stale.", details: { revision: 9 } };
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(jsonResponse({ detail: { code, message: "Run is stale." } }, { status: 409 }))
+        .mockResolvedValueOnce(jsonResponse({ ...emptyWorkflow, revision: 8 }, { etag: '"r8"' }))
+        .mockResolvedValueOnce(jsonResponse({ detail: retryDetail }, { status: 409 }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = v2Api.runAgentCanvas("workflow-1", {
+        scope: "all_drafts",
+        source_action: "global_run",
+      }, "run-key");
+
+      await expect(result).rejects.toBeInstanceOf(V2ApiError);
+      await expect(result).rejects.toMatchObject({ status: 409, ...retryDetail });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock.mock.calls.filter(([, init]) => init.method === "POST")).toHaveLength(2);
+    },
+  );
+
+  it("preserves other Run 409 errors and their details without retrying", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"r7"');
+    const detail = {
+      code: "upstream_inputs_not_ready",
+      message: "Upstream inputs are not ready.",
+      details: { node_ids: ["node-upstream"], retryable: false },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail }, { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = v2Api.runAgentCanvas("workflow-1", {
+      scope: "all_drafts",
+      source_action: "global_run",
+    }, "run-key");
+
+    await expect(result).rejects.toBeInstanceOf(V2ApiError);
+    await expect(result).rejects.toMatchObject({ status: 409, ...detail, payload: { detail } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1].method).toBe("POST");
   });
 
   it("keeps the same Run idempotency key when a 412 is retried with the refreshed Workflow ETag", async () => {
