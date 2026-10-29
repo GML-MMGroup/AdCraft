@@ -89,7 +89,7 @@ _ROLE_BOUNDARIES = {
         "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
     ),
     "storyboard_video": (
-        "Render one video segment from the complete bound storyboard grid.",
+        "Render one video segment from the written story beats, using the bound storyboard grid as loose guidance.",
         "Do not generate background music; preserve declared dialogue, ambience, and effects.",
     ),
     "bgm": (
@@ -607,6 +607,13 @@ def _reference_description(
         )
     semantic_role = reference.semantic_reference_role
     if semantic_role == "storyboard_visual_reference":
+        if target_semantic_role in {"storyboard_video", "general_video"}:
+            return (
+                "Storyboard grid for this segment: use as loose narrative guidance. "
+                "Follow the written action beats and target Video style. Do not match panels "
+                "one-to-one or copy their exact framing, camera moves, or timing. "
+                "Do not show the grid itself."
+            )
         return (
             "Storyboard grid for this segment: follow its panel order, composition, action, "
             "and timing. Do not show the grid itself."
@@ -899,7 +906,8 @@ def _render_reference_identities(
             )
         if "storyboard_visual_reference" in roles:
             instructions.append(
-                "Storyboard references control frame order, composition, action, and continuity."
+                "Storyboard references provide loose narrative guidance; written action beats "
+                "and the target Video style take priority over panel composition and camera matching."
             )
         if roles.intersection({"style_reference", "style_composition_reference"}):
             instructions.append(

@@ -1208,7 +1208,7 @@ def _seedance_grounding_plan(
         # A persisted storyboard-video prompt already contains the ordered
         # storyboard direction.  When the optional grid image is still a
         # Draft output, continue with that prompt and the other available
-        # references; a published grid remains the strict grounding path.
+        # references; a published grid remains version-pinned loose guidance.
         return None
     revision = context.node.metadata.get("source_plan_revision")
     grid_with_revision = grid_input.model_copy(

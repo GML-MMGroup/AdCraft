@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import unicodedata
 
 from app.schemas.agent_canvas import (
     CanvasNodeV2,
@@ -25,23 +24,6 @@ from app.schemas.seedance_inputs import (
     StoryboardReferenceIdentityAuditV1,
 )
 from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
-from app.services.response_locale_resolver import ResponseLocaleResolverV1
-
-
-_STORYBOARD_LAYOUT_ONLY_ZH = (
-    "【参考图用途】分镜九宫格参考图只用来确定每一格的构图、人物位置、动作和镜头顺序；"
-    "其余参考图（角色、场景、产品、道具）只用来确定长相、发型、服装、物体外形和颜色。"
-    "所有参考图的画风、笔触、上色和质感都不参考；画面质感以真实电影摄影为准："
-    "真实皮肤毛孔、真实布料纹理、自然光影、镜头景深。"
-)
-_STORYBOARD_LAYOUT_ONLY_EN = (
-    "[Reference use] Use the storyboard grid reference only for each panel's composition, "
-    "character positions, actions, and shot order. Use the other references (characters, scenes, "
-    "products, props) only for faces, hair, clothing, object shapes, and colors. Do not copy the "
-    "drawing style, strokes, coloring, or texture of any reference. Render the look of real "
-    "cinematic photography: real skin pores, "
-    "real fabric texture, natural light, and lens depth of field."
-)
 
 
 class AgentCanvasSeedanceInputCompiler:
@@ -90,12 +72,10 @@ class AgentCanvasSeedanceInputCompiler:
         if grounding_plan is not None:
             _validate_grounding_manifest_inputs(grounding_plan, media_inputs)
         compiled_prompt = _compile_prompt(prompt, text_inputs, media_inputs, grounding_plan)
-        layout_only = model_id.startswith("doubao-seedance-2-5") and any(
-            item.storyboard_downscaled_for == "seedance_2_5" for item in delivered_media
+        has_storyboard = any(
+            item.reference_purpose in {"storyboard_grid", "storyboard_sequence"}
+            for item in media_inputs
         )
-        if layout_only:
-            instruction = _storyboard_layout_only_instruction(node, prompt)
-            compiled_prompt = f"{instruction}\n{compiled_prompt}"
         manifest = SeedanceInputManifestV1(
             node_id=node.node_id,
             model_id=model_id,
@@ -110,12 +90,11 @@ class AgentCanvasSeedanceInputCompiler:
             effective_duration_seconds=effective_duration,
             generate_audio=bool(effective.get("generate_audio", False)),
             normalizations=normalizations,
+            storyboard_reference_mode="loose_guidance" if has_storyboard else None,
             grounding_plan=grounding_plan,
         )
         audit = _audit_projection(manifest, grounding_plan=grounding_plan)
-        return manifest, audit.model_copy(
-            update={"storyboard_layout_only_instruction": layout_only}
-        )
+        return manifest, audit
 
     def _duration_values(
         self,
@@ -216,23 +195,6 @@ class AgentCanvasSeedanceInputCompiler:
         return tuple(result)
 
 
-def _storyboard_layout_only_instruction(node: CanvasNodeV2, prompt: str) -> str:
-    locale = (
-        ResponseLocaleResolverV1().resolve(node.prompt_presentation.locale)
-        if node.prompt_presentation is not None
-        else "und"
-    )
-    contains_cjk = any(
-        unicodedata.name(character, "").startswith(("CJK ", "HIRAGANA ", "KATAKANA ", "HANGUL "))
-        for character in prompt
-    )
-    return (
-        _STORYBOARD_LAYOUT_ONLY_ZH
-        if locale == "zh-CN" or contains_cjk
-        else _STORYBOARD_LAYOUT_ONLY_EN
-    )
-
-
 def validate_seedance_audio_parity(
     manifest: SeedanceInputManifestV1,
     audit: SeedanceInputManifestAuditV1,
@@ -280,7 +242,7 @@ def _compile_prompt(
         segments.append(f"{item.label}: {item.content}")
     labels = [item.label for item in (*text_inputs, *media_inputs)]
     if labels:
-        segments.append(f"Use the following bound references in order: {', '.join(labels)}.")
+        segments.append(f"Bound references in provider input order: {', '.join(labels)}.")
     storyboard_grid = next(
         (item for item in media_inputs if item.reference_purpose == "storyboard_grid"),
         None,
@@ -292,27 +254,33 @@ def _compile_prompt(
         (item for item in media_inputs if item.reference_purpose == "scene_reference"),
         None,
     )
+    if storyboard_grid is not None:
+        segments.append(
+            f"{storyboard_grid.label} is a loose storyboard reference for broad narrative context. "
+            "The written action beats and target Video style take priority. "
+            "Do not match panels one-to-one or copy their exact framing, character positions, "
+            "camera moves, or timing. Choose natural framing, camera motion, and transitions "
+            "that serve the written story. Never show the grid, collage, contact sheet, panel "
+            "border, or split screen."
+        )
+        segments.append(
+            "Use the other references (characters, scenes, products, props) for identity, "
+            "hair, clothing, spatial identity, object shapes, materials, and colors. "
+            "Do not copy the drawing style, strokes, coloring, or texture of non-style references. "
+            "Render in the target Video medium requested by the saved prompt; for live action, "
+            "use real cinematic photography with natural skin, fabric detail, light, and depth of field."
+        )
     if grounding_plan is not None and storyboard_grid is not None:
         panel_text = ", ".join(
             f"Panel {panel.panel_index}: {panel.beat}" for panel in grounding_plan.panels
         )
-        segments.append(
-            " ".join(
-                (
-                    f"{storyboard_grid.label} is the primary 3x3 storyboard grid for shot {grounding_plan.target_shot_id}.",
-                    "Follow its nine panels in persisted order as one continuous shot.",
-                    panel_text,
-                    "Use the grid for composition, camera, action progression, and timing.",
-                    "Do not show, split, crop, or recreate the grid.",
-                )
-            )
-        )
+        segments.append(f"Written story beats (in narrative order): {panel_text}")
         role_directives = {
             "character_reference": (
-                "prioritize this reference for character identity, wardrobe, silhouette, and appearance style"
+                "prioritize this reference for character identity, wardrobe, silhouette, and proportions"
             ),
             "scene_reference": (
-                "prioritize this reference for location, layout, materials, lighting, and environment style"
+                "prioritize this reference for location, spatial identity, materials, and lighting"
             ),
             "product_reference": (
                 "prioritize this reference for product identity, proportions, materials, and markings"
@@ -339,19 +307,9 @@ def _compile_prompt(
         segments.append(
             " ".join(
                 (
-                    f"{storyboard_grid.label} is the authoritative 3x3 Storyboard Grid.",
-                    "Read Panels 1 through 9 left-to-right and top-to-bottom.",
-                    "Redraw the opening as a normal full-frame shot from Panel 1, then follow the depicted composition, action, camera, and continuity through Panel 9 in order.",
-                    "Never show the grid, collage, contact sheet, panel border, or split screen.",
-                )
-            )
-        )
-        segments.append(
-            " ".join(
-                (
                     f"{scene_board.label} is the Scene Design Board.",
-                    "Use it only to preserve environment identity, layout, lighting, materials, and visual style.",
-                    "It must not replace or reorder the Storyboard Grid sequence.",
+                    "Use it to preserve environment identity, layout, lighting, and materials.",
+                    "Follow the written narrative progression.",
                 )
             )
         )
@@ -375,6 +333,8 @@ def _with_reference_purposes(
                     else "storyboard_sequence"
                     if item.media_type == "image"
                     and item.source_semantic_role == "storyboard_sequence"
+                    else "storyboard_grid"
+                    if item.media_type == "image" and item.source_semantic_role == "storyboard_grid"
                     else "scene_reference"
                     if item.media_type == "image" and item.source_semantic_role == "scene"
                     else None
@@ -441,6 +401,7 @@ def _audit_projection(
         effective_duration_seconds=manifest.effective_duration_seconds,
         generate_audio=manifest.generate_audio,
         normalizations=manifest.normalizations,
+        storyboard_reference_mode=manifest.storyboard_reference_mode,
         grounding_audit=grounding_audit,
     )
 

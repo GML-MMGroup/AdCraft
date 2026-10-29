@@ -16,7 +16,7 @@ Use the owning shot, its selected storyboard references, product and identity co
 
 - Render user-visible and audible content in `response_locale`; keep internal controls in English.
 
-- Preserve storyboard order and define clear subject action, camera motion, framing, and transition intent.
+- Preserve the written story beat order and define clear subject action, camera motion, framing, and transition intent. Treat storyboard grid images as loose narrative guidance; do not require panel-by-panel matching, exact composition, character positions, camera moves, or panel timing. Let the written story and target Video style lead.
 - Keep camera motion limited and legible within each segment.
 - Describe at most four primary actions for the segment, in order, each with its own clear time window of at least 2.5 seconds.
 - Express camera emphasis as in-clip camera motion (for example 'the camera quickly pushes in to a close-up of his face'); never write freeze frames, frame-exact timing, beat-synced music changes, or editing instructions.
