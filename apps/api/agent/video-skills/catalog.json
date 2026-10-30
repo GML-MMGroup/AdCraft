@@ -139,6 +139,11 @@
       "display_order": 280
     },
     {
+      "skill_id": "costume-comedy-live-action",
+      "version": "1.0.0",
+      "display_order": 290
+    },
+    {
       "skill_id": "designer-toy-ip-film",
       "version": "1.0.0",
       "display_order": 310

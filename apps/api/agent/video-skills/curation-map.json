@@ -571,6 +571,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "costume-comedy-live-action",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "ceremonial grandeur",
+        "exaggerated actor expressions",
+        "comic reaction contrast",
+        "tactile product demonstration"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed the fixed runtime, frame shape, source brand, snack-only action, imperial cast, and animation rendering requirement."
+      ],
+      "naming_adaptation": "Named the requested live-action adaptation for period comedy rather than the original snack, characters, or animation technique.",
+      "commercial_adaptation": "Converted animated expression into exaggerated performable facial and physical reactions while retaining product experience and the authority-to-delight contrast; the instrumental score is a proposed adaptation.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "designer-toy-ip-film",
       "version": "1.0.0",
       "sources": [
