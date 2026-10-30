@@ -164,6 +164,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "sunlit-pastel-product-fantasy",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "clear daylight",
+        "controlled highlights",
+        "foreground occlusions",
+        "recognition beat"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Excluded the reference tutorial overlays, fixed duration, aspect ratio, and generation settings from reusable style guidance."
+      ],
+      "naming_adaptation": "Named the user-reference-derived treatment by its daylight, pastel palette, and product-fantasy craft rather than its original brand.",
+      "commercial_adaptation": "Authored reusable advisory guidance from the user-provided product-ad video, separating visual treatment and proposed instrumental accompaniment from the prize-journey creative method.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "sources": [

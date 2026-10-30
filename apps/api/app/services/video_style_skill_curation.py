@@ -22,6 +22,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "brand-manifesto-film",
     "one-take-commercial",
     "beat-synced-camera-commercial",
+    "sunlit-pastel-product-fantasy",
     "fashion-showcase-film",
     "2000s-street-fashion-film",
     "jewelry-editorial-film",

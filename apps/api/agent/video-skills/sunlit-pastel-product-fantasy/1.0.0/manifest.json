@@ -1,0 +1,47 @@
+{
+  "skill_id": "sunlit-pastel-product-fantasy",
+  "version": "1.0.0",
+  "display_name": "Sunlit Pastel Product Fantasy",
+  "description": "Airy pastel commercial fantasy with tactile materials, clear daylight, graceful spatial movement, and a polished hero finish.",
+  "content_locale": "en-US",
+  "category": "commercial-craft",
+  "tags": [
+    "pastel palette",
+    "clear daylight",
+    "tactile materials",
+    "smooth spatial movement",
+    "commercial fantasy"
+  ],
+  "supported_use_cases": [
+    "product launch films",
+    "beauty and fragrance campaigns",
+    "packaged goods advertising",
+    "playful premium brand films"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "A sunlit pastel plaza with a monumental product, clear sky, and polished surfaces.",
+    "media_url": "/api/v2/video-skills/sunlit-pastel-product-fantasy/preview?v=1.0.0"
+  },
+  "display_order": 70,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": false,
+  "files": {
+    "SKILL.md": "3ffc369ff8ee557828d15d5b0bdd6c44c7e3c31a311f857aee4282f0c5d86a4f",
+    "previews/preview.webp": "0de604d681d5cb0a7d781c078a5a2a244516cd3a34c5f50525cd6c9f4b313eb2",
+    "references/bgm.md": "538efee7df3ddebd97767c2a5444353654d5edab13aa861f3d15bf97d36f1a36",
+    "references/product.md": "779c261f46b70ad78f7b66beb031740de679746194822b8488805e4d2a62e9ec",
+    "references/scene.md": "d0da9eaafb1e9ffcbab975870b275990e24a7758f27bbcbb691171c687f03e4d",
+    "references/script.md": "1303eabf6d4fb934b1268871ec23b5de88b50531b5708c7f8a14c1d3871eb0e3",
+    "references/storyboard.md": "844dcc140bda6b8a5fab4422d3fdafb0e94956c9b1dc2affa21f601a63139e17",
+    "references/video.md": "366fe9558a5d69ee6859118cf29e83f0269dcaf802fa63c25cb15162ee6d29e8"
+  },
+  "role_guidance": {
+    "product": "references/product.md",
+    "scene": "references/scene.md",
+    "script": "references/script.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}
