@@ -244,6 +244,14 @@ def generated_asset_publication_metadata(
         ):
             if key in context.node.parameters:
                 metadata[key] = context.node.parameters[key]
+    if context.node.node_type == "image":
+        style = context.node.structured_content.get("style")
+        if isinstance(style, dict) and style.get("human_face_rendering") in {
+            "photorealistic",
+            "stylized",
+            "absent",
+        }:
+            metadata["human_face_rendering"] = style["human_face_rendering"]
     if context.node.node_type == "video":
         audio_intent = {
             key: context.node.structured_content[key]
@@ -750,7 +758,7 @@ class MediaNodeExecutor:
             self._handle_submission_error(intent, error)
             raise
         audit_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
-        if any(item.storyboard_downscaled_for for item in context.delivered_references):
+        if any(item.image_processing for item in context.delivered_references):
             audit_payload["reference_input_delivery"] = V2DeliveredReferenceSet(
                 requested_reference_asset_ids=[
                     item.asset_id for item in context.delivered_references

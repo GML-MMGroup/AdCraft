@@ -12422,6 +12422,24 @@
           "description": "True when the character is a human, or a humanoid with a realistic human face (for example an elf or a horned demon with a human face), depicted with realistic proportions. False for animals, robots, creatures, faceless mascots and objects, and for characters intentionally drawn in a stylized non-realistic style such as anime, cartoon or chibi. Always set it.",
           "title": "Human Face"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -12470,6 +12488,7 @@
       "required": [
         "editable_prompt",
         "face_and_hair",
+        "human_face_rendering",
         "identity",
         "silhouette_and_proportions",
         "wardrobe"
@@ -12773,6 +12792,24 @@
           "description": "True when the character is a human, or a humanoid with a realistic human face (for example an elf or a horned demon with a human face), depicted with realistic proportions. False for animals, robots, creatures, faceless mascots and objects, and for characters intentionally drawn in a stylized non-realistic style such as anime, cartoon or chibi. Always set it.",
           "title": "Human Face"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -12838,6 +12875,7 @@
       "required": [
         "editable_prompt",
         "face_and_hair",
+        "human_face_rendering",
         "identity",
         "silhouette_and_proportions",
         "wardrobe"
@@ -16649,6 +16687,24 @@
           "title": "Editable Prompt",
           "type": "string"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "prompt": {
           "maxLength": 16384,
           "minLength": 1,
@@ -16682,6 +16738,7 @@
       },
       "required": [
         "editable_prompt",
+        "human_face_rendering",
         "prompt",
         "role_variant"
       ],
@@ -25190,6 +25247,24 @@
           "title": "Geometry",
           "type": "string"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -25238,6 +25313,7 @@
       "required": [
         "editable_prompt",
         "geometry",
+        "human_face_rendering",
         "identity",
         "marks",
         "materials",
@@ -25294,6 +25370,24 @@
           "minLength": 1,
           "title": "Geometry",
           "type": "string"
+        },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
         },
         "identity": {
           "maxLength": 4096,
@@ -25352,6 +25446,7 @@
       "required": [
         "editable_prompt",
         "geometry",
+        "human_face_rendering",
         "identity",
         "marks",
         "materials",
@@ -26462,6 +26557,24 @@
           "title": "Form",
           "type": "string"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -26504,6 +26617,7 @@
       "required": [
         "editable_prompt",
         "form",
+        "human_face_rendering",
         "identity",
         "materials",
         "palette"
@@ -31201,6 +31315,24 @@
           "title": "Environment Only",
           "type": "boolean"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "lighting": {
           "maxLength": 2048,
           "minLength": 1,
@@ -31262,6 +31394,7 @@
         "atmosphere",
         "editable_prompt",
         "environment_identity",
+        "human_face_rendering",
         "lighting",
         "materials",
         "spatial_logic",
@@ -33527,6 +33660,24 @@
           "title": "Editable Prompt",
           "type": "string"
         },
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classify faces in this image's authored output, not the target video or its references. Use photorealistic only if at least one human or humanoid face is rendered photographically; stylized for illustrated, cartoon, anime, clay or other non-photographic human faces; absent if there are no human faces. Realistic scenery alone is not photorealistic human-face evidence. Always set it for image roles; null is reserved for unclassified historical data.",
+          "title": "Human Face Rendering"
+        },
         "production_handoff": {
           "default": [],
           "description": "Planned editing, typography, compositing or sound synchronization requiring separate execution; not completed work.",
@@ -33575,6 +33726,7 @@
       "required": [
         "beats",
         "editable_prompt",
+        "human_face_rendering",
         "sequence_summary",
         "visual_language"
       ],
@@ -38193,6 +38345,23 @@
     "VisualStyleContractV2": {
       "additionalProperties": false,
       "properties": {
+        "human_face_rendering": {
+          "anyOf": [
+            {
+              "enum": [
+                "absent",
+                "photorealistic",
+                "stylized"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Human Face Rendering"
+        },
         "negative_style_constraints": {
           "default": [],
           "items": {

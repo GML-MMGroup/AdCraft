@@ -22,7 +22,6 @@ from app.schemas.agent_canvas_runtime import (
     ResolvedModelExecutionV1,
 )
 from app.schemas.seedance_inputs import StoryboardGridGroundingPlanV1
-from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
 from app.services.agent_canvas_reference_semantics import (
     compile_provider_reference_instruction,
 )
@@ -48,8 +47,6 @@ from app.services.v2_library_reference_preview import (
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
 CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE = "provider_reference_delivery_unavailable"
 _PROVIDER_REFERENCE_DIMENSIONS = (2048, 1536, 1024)
-# Seedance rejects reference images under 300px on either side; keep a margin.
-_SEEDANCE_MIN_SHORT_SIDE = 320
 PROVIDER_REFERENCE_ERROR_URL_INVALID = "v2_provider_reference_url_invalid"
 PROVIDER_REFERENCE_ERROR_FILE_MISSING = "v2_provider_reference_file_missing"
 PROVIDER_REFERENCE_ERROR_UNSUPPORTED = "v2_provider_reference_delivery_unsupported"
@@ -193,7 +190,7 @@ class V2DeliveredProviderReference(BaseModel):
     rendition_width: int | None = None
     rendition_height: int | None = None
     storyboard_downscaled_for: Literal["seedance_2_5"] | None = None
-    image_processing: Literal["storyboard_soften_v1"] | None = None
+    image_processing: Literal["storyboard_soften_v1", "human_face_blur_sigma3_v1"] | None = None
     max_dimension: int | None = None
     reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
     reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
@@ -304,6 +301,11 @@ class V2DeliveredReferenceSet(BaseModel):
                     **(
                         {"image_processing": reference.image_processing}
                         if reference.image_processing is not None
+                        else {}
+                    ),
+                    **(
+                        {"blur_sigma": 3}
+                        if reference.image_processing == "human_face_blur_sigma3_v1"
                         else {}
                     ),
                     **(
@@ -547,16 +549,16 @@ class V2ProviderReferenceInputDeliveryService:
                     input_snapshot,
                     "asset_checksum_mismatch",
                 )
-            elif context.provider_model_id.startswith("doubao-seedance-2-5") and (
-                _is_canvas_storyboard_grid(input_snapshot)
+            elif (
+                context.target_capability == "video"
+                and input_snapshot.media_type == "image"
+                and version.metadata.get("human_face_rendering") == "photorealistic"
             ):
                 delivered = self._deliver_canvas_version(
                     input_snapshot,
                     version,
                     delivery_modes,
-                    storyboard_max_dimension=(
-                        self._settings.seedance_25_storyboard_reference_max_dimension
-                    ),
+                    blur_human_faces=True,
                 )
             else:
                 delivered = self._deliver_canvas_version(
@@ -707,7 +709,7 @@ class V2ProviderReferenceInputDeliveryService:
         version: AssetVersionMetadataV2,
         original: V2DeliveredProviderReference,
         *,
-        max_dimension: int = 2048,
+        max_dimension: int | None = 2048,
         max_data_url_bytes: int | None = None,
         min_short_side: int | None = None,
     ) -> V2DeliveredProviderReference | None:
@@ -725,7 +727,9 @@ class V2ProviderReferenceInputDeliveryService:
         if max_data_url_bytes is not None:
             byte_limit = min(byte_limit, max_data_url_bytes)
         dimensions = (max_dimension,) + tuple(
-            dimension for dimension in _PROVIDER_REFERENCE_DIMENSIONS if dimension < max_dimension
+            dimension
+            for dimension in _PROVIDER_REFERENCE_DIMENSIONS
+            if max_dimension is None or dimension < max_dimension
         )
         for dimension in dimensions:
             try:
@@ -776,9 +780,9 @@ class V2ProviderReferenceInputDeliveryService:
         version: AssetVersionMetadataV2,
         delivery_modes: frozenset[str],
         *,
-        storyboard_max_dimension: int | None = None,
+        blur_human_faces: bool = False,
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
-        if storyboard_max_dimension is not None:
+        if blur_human_faces:
             if "data_url" not in delivery_modes:
                 return _canvas_delivery_failure(input_snapshot, "image_data_url_unsupported")
             original = _canvas_delivered(
@@ -787,22 +791,16 @@ class V2ProviderReferenceInputDeliveryService:
                 input_type="data_url",
                 input_value="",
                 source="local_file",
-            ).model_copy(update={"image_processing": "storyboard_soften_v1"})
+            ).model_copy(update={"image_processing": "human_face_blur_sigma3_v1"})
             rendition = self._deliver_canvas_provider_reference_rendition(
                 input_snapshot,
                 version,
                 original,
-                max_dimension=storyboard_max_dimension,
-                min_short_side=_SEEDANCE_MIN_SHORT_SIDE,
+                max_dimension=None,
             )
             if rendition is None:
                 return _canvas_delivery_failure(input_snapshot, "asset_rendition_generation_failed")
-            return rendition.model_copy(
-                update={
-                    "storyboard_downscaled_for": "seedance_2_5",
-                    "max_dimension": storyboard_max_dimension,
-                }
-            )
+            return rendition
         metadata = version.metadata if isinstance(version.metadata, dict) else {}
         try:
             preview = self._library_preview.resolve(
@@ -1394,21 +1392,6 @@ def _failure(
             f"workflow_id={workflow_id} slot_id={slot_id} asset_id={asset_id} reason={reason}"
         ),
     )
-
-
-def _is_canvas_storyboard_grid(input_snapshot: ResolvedMediaInputSnapshotV2) -> bool:
-    if input_snapshot.media_type != "image":
-        return False
-    try:
-        return (
-            canonical_storyboard_reference_role(
-                binding_role=input_snapshot.binding_metadata.get("semantic_reference_role"),
-                source_role=input_snapshot.source_semantic_role,
-            )
-            == "storyboard_grid"
-        )
-    except ValueError:
-        return False
 
 
 def _provider_reference_role_from_record(record: WorkflowAssetVersionV2) -> str | None:

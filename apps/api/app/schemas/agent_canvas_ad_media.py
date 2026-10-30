@@ -9,7 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import StorageAccessDescriptorV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
-from app.schemas.agent_canvas_role_prompt_preparation import CharacterGenderPresentationV1
+from app.schemas.agent_canvas_role_prompt_preparation import (
+    CharacterGenderPresentationV1,
+    HumanFaceRenderingV1,
+)
 from app.schemas.agent_canvas_video_skills import VideoStyleExpressionV2
 
 
@@ -55,6 +58,9 @@ class VisualStyleContractV2(_AdMediaModel):
     style_prompt: str = Field(min_length=1, max_length=8_192)
     source: Literal["user", "video_skill", "references", "platform_default"]
     negative_style_constraints: tuple[str, ...] = Field(default=(), max_length=64)
+    human_face_rendering: HumanFaceRenderingV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ProviderReferenceInstructionV1(_AdMediaModel):

@@ -100,6 +100,11 @@ def _require_editable_prompt_in_schema(schema: dict[str, Any]) -> None:
     required = schema.setdefault("required", [])
     if "editable_prompt" not in required:
         required.append("editable_prompt")
+    if (
+        "human_face_rendering" in schema.get("properties", {})
+        and "human_face_rendering" not in required
+    ):
+        required.append("human_face_rendering")
 
 
 class _RoleBriefModel(_RolePromptModel):
@@ -111,6 +116,24 @@ class _RoleBriefModel(_RolePromptModel):
 
     editable_prompt: str | None = Field(default=None, max_length=32_768)
     style_description: str | None = Field(default=None, min_length=1, max_length=4_096)
+
+
+HumanFaceRenderingV1 = Literal["photorealistic", "stylized", "absent"]
+
+
+class _ImageRoleBriefModel(_RoleBriefModel):
+    human_face_rendering: HumanFaceRenderingV1 | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Classify faces in this image's authored output, not the target video or its references. "
+            "Use photorealistic only if at least one human or humanoid face is rendered "
+            "photographically; stylized for illustrated, cartoon, anime, clay or other "
+            "non-photographic human faces; absent if there are no human faces. "
+            "Realistic scenery alone is not photorealistic human-face evidence. Always set it "
+            "for image roles; null is reserved for unclassified historical data."
+        ),
+    )
 
 
 class RoleBindingSnapshotV2(_RolePromptModel):
@@ -544,7 +567,7 @@ class WorldViewRoleBriefV2(_RoleBriefModel):
     visual_continuity: tuple[str, ...] = Field(min_length=1, max_length=8)
 
 
-class ProductMainRoleBriefV2(_RoleBriefModel):
+class ProductMainRoleBriefV2(_ImageRoleBriefModel):
     role_variant: Literal["product_main"] = "product_main"
     identity: str = Field(min_length=1, max_length=4_096)
     geometry: str = Field(min_length=1, max_length=2_048)
@@ -558,7 +581,7 @@ class ProductMultiviewRoleBriefV2(ProductMainRoleBriefV2):
     views: tuple[str, ...] = Field(min_length=5, max_length=8)
 
 
-class PropRoleBriefV2(_RoleBriefModel):
+class PropRoleBriefV2(_ImageRoleBriefModel):
     role_variant: Literal["prop"] = "prop"
     identity: str = Field(min_length=1, max_length=4_096)
     form: str = Field(min_length=1, max_length=2_048)
@@ -566,7 +589,7 @@ class PropRoleBriefV2(_RoleBriefModel):
     palette: str = Field(min_length=1, max_length=1_024)
 
 
-class CharacterMainRoleBriefV2(_RoleBriefModel):
+class CharacterMainRoleBriefV2(_ImageRoleBriefModel):
     role_variant: Literal["character_main"] = "character_main"
     identity: str = Field(min_length=1, max_length=4_096)
     face_and_hair: str = Field(min_length=1, max_length=2_048)
@@ -611,7 +634,7 @@ class SceneViewDirectionV2(_RolePromptModel):
     spatial_details: str = Field(min_length=1, max_length=4_096)
 
 
-class SceneBoardRoleBriefV2(_RoleBriefModel):
+class SceneBoardRoleBriefV2(_ImageRoleBriefModel):
     role_variant: Literal["scene_board"] = "scene_board"
     environment_identity: str = Field(min_length=1, max_length=4_096)
     spatial_logic: str = Field(min_length=1, max_length=4_096)
@@ -638,7 +661,7 @@ class ScriptRoleBriefV2(_RoleBriefModel):
     voiceover: str = Field(default="", max_length=8_192)
 
 
-class StoryboardGridRoleBriefV2(_RoleBriefModel):
+class StoryboardGridRoleBriefV2(_ImageRoleBriefModel):
     production_handoff: tuple[Annotated[str, Field(min_length=1, max_length=2_048)], ...] = Field(
         default=(),
         max_length=32,
@@ -677,7 +700,7 @@ class BgmRoleBriefV2(_RoleBriefModel):
     mood: str = Field(min_length=1, max_length=1_024)
 
 
-class FreeMediaRoleBriefV2(_RoleBriefModel):
+class FreeMediaRoleBriefV2(_ImageRoleBriefModel):
     role_variant: Literal["free_text", "free_image", "free_video", "free_audio"]
     prompt: str = Field(min_length=1, max_length=16_384)
 
