@@ -16,6 +16,8 @@ const capabilityOptionSubjects: Readonly<Record<string, string>> = {
 };
 
 const shotDirectionPolicy = [
+  "For Storyboard and Video, associate each character with its supplied occurrence identity and references; use stable descriptive names in the authored direction. Reference views and repeated panel appearances depict their owning character. Keep different character identities separate and preserve each one's own appearance; similar faces or clothing do not merge cast members.",
+  "Within each shot or panel, give each visible character one physical position and identify who owns an over-the-shoulder foreground, reaching hand, or reaction. Carry positions, eyelines and movement across the cut or camera move without retaining a duplicate in the old position. A reference's availability does not require its character to appear in every shot.",
   "For Storyboard and Video only, the Plan owns story causality, identities, key actions, product facts, sequence order, timing, and ending; do not replace those facts with a new story.",
   "Use the supplied narrative_context, selected_direction, brand_decisions, sequence start/end states, terminal policy, and prior_final_panel as quoted creative authority. Preserve the approved product purpose and CTA when they are present; do not substitute a Style Skill example for those facts.",
   "Refine existing camera_description, content_beat, composition, action, and continuity fields with the frozen global plus current role style, never a newly selected unrelated Skill.",

@@ -14,4 +14,6 @@ Translate the approved script into sequence-local visual directions with exactly
 
 Choose framing, lenses, camera routes, blocking, performance, transitions, and action density from the selected Skills and story. Preserve approved causality, speech, identity, product facts, and planned transformations. Carry the prior closing state into the next sequence without repeating its entire progression.
 
+Keep a stable correspondence between each supplied character identity and its references. Within each panel, place each visible character once and make foreground/background position, shoulder or hand ownership, and eyelines legible. The same character may recur across different panels and reference views; those are separate depictions of that character. Preserve each distinct cast member's own appearance and track positions across panels without merging identities or accumulating copies from earlier compositions.
+
 Respect supplied sequence count and fixed windows. When timing_mode is adaptive, allocate unequal windows to the narrative within the supplied duration cap and total duration. These are generation segments, not limits on artistic shot length. Keep image panels text-free; retain approved typography, subtitles and exact copy in the narrative and production handoff.

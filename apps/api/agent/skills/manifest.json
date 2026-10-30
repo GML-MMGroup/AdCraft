@@ -57,12 +57,12 @@
     },
     {
       "path": "video_agent_storyboard_design/SKILL.md",
-      "sha256": "0f21437f7305b99c7130b10d926e7bd484ffd23c848cd875bf2e7f075867fe99",
+      "sha256": "b7bc66e7f8b5884e8b952f0c0b6d0e9ac83e5a03d944b72d52a1715ea5216958",
       "skill_id": "video_agent_storyboard_design"
     },
     {
       "path": "video_agent_video_direction/SKILL.md",
-      "sha256": "3eb00d79d3afd91d76e080a6e1b10cb2641553afdbede13055fefec88c33825b",
+      "sha256": "42c29292a1fbae742179b5aa2057885980bc39bfe9d7a48ff5bfbaef00bfc10c",
       "skill_id": "video_agent_video_direction"
     },
     {

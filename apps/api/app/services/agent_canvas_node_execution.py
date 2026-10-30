@@ -43,6 +43,10 @@ from app.schemas.seedance_inputs import (
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
+from app.services.agent_canvas_character_identity_prompt import (
+    LabeledIdentityReference,
+    compile_character_identity_prompt,
+)
 from app.services.agent_canvas_execution_mode import (
     CanvasExecutionModeV2,
     CanvasSemanticExtractionModeV2,
@@ -620,6 +624,30 @@ class MediaNodeExecutor:
             prompt,
             provider_only_instructions,
         )
+        if media_type == "video":
+            image_references = tuple(
+                item for item in prepared.delivered_references if item.media_type == "image"
+            )
+            character_prompt = compile_character_identity_prompt(
+                prepared.inputs,
+                tuple(
+                    LabeledIdentityReference(
+                        label=f"Image {index}",
+                        binding_id=item.binding_id,
+                        asset_id=item.asset_id,
+                        version_id=item.version_id,
+                        checksum=item.checksum,
+                        source_semantic_role=item.source_semantic_role,
+                    )
+                    for index, item in enumerate(image_references, start=1)
+                ),
+                has_storyboard=any(
+                    item.source_semantic_role in {"storyboard_grid", "storyboard_sequence"}
+                    for item in image_references
+                ),
+            )
+            if character_prompt:
+                provider_prompt = f"{provider_prompt}\n\n{character_prompt}"
         provider_payload: dict[str, Any] = {
             "provider_prompt": provider_prompt,
             "prompt": provider_prompt,
