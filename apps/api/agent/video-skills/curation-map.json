@@ -1129,6 +1129,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "japanese-summer-sensory-film",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "seasonal observation",
+        "tactile sensory inserts",
+        "natural product use",
+        "breathing hero finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Kept fifteen to thirty seconds as the intended creative use case, not a provider rule; removed the source frame shape, fixed solo cast, tropical location, citrus flavor, bottle shape, and source brand as universal requirements."
+      ],
+      "naming_adaptation": "Named the treatment for Japanese summer sensory atmosphere without adopting the reference brand, cast, or tropical setting as campaign requirements.",
+      "commercial_adaptation": "Retained tactile environmental cues, real use, modest response, and a sustained hero finish; added quiet daily and light-sport routes while separating sensory feeling from unsupported functional claims and proposed sound from observed imagery.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "cinematic-food-story",
       "version": "1.0.0",
       "sources": [

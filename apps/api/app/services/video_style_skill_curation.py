@@ -58,6 +58,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "deadpan-absurd-live-comedy",
     "hand-drawn-travel-journal",
     "gentle-everyday-vlog",
+    "japanese-summer-sensory-film",
     "cinematic-food-story",
     "observational-human-documentary",
     "craft-process-film",

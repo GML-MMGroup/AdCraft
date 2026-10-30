@@ -249,6 +249,11 @@
       "display_order": 520
     },
     {
+      "skill_id": "japanese-summer-sensory-film",
+      "version": "1.0.0",
+      "display_order": 525
+    },
+    {
       "skill_id": "cinematic-food-story",
       "version": "1.0.0",
       "display_order": 530
