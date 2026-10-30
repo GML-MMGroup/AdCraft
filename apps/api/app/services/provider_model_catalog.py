@@ -208,6 +208,7 @@ def _image_profile(
     adapter_id: str,
     transport_kind: str,
     conformance_status: str = "compatible",
+    max_images: int = 4,
     parameter_matrix: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return _adapter_profile(
@@ -217,7 +218,7 @@ def _image_profile(
         capability="image",
         request_mode="image_generation",
         accepted_input_modes=("text_only", "native_reference_slots"),
-        max_images=4,
+        max_images=max_images,
         allowed_roles=("product_reference", "scene_reference", "character_reference"),
         parameter_schema_id=(
             str(parameter_matrix["schema_id"])
@@ -375,6 +376,7 @@ _OPENROUTER_IMAGE_ADAPTER_REVISION = "openrouter-image-native-v1"
 _OPENROUTER_IMAGE_CAPABILITY_REVISION = "openrouter-openai/gpt-image-2-v1"
 _OPENROUTER_IMAGE_PROFILE = _image_profile(
     "openrouter:openai/gpt-image-2",
+    max_images=16,
     adapter_id="openrouter-image-native",
     transport_kind="openrouter_images_native",
     conformance_status="unverified",
@@ -440,9 +442,11 @@ TEAMOROUTER_IMAGE_SIZES = (
 
 
 def _teamorouter_image_profile(provider_model_id: str) -> dict[str, Any]:
+    # Configure the compatible OpenAI contract; the gateway publishes no separate cap.
     slug = provider_model_id.replace(".", "-")
     return _image_profile(
         f"teamorouter:{provider_model_id}",
+        max_images=16,
         adapter_id="teamorouter-image-native",
         transport_kind="teamorouter_images_native",
         parameter_matrix=_parameter_matrix(
@@ -692,8 +696,8 @@ _TRUSTED_MANIFESTS = (
         capability="image",
         capability_metadata={
             "accepted_input_types": ["text", "image"],
-            "max_references": 8,
-            "reference_limits": {"image": 8, "video": 0, "audio": 0},
+            "max_references": 14,
+            "reference_limits": {"image": 14, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
             "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
@@ -703,6 +707,7 @@ _TRUSTED_MANIFESTS = (
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
                 "volcengine_ark:doubao-seedream-5-0-lite-260128",
+                max_images=14,
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -750,8 +755,8 @@ _TRUSTED_MANIFESTS = (
         capability_metadata={
             "omit_sequential_image_generation": True,
             "accepted_input_types": ["text", "image"],
-            "max_references": 4,
-            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "max_references": 10,
+            "reference_limits": {"image": 10, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
             "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
@@ -761,6 +766,7 @@ _TRUSTED_MANIFESTS = (
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
                 "volcengine_ark:doubao-seedream-5-0-pro-260628",
+                max_images=10,
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -773,8 +779,8 @@ _TRUSTED_MANIFESTS = (
         capability="image",
         capability_metadata={
             "accepted_input_types": ["text", "image"],
-            "max_references": 4,
-            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "max_references": 14,
+            "reference_limits": {"image": 14, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
             "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
@@ -784,6 +790,7 @@ _TRUSTED_MANIFESTS = (
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
                 "volcengine_ark:doubao-seedream-4-5-251128",
+                max_images=14,
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -796,8 +803,8 @@ _TRUSTED_MANIFESTS = (
         capability="image",
         capability_metadata={
             "accepted_input_types": ["text", "image"],
-            "max_references": 4,
-            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "max_references": 14,
+            "reference_limits": {"image": 14, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
             "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
@@ -807,6 +814,7 @@ _TRUSTED_MANIFESTS = (
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
                 "volcengine_ark:doubao-seedream-4-0-250828",
+                max_images=14,
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -846,8 +854,8 @@ _TRUSTED_MANIFESTS = (
         capability="image",
         capability_metadata={
             "accepted_input_types": ["text", "image"],
-            "max_references": 4,
-            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "max_references": 16,
+            "reference_limits": {"image": 16, "video": 0, "audio": 0},
             "supported_parameters": [
                 "size",
                 "quality",
@@ -872,8 +880,8 @@ _TRUSTED_MANIFESTS = (
             capability="image",
             capability_metadata={
                 "accepted_input_types": ["text", "image"],
-                "max_references": 4,
-                "reference_limits": {"image": 4, "video": 0, "audio": 0},
+                "max_references": 16,
+                "reference_limits": {"image": 16, "video": 0, "audio": 0},
                 "supported_parameters": [
                     "size",
                     "aspect_ratio",

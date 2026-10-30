@@ -414,11 +414,11 @@ class OpenRouterImageAdapter(ProviderNativeAdapter):
                 ReferenceInputModeV1(mode="text_only", max_references=0),
                 ReferenceInputModeV1(
                     mode="native_reference_slots",
-                    max_references=4,
+                    max_references=16,
                     allowed_roles=("product_reference", "scene_reference", "character_reference"),
                 ),
             ),
-            max_images=4,
+            max_images=16,
         ),
         parameter_schema_id="openrouter-gpt-image-2-v1",
         parameter_matrix=ModelParameterMatrixV1(

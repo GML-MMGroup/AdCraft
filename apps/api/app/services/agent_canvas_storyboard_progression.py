@@ -1710,7 +1710,7 @@ def _later_grid_bindings(
         if binding.target_node_id != grid_one.node_id:
             continue
         source_role = _grid_source_role(binding, nodes)
-        if source_role not in {"character_turnaround", "scene_board"}:
+        if source_role not in {"product_multiview", "character_turnaround", "scene_board"}:
             continue
         candidates.append((len(candidates), binding, source_role))
     copied = list(_select_canonical_singleton_bindings(candidates, nodes))
@@ -1778,13 +1778,14 @@ def _canonical_grid_reference_bindings(
         ):
             continue
         source_role = _grid_source_role(binding, nodes)
-        if source_role in {"character_turnaround", "scene_board"}:
+        if source_role in {"product_multiview", "character_turnaround", "scene_board"}:
             candidates.append((index, binding, source_role))
     selected = _select_canonical_singleton_bindings(candidates, nodes)
     return tuple(
         binding
         for binding in selected
-        if _grid_source_role(binding, nodes) in {"character_turnaround", "scene_board"}
+        if _grid_source_role(binding, nodes)
+        in {"product_multiview", "character_turnaround", "scene_board"}
     )
 
 
@@ -1796,7 +1797,7 @@ def _select_canonical_singleton_bindings(
 
     selected: list[tuple[int, CanvasBindingV2, str]] = []
     seen_singletons: set[str] = set()
-    singleton_roles = {"scene_board"}
+    singleton_roles = {"product_multiview", "scene_board"}
     for index, binding, source_role in candidates:
         if source_role not in singleton_roles:
             selected.append((index, binding, source_role))
@@ -1856,6 +1857,11 @@ def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) 
             return None
         if source.creative_role == "scene":
             return "scene_board"
+        if source.creative_role == "product" and (
+            source.structured_content.get("asset_kind") == "multi_view"
+            or source.metadata.get("source_input_kind") == "multiview"
+        ):
+            return "product_multiview"
         if (
             source.creative_role == "character"
             and source.structured_content.get("character_asset_kind") == "turnaround"
@@ -1864,6 +1870,7 @@ def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) 
         return None
     semantic_role = binding.metadata.get("semantic_reference_role")
     return {
+        "product_reference": "product_multiview",
         "subject_reference": "character_turnaround",
         "environment_reference": "scene_board",
     }.get(str(semantic_role))
