@@ -934,9 +934,7 @@ def _structured_content(
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
-    default_style = "Detailed semi-realistic advertising illustration"
-    if isinstance(brief, (StoryboardGridRoleBriefV2, VideoSegmentRoleBriefV2)):
-        default_style = SELECTED_SEQUENCE_VISUAL_STYLE
+    default_style = SELECTED_SEQUENCE_VISUAL_STYLE
     if isinstance(brief, CharacterMainRoleBriefV2):
         default_style = "Character reference in the selected visual style and bound Main treatment"
     if (

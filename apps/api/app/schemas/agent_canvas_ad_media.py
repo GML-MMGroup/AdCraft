@@ -298,7 +298,7 @@ def resolve_visual_style(
     if reference_style is not None:
         return reference_style.model_copy(update={"source": "references"})
     return VisualStyleContractV2(
-        style_prompt="Detailed semi-realistic advertising illustration",
+        style_prompt="Follow the user's requested visual style and the selected audiovisual Skill.",
         source="platform_default",
     )
 

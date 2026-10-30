@@ -3576,11 +3576,7 @@ def _structured_content_for_proposal(
     description: str,
 ) -> dict[str, object]:
     style = {
-        "style_prompt": (
-            SELECTED_SEQUENCE_VISUAL_STYLE
-            if proposal_kind == "storyboard"
-            else "Detailed semi-realistic advertising illustration"
-        ),
+        "style_prompt": SELECTED_SEQUENCE_VISUAL_STYLE,
         "source": "platform_default",
         "negative_style_constraints": [],
     }
