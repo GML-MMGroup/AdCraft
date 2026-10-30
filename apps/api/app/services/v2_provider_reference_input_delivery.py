@@ -190,7 +190,7 @@ class V2DeliveredProviderReference(BaseModel):
     rendition_width: int | None = None
     rendition_height: int | None = None
     storyboard_downscaled_for: Literal["seedance_2_5"] | None = None
-    image_processing: Literal["storyboard_soften_v1", "human_face_blur_sigma3_v1"] | None = None
+    image_processing: Literal["storyboard_soften_v1", "human_face_blur_sigma7_v1"] | None = None
     max_dimension: int | None = None
     reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
     reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
@@ -304,8 +304,8 @@ class V2DeliveredReferenceSet(BaseModel):
                         else {}
                     ),
                     **(
-                        {"blur_sigma": 3}
-                        if reference.image_processing == "human_face_blur_sigma3_v1"
+                        {"blur_sigma": 7}
+                        if reference.image_processing == "human_face_blur_sigma7_v1"
                         else {}
                     ),
                     **(
@@ -552,13 +552,14 @@ class V2ProviderReferenceInputDeliveryService:
             elif (
                 context.target_capability == "video"
                 and input_snapshot.media_type == "image"
-                and version.metadata.get("human_face_rendering") == "photorealistic"
+                and input_snapshot.source_semantic_role
+                in {"storyboard_grid", "storyboard_sequence"}
             ):
                 delivered = self._deliver_canvas_version(
                     input_snapshot,
                     version,
                     delivery_modes,
-                    blur_human_faces=True,
+                    blur_storyboard_grid=True,
                 )
             else:
                 delivered = self._deliver_canvas_version(
@@ -780,9 +781,9 @@ class V2ProviderReferenceInputDeliveryService:
         version: AssetVersionMetadataV2,
         delivery_modes: frozenset[str],
         *,
-        blur_human_faces: bool = False,
+        blur_storyboard_grid: bool = False,
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
-        if blur_human_faces:
+        if blur_storyboard_grid:
             if "data_url" not in delivery_modes:
                 return _canvas_delivery_failure(input_snapshot, "image_data_url_unsupported")
             original = _canvas_delivered(
@@ -791,7 +792,7 @@ class V2ProviderReferenceInputDeliveryService:
                 input_type="data_url",
                 input_value="",
                 source="local_file",
-            ).model_copy(update={"image_processing": "human_face_blur_sigma3_v1"})
+            ).model_copy(update={"image_processing": "human_face_blur_sigma7_v1"})
             rendition = self._deliver_canvas_provider_reference_rendition(
                 input_snapshot,
                 version,
