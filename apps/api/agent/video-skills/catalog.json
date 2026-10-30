@@ -74,6 +74,11 @@
       "display_order": 110
     },
     {
+      "skill_id": "2000s-street-fashion-film",
+      "version": "1.0.0",
+      "display_order": 115
+    },
+    {
       "skill_id": "jewelry-editorial-film",
       "version": "1.0.0",
       "display_order": 120

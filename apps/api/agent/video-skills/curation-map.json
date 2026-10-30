@@ -198,6 +198,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "2000s-street-fashion-film",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "tactile film texture",
+        "candid street movement",
+        "dynamic city cutaways",
+        "restrained brand signature"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Kept thirty seconds as a brief-dependent creative example, not a provider limit; removed the source frame shape, two-model cast, city, brand, seasonal copy, and product-specific wardrobe as universal requirements."
+      ],
+      "naming_adaptation": "Named the treatment for early-2000s photographic street fashion rather than the reference brand, city, or particular models.",
+      "commercial_adaptation": "Adapted candid wearing and carrying, tactile inserts, and moving street interludes into variable-cast brand advertising; preserved source identity and merchandise while distinguishing proposed accompaniment from observed imagery.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "jewelry-editorial-film",
       "version": "1.0.0",
       "sources": [
