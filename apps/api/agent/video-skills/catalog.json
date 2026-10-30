@@ -214,6 +214,11 @@
       "display_order": 420
     },
     {
+      "skill_id": "surreal-cinematic-product-worlds",
+      "version": "1.0.0",
+      "display_order": 425
+    },
+    {
       "skill_id": "brand-mark-in-context",
       "version": "1.0.0",
       "display_order": 430

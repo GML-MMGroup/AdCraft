@@ -1,0 +1,53 @@
+{
+  "skill_id": "surreal-cinematic-product-worlds",
+  "version": "1.0.0",
+  "display_name": "Surreal Cinematic Product Worlds",
+  "description": "Cinematic surreal brand advertising that moves from tangible everyday staging into expanded spaces, altered scale, or coherent impossible worlds, while preserving product identity, real use, tactile detail, and a settled hero finish for 15-30 second campaigns.",
+  "content_locale": "en-US",
+  "category": "experimental-graphic",
+  "tags": [
+    "surreal brand film",
+    "spatial transformation",
+    "product continuity",
+    "cinematic effects",
+    "tactile detail",
+    "hero finish"
+  ],
+  "supported_use_cases": [
+    "food and beverage brand films",
+    "beauty product launches",
+    "consumer technology campaigns",
+    "lifestyle product advertising"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Reference-derived everyday snack use, an expanded landscape, tactile food detail, and a stable package close.",
+    "media_url": "/api/v2/video-skills/surreal-cinematic-product-worlds/preview?v=1.0.0"
+  },
+  "display_order": 425,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": false,
+  "files": {
+    "SKILL.md": "e2d9c0935ffcf062dfe92e0beba58f696eabe597636dd362fb5ad123ef0f3cc2",
+    "previews/preview.webp": "844c0f9d5d5dc1d1445d5c4a06caed8b9dbf77aa7a98f262e6b10c7be34df6d7",
+    "references/bgm.md": "c04e23273ee1da251ffd6a9525e562845be96057fb78c207a555bd1ce78c5cdb",
+    "references/character.md": "9f47a81f04cd9a561a1e5be3eadd17d4dd3d5da55a356a5fcd055e82dba167d5",
+    "references/product.md": "7e2ba3c848ffc946382095d94f3753958312796b734be54e543ee9def08c4647",
+    "references/prop.md": "71e05407aa902b2d0ecb19b294f0efc5e569da0cb9e9830a569fdec8c726a54b",
+    "references/scene.md": "21891833463c3fb15faee9a90a2e3ef048fef5637f19aaefabc3055166f14960",
+    "references/script.md": "b6b981f5bca8d9cbc543a5aeb13f920222c12733454183c5ea90de72ed5e0408",
+    "references/source-analysis.md": "30e1170912c1d7dc162d5159dc56d5399377b8464be7412bb9bff916144ab686",
+    "references/storyboard.md": "179fa1debbd442a1a25a8ca620ec51db9242ff28accb56828fe1de4cf163409a",
+    "references/video.md": "ded342e6ea98ce5b01673ed2c342a433d1c06c6eacc3b106fb5e79fe39eed700"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

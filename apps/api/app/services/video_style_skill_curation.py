@@ -51,6 +51,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "shadiao-absurd-animation",
     "mixed-media-collage-motion",
     "surreal-pop-concept-film",
+    "surreal-cinematic-product-worlds",
     "brand-mark-in-context",
     "chinese-millennium-dreamcore",
     "miniature-world-cinema",

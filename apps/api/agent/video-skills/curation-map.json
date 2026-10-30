@@ -944,6 +944,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "surreal-cinematic-product-worlds",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "grounded-to-impossible staging",
+        "motivated spatial transitions",
+        "tactile product detail",
+        "settled hero finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Kept fifteen to thirty seconds as a creative application rather than a provider rule; removed the source frame shape, office, grain field, solo cast, gold ring, snack, and original brand as universal requirements."
+      ],
+      "naming_adaptation": "Named the treatment for cinematic product worlds and material continuity rather than a source brand, snack category, or mandatory pop-art rendering.",
+      "commercial_adaptation": "Generalized the use-triggered threshold, preserved subject and product identity, tactile detail, and stable commercial close across beverages, food, beauty, technology, and lifestyle; distinguished expressive scenery from proof of efficacy or ingredient origin.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "brand-mark-in-context",
       "version": "1.0.0",
       "sources": [
