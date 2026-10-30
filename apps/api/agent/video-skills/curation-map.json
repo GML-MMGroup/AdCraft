@@ -552,6 +552,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "melodrama-commerce-film",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "confrontational framing",
+        "reaction cuts",
+        "tactile product inserts",
+        "direct-to-camera sales finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed the reference runtime, frame shape, tumbler identity, handling stunt, and unverified source claims from reusable requirements."
+      ],
+      "naming_adaptation": "Named the user-reference-derived treatment for melodramatic coverage and its transition into product selling, without adopting the source brand.",
+      "commercial_adaptation": "Retained the contrast between confrontation, meaningful object details, and a direct sales finish; distinguished visual observations from the proposed instrumental accompaniment.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "designer-toy-ip-film",
       "version": "1.0.0",
       "sources": [

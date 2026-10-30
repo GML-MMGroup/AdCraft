@@ -1,0 +1,51 @@
+{
+  "skill_id": "melodrama-commerce-film",
+  "version": "1.0.0",
+  "display_name": "Melodrama Commerce Film",
+  "description": "Heightened short-drama performance, confrontational framing, reaction cuts, tactile product inserts, and an assertive direct-to-camera sales finish for product-led social advertising.",
+  "content_locale": "en-US",
+  "category": "cinematic-narrative",
+  "tags": [
+    "short drama",
+    "heightened emotion",
+    "reaction cuts",
+    "product inserts",
+    "direct response"
+  ],
+  "supported_use_cases": [
+    "short-drama product advertising",
+    "social commerce conversion",
+    "product benefit storytelling"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Reference-derived frames show social tension, an object insert, and the protagonist becoming the product presenter.",
+    "media_url": "/api/v2/video-skills/melodrama-commerce-film/preview?v=1.0.0"
+  },
+  "display_order": 280,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": false,
+  "files": {
+    "SKILL.md": "b1a3ffce839b779e168a3fa1b9e67e343e5caf6ac71a452000197c4ab1284073",
+    "previews/preview.webp": "f98f51f4b9f61076b3b0905b1d8c58842ec940064f935b68be3f3cbfa8b78ad1",
+    "references/bgm.md": "dd39a2c1e6bcdfe71c43c478acd96bf8ba2f0fcd7b85d6a06de0b5db935b874a",
+    "references/character.md": "e838e3352a63dd1ffeb22f719302d9eab1f13ae76c3e702ccb02c12cb41cbc9a",
+    "references/product.md": "f333e51796411fa215b023bcf14fb2b8d94cfe7dd787aeddefe2af893c978ef5",
+    "references/prop.md": "8dde7740d674a147709afdf98dc85c5ec5aa0d4a4d71f63fde712aeb40e57e38",
+    "references/scene.md": "23acb903b965fd0cb299b88c1b08fcc7266d502ddf6b61550f24996c62a6dd3c",
+    "references/script.md": "7e1ac6a07780cde159a549c2553f4af55a4b09063449ad9628e8ccf4da0798c5",
+    "references/source-analysis.md": "784b84e9ffd24be98aeafe32669cfb497ccf60df6eda1a6fa5f3b3cf354a285c",
+    "references/storyboard.md": "214485e804155b6f6a43b72afb2f235b8eaa30d63031a5a96e17812f653a7354",
+    "references/video.md": "03360455b84099250f608ada16e06ca6dcb2cfb9a710abbd46ec53b5bd868238"
+  },
+  "role_guidance": {
+    "bgm": "references/bgm.md",
+    "character": "references/character.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "script": "references/script.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
+  }
+}

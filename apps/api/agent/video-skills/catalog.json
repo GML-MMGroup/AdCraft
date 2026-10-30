@@ -134,6 +134,11 @@
       "display_order": 270
     },
     {
+      "skill_id": "melodrama-commerce-film",
+      "version": "1.0.0",
+      "display_order": 280
+    },
+    {
       "skill_id": "designer-toy-ip-film",
       "version": "1.0.0",
       "display_order": 310

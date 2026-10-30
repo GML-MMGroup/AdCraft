@@ -35,6 +35,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "lived-in-epic-cinema",
     "geometric-suspense-cinema",
     "kinetic-wuxia-fantasy",
+    "melodrama-commerce-film",
     "designer-toy-ip-film",
     "soft-3d-comfort-animation",
     "luminous-youth-anime",
