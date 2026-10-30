@@ -74,6 +74,11 @@
       "display_order": 70
     },
     {
+      "skill_id": "golden-macro-patisserie",
+      "version": "1.0.0",
+      "display_order": 80
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "display_order": 110

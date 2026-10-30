@@ -183,6 +183,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "golden-macro-patisserie",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "warm amber light",
+        "tactile microtexture",
+        "selective focus",
+        "crisp flaky edges"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Excluded the reference duration, frame shape, creator overlays, and fixed brand identity from reusable guidance."
+      ],
+      "naming_adaptation": "Named the user-reference-derived treatment for its golden macro optics and patisserie materials without adopting the source brand.",
+      "commercial_adaptation": "Authored a specific warm food-material treatment distinct from generic miniature staging and process storytelling; miniature labor remains an optional concept, and instrumental accompaniment is explicitly proposed.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "sources": [

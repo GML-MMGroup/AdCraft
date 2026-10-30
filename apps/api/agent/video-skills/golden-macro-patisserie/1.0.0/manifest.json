@@ -1,0 +1,51 @@
+{
+  "skill_id": "golden-macro-patisserie",
+  "version": "1.0.0",
+  "display_name": "Golden Macro Patisserie",
+  "description": "Warm amber macro imagery with crisp flaky textures, soft cream, dark fruit accents, selective focus, and patient tactile movement for premium food and material-led advertising.",
+  "content_locale": "en-US",
+  "category": "commercial-craft",
+  "tags": [
+    "warm macro",
+    "tactile food texture",
+    "selective focus",
+    "amber light",
+    "artisan detail"
+  ],
+  "supported_use_cases": [
+    "bakery and dessert campaigns",
+    "confectionery films",
+    "premium food presentation",
+    "tactile craft advertising"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Golden pastry layers, cream, dark blueberries, and a miniature finishing gesture in warm light.",
+    "media_url": "/api/v2/video-skills/golden-macro-patisserie/preview?v=1.0.0"
+  },
+  "display_order": 80,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": false,
+  "files": {
+    "SKILL.md": "7dd076f6e94fcf22377c16b613add8b7e3e1d762cd59f3ac1ab9ac9f0453db1a",
+    "previews/preview.webp": "e55e052c886d407f0c739e776b3575f4bd3ff0186a52ed32bb8858b77e67a0de",
+    "references/bgm.md": "bc8b2021045c9fa6e092f4b54ba4a4d45d7ef5c05572317e11e44be28e04a573",
+    "references/character.md": "78fa097ef28415f125438bfeb547ca8c7fd3c0e92c51f30c93f16aac29963daa",
+    "references/product.md": "cbceb5626527dfb453196085893bf4bed283b852b756054fd15180e6b9a06cd6",
+    "references/prop.md": "29165b29d3ae9f29ca31cbee44c933a42b26b54d5b07d7c38a2485875b0173f3",
+    "references/scene.md": "5e3496aedf55db57f76337116bd9975d4b98a2ff6d241bc95be2f5814aaf8123",
+    "references/script.md": "fd093874f7da94b85bf7c29b85c2fafb9570ed6c2447ba6a15e5003adf4d6372",
+    "references/storyboard.md": "5b9ccde7f56c75496c1c1459328a7ef680c9999704c55d12506e3703ddf03856",
+    "references/video.md": "7ec2b5724daace020afbd5d4b368974ad5def1e0b9c953ac73e2cc671bf10066"
+  },
+  "role_guidance": {
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "script": "references/script.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

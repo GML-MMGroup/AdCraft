@@ -23,6 +23,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "one-take-commercial",
     "beat-synced-camera-commercial",
     "sunlit-pastel-product-fantasy",
+    "golden-macro-patisserie",
     "fashion-showcase-film",
     "2000s-street-fashion-film",
     "jewelry-editorial-film",
