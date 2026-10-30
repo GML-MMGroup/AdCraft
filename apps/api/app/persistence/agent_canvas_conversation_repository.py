@@ -4203,6 +4203,16 @@ class AgentCanvasConversationRepository:
                     .mappings()
                     .one_or_none()
                 )
+                materialization = (
+                    connection.execute(
+                        select(AgentCanvasConceptProposalRow).where(
+                            AgentCanvasConceptProposalRow.materialization_turn_id == turn_id,
+                            AgentCanvasConceptProposalRow.materialization_status == "failed",
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
@@ -4211,6 +4221,7 @@ class AgentCanvasConversationRepository:
             raise _error("chat_turn_not_found", "Chat turn was not found.")
         return _turn(
             row,
+            materialization=materialization,
             continuation=(
                 _continuation_delivery(continuation_row) if continuation_row is not None else None
             ),
@@ -5308,11 +5319,22 @@ class AgentCanvasConversationRepository:
                     connection,
                     workflow_id,
                 )
+                materializations = {
+                    str(row["materialization_id"]): row
+                    for row in connection.execute(
+                        select(AgentCanvasConceptProposalRow).where(
+                            AgentCanvasConceptProposalRow.workflow_id == workflow_id,
+                            AgentCanvasConceptProposalRow.materialization_id.is_not(None),
+                        )
+                    ).mappings()
+                }
         except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
-        items = tuple(_timeline_entry(row) for row in rows)
+        items = tuple(
+            _materialization_progress(_timeline_entry(row), materializations) for row in rows
+        )
         current_session_actions = (
             ()
             if authority.session is not None
@@ -6578,6 +6600,7 @@ def _turn(
     row: RowMapping,
     *,
     continuation: ContinuationDeliveryV2 | None = None,
+    materialization: RowMapping | None = None,
 ) -> ChatTurnV2:
     operation_failure = (
         AgentOperationFailureV2.model_validate_json(str(row["operation_failure_json"]))
@@ -6597,6 +6620,10 @@ def _turn(
             else None
         )
     )
+    retryable = bool(row["retryable"])
+    if materialization is not None and str(row["status"]) == "failed":
+        actionable_failure = _materialization_actionable_failure(materialization)
+        retryable = actionable_failure.retryable
     return ChatTurnV2(
         turn_id=str(row["turn_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -6617,7 +6644,7 @@ def _turn(
         continuation=continuation,
         retry_of_turn_id=(str(row["retry_of_turn_id"]) if row["retry_of_turn_id"] else None),
         retry_attempt_no=int(row["retry_attempt_no"]),
-        retryable=bool(row["retryable"]),
+        retryable=retryable,
         actionable_failure=actionable_failure,
         operation_stage=(str(row["operation_stage"]) if row["operation_stage"] else None),
         operation_failure=operation_failure,
@@ -6737,6 +6764,25 @@ def _proposal(
             else ()
         )
     )
+    if (
+        materialization is not None
+        and materialization.status == "failed"
+        and current_session_revision
+    ):
+        recovery_actions = {
+            action.action: action
+            for action in _proposal_action_descriptors(
+                proposal_id=str(row["proposal_id"]),
+                expected_session_revision=current_session_revision,
+                proposal_kind=str(row["proposal_kind"]),
+            )
+        }
+        # Revision recovery uses current session authority. Selection replays
+        # retain their frozen descriptors and canonical materialization identity.
+        actions = tuple(
+            recovery_actions[action.action] if action.action == "revise_options" else action
+            for action in actions
+        )
     if materialization is not None and materialization.status in {"queued", "working"}:
         actions = tuple(
             action.model_copy(
@@ -6854,6 +6900,41 @@ def _proposal_character_target(row: RowMapping) -> CharacterProposalTargetV1 | N
             "character_proposal_scope_invalid",
             "Persisted Character Proposal scope is invalid.",
         ) from error
+
+
+def _materialization_progress(
+    entry: ChatTimelineEntryV2,
+    materializations: dict[str, RowMapping],
+) -> ChatTimelineEntryV2:
+    """Project historical progress from its current materialization authority."""
+
+    if entry.entry_type != "planning_progress":
+        return entry
+    proposal = materializations.get(str(entry.metadata.get("materialization_id")))
+    if proposal is None:
+        return entry
+    status = str(proposal["materialization_status"])
+    failure = _materialization_actionable_failure(proposal) if status == "failed" else None
+    content = {
+        "failed": "Preparing the selected direction failed. Please review the recovery action.",
+        "completed": "The selected direction is ready as an editable Draft.",
+        "queued": "The selected direction is being prepared as an editable Draft.",
+        "working": "The selected direction is being prepared as an editable Draft.",
+    }.get(status, entry.content)
+    return entry.model_copy(
+        update={
+            "content": content,
+            "actionable_failure": failure,
+            "metadata": {
+                **entry.metadata,
+                "status": status,
+                "turn_id": str(proposal["materialization_turn_id"]),
+                "retryable": failure.retryable if failure else False,
+                "error_code": proposal["materialization_error_code"] if failure else None,
+                "actionable_failure": failure.model_dump(mode="json") if failure else None,
+            },
+        }
+    )
 
 
 def _timeline_entry(row: RowMapping) -> ChatTimelineEntryV2:

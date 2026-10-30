@@ -1892,6 +1892,7 @@ def create_agent_canvas_runtime(
             turn_id,
             error_code=code,
             error_message=message,
+            retryable=explicit_retryable,
         ):
             return conversation_repository.get_turn(turn_id)
         # Storyboard materialization is immutable once committed.  A later
@@ -3383,6 +3384,7 @@ def retry_chat_turn(
         if typed_delivery is not None and typed_delivery.operation in {
             "next_action",
             "capability_command",
+            "capability_materialization",
         }:
             background_tasks.add_task(
                 runtime.accepted_background.run,
