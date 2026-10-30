@@ -39,6 +39,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "kinetic-wuxia-fantasy",
     "melodrama-commerce-film",
     "costume-comedy-live-action",
+    "whip-pan-promo-ambush",
     "designer-toy-ip-film",
     "soft-3d-comfort-animation",
     "luminous-youth-anime",
