@@ -2402,7 +2402,7 @@ describe("brand Skill sending outside the modal", () => {
     expect(chat.actions.refresh).toHaveBeenCalledOnce();
     expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledOnce();
     view.rerender(panel(true, false));
-    expect(screen.getByRole("button", { name: "Proposal sent" }).hasAttribute("disabled")).toBe(true);
+    expect((await screen.findByRole("button", { name: "Proposal sent" })).hasAttribute("disabled")).toBe(true);
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
