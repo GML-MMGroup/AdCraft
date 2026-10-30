@@ -42,7 +42,7 @@
     },
     {
       "path": "video_agent_role_prompt_authoring/SKILL.md",
-      "sha256": "4c489adc3257c8a03cc2600155bb6fb8889f8fbc9bd85192580da38105b76294",
+      "sha256": "6c47aa6401464a7d0f2ae7455c5f56cdbbf95e33b004b8b5c28f0db5786f424f",
       "skill_id": "video_agent_role_prompt_authoring"
     },
     {
@@ -57,12 +57,12 @@
     },
     {
       "path": "video_agent_storyboard_design/SKILL.md",
-      "sha256": "b7bc66e7f8b5884e8b952f0c0b6d0e9ac83e5a03d944b72d52a1715ea5216958",
+      "sha256": "6065ce487d96cfc96197f35c8fc419b64973c0bf089388565f42aee06b318b2d",
       "skill_id": "video_agent_storyboard_design"
     },
     {
       "path": "video_agent_video_direction/SKILL.md",
-      "sha256": "1f5c041b13682e473ae72dc08831dfef261c8fa0032a3946fbd4b2b829b74c98",
+      "sha256": "37cf4c183fd09e9fc4913139099ee08068f8a5cf21b879e7797d610288ea2430",
       "skill_id": "video_agent_video_direction"
     },
     {
