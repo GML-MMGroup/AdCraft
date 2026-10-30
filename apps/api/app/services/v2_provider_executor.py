@@ -53,6 +53,7 @@ from app.services.v2_provider_reference_input_delivery import (
     V2ProviderReferenceInputDeliveryService,
 )
 from app.services.provider_adapter_registry import ProviderAdapterRegistry
+from app.services.provider_image_input_limits import classify_provider_image_input_limit
 from app.services.provider_native_adapters import (
     CanonicalProviderReference,
     CanonicalProviderRequest,
@@ -281,6 +282,28 @@ def _provider_submit_diagnostics(
         diagnostics["provider_response_summary"] = response_summary
     provider_message = response_details.get("provider_message")
     return diagnostics, provider_message if isinstance(provider_message, str) else None
+
+
+def _provider_failure_details(
+    *,
+    media_type: WorkflowMediaTypeV2,
+    diagnostics: dict[str, Any],
+    provider_message: str | None,
+    error_code: str,
+    error_message: str | None,
+) -> tuple[str, str | None, dict[str, Any]]:
+    limit = (
+        classify_provider_image_input_limit(diagnostics, provider_message)
+        if media_type == "image"
+        else None
+    )
+    if limit is not None:
+        return (
+            "provider_image_input_limit_exceeded",
+            limit.message,
+            {**diagnostics, **limit.metadata},
+        )
+    return error_code, error_message, diagnostics
 
 
 def _first_summary_value(sources: tuple[dict[str, Any], ...], keys: tuple[str, ...]) -> Any:
@@ -748,6 +771,13 @@ class V2ProviderExecutor:
             )
         except MediaApiError as exc:
             diagnostics, provider_message = _provider_submit_diagnostics(payload, exc.metadata)
+            error_code, error_message, diagnostics = _provider_failure_details(
+                media_type=slot.media_type,
+                diagnostics=diagnostics,
+                provider_message=provider_message,
+                error_code="provider_request_failed",
+                error_message=provider_message or "Provider request failed.",
+            )
             return self._with_reference_adaptation(
                 V2ProviderResult(
                     status="failed",
@@ -755,8 +785,8 @@ class V2ProviderExecutor:
                     provider=provider_id,
                     provider_payload_snapshot={"request_summary": diagnostics["request_summary"]},
                     reference_asset_ids=list(adaptation.submitted_reference_asset_ids),
-                    error_code="provider_request_failed",
-                    error_message=provider_message or "Provider request failed.",
+                    error_code=error_code,
+                    error_message=error_message,
                     metadata=diagnostics,
                 ),
                 adaptation,
@@ -953,6 +983,27 @@ class V2ProviderExecutor:
                     media_type=media_type,
                     provider_payload=provider_payload,
                     reference_asset_ids=reference_asset_ids,
+                )
+            except MediaApiError as exc:
+                diagnostics, provider_message = _provider_submit_diagnostics(
+                    provider_payload, exc.metadata
+                )
+                error_code, error_message, diagnostics = _provider_failure_details(
+                    media_type=media_type,
+                    diagnostics=diagnostics,
+                    provider_message=provider_message,
+                    error_code="provider_request_failed",
+                    error_message=provider_message or "Provider request failed.",
+                )
+                return V2ProviderResult(
+                    status="failed",
+                    media_type=media_type,
+                    provider=str(provider_payload.get("provider_id") or "") or None,
+                    provider_payload_snapshot={"request_summary": diagnostics["request_summary"]},
+                    reference_asset_ids=reference_asset_ids,
+                    error_code=error_code,
+                    error_message=error_message,
+                    metadata=diagnostics,
                 )
             except Exception as exc:  # noqa: BLE001 - provider errors become result state.
                 return V2ProviderResult(
@@ -1386,13 +1437,20 @@ class V2ProviderExecutor:
             summary = "Provider request failed"
             if http_status is not None:
                 summary += f" (HTTP {http_status})"
-            return _native_provider_failure(
+            error_code, error_message, diagnostics = _provider_failure_details(
                 media_type=media_type,
-                provider_payload=provider_payload,
+                diagnostics=diagnostics,
+                provider_message=provider_message,
                 error_code="provider_request_failed",
                 error_message=f"{summary}: {provider_message}"
                 if provider_message
                 else summary + ".",
+            )
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code=error_code,
+                error_message=error_message,
                 diagnostics=diagnostics,
                 reference_asset_ids=reference_asset_ids,
             )
@@ -1400,12 +1458,20 @@ class V2ProviderExecutor:
             error_code = str(error)
             if error_code not in _NATIVE_PROVIDER_ERROR_CODES:
                 error_code = "provider_generation_failed"
+            diagnostics = dict(getattr(error, "diagnostics", None) or {})
+            error_code, error_message, diagnostics = _provider_failure_details(
+                media_type=media_type,
+                diagnostics=diagnostics,
+                provider_message=diagnostics.get("provider_message"),
+                error_code=error_code,
+                error_message=_native_contract_failure_message(error),
+            )
             return _native_provider_failure(
                 media_type=media_type,
                 provider_payload=provider_payload,
                 error_code=error_code,
-                diagnostics=getattr(error, "diagnostics", None),
-                error_message=_native_contract_failure_message(error),
+                diagnostics=diagnostics,
+                error_message=error_message,
                 reference_asset_ids=reference_asset_ids,
             )
         except Exception as error:  # noqa: BLE001 - native transport failures become results.

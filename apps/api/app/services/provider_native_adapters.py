@@ -388,6 +388,8 @@ class OpenRouterImageTransport:
             raise ValueError("provider_response_contract_invalid") from error
         if not isinstance(parsed, Mapping):
             raise ValueError("provider_response_contract_invalid")
+        if isinstance(parsed.get("error"), Mapping):
+            raise _image_http_error(response, api_key=self._api_key)
         return parsed
 
     def poll(self, provider_task_id: str) -> Mapping[str, object]:
