@@ -57,6 +57,18 @@ _PROVIDER_ERROR_CODES = {
 }
 
 
+def _tianpuyue_wire_model(configured_model: str | None) -> str:
+    """Translate exact catalog identities without guessing a model or version."""
+
+    model = str(configured_model or "").strip()
+    return {
+        "TemPolor-i3": "TemPolor i3",
+        "tianpuyue:TemPolor-i3": "TemPolor i3",
+        "TemPolor-i3.5": "TemPolor i3.5",
+        "tianpuyue:TemPolor-i3.5": "TemPolor i3.5",
+    }.get(model, model)
+
+
 class TianpuyuePureMusicError(ValueError):
     def __init__(self, code: str, message: str, *, metadata: dict[str, Any]) -> None:
         super().__init__(message)
@@ -79,10 +91,10 @@ def select_tianpuyue_instrumental_model(
             },
         )
     if duration_seconds <= TIANPUYUE_SHORT_DURATION_LIMIT_SECONDS:
-        model = str(settings.bgm_model or "").strip()
+        model = _tianpuyue_wire_model(settings.bgm_model)
         duration_limit_seconds = TIANPUYUE_SHORT_DURATION_LIMIT_SECONDS
     else:
-        model = str(settings.bgm_long_model or "").strip()
+        model = _tianpuyue_wire_model(settings.bgm_long_model)
         duration_limit_seconds = TIANPUYUE_LONG_DURATION_LIMIT_SECONDS
     if not model:
         raise MediaConfigurationError("Tianpuyue BGM model configuration is required.")
@@ -97,16 +109,16 @@ def select_frozen_tianpuyue_instrumental_model(
     duration_seconds: int,
     settings: Settings,
 ) -> TianpuyueInstrumentalModelSelection:
-    """Map a frozen catalog model ID to Tianpuyue's configured wire model."""
+    """Preserve the frozen catalog identity when resolving configured wire aliases."""
 
     frozen_model_id = provider_model_id.strip()
     model_config = {
         "TemPolor-i3": (
-            str(settings.bgm_model or "").strip(),
+            _tianpuyue_wire_model(settings.bgm_model),
             TIANPUYUE_SHORT_DURATION_LIMIT_SECONDS,
         ),
         "TemPolor-i3.5": (
-            str(settings.bgm_long_model or "").strip(),
+            _tianpuyue_wire_model(settings.bgm_long_model),
             TIANPUYUE_LONG_DURATION_LIMIT_SECONDS,
         ),
     }.get(frozen_model_id)
@@ -130,6 +142,12 @@ def select_frozen_tianpuyue_instrumental_model(
         )
     if not model:
         raise MediaConfigurationError("Tianpuyue BGM model configuration is required.")
+    if model != _tianpuyue_wire_model(frozen_model_id):
+        raise TianpuyuePureMusicError(
+            "bgm_provider_model_mismatch",
+            "The configured Tianpuyue wire model does not match the frozen model identity.",
+            metadata={"frozen_provider_model_id": frozen_model_id},
+        )
     return TianpuyueInstrumentalModelSelection(
         model=model,
         duration_limit_seconds=duration_limit_seconds,

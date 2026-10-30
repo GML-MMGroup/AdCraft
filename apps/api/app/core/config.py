@@ -113,8 +113,8 @@ class Settings:
     teamorouter_base_url: str = "https://api.teamorouter.com/v1"
     teamorouter_proxy_url: str | None = None
     llm_transient_retry_delay_seconds: float = 2.0
-    llm_front_desk_model: str = "doubao-seed-2-0-mini-260428"
-    llm_team_model: str = "doubao-seed-2-0-mini-260428"
+    llm_front_desk_model: str = "doubao-seed-2-1-pro-260628"
+    llm_team_model: str = "doubao-seed-2-1-pro-260628"
     llm_requirements_model: str = "doubao-seed-2-0-mini-260428"
     llm_product_design_model: str = "doubao-seed-2-0-mini-260428"
     llm_creative_model: str = "doubao-seed-2-0-mini-260428"
@@ -131,7 +131,7 @@ class Settings:
     local_settings_allowed_origins: tuple[str, ...] = DEFAULT_LOCAL_SETTINGS_ALLOWED_ORIGINS
     image_generation_api_key: str | None = None
     image_generation_endpoint: str | None = None
-    image_generation_model: str = "doubao-seedream-5-0-lite-260128"
+    image_generation_model: str = "doubao-seedream-5-0-pro-260628"
     image_generation_size: str = "2048x2048"
     video_generation_api_key: str | None = None
     video_generation_endpoint: str | None = None
@@ -358,8 +358,8 @@ class Settings:
             bgm_submit_action=os.getenv("BGM_SUBMIT_ACTION", cls.bgm_submit_action),
             bgm_api_version=os.getenv("BGM_API_VERSION", cls.bgm_api_version),
             bgm_generation_version=os.getenv("BGM_GENERATION_VERSION", cls.bgm_generation_version),
-            bgm_model=os.getenv("BGM_MODEL") or cls.bgm_model,
-            bgm_long_model=os.getenv("BGM_LONG_MODEL") or cls.bgm_long_model,
+            bgm_model=os.getenv("BGM_MODEL", cls.bgm_model),
+            bgm_long_model=os.getenv("BGM_LONG_MODEL", cls.bgm_long_model),
             bgm_callback_mode=os.getenv("BGM_CALLBACK_MODE", cls.bgm_callback_mode),
             bgm_callback_base_url=os.getenv("BGM_CALLBACK_BASE_URL") or None,
             bgm_query_endpoint=os.getenv("BGM_QUERY_ENDPOINT") or None,

@@ -128,6 +128,7 @@ export class PythonInternalClient {
       payload.protocol_version !== "1" ||
       typeof payload.model_ref !== "string" ||
       typeof payload.model_id !== "string" ||
+      !payload.model_id.trim() ||
       typeof payload.model_policy_id !== "string" ||
       typeof payload.provider !== "string" ||
       typeof payload.supports_tool_calls !== "boolean" ||
