@@ -68,7 +68,8 @@ class V2AssetRenditionService:
         kind: str,
         max_dimension: int | None = None,
         min_short_side: int | None = None,
-        image_processing: Literal["storyboard_soften_v1"] | None = None,
+        image_processing: Literal["storyboard_soften_v1", "human_face_blur_sigma7_v1"]
+        | None = None,
     ) -> AssetRendition:
         if kind not in {"preview", "poster", "provider_reference"}:
             raise V2PersistenceError(
@@ -77,13 +78,13 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         if image_processing is not None and (
-            image_processing != "storyboard_soften_v1"
+            image_processing not in {"storyboard_soften_v1", "human_face_blur_sigma7_v1"}
             or kind != "provider_reference"
             or media_type != "image"
         ):
             raise V2PersistenceError(
                 "asset_rendition_processing_invalid",
-                "Storyboard softening requires an image provider reference rendition.",
+                "Image processing requires an image provider reference rendition.",
                 stage="v2_asset_rendition_service",
             )
         if media_type not in {"image", "video"}:
@@ -115,7 +116,8 @@ class V2AssetRenditionService:
                     ),
                     stage="v2_asset_rendition_service",
                 )
-            max_dimension = max_dimension or 2048
+            if image_processing != "human_face_blur_sigma7_v1":
+                max_dimension = max_dimension or 2048
             if min_short_side is not None and (
                 max_dimension not in {1024, 768, 512, 320}
                 or not 300 <= min_short_side <= max_dimension
@@ -160,9 +162,11 @@ class V2AssetRenditionService:
         if media_type == "image":
             dimension = max_dimension or 640
             filters = (
+                "null"
+                if kind == "provider_reference" and max_dimension is None
                 # Long side at the target, but never a short side below the
                 # provider minimum (Seedance rejects images under 300px).
-                f"scale=w='if(gte(iw\\,ih)\\,min(iw\\,max({dimension}\\,"
+                else f"scale=w='if(gte(iw\\,ih)\\,min(iw\\,max({dimension}\\,"
                 f"ceil({min_short_side}*iw/ih/2)*2))\\,-2)'"
                 f":h='if(gte(iw\\,ih)\\,-2\\,min(ih\\,max({dimension}\\,"
                 f"ceil({min_short_side}*ih/iw/2)*2)))'"
@@ -177,6 +181,8 @@ class V2AssetRenditionService:
                 # Scale sigma with delivery size to keep the same visual treatment.
                 sigma = 4 * dimension / 320
                 filters += f",gblur=sigma={sigma}:steps=3"
+            elif image_processing == "human_face_blur_sigma7_v1":
+                filters += ",gblur=sigma=7:steps=3"
             command = [
                 self._ffmpeg_path,
                 "-y",

@@ -24,6 +24,10 @@ from app.schemas.seedance_inputs import (
     StoryboardReferenceIdentityAuditV1,
 )
 from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
+from app.services.agent_canvas_character_identity_prompt import (
+    LabeledIdentityReference,
+    compile_character_identity_prompt,
+)
 
 
 class AgentCanvasSeedanceInputCompiler:
@@ -76,6 +80,24 @@ class AgentCanvasSeedanceInputCompiler:
             item.reference_purpose in {"storyboard_grid", "storyboard_sequence"}
             for item in media_inputs
         )
+        character_prompt = compile_character_identity_prompt(
+            resolved_inputs,
+            tuple(
+                LabeledIdentityReference(
+                    label=item.label,
+                    binding_id=item.binding_id,
+                    asset_id=item.asset_id,
+                    version_id=item.version_id,
+                    checksum=item.checksum,
+                    source_semantic_role=item.source_semantic_role,
+                )
+                for item in media_inputs
+                if item.media_type == "image"
+            ),
+            has_storyboard=has_storyboard,
+        )
+        if character_prompt:
+            compiled_prompt = f"{compiled_prompt}\n\n{character_prompt}"
         manifest = SeedanceInputManifestV1(
             node_id=node.node_id,
             model_id=model_id,

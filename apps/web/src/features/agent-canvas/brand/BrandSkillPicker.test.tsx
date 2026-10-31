@@ -128,6 +128,7 @@ it("optimistically acknowledges sending and continues after the panel is closed"
 
   view.rerender(panel(true));
   expect(screen.getByRole("dialog")).toBeTruthy();
+  await screen.findByLabelText(/metaphor/);
   expect(screen.getByRole("status").textContent).toContain("方案已发送");
   expect(screen.getByRole("button", { name: "方案已发送" }).hasAttribute("disabled")).toBe(true);
 });
@@ -163,7 +164,7 @@ it("reports a failed optimistic send while closed and preserves the selection fo
   fireEvent.click(screen.getByRole("button", { name: "查看方案" }));
   expect(onOpen).toHaveBeenCalledOnce();
   view.rerender(panel(true));
-  expect((screen.getByLabelText(/ritual/) as HTMLInputElement).checked).toBe(true);
+  expect((await screen.findByLabelText(/ritual/) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByRole("button", { name: "保存并发送" }).hasAttribute("disabled")).toBe(false);
   expect(agentCanvasApi.brandNextQuestion).not.toHaveBeenCalled();
 });
@@ -262,4 +263,124 @@ it("keeps later stages read-only", async () => {
   await screen.findByText("Skills cannot be edited at the current stage.");
   expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
   expect(agentCanvasApi.brandSelectSkills).not.toHaveBeenCalled();
+});
+
+it("enables selection when the skill card arrives at the current stage revision", async () => {
+  const waiting = { ...initial, open_card: null, skill_stack: null };
+  const props = { responseLocale: "zh-CN", onClose: vi.fn(), onUpdated: vi.fn(), onConversationRefresh: vi.fn() };
+  const view = render(<BrandSkillPicker {...props} decisions={waiting} open={false} />);
+
+  view.rerender(<BrandSkillPicker {...props} decisions={initial} open />);
+
+  const method = await screen.findByLabelText(/ritual/);
+  expect(method.matches(":disabled")).toBe(false);
+  expect(screen.queryByText("当前阶段不可修改 Skills。")).toBeNull();
+  expect((screen.getByLabelText(/metaphor/) as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(method);
+  fireEvent.click(screen.getByLabelText(/style-b/));
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledWith("w1", expect.objectContaining({
+    card_id: "card-5", expected_stage_revision: 5, confirm: false,
+    creative_methods: methods.map(({ skill_id, version }) => ({ skill_id, version })),
+    audiovisual_style: { skill_id: "style-b", version: "1.0.0" },
+  })));
+});
+
+it("preserves the editable draft on repeated or incomplete same-revision reads", async () => {
+  const props = { responseLocale: "zh-CN", onClose: vi.fn(), onUpdated: vi.fn(), onConversationRefresh: vi.fn() };
+  const view = render(<BrandSkillPicker {...props} decisions={initial} />);
+  fireEvent.click(await screen.findByLabelText(/ritual/));
+  fireEvent.click(screen.getByLabelText(/style-b/));
+
+  for (const decisions of [structuredClone(initial), { ...initial, open_card: null, skill_stack: null }]) {
+    view.rerender(<BrandSkillPicker {...props} decisions={decisions} />);
+    expect((screen.getByLabelText(/ritual/) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText(/style-b/) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByLabelText(/ritual/).matches(":disabled")).toBe(false);
+  }
+
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(agentCanvasApi.brandSelectSkills).toHaveBeenCalledWith("w1", expect.objectContaining({
+    creative_methods: methods.map(({ skill_id, version }) => ({ skill_id, version })),
+    audiovisual_style: { skill_id: "style-b", version: "1.0.0" },
+  })));
+});
+
+it.each([4, 6])("does not enable a late card with mismatched revision %s", async (stage_revision) => {
+  const waiting = { ...initial, open_card: null, skill_stack: null };
+  const props = { responseLocale: "zh-CN", onClose: vi.fn(), onUpdated: vi.fn(), onConversationRefresh: vi.fn() };
+  const view = render(<BrandSkillPicker {...props} decisions={waiting} open={false} />);
+  view.rerender(<BrandSkillPicker {...props} decisions={{ ...initial, open_card: { ...initial.open_card!, stage_revision } }} open />);
+  await screen.findByText("正在准备推荐组合，请稍候…");
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+  expect(agentCanvasApi.brandSelectSkills).not.toHaveBeenCalled();
+});
+
+it("shows only a loading state until the creative catalog is ready", async () => {
+  let resolve!: (value: { items: typeof methods }) => void;
+  vi.mocked(agentCanvasApi.brandCreativeMethodSkills).mockReturnValue(new Promise(done => { resolve = done; }));
+  setup();
+  expect(screen.getByRole("status").textContent).toContain("正在加载 Skills");
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
+  expect(screen.getByRole("button", { name: "取消" })).toBeTruthy();
+  await act(async () => resolve({ items: methods }));
+  expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+  expect(screen.getAllByRole("radio")).toHaveLength(3);
+  expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false);
+});
+
+it("hides partial choices on catalog failure and reveals them after retry", async () => {
+  vi.mocked(agentCanvasApi.brandCreativeMethodSkills).mockRejectedValueOnce(new Error("Offline"));
+  setup();
+  expect((await screen.findByRole("alert")).textContent).toContain("加载失败");
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.queryByRole("button", { name: "保存并发送" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
+  await screen.findByLabelText(/metaphor/);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false);
+  expect(agentCanvasApi.brandCreativeMethodSkills).toHaveBeenCalledTimes(2);
+  expect(agentCanvasApi.brandSelectSkills).not.toHaveBeenCalled();
+});
+
+it("waits for recommendations even after the creative catalog has loaded", async () => {
+  const props = { responseLocale: "zh-CN", onClose: vi.fn(), onUpdated: vi.fn(), onConversationRefresh: vi.fn() };
+  const view = render(<BrandSkillPicker {...props} decisions={{ ...initial, open_card: null, skill_stack: null }} />);
+  await screen.findByText("正在准备推荐组合，请稍候…");
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+  view.rerender(<BrandSkillPicker {...props} decisions={initial} />);
+  expect((await screen.findByLabelText(/metaphor/) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getAllByRole("radio")).toHaveLength(3);
+});
+
+it("offers recovery for an empty catalog without showing partial options", async () => {
+  vi.mocked(agentCanvasApi.brandCreativeMethodSkills).mockResolvedValueOnce({ items: [] });
+  setup();
+  expect((await screen.findByRole("alert")).textContent).toContain("暂无可选创意方法");
+  expect(screen.queryByRole("radio")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
+  await screen.findByLabelText(/metaphor/);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("ignores a failed request from a closed dialog after reopening succeeds", async () => {
+  let reject!: (reason: Error) => void;
+  vi.mocked(agentCanvasApi.brandCreativeMethodSkills).mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
+  const props = { decisions: initial, responseLocale: "zh-CN", onClose: vi.fn(), onUpdated: vi.fn(), onConversationRefresh: vi.fn() };
+  const view = render(<BrandSkillPicker {...props} open />);
+  view.rerender(<BrandSkillPicker {...props} open={false} />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  view.rerender(<BrandSkillPicker {...props} open />);
+  fireEvent.click(await screen.findByLabelText(/ritual/));
+  await act(async () => reject(new Error("Late failure")));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect((screen.getByLabelText(/ritual/) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false);
 });

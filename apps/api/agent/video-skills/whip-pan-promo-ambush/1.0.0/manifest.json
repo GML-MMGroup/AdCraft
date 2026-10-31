@@ -1,0 +1,53 @@
+{
+  "skill_id": "whip-pan-promo-ambush",
+  "version": "1.0.0",
+  "display_name": "Whip-Pan Promo Ambush",
+  "description": "An urgent interruption, two motivated whip pans, an unexpected threshold-side presenter, and a readable direct product-and-offer pitch for portrait-led 8-30 second promotional reversals in vehicles, homes, or other everyday settings.",
+  "content_locale": "en-US",
+  "category": "cinematic-narrative",
+  "tags": [
+    "promotional reversal",
+    "double whip pan",
+    "unexpected presenter",
+    "direct response",
+    "portrait composition",
+    "expressive performance"
+  ],
+  "supported_use_cases": [
+    "shopping-event promotions",
+    "verified bundle campaigns",
+    "household and lifestyle offers",
+    "consumer product sales films"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Reference-derived storm boundary, cabin reaction, and an unexpected visitor presenting a device; source campaign text is illustrative only.",
+    "media_url": "/api/v2/video-skills/whip-pan-promo-ambush/preview?v=1.0.0"
+  },
+  "display_order": 295,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "c575f1e143ef22292798059f121ad6d4c46a34e4d94eba2b2756476b59ddac93",
+    "previews/preview.webp": "667722155d5756448128113976d0299cfcc73b7c89f1803304f3c4647f8c3317",
+    "references/bgm.md": "6fe85051c9b475368231846c8c9965267bb106ebb3c23d34843a73f7a9433a11",
+    "references/character.md": "c5add585a1cd07a288a7402c33ee2ce8e99e9245002cc86d7b8d600a21e85646",
+    "references/product.md": "1ea83220ff4ade59e7bb5c583aae2792ad0998fa981ae0c89f0a1daa3e3e9d35",
+    "references/prop.md": "06518c81312b482932402932aee03370afbc19c2db460c7f27d09f827571839f",
+    "references/scene.md": "a3d28baff7baca96717d1c2321893630e83a37ef28c96ba5aaea1ff0da7f14a0",
+    "references/script.md": "17664298f6733c4e993e4574cf597ca0db810fb57360a5ec92b8f067c568a582",
+    "references/source-analysis.md": "2b204e63b1775de45c0c4cc02d12f629ce644468719454f76a12a18b3569db0a",
+    "references/storyboard.md": "251ef31d969131311fdc974a7b157164f03df16a88e07507c40c4980f3f07784",
+    "references/video.md": "42aceb03376afa35eb8cba40bd710f685b48216f2dbb2dbb6f4909887f864ec0"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

@@ -388,6 +388,8 @@ class OpenRouterImageTransport:
             raise ValueError("provider_response_contract_invalid") from error
         if not isinstance(parsed, Mapping):
             raise ValueError("provider_response_contract_invalid")
+        if isinstance(parsed.get("error"), Mapping):
+            raise _image_http_error(response, api_key=self._api_key)
         return parsed
 
     def poll(self, provider_task_id: str) -> Mapping[str, object]:
@@ -414,11 +416,11 @@ class OpenRouterImageAdapter(ProviderNativeAdapter):
                 ReferenceInputModeV1(mode="text_only", max_references=0),
                 ReferenceInputModeV1(
                     mode="native_reference_slots",
-                    max_references=4,
+                    max_references=16,
                     allowed_roles=("product_reference", "scene_reference", "character_reference"),
                 ),
             ),
-            max_images=4,
+            max_images=16,
         ),
         parameter_schema_id="openrouter-gpt-image-2-v1",
         parameter_matrix=ModelParameterMatrixV1(

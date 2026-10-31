@@ -1,0 +1,54 @@
+{
+  "skill_id": "japanese-summer-sensory-film",
+  "version": "1.0.0",
+  "display_name": "Japanese Summer Sensory Film",
+  "description": "Photographic Japanese summer brand atmosphere built from wind, luminous daylight, water, easy movement or quiet routines, tactile product use, and a clear hero finish for 15-30 second beverage, sport, lifestyle, and seasonal advertising.",
+  "content_locale": "en-US",
+  "category": "lifestyle-documentary",
+  "tags": [
+    "Japanese summer",
+    "sensory atmosphere",
+    "natural use",
+    "luminous daylight",
+    "fresh everyday life",
+    "hero product finish"
+  ],
+  "supported_use_cases": [
+    "summer beverage advertising",
+    "light sport campaigns",
+    "everyday lifestyle products",
+    "seasonal product launches"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Reference-derived clear water, a chilled bottle, a natural sip, and a sunlit seaside product finish.",
+    "media_url": "/api/v2/video-skills/japanese-summer-sensory-film/preview?v=1.0.0"
+  },
+  "display_order": 525,
+  "video_representation_mode": "illustration_to_live_action",
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": false,
+  "files": {
+    "SKILL.md": "927648a31d459dc0103e636e06a8c15e8976bf53f7be9a344d16de66d89dc9ad",
+    "previews/preview.webp": "867204f0b2aa82bc0b7ca1d0aad42faca17dfe1ff22622798355b6ff6fd72e2d",
+    "references/bgm.md": "e595e391dff5f18700fdf98b59831f5928a75d216ab1b2d63ad0e43ed26572a9",
+    "references/character.md": "38cff6331e3bb6cbed629a2fb7c3f2ce6d10e371dd5bcdd2fee4e9367a6be880",
+    "references/product.md": "01ecf35c79dbbc5c02a1bc5a27b65a8b94ea70fcea6a21fc021ee950dd996ba9",
+    "references/prop.md": "71fdc310cbdd4ab3ff0f09174e063ce4d4f42492d5c4191a30d80b6bac9a29be",
+    "references/scene.md": "798a49c44d9f40b95d99832268cade6b2b525dcf8aad97496f4a84589489964b",
+    "references/script.md": "97e689731e350d0c5be915382b34b30dddd8f1b19c496b4ebb8bb31b178cff03",
+    "references/source-analysis.md": "195ddf740a05385eb47eaf26b61a875810531f0e5acd0e3a48269acc29ee0de6",
+    "references/storyboard.md": "6ac37e2d3c0000d934a3a9390f0a7ce6e3166f5db7f8cd51bcc88642c59fa9b8",
+    "references/video.md": "fad99cc2130f35616db14585fbb816fe587bb88d4f93605aed21cb9d0d70cc8a"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

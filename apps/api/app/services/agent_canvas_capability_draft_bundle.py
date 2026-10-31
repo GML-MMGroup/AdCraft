@@ -729,7 +729,7 @@ def _draft_nodes(
                 if binding.target_node_id != node.node_id:
                     continue
                 source_role = _grid_source_role(binding, dict(reference_nodes))
-                if source_role in {"character_turnaround", "scene_board"}:
+                if source_role in {"product_multiview", "character_turnaround", "scene_board"}:
                     candidates.append((index, binding, source_role))
             candidate_ids.update(binding.binding_id for _index, binding, _role in candidates)
             selected_ids.update(

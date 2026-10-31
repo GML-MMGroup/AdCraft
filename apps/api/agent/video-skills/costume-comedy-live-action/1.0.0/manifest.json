@@ -1,0 +1,52 @@
+{
+  "skill_id": "costume-comedy-live-action",
+  "version": "1.0.0",
+  "display_name": "Live-Action Costume Comedy",
+  "description": "Lavish period staging, exaggerated actor expressions, abrupt comic reactions, tactile product demonstrations, and a clear sales finish for playful live-action costume advertising.",
+  "content_locale": "en-US",
+  "category": "cinematic-narrative",
+  "tags": [
+    "live action",
+    "costume comedy",
+    "exaggerated acting",
+    "period contrast",
+    "product demonstration"
+  ],
+  "supported_use_cases": [
+    "period-comedy product advertising",
+    "social commerce shorts",
+    "playful product introductions"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Live-action costume comedy: warm gold, lacquer red, and a tension-to-delight performance arc.",
+    "media_url": "/api/v2/video-skills/costume-comedy-live-action/preview?v=1.0.0"
+  },
+  "display_order": 290,
+  "video_representation_mode": "illustration_to_live_action",
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "0d59b7f5f5f6ab2c615b8f46f36ee867892ba2c951a20e5fecd61a1f40d796b5",
+    "previews/preview.webp": "2b0be6c22418076d4ff05d063eec8c67e24dd987ac1d85d5ebc83d2860d013ec",
+    "references/bgm.md": "5d57133f46eae3d0535f52dbe532dc6c364eb99dd2aab3ca128c53826185b124",
+    "references/character.md": "14c5b1240f4608181b98f3124271b2156484e629bd49bba8477cffcdd4e9816d",
+    "references/product.md": "6914727a40bd2476ddd6b4522ff76b640110cf6c3e088773d7a25398566cb787",
+    "references/prop.md": "450bc86ecb6c5a961c07962b3e14392a97479649b1f652d103cc2095e9ca0692",
+    "references/scene.md": "eeeceaad7d4b1a7acf2b12fa09798e881ca12b609cff30af35c86388da3643f2",
+    "references/script.md": "57337a8d865eca015c59f46f03aca1989e0f0e9c336368e9975b119ca47efdfc",
+    "references/source-analysis.md": "1c05ae6ab7cd08f06bc5275e7c93dc9e417f97e152a9360dca090192b3446946",
+    "references/storyboard.md": "fb4f7f26ddd531cdc0d7e00af22ceb6bcdbe13ab77fe451b544505dd8ad5a0c7",
+    "references/video.md": "352f6ea9b150808ccede1f14dea3ae8c927078a59c93b09938bfdf186af6f266"
+  },
+  "role_guidance": {
+    "bgm": "references/bgm.md",
+    "character": "references/character.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "script": "references/script.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
+  }
+}

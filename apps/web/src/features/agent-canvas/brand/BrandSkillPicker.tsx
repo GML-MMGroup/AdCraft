@@ -1,5 +1,5 @@
 import { useUiLocale } from "../../../i18n/locale";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { AgentCanvasStyleSelector } from "../chat/AgentCanvasStyleSelector.tsx";
@@ -27,6 +27,8 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
   const zh = useUiLocale(responseLocale).startsWith("zh");
   const [panel, setPanel] = useState(decisions);
   const [catalog, setCatalog] = useState<BrandCreativeMethod[] | null>(null);
+  const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "error">("loading");
+  const catalogRequest = useRef(0);
   const [methods, setMethods] = useState(() => selectionFrom(decisions).methods);
   const [style, setStyle] = useState<{ skill_id: string; version: string | null; title: string } | null>(() => selectionFrom(decisions).style);
   const [pendingAction, setPendingAction] = useState<"save" | "confirm" | "generate" | "refresh" | "catalog" | null>(null);
@@ -73,25 +75,25 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
     };
   }, [open]);
 
-  async function loadCatalog() {
+  const loadCatalog = useCallback(async () => {
+    const request = ++catalogRequest.current;
+    setCatalogStatus("loading");
     try {
       const response = await agentCanvasApi.brandCreativeMethodSkills();
-      if (mounted.current) setCatalog(response.items);
+      if (mounted.current && request === catalogRequest.current) {
+        setCatalog(response.items);
+        setCatalogStatus("ready");
+      }
     } catch {
-      if (mounted.current) setError(zh ? "创意方法加载失败，请重试。" : "Creative methods could not be loaded. Retry.");
+      if (mounted.current && request === catalogRequest.current) setCatalogStatus("error");
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
-    agentCanvasApi.brandCreativeMethodSkills().then((response) => {
-      if (!cancelled) setCatalog(response.items);
-    }).catch(() => {
-      if (!cancelled) setError(zh ? "创意方法加载失败，请重试。" : "Creative methods could not be loaded. Retry.");
-    });
-    return () => { cancelled = true; };
-  }, [open, zh]);
+    void loadCatalog();
+    return () => { catalogRequest.current += 1; };
+  }, [open, loadCatalog]);
 
   function replacePanel(next: BrandDecisionPanelV1) {
     setPanel(next);
@@ -102,13 +104,20 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
   }
 
   useEffect(() => {
-    if (decisions.journey.stage_revision <= panel.journey.stage_revision) return;
+    const newerRevision = decisions.journey.stage_revision > panel.journey.stage_revision;
+    // Publishing the recommendation card does not advance the stage revision.
+    const cardArrived = decisions.journey.stage_revision === panel.journey.stage_revision
+      && decisions.journey.stage === panel.journey.stage
+      && !panel.open_card
+      && decisions.open_card?.stage === decisions.journey.stage
+      && decisions.open_card.stage_revision === decisions.journey.stage_revision;
+    if (!newerRevision && !cardArrived) return;
     setPanel(decisions);
     const selection = selectionFrom(decisions);
     setMethods(selection.methods);
     setStyle(selection.style);
     if (!sent) setNotice(zh ? "选择已更新，请检查最新组合。" : "The selection changed. Review the latest combination.");
-  }, [decisions, panel.journey.stage_revision, sent, zh]);
+  }, [decisions, panel.journey.stage, panel.journey.stage_revision, panel.open_card, sent, zh]);
 
   async function refreshPanel() {
     setPendingAction("refresh");
@@ -135,7 +144,15 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
 
   const editable = panel.journey.stage === "skill-stack" && panel.open_card?.stage === "skill-stack"
     && panel.open_card.stage_revision === panel.journey.stage_revision;
-  const valid = Boolean(catalog && methods.length > 0 && methods.length <= 7 && style?.version
+  const waitingForRecommendations = panel.journey.stage === "skill-stack" && (!editable || !panel.skill_stack);
+  const catalogReady = catalogStatus === "ready" && Boolean(catalog?.length);
+  const choicesReady = catalogReady && !waitingForRecommendations;
+  const catalogProblem = catalogStatus === "error"
+    ? (zh ? "Skills 加载失败，请重试。" : "Skills could not be loaded. Retry.")
+    : catalogStatus === "ready" && !catalog?.length
+      ? (zh ? "暂无可选创意方法，请重新加载。" : "No creative methods are available. Reload to try again.")
+      : null;
+  const valid = Boolean(choicesReady && catalog && methods.length > 0 && methods.length <= 7 && style?.version
     && methods.every((method) => catalog.some((entry) => entry.skill_id === method.skill_id && entry.version === method.version)));
 
   async function submit(confirm: boolean) {
@@ -249,13 +266,17 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
         <header><h2>{zh ? "选择品牌 Skills" : "Choose brand Skills"}</h2><button type="button" onClick={onClose}>{pending || sent ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button></header>
         <p>{zh ? "创意方法可多选，视听风格只选一个。确认后进入创意方案。" : "Choose one or more creative methods and one audiovisual style. Confirm to enter Treatment."}</p>
         {error ? <p role="alert">{error}</p> : null}
-        {statusMessage && !error ? <p role="status">{statusMessage}</p> : null}
+        {statusMessage && !error && (choicesReady || sent) ? <p role="status">{statusMessage}</p> : null}
         {sent && pending ? <p>{zh ? "正在后台处理，你可以关闭面板，也可以留在这里查看。" : "Processing in the background. You can close this panel or stay here."}</p> : null}
-        {!pending && (!catalog || needsRefresh || continuation) ? <button type="button" onClick={() => void retry()}>{continuation === "generate" ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
-        {!editable && !continuation ? <p>{zh ? "当前阶段不可修改 Skills。" : "Skills cannot be edited at the current stage."}</p> : null}
+        {catalogProblem ? <p role="alert">{catalogProblem}</p> : null}
+        {!pending && (catalogProblem || needsRefresh || continuation) ? <button type="button" onClick={() => void retry()}>{continuation === "generate" ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
+        {!catalogProblem && !choicesReady && !sent ? <p role="status" aria-live="polite">{catalogStatus === "loading"
+          ? (zh ? "正在加载 Skills，请稍候…" : "Loading Skills. Please wait…")
+          : (zh ? "正在准备推荐组合，请稍候…" : "Preparing recommendations. Please wait…")}</p> : null}
+        {!editable && !waitingForRecommendations && !continuation ? <p>{zh ? "当前阶段不可修改 Skills。" : "Skills cannot be edited at the current stage."}</p> : null}
+        {choicesReady ? <>
         <fieldset disabled={pending || sent || !editable || needsRefresh}>
           <legend>{zh ? "创意方法（多选）" : "Creative methods (multiple)"}</legend>
-          {!catalog ? <p role="status">{zh ? "正在加载创意方法…" : "Loading creative methods…"}</p> : null}
           {catalog?.map((method) => {
             const entry = panel.skill_stack?.entries.find((item) => item.skill_kind === "creative_method" && item.skill_id === method.skill_id && item.version === method.version);
             return <label key={`${method.skill_id}@${method.version}`} className="brand-skill-picker__choice">
@@ -281,6 +302,7 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
           <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pendingAction === "save" ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
           <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{confirmLabel}</button>
         </footer>
+        </> : null}
       </section>
     </div>, document.body,
   );

@@ -217,6 +217,7 @@ class _CanvasPublicationMetadataV1(_ProviderFacts):
     world_setting_context: _WorldIdentity | None = None
     character_asset_kind: Identity | None = None
     reference_rendering_mode: Identity | None = None
+    human_face_rendering: Literal["photorealistic", "stylized", "absent"] | None = None
     negative_boundary_digest: Digest | None = None
     occurrence_id: Identity | None = None
     character_pair_id: Identity | None = None

@@ -934,9 +934,7 @@ def _structured_content(
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
 ) -> dict[str, object]:
-    default_style = "Detailed semi-realistic advertising illustration"
-    if isinstance(brief, (StoryboardGridRoleBriefV2, VideoSegmentRoleBriefV2)):
-        default_style = SELECTED_SEQUENCE_VISUAL_STYLE
+    default_style = SELECTED_SEQUENCE_VISUAL_STYLE
     if isinstance(brief, CharacterMainRoleBriefV2):
         default_style = "Character reference in the selected visual style and bound Main treatment"
     if (
@@ -948,7 +946,15 @@ def _structured_content(
     style = VisualStyleContractV2(
         style_prompt=authored_style or default_style,
         source="video_skill" if authored_style else "platform_default",
+        human_face_rendering=getattr(brief, "human_face_rendering", None),
     )
+    if (
+        isinstance(brief, CharacterMainRoleBriefV2)
+        and human_style_rule(brief) is not None
+        and style.human_face_rendering == "photorealistic"
+    ):
+        # The Character-only face rule is appended to the final image prompt.
+        style = style.model_copy(update={"human_face_rendering": "stylized"})
     if isinstance(brief, WorldViewRoleBriefV2):
         content = (
             f"{brief.premise}\n\nEra and place: {brief.era_and_place}\n"
@@ -1209,6 +1215,8 @@ def _structured_content(
         ).model_dump(mode="json")
     if isinstance(brief, FreeMediaRoleBriefV2):
         content: dict[str, object] = {"prompt": brief.prompt}
+        if brief.role_variant == "free_image":
+            content["style"] = style.model_dump(mode="json")
         if brief.role_variant == "free_video":
             content["background_music"] = False
         return content

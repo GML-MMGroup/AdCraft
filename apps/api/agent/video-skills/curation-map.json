@@ -164,6 +164,44 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "sunlit-pastel-product-fantasy",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "clear daylight",
+        "controlled highlights",
+        "foreground occlusions",
+        "recognition beat"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Excluded the reference tutorial overlays, fixed duration, aspect ratio, and generation settings from reusable style guidance."
+      ],
+      "naming_adaptation": "Named the user-reference-derived treatment by its daylight, pastel palette, and product-fantasy craft rather than its original brand.",
+      "commercial_adaptation": "Authored reusable advisory guidance from the user-provided product-ad video, separating visual treatment and proposed instrumental accompaniment from the prize-journey creative method.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "golden-macro-patisserie",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "warm amber light",
+        "tactile microtexture",
+        "selective focus",
+        "crisp flaky edges"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Excluded the reference duration, frame shape, creator overlays, and fixed brand identity from reusable guidance."
+      ],
+      "naming_adaptation": "Named the user-reference-derived treatment for its golden macro optics and patisserie materials without adopting the source brand.",
+      "commercial_adaptation": "Authored a specific warm food-material treatment distinct from generic miniature staging and process storytelling; miniature labor remains an optional concept, and instrumental accompaniment is explicitly proposed.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "sources": [
@@ -195,6 +233,25 @@
       ],
       "naming_adaptation": "Published Fashion Showcase Film as a neutral method-based title without named imitation.",
       "commercial_adaptation": "Adapted silhouette, fabric motion, editorial posing, and runway-to-lifestyle framing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "2000s-street-fashion-film",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "tactile film texture",
+        "candid street movement",
+        "dynamic city cutaways",
+        "restrained brand signature"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Kept thirty seconds as a brief-dependent creative example, not a provider limit; removed the source frame shape, two-model cast, city, brand, seasonal copy, and product-specific wardrobe as universal requirements."
+      ],
+      "naming_adaptation": "Named the treatment for early-2000s photographic street fashion rather than the reference brand, city, or particular models.",
+      "commercial_adaptation": "Adapted candid wearing and carrying, tactile inserts, and moving street interludes into variable-cast brand advertising; preserved source identity and merchandise while distinguishing proposed accompaniment from observed imagery.",
       "review_status": "approved"
     },
     {
@@ -533,6 +590,63 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "melodrama-commerce-film",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "confrontational framing",
+        "reaction cuts",
+        "tactile product inserts",
+        "direct-to-camera sales finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed the reference runtime, frame shape, tumbler identity, handling stunt, and unverified source claims from reusable requirements."
+      ],
+      "naming_adaptation": "Named the user-reference-derived treatment for melodramatic coverage and its transition into product selling, without adopting the source brand.",
+      "commercial_adaptation": "Retained the contrast between confrontation, meaningful object details, and a direct sales finish; distinguished visual observations from the proposed instrumental accompaniment.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "costume-comedy-live-action",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "ceremonial grandeur",
+        "exaggerated actor expressions",
+        "comic reaction contrast",
+        "tactile product demonstration"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed the fixed runtime, frame shape, source brand, snack-only action, imperial cast, and animation rendering requirement."
+      ],
+      "naming_adaptation": "Named the requested live-action adaptation for period comedy rather than the original snack, characters, or animation technique.",
+      "commercial_adaptation": "Converted animated expression into exaggerated performable facial and physical reactions while retaining product experience and the authority-to-delight contrast; the instrumental score is a proposed adaptation.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "whip-pan-promo-ambush",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "threshold suspense",
+        "two-whip reveal",
+        "emphatic direct address",
+        "stable offer hold"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Expanded the source into an eight-to-thirty-second creative range; removed fixed aircraft, rainstorm, shirtless exterior seller, exact source offer, cast size, and mandatory exit gag while retaining the two-whip reveal as the selected visual technique."
+      ],
+      "naming_adaptation": "Named the treatment for its whip-pan commercial interruption rather than a specific aircraft, dangerous event, celebrity likeness, or shopping holiday.",
+      "commercial_adaptation": "Generalized boundary-reaction-return coverage into vehicle, weather, and domestic-knock routes; retained expressive direct selling and required supplied benefits, authentic promotional terms, readable conditions, and a stable offer close.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "designer-toy-ip-film",
       "version": "1.0.0",
       "sources": [
@@ -830,6 +944,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "surreal-cinematic-product-worlds",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "grounded-to-impossible staging",
+        "motivated spatial transitions",
+        "tactile product detail",
+        "settled hero finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Kept fifteen to thirty seconds as a creative application rather than a provider rule; removed the source frame shape, office, grain field, solo cast, gold ring, snack, and original brand as universal requirements."
+      ],
+      "naming_adaptation": "Named the treatment for cinematic product worlds and material continuity rather than a source brand, snack category, or mandatory pop-art rendering.",
+      "commercial_adaptation": "Generalized the use-triggered threshold, preserved subject and product identity, tactile detail, and stable commercial close across beverages, food, beauty, technology, and lifestyle; distinguished expressive scenery from proof of efficacy or ingredient origin.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "brand-mark-in-context",
       "version": "1.0.0",
       "sources": [
@@ -993,6 +1126,25 @@
       ],
       "naming_adaptation": "Published Gentle Everyday Vlog as a neutral method-based title without named imitation.",
       "commercial_adaptation": "Adapted intimate handheld observation, soft routine, natural gestures, and warm ambient detail into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "japanese-summer-sensory-film",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "seasonal observation",
+        "tactile sensory inserts",
+        "natural product use",
+        "breathing hero finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Kept fifteen to thirty seconds as the intended creative use case, not a provider rule; removed the source frame shape, fixed solo cast, tropical location, citrus flavor, bottle shape, and source brand as universal requirements."
+      ],
+      "naming_adaptation": "Named the treatment for Japanese summer sensory atmosphere without adopting the reference brand, cast, or tropical setting as campaign requirements.",
+      "commercial_adaptation": "Retained tactile environmental cues, real use, modest response, and a sustained hero finish; added quiet daily and light-sport routes while separating sensory feeling from unsupported functional claims and proposed sound from observed imagery.",
       "review_status": "approved"
     },
     {

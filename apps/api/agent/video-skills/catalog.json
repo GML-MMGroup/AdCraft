@@ -69,9 +69,24 @@
       "display_order": 60
     },
     {
+      "skill_id": "sunlit-pastel-product-fantasy",
+      "version": "1.0.0",
+      "display_order": 70
+    },
+    {
+      "skill_id": "golden-macro-patisserie",
+      "version": "1.0.0",
+      "display_order": 80
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "display_order": 110
+    },
+    {
+      "skill_id": "2000s-street-fashion-film",
+      "version": "1.0.0",
+      "display_order": 115
     },
     {
       "skill_id": "jewelry-editorial-film",
@@ -129,6 +144,21 @@
       "display_order": 270
     },
     {
+      "skill_id": "melodrama-commerce-film",
+      "version": "1.0.0",
+      "display_order": 280
+    },
+    {
+      "skill_id": "costume-comedy-live-action",
+      "version": "1.0.0",
+      "display_order": 290
+    },
+    {
+      "skill_id": "whip-pan-promo-ambush",
+      "version": "1.0.0",
+      "display_order": 295
+    },
+    {
       "skill_id": "designer-toy-ip-film",
       "version": "1.0.0",
       "display_order": 310
@@ -184,6 +214,11 @@
       "display_order": 420
     },
     {
+      "skill_id": "surreal-cinematic-product-worlds",
+      "version": "1.0.0",
+      "display_order": 425
+    },
+    {
       "skill_id": "brand-mark-in-context",
       "version": "1.0.0",
       "display_order": 430
@@ -212,6 +247,11 @@
       "skill_id": "gentle-everyday-vlog",
       "version": "1.0.0",
       "display_order": 520
+    },
+    {
+      "skill_id": "japanese-summer-sensory-film",
+      "version": "1.0.0",
+      "display_order": 525
     },
     {
       "skill_id": "cinematic-food-story",
