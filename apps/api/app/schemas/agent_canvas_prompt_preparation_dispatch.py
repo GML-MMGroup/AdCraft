@@ -57,6 +57,8 @@ class PromptPreparationDispatchV1(BaseModel):
     model_policy_revision: int | None = Field(default=None, ge=1)
     status: PromptPreparationDispatchStatusV1
     attempt_no: int = Field(default=0, ge=0)
+    runtime_wait_started_at: datetime | None = None
+    runtime_wait_count: int = Field(default=0, ge=0)
     max_attempts: int = Field(default=5, ge=1)
     available_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     lease_owner: str | None = Field(default=None, max_length=160)

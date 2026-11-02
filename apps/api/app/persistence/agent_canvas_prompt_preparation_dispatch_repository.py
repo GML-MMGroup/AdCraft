@@ -1417,6 +1417,8 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 values = {
                     "status": "queued",
                     "attempt_count": 0,
+                    "runtime_wait_started_at": None,
+                    "runtime_wait_count": 0,
                     "available_at": _iso(available),
                     "lease_owner": None,
                     "lease_expires_at": None,
@@ -1566,6 +1568,34 @@ class AgentCanvasPromptPreparationDispatchRepository:
             operation_id=operation_id,
             context_digest=context_digest,
             source_snapshot=source_snapshot,
+        )
+
+    def defer_for_runtime(
+        self,
+        dispatch: PromptPreparationDispatchV1,
+        *,
+        worker_id: str,
+        started_at: datetime,
+        next_attempt_at: datetime,
+        message: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Refund a claim that never reached a model and preserve its frozen inputs."""
+
+        return self._finish_owned(
+            dispatch.dispatch_id,
+            worker_id=worker_id,
+            lease_generation=dispatch.lease_generation,
+            status="queued",
+            now=now,
+            available_at=next_attempt_at,
+            error_code="agent_runtime_unavailable",
+            error_message=message,
+            keep_error=True,
+            operation_id=dispatch.operation_id,
+            context_digest=dispatch.context_digest,
+            source_snapshot=dispatch.source_snapshot or None,
+            runtime_wait_started_at=started_at,
         )
 
     def schedule_retry(
@@ -1868,6 +1898,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         operation_id: str | None = None,
         context_digest: str | None = None,
         source_snapshot: Mapping[str, object] | None = None,
+        runtime_wait_started_at: datetime | None = None,
     ) -> PromptPreparationDispatchV1:
         timestamp = _utc(now)
         if status not in {"queued", "completed", "failed", "superseded"}:
@@ -1902,6 +1933,12 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     "updated_at": _iso(timestamp),
                     "terminal_at": _iso(timestamp) if terminal else None,
                 }
+                if runtime_wait_started_at is not None:
+                    values.update(
+                        runtime_wait_started_at=_iso(runtime_wait_started_at),
+                        runtime_wait_count=int(row["runtime_wait_count"]) + 1,
+                        attempt_count=max(0, int(row["attempt_count"]) - 1),
+                    )
                 changed = connection.execute(
                     update(AgentCanvasPromptPreparationOutboxRow)
                     .where(
@@ -1974,6 +2011,17 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     "attempt": dispatch.attempt_no,
                     "lease_generation": dispatch.lease_generation,
                     "error_code": dispatch.last_error_code,
+                    **(
+                        {
+                            "error_message": dispatch.last_error_message,
+                            "available_at": _iso(dispatch.available_at),
+                            "runtime_wait_started_at": _iso(dispatch.runtime_wait_started_at),
+                            "runtime_wait_count": dispatch.runtime_wait_count,
+                        }
+                        if dispatch.runtime_wait_started_at is not None
+                        and dispatch.last_error_code == "agent_runtime_unavailable"
+                        else {}
+                    ),
                     "occurrence_id": dispatch.occurrence_id,
                     "character_phase": dispatch.character_phase,
                     "source_snapshot_digest": _json_digest(dispatch.source_snapshot),
@@ -2646,6 +2694,8 @@ def _dispatch_from_row(row: Mapping[str, Any]) -> PromptPreparationDispatchV1:
             ),
             status=row["status"],
             attempt_no=int(row["attempt_count"]),
+            runtime_wait_started_at=_datetime(row.get("runtime_wait_started_at")),
+            runtime_wait_count=int(row.get("runtime_wait_count", 0)),
             max_attempts=int(row["max_attempts"]),
             available_at=_datetime(row["available_at"]),
             lease_owner=row["lease_owner"],

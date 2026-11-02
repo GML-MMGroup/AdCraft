@@ -4351,6 +4351,8 @@ def _requeue_storyboard_lineage(
         .values(
             status="queued",
             next_attempt_at=timestamp,
+            runtime_wait_started_at=None,
+            runtime_wait_count=0,
             lease_owner=None,
             lease_generation=AgentCanvasContinuationOutboxRow.lease_generation + 1,
             lease_expires_at=None,

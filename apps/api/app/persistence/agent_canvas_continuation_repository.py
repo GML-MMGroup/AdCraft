@@ -580,6 +580,31 @@ class AgentCanvasContinuationOutboxRepository:
             error_message=error_message,
         )
 
+    def defer_for_runtime(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        started_at: datetime,
+        next_attempt_at: datetime,
+        message: str,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
+        """Release an unavailable-runtime task without consuming its failure budget."""
+
+        return self._finish_owned(
+            continuation_id,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            status="retry_wait",
+            now=now,
+            next_attempt_at=next_attempt_at,
+            error_code="agent_runtime_unavailable",
+            error_message=message,
+            runtime_wait_started_at=started_at,
+        )
+
     def defer_for_prompt_preparation(
         self,
         continuation_id: str,
@@ -726,6 +751,8 @@ class AgentCanvasContinuationOutboxRepository:
                     values = {
                         "status": "queued",
                         "attempt_count": 0,
+                        "runtime_wait_started_at": None,
+                        "runtime_wait_count": 0,
                         "next_attempt_at": _iso(timestamp),
                         "lease_generation": expected_lease_generation + 1,
                         "lease_owner": None,
@@ -891,6 +918,7 @@ class AgentCanvasContinuationOutboxRepository:
         increment_attempt: bool = False,
         error_code: str | None = None,
         error_message: str | None = None,
+        runtime_wait_started_at: datetime | None = None,
     ) -> ContinuationDeliveryV2:
         timestamp = _utc(now)
         try:
@@ -912,6 +940,11 @@ class AgentCanvasContinuationOutboxRepository:
                     "last_error_message": _bounded(error_message, 1_024),
                     "updated_at": _iso(timestamp),
                 }
+                if runtime_wait_started_at is not None:
+                    values.update(
+                        runtime_wait_started_at=_iso(runtime_wait_started_at),
+                        runtime_wait_count=int(row["runtime_wait_count"]) + 1,
+                    )
                 result = connection.execute(
                     update(AgentCanvasContinuationOutboxRow)
                     .where(
@@ -973,6 +1006,8 @@ class AgentCanvasContinuationOutboxRepository:
                     "attempt": int(delivery["attempt_count"]),
                     "lease_generation": int(delivery["lease_generation"]),
                     "next_attempt_at": str(delivery["next_attempt_at"]),
+                    "runtime_wait_started_at": delivery.get("runtime_wait_started_at"),
+                    "runtime_wait_count": int(delivery.get("runtime_wait_count", 0)),
                     "error_code": delivery["last_error_code"],
                     "occurrence_id": payload.get("occurrence_id"),
                     "character_phase": payload.get("character_phase"),
@@ -1062,6 +1097,8 @@ def _delivery(row: Mapping[str, Any]) -> ContinuationDeliveryV2:
         payload_digest=str(row["payload_digest"]),
         status=row["status"],
         attempt_count=int(row["attempt_count"]),
+        runtime_wait_started_at=_datetime(row.get("runtime_wait_started_at")),
+        runtime_wait_count=int(row.get("runtime_wait_count", 0)),
         max_attempts=int(row["max_attempts"]),
         next_attempt_at=_datetime(row["next_attempt_at"]),
         lease_owner=row["lease_owner"],
