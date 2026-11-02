@@ -3,7 +3,7 @@ name: 电影感美食叙事广告
 description: 以食材质地、制作过程、蒸汽与声音细节和食欲揭示组织广告叙事的美食影像创作方法。
 ---
 
-把 ingredient texture、process progression、steam and sound detail、appetite-led reveal 作为四个创作支点。不要只把食物拍得漂亮，而要让观众看懂它从原始状态到可感知结果的变化，并在最有说服力的时刻理解产品、产地、工艺或品牌承诺。镜头、色彩、声音和剪辑共同服务于这条感知路径。
+把 ingredient texture、process progression、steam and sound detail、appetite-led reveal 作为四个创作支点。Use texture, contact, light and sound to make the approved food encounter tangible. Process progression applies when preparation is in the selected story; a finished item or shared experience can carry the same appetizing treatment without adding a manufacturing sequence.
 
 ## 核心创作判断
 
@@ -20,7 +20,7 @@ description: 以食材质地、制作过程、蒸汽与声音细节和食欲揭�
 
 ## 镜头、声音与转场
 
-用观察、积累、转折、揭示和回味等相对段落组织节奏。每段记录视觉重点、主体动作、摄影机意图、声音事件和下一个锚点。高潮不一定更快，热气升起、刀面停住、汤汁流动、摆盘完成或人物反应都可以成为注意力高点。
+Choose observation, emphasis, reveal or lingering detail to support the approved narrative order. Steam, a held utensil, flowing liquid or a reaction can become an attention peak without requiring a fixed preparation-to-reveal arc.
 
 优先使用动势匹配、形状或色彩呼应、蒸汽或器具遮挡、环境声桥接连接镜头，避免装饰性转场掩盖动作因果。关键镜头检查开始、变化和结束三个状态，确认主体可辨认、接触关系成立、焦点变化有理由。处理动作保持连续、轻柔而有力量，不用无依据的破碎或剧烈飞散制造刺激。
 
