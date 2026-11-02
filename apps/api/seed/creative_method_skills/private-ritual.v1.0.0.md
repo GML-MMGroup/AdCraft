@@ -48,3 +48,7 @@ seriously on screen.
 3. Make the product behavior specific and unhurried.
 4. Shift rhythm or sound as the private state arrives.
 5. Keep the ending inside the private moment; do not return to the world.
+
+### Adaptation And Combination
+
+Keep the product behavior and its personal meaning connected. A quiet mood alone is not a ritual. Emotional Micro-Moment Amplification can supply the opening detail, and Identity Transformation can supply the overall change; explain those contributions when combining them.
