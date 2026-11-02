@@ -1961,7 +1961,7 @@ def _accepted_segment(
     if generation_prompt is None:
         sequence = next(item for item in content.segments if item.sequence_id == sequence_id)
         generation_prompt = (
-            "Render one text-free 3x3 storyboard grid from the accepted Plan rows. "
+            "Render one 3x3 storyboard grid from the accepted Plan rows. "
             f"Narrative goal: {sequence.narrative_goal}"
         )
     return StoryboardSegmentMaterializationDraftV2(

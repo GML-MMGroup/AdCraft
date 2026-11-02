@@ -1446,7 +1446,7 @@ class CapabilityMaterializationPublicationService:
         result = StoryboardMaterializationResultV1(
             title=stage_draft_title(envelope.selected_option.title, title_suffix),
             summary_prompt=summary,
-            generation_prompt=f"Create one text-free 3x3 storyboard grid. {summary}",
+            generation_prompt=f"Create one 3x3 storyboard grid. {summary}",
             structured_content=StoryboardGridContentV2(
                 sequence_summary=summary,
                 narrative_goal=envelope.selected_option.public_summary,

@@ -33600,8 +33600,7 @@
           "type": "string"
         },
         "no_generated_text": {
-          "const": true,
-          "default": true,
+          "default": false,
           "title": "No Generated Text",
           "type": "boolean"
         },
