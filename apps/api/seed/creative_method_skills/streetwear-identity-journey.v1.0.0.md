@@ -105,3 +105,7 @@ The final brand name attaches to an experience already established on screen.
    explicit when several models share the frame. Let the audiovisual skill
    choose lenses, texture, movement, cutting, and sound without rewriting
    this product-centered journey.
+
+### Adaptation And Combination
+
+The recurring relationship between wearing, urban movement and brand attitude defines the method. A 2000s film treatment is optional. Identity Transformation requires a meaningful before-and-after identity switch; this journey may reveal an existing identity without inventing such a switch.
