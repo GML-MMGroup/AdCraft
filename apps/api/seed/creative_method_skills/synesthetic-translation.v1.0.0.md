@@ -59,3 +59,7 @@ the memory directly.
 
 This method differs from Visual Metaphor: a metaphor invents a world rule for
 an abstract value, while a translation renders a concrete sensation.
+
+### Adaptation And Combination
+
+The mapping from a concrete sense to visible form is essential. Visual Metaphor can express a broader abstract value; Summer Sensory Use Moment stays with a lived encounter. An abstract sensory world, a brief insert or a sustained image can all carry the translation when perception remains clear.

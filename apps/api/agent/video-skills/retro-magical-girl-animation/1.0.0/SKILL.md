@@ -11,7 +11,7 @@ description: 以变身语法、象征性道具、粉彩霓虹对比和英雄式�
 
 ## 变身与揭示
 
-transformation grammar 记录触发、聚能、局部变化、完整轮廓和动作确认。每一步都保留身份线索，服装、配件和光带沿身体与道具的真实方向变化。heroic reveal 让角色完成一个可见选择或救援动作，再展示产品或品牌落点。
+transformation grammar 记录触发、聚能、局部变化、完整轮廓和动作确认。每一步都保留身份线索，服装、配件和光带沿身体与道具的真实方向变化。Use heroic reveal to emphasize the approved resulting identity or action. A rescue, new mission or product presentation is optional story content; a confident pose can be the intended payoff.
 
 ## 连续性与纠偏
 

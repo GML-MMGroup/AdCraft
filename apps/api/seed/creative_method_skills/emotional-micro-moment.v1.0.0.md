@@ -51,3 +51,7 @@ feels remembered, not invented.
 3. Let the viewer complete the feeling before the product appears.
 4. Keep the product present but quiet.
 5. Resist resolution; end inside the feeling.
+
+### Adaptation And Combination
+
+The defining insight is recognition of a small, overlooked experience. Private Ritual adds intentional personal ownership of a moment; Summer Sensory Use Moment adds a seasonal sensation and actual use. A small gesture can support another primary mechanism without requiring a separate emotional story arc.

@@ -1,5 +1,11 @@
-# 剧本指导
+# Chapter-like expression and comic timing
 
-先写一个清楚的愿望、阻碍和回扣动作，再按章节式进入、等待、误会、变化、收束组织广告。每个段落只承担一个信息，重复动作要在后续改变意义。把 precise comic timing 拆成准备、停顿、反应和回收，避免把笑点全部写在台词里。
+Use axial framing, curated palettes and chapter-like staging to organize the
+approved story. Repeated entrances, poses or compositions can punctuate an
+existing pattern. Precise comic timing uses preparation, pause, reaction and
+callback where they serve the selected mechanism.
 
-为每个段落标记主轴关系、产品信息和观众应看到的反应。对白保持短，动作和构图承担更多说明。正例是同一个等待动作在产品出现后产生新含义；反例是堆叠无关笑话而没有品牌或产品回扣。
+Chapters may mark a reveal, association or change in attention; they do not
+require a waiting scene, misunderstanding or comic plot. Preserve the confirmed
+dialogue, product role and ending. Choose delivery and local beat lengths for
+the desired contrast rather than making every exchange short by default.

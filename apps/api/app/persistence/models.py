@@ -1989,6 +1989,10 @@ class AgentCanvasContinuationOutboxRow(Base):
     payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    runtime_wait_started_at: Mapped[str | None] = mapped_column(Text)
+    runtime_wait_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
     next_attempt_at: Mapped[str] = mapped_column(Text, nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(Text)
@@ -2066,6 +2070,10 @@ class AgentCanvasPromptPreparationOutboxRow(Base):
     model_policy_revision: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    runtime_wait_started_at: Mapped[str | None] = mapped_column(Text)
+    runtime_wait_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     available_at: Mapped[str] = mapped_column(Text, nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(Text)

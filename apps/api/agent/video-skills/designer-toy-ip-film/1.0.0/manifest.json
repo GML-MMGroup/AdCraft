@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "video_representation_mode": "illustrated",
   "display_name": "潮玩角色世界广告",
-  "description": "以可收藏轮廓、标志性配件、材质魅力和世界构建钩子组织具有角色识别度的商业动画。",
+  "description": "Collectible character imagery with distinctive silhouettes, signature accessories, tactile materials, and readable toy-scale performance.",
   "content_locale": "zh-CN",
   "category": "animation-illustration",
   "tags": [
@@ -23,7 +23,7 @@
   },
   "display_order": 310,
   "files": {
-    "SKILL.md": "260342533d827306707b79305b21ec8f1516ba39a3ae602a96c6cd796564fe23",
+    "SKILL.md": "8a22eceaedfc6de1449965697d03e51e2b1cfb6b278537322689bf68cf7ca451",
     "references/character.md": "50a736e518c2d985d7b1484708a8b7eb477234a476b48025b5a79233eb9cb7e0",
     "references/scene.md": "a9dc48f43cdb5e647631d4f3cce5095d3e513551d878273e20622f39e0df9689",
     "references/storyboard.md": "2876aaa8e1e3779b3b0568a3218e7c9226def79697db30313a53d48e4af1f3b8",

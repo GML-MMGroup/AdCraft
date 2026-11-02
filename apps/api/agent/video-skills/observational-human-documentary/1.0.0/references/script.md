@@ -1,5 +1,11 @@
-# 剧本指导
+# Observational voice and time
 
-先列出已确认的人物事实、行动目标、环境条件和可观察结果，再按进入、工作、阻力、调整、完成组织叙事。respectful observation 不编造经历，不替人物表达未说过的观点。
+Use respectful observation, environmental context and restrained narration to
+present the approved subject. Authentic action includes waiting, adjusting,
+repeating and completing when those events actually belong to the story.
+Distinguish supplied facts from explicitly fictional reconstruction.
 
-restrained narration 只解释画面无法承载的事实，优先把意义交给 authentic action。正例是重复劳动显示经验；反例是用口号给人物贴标签。
+Choose what deserves time and what can be understood through an ambient sound
+or small gesture. Preserve the confirmed structure rather than forcing every
+story through work, obstacle and completion. Let narration contribute supported
+context without assigning unprovided beliefs or experiences to a real person.

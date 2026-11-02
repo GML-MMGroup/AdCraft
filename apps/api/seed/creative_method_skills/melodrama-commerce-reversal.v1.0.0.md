@@ -119,3 +119,7 @@ measured sales or reach.
 The method supports human or non-human casts and live action, animation,
 illustration, clay, or 3D according to the chosen treatment. It does not
 require realistic faces or convert the entire film into illustration.
+
+### Adaptation And Combination
+
+Opposing spoken exchanges and a product-led change in control define this method. Relationship, status, location and product category remain open. Authority to Advocate changes a resistant character through firsthand experience; this method can empower the challenged protagonist without converting the opponent.

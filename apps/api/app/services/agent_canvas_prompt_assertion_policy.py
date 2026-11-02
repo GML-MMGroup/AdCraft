@@ -16,6 +16,11 @@ from app.schemas.agent_canvas_prompt_preparation import (
     prompt_assertion_evidence_digest,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
+from app.services.agent_canvas_image_presentation import (
+    AUTHORED_IMAGE_PRESENTATION,
+    DEFAULT_IMAGE_OVERLAYS,
+    DEFAULT_REFERENCE_PRESENTATION,
+)
 
 
 PRODUCT_MULTIVIEW_VIEWS = ("front", "side", "back", "three-quarter", "detail")
@@ -124,14 +129,18 @@ _SPECIAL_POLICIES = {
             "product_multiview.exact_product_main",
             "product_multiview.authored_views",
             "product_multiview.isolated_presentation",
+            "product_multiview.packaging_marks",
         ),
         "positive": (
             "Use the sole exact bound Product Main identity source.",
             "Render the authored views, preserving the bound product geometry and visible features.",
             "Use one clean neutral studio presentation.",
+            "Preserve existing brand marks and printed packaging text on their actual surfaces; "
+            "allow natural occlusion in rear and detail views without relocating the marks.",
         ),
         "negative": (
-            "No people, hands, active use, application scene, narrative scene, labels, captions, or visible text.",
+            "No people, hands, active use, application scene, narrative scene, overlay text, "
+            "panel labels, captions, or watermarks. Existing product printing is not an overlay.",
         ),
         "engine_owned_fields": {},
         "required_reference_purposes": ("product_main_identity",),
@@ -166,7 +175,7 @@ _SPECIAL_POLICIES = {
 }
 
 
-def _default_policy(recipe) -> PromptAssertionPolicyV1:
+def _historical_default_policy(recipe) -> PromptAssertionPolicyV1:
     role = recipe.role_variant
     special = _SPECIAL_POLICIES.get(role)
     if special is not None:
@@ -174,7 +183,9 @@ def _default_policy(recipe) -> PromptAssertionPolicyV1:
             recipe.recipe_id,
             recipe.recipe_version,
             **special,
-            policy_version="2" if role in {"product_multiview", "video_segment"} else "1",
+            policy_version=(
+                "3" if role == "product_multiview" else "2" if role == "video_segment" else "1"
+            ),
         )
     return _policy(
         recipe.recipe_id,
@@ -183,6 +194,41 @@ def _default_policy(recipe) -> PromptAssertionPolicyV1:
         (recipe.positive_boundary,),
         (recipe.negative_boundary,),
     )
+
+
+_IMAGE_ROLE_BOUNDARIES = {
+    "product_main": "Render the declared product identity with its physical geometry and marks.",
+    "prop": "Render the declared prop identity and materials.",
+    "character_main": "Render one full-body character identity in the authored presentation.",
+    "character_turnaround": "Render the bound Character Main identity in front, side, and back views.",
+    "scene_board": "Render one single full-frame image of the scene's primary location, without alternate panels.",
+    "storyboard_grid": "Render one complete 3x3 storyboard with nine ordered panels for the authored sequence.",
+}
+
+
+def _default_policy(recipe) -> PromptAssertionPolicyV1:
+    role = recipe.role_variant
+    if role == "product_multiview":
+        special = dict(_SPECIAL_POLICIES[role])
+        special["positive"] = (
+            special["positive"][0],
+            special["positive"][1],
+            DEFAULT_REFERENCE_PRESENTATION + " " + AUTHORED_IMAGE_PRESENTATION,
+            special["positive"][3],
+        )
+        special["negative"] = (DEFAULT_IMAGE_OVERLAYS,)
+        return _policy(recipe.recipe_id, recipe.recipe_version, **special, policy_version="4")
+    if role in _IMAGE_ROLE_BOUNDARIES:
+        historical = _historical_default_policy(recipe)
+        return _policy(
+            recipe.recipe_id,
+            recipe.recipe_version,
+            historical.assertion_ids,
+            (_IMAGE_ROLE_BOUNDARIES[role] + " " + AUTHORED_IMAGE_PRESENTATION,),
+            (DEFAULT_IMAGE_OVERLAYS,),
+            policy_version="2",
+        )
+    return _historical_default_policy(recipe)
 
 
 class PromptAssertionPolicyRegistry:
@@ -227,22 +273,36 @@ class PromptAssertionPolicyRegistry:
         """Resolve the Video policy with an applicable native-audio assertion."""
 
         policy = self.resolve(recipe_id, recipe_version)
-        if policy_version == "1" and recipe_id.endswith(".product_multiview"):
+        role = recipe_id.rsplit(".", 1)[-1]
+        if policy_version == "1" and role in _IMAGE_ROLE_BOUNDARIES:
+            policy = _historical_default_policy(RolePromptRecipeRegistry().resolve(role))
+        if policy_version == "3" and role == "product_multiview":
+            policy = _historical_default_policy(RolePromptRecipeRegistry().resolve(role))
+        if policy_version in {"1", "2"} and recipe_id.endswith(".product_multiview"):
             special = dict(_SPECIAL_POLICIES["product_multiview"])
             special.update(
                 assertion_ids=(
                     "product_multiview.exact_product_main",
-                    "product_multiview.canonical_views",
+                    "product_multiview.canonical_views"
+                    if policy_version == "1"
+                    else "product_multiview.authored_views",
                     "product_multiview.isolated_presentation",
                 ),
                 positive=(
                     "Use the sole exact bound Product Main identity source.",
-                    "Render front, side, back, three-quarter, and detail views in that order.",
+                    "Render front, side, back, three-quarter, and detail views in that order."
+                    if policy_version == "1"
+                    else "Render the authored views, preserving the bound product geometry and visible features.",
                     "Use one clean neutral studio presentation.",
                 ),
-                engine_owned_fields={"views": PRODUCT_MULTIVIEW_VIEWS},
+                negative=(
+                    "No people, hands, active use, application scene, narrative scene, labels, captions, or visible text.",
+                ),
+                engine_owned_fields={"views": PRODUCT_MULTIVIEW_VIEWS}
+                if policy_version == "1"
+                else {},
             )
-            policy = _policy(recipe_id, recipe_version, **special)
+            policy = _policy(recipe_id, recipe_version, **special, policy_version=policy_version)
         elif policy_version == "1" and recipe_id.endswith(".video_segment"):
             special = dict(_SPECIAL_POLICIES["video_segment"])
             special["positive"] = (
@@ -266,15 +326,22 @@ class PromptAssertionPolicyRegistry:
                     "Render one 3x3 grid of nine equal panels in the fixed viewpoint order."
                     if policy_version == "1"
                     else "Render one 3x3 grid of nine equal panels following the authored view plan.",
-                    "Show the same primary location from distinct viewpoints around and inside it.",
+                    "Show the same primary location from distinct viewpoints around and inside it."
+                    + (
+                        " " + AUTHORED_IMAGE_PRESENTATION
+                        if policy_version not in {"1", "2"}
+                        else ""
+                    ),
                 ),
-                ("No other locations, people, text, captions, or narrative action.",),
+                ("No other locations, people, text, captions, or narrative action.",)
+                if policy_version in {"1", "2"}
+                else (DEFAULT_IMAGE_OVERLAYS,),
                 engine_owned_fields=(
                     {"views": SCENE_MULTIVIEW_VIEWS}
                     if policy_version == "1"
                     else {"layout": "3x3", "panel_count": 9}
                 ),
-                policy_version="1" if policy_version == "1" else "2",
+                policy_version=policy_version if policy_version in {"1", "2"} else "3",
                 required_reference_purposes=("scene_main_identity",),
                 policy_ref=f"{recipe_id}.multi_view.prompt_assertions",
             )

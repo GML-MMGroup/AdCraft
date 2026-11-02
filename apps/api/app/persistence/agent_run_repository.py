@@ -514,6 +514,7 @@ class AgentRunRepository:
         expected_lease_generation: int,
         lease_owner_id: str,
         lease_duration_seconds: float,
+        deadline_at: datetime | None = None,
         now: datetime | None = None,
     ) -> AgentRunRecord:
         """Take a failed run back under a fresh lease so it is executed again."""
@@ -547,6 +548,11 @@ class AgentRunRepository:
                     .values(
                         status="running",
                         operation_stage="running",
+                        # No model was submitted, so the execution budget starts
+                        # after infrastructure recovery under the same policy.
+                        deadline_at=_iso(deadline_at)
+                        if deadline_at is not None
+                        else row["deadline_at"],
                         lease_owner_id=lease_owner_id,
                         lease_generation=int(row["lease_generation"]) + 1,
                         lease_expires_at=_iso(lease_expiry),

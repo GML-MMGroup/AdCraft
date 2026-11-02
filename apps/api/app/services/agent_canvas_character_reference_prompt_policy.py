@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_image_presentation import (
+    DEFAULT_REFERENCE_PRESENTATION,
+    DEFAULT_IMAGE_OVERLAYS,
+)
+
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -18,28 +23,28 @@ class CompiledCharacterReferencePolicyV1:
 
 
 CHARACTER_MAIN_PROMPT = (
-    "Create one full-body character reference in the selected visual style. Show exactly one "
-    "character in a natural standing pose with a slight three-quarter front view on a seamless "
-    "light-neutral design background with no environmental objects. Use only a subtle grounding "
-    "shadow. Preserve distinctive facial or surface features, hair where present, wardrobe "
-    "construction, body proportions, silhouette, materials and color palette."
+    "Create one full-body character reference in the selected visual style. "
+    "Follow the authored pose, expression, accessories and setting. "
+    + DEFAULT_REFERENCE_PRESENTATION
+    + " Preserve distinctive facial or surface features, "
+    "hair where present, wardrobe, body proportions, silhouette, materials and color palette."
 )
 CHARACTER_TURNAROUND_PROMPT = (
     "Use the bound Character Main image as the sole identity master. Render one turnaround "
-    "sheet with exactly three unlabeled full-body figures arranged left-to-right as "
-    "forward-facing, exact side profile, and rear-facing on a seamless light-neutral design "
-    "background. All three views show the same character with identical features, hair where "
-    "present, wardrobe, proportions, silhouette, materials, palette, and the same selected "
-    "rendering treatment as the bound Main. Keep the sheet blank: no headings, orientation "
-    "labels, captions, typography, logos, or watermarks anywhere. Do not reinterpret or "
-    "redesign the identity."
+    "sheet with exactly three full-body figures arranged left-to-right as "
+    "forward-facing, exact side profile, and rear-facing. "
+    + DEFAULT_REFERENCE_PRESENTATION
+    + " All three views show the same character with identical "
+    "features, hair where present, wardrobe, proportions, silhouette, materials, palette, "
+    "and the same selected rendering treatment as the bound Main. "
+    "Preserve original costume printing and authored accessories. " + DEFAULT_IMAGE_OVERLAYS
 )
 
 
 class CharacterReferencePromptPolicy:
     """Compile image layout constraints without overriding the selected medium."""
 
-    policy_id = "adcraft.agent_canvas.character_reference.v2"
+    policy_id = "adcraft.agent_canvas.character_reference.v3"
 
     def compile(
         self,
@@ -47,17 +52,10 @@ class CharacterReferencePromptPolicy:
     ) -> CompiledCharacterReferencePolicyV1:
         if content.character_asset_kind == "identity_master":
             positive = CHARACTER_MAIN_PROMPT
-            negative = (
-                "No multiple characters, product placement, environment, action sequence, "
-                "environmental object, contact sheet, or turnaround sheet."
-            )
+            negative = DEFAULT_IMAGE_OVERLAYS
         else:
             positive = CHARACTER_TURNAROUND_PROMPT
-            negative = (
-                "No identity drift, wardrobe change, extra character, extra view, "
-                "head panel, detail panel, material panel, action pose, product, scene, label, "
-                "heading, orientation label, caption, typography, logo, or watermark."
-            )
+            negative = "Avoid identity drift between views. " + DEFAULT_IMAGE_OVERLAYS
         digest = sha256(f"{self.policy_id}\n{positive}\n{negative}".encode()).hexdigest()
         return CompiledCharacterReferencePolicyV1(
             policy_id=self.policy_id,

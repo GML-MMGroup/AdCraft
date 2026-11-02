@@ -1,8 +1,12 @@
-按“离谱钩子、冷静回应、升级、更离谱的升级、反转收尾”组织剧本。第一句画面就给出离谱结果，不做铺垫和解释；之后每一段只让一件事变得更离谱，并写清人物如何面无表情地接受它。
+# Comic contrast in the approved story
 
-每个段落写明：离谱点是什么、谁在做什么、人物的冷面反应、对应的短花字原文（1 到 4 个字，可选）和喜剧音效点。产品要么是离谱的起因，要么是唯一能解释离谱的东西，结尾让产品以最平常的方式出现，形成反差。
+Give the established absurd event a sincere everyday response. A brief setup,
+an ordinary exchange, a contrasting witness or a pause can make it funnier;
+choose these from the selected mechanism rather than imposing a result-first
+opening and escalating gag on every beat. Preserve dialogue-led conflict when
+the approved idea needs it, including distinct speakers and responsive lines.
 
-台词越少越好，宁可用一句一本正经的短台词或旁白，也不要解释笑点。可以使用网络流行的说法和反差句式，但不要使用明星、网红或影视作品的原句和口头禅。
-
-正例：上班族按下打印机，打印机吐出一整卷长到窗外的纸，她平静地撕下一张，花字“够用”，下一段整栋楼开始往外吐纸。
-反例：人物大笑着对镜头说“太搞笑了”，或者同时出现五件离谱的事，观众不知道笑点在哪。
+Specify delivery and the reaction that carries the contrast. Captions, repeated
+actions, abrupt emphasis and sound stings are optional punctuation. Carry exact
+wording and finishing intent into the production handoff. Place the payoff where
+the whole story requires it; intermediate sequences can end unresolved.

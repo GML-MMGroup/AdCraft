@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_image_presentation import (
+    DEFAULT_REFERENCE_PRESENTATION,
+    DEFAULT_IMAGE_OVERLAYS,
+)
+
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -738,25 +743,22 @@ def _render(
         )
         return (
             f"Use the exact bound Product Main as identity authority. Preserve {identity}; "
-            f"{design_summary}. Render {', '.join(brief.views)} on a clean neutral "
-            "studio background.",
-            "No people, hands, active use, application scene, unrelated prop, labels, captions, "
-            "storyboard layout, or Product Main prompt reuse.",
+            f"{design_summary}. Render {', '.join(brief.views)}. " + DEFAULT_REFERENCE_PRESENTATION,
+            "Preserve existing printed packaging text. " + DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, ProductMainRoleBriefV2):
         return (
-            f"Create one isolated product identity on a clean neutral studio background. "
+            f"Create one product identity. {DEFAULT_REFERENCE_PRESENTATION} "
             f"Identity: {brief.identity}. Geometry: {brief.geometry}. Materials: "
             f"{brief.materials}. Brand marks: {brief.marks}. Palette: {brief.palette}.",
-            "No people, hands, active use, application scene, narrative environment, accessory "
-            "clutter, unrelated props, labels, captions, or storyboard layout.",
+            "Preserve existing printed packaging text. " + DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, PropRoleBriefV2):
         return (
-            f"Create one isolated prop on a clean neutral studio background. Identity: "
+            f"Create one prop reference. {DEFAULT_REFERENCE_PRESENTATION} Identity: "
             f"{brief.identity}. Form: {brief.form}. Materials: {brief.materials}. Palette: "
             f"{brief.palette}.",
-            "No people, products, active scene, unrelated objects, text, labels, or board layout.",
+            DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         identity = character_projection.identity if character_projection else brief.identity
@@ -776,24 +778,23 @@ def _render(
             "Use the exact bound Character Main as identity authority. Create the same "
             "character in the selected visual style, matching the bound Main's rendering "
             "treatment, in front, side, and back "
-            "full-body views on a clean neutral background. Preserve all distinguishing details. "
+            f"full-body views. {DEFAULT_REFERENCE_PRESENTATION} Preserve all distinguishing details. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",
-            "No identity drift, labels, captions, annotation text, product, "
-            "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
+            "Preserve the bound character identity and authored accessories. "
+            + DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, CharacterMainRoleBriefV2):
         return (
-            "Create exactly one full-body character reference in the selected visual style "
-            "on a clean neutral background. "
+            "Create exactly one full-body character reference in the selected visual style. "
+            f"{DEFAULT_REFERENCE_PRESENTATION} "
             "Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
             f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}."
             f"{_optional_labeled_fragment('Accessories', brief.accessories)}",
-            "No product, prop, active scene, second character, "
-            "text, labels, annotation, captions, or board layout.",
+            DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
         environment_identity = (
@@ -811,7 +812,7 @@ def _render(
         prompt = (
             (
                 "Use the bound Scene Main image as the sole environment identity source. "
-                "Create one text-free 3x3 grid of nine equal panels showing the same primary "
+                "Create one 3x3 grid of nine equal panels showing the same primary "
                 "location from distinct viewpoints around and inside it. "
             )
             if scene_multiview
@@ -821,12 +822,7 @@ def _render(
             f"Lighting: {lighting}. Materials: {materials}. Atmosphere: {atmosphere}."
             f"{_optional_labeled_fragment('Views', '; '.join(views))}"
         )
-        negative = (
-            "No other locations, people, text, captions, or narrative action."
-            if scene_multiview
-            else "No combined alternate views, collage, split screen, multiple locations, people, product, "
-            "prop interaction, narrative action, plot progression, or text."
-        )
+        negative = DEFAULT_IMAGE_OVERLAYS
         return prompt, negative
     if isinstance(brief, ScriptRoleBriefV2):
         return (
@@ -836,11 +832,10 @@ def _render(
         )
     if isinstance(brief, StoryboardGridRoleBriefV2):
         return (
-            "Create one complete text-free 3x3 Storyboard Sequence with exactly nine ordered "
+            "Create one complete 3x3 Storyboard Sequence with exactly nine ordered "
             f"visual beats. Sequence: {brief.sequence_summary}. Beats: "
             f"{'; '.join(brief.beats)}. Visual language: {brief.visual_language}.",
-            "No captions, labels, panel numbers, speech bubbles, provider prompt reuse, or beats "
-            "from another Sequence.",
+            DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, VideoSegmentRoleBriefV2):
         return (
@@ -882,10 +877,14 @@ def _scene_views(brief: SceneBoardRoleBriefV2) -> tuple[SceneEnvironmentViewV1, 
         views = tuple(
             SceneEnvironmentViewV1(view_or_zone=view, spatial_details=view) for view in brief.views
         )
-    if len(views) != 9 or len({view.spatial_details for view in views}) != 9:
+    if len(views) != 9:
         raise _error(
             "node_prompt_brief_invalid",
-            "Scene Multi-view requires nine distinct authored view directions.",
+            "Scene Multi-view requires nine authored view directions.",
+        )
+    if len({view.spatial_details for view in views}) != 9:
+        logger.warning(
+            "Scene Multi-view repeats authored view directions; generation remains allowed."
         )
     return views
 

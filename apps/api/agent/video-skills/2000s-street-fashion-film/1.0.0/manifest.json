@@ -29,14 +29,14 @@
   "allows_meme_captions": false,
   "allows_comedic_sound_effects": false,
   "files": {
-    "SKILL.md": "c593c597fdd5c45c6ef5ab4cc7eaa1c88acac4a62d116a9b6b4d7bbf6f1e359f",
+    "SKILL.md": "af54cb0dd7e67ca520160833861a4b350a3a6cc6e9167391ce1d74dae6c4a586",
     "previews/preview.webp": "11d1578d8acce6a763661587fc3b8fa8d1dea3223fc30368f3191e6e0552d723",
     "references/bgm.md": "223c5eb9b2220994972ef31db3a3c9610868e45b02d3d486e6775078c3e2eddd",
     "references/character.md": "f018f00a56cdc40ef9f89cb8f7227f80dce6e065cf4b07450c795188334f346e",
     "references/product.md": "54d218c5330444fc6811d3f0ce69df37561ec8dfb2348c3689d9e593f1f141c7",
     "references/prop.md": "ab92f64c9c737d52ea24050cbe93ad12e2c00ca28ef27af9b9bc8351ea4bec58",
     "references/scene.md": "23af048d2cf37179567ebd0a33948b9a05ce25b0b9618a2ab89966d351e13475",
-    "references/script.md": "d33ea6daa4f56f86bded0afa3b158d69f3a72e0f52538f3446eda026ec77a724",
+    "references/script.md": "3c6f6fa0e61114f931c0dd19145e06b72298047472bff05fb140c14ce466e0de",
     "references/source-analysis.md": "8622affa1a65838939961533e17892cf7bd59b73a2d894f7e01d75adfc7cf6bb",
     "references/storyboard.md": "51f8312dc8b2d56e4a36b78b3aa712f42ccfafd8e83b2053995c46a32f4f507d",
     "references/video.md": "9b5b3ebeacbdfad9d28ece07c22816897d08103051e99dea796a0c7c8172d76c"

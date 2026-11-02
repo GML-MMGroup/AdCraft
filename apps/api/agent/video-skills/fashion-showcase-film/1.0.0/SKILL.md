@@ -3,7 +3,7 @@ name: 时装廓形展示片
 description: 以服装廓形、面料运动、编辑式姿态和秀场到生活场景的转换呈现时装价值。
 ---
 
-把 silhouette、fabric motion、editorial posing、runway-to-lifestyle framing 作为时装展示的四个创作支点。先让观众读懂服装的外轮廓和穿着关系，再用面料如何响应动作、光线和空间证明质感，最后把秀场的控制力转译到真实生活语境。时装不是人物的装饰背景，人物姿态和场景都应服务于服装。
+把 silhouette、fabric motion、editorial posing、runway-to-lifestyle framing 作为时装展示的四个创作支点。Use silhouette, fabric response and editorial presence where they support the approved idea. Runway-to-lifestyle framing is a useful contrast when both contexts belong to the story; it does not require adding a runway, location change or fixed reveal order.
 
 ## 廓形与人物
 

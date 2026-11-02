@@ -1,6 +1,6 @@
 # Performance, movement, and native sound
 
-Stage opposing eyelines and restrained tension first. Let gestures, posture,
+For an approved confrontation, stage opposing eyelines and expressive tension. Let gestures, posture,
 and brief reaction pauses reinforce the spoken conflict. Preserve the assigned
 speaker, addressee, and approved line for each turn; stage a visible listener
 reaction so accusation, response, escalation, and comeback remain connected.
@@ -15,10 +15,13 @@ insert can give the item emphasis if the approved beat supports it. Do not
 default to throwing, breaking, or splashing when adapting to another item.
 Keep faces, costume, scene geometry, and the supplied product identity stable.
 
-At the handoff, shift eyeline clearly to the lens. Increase conversational
+At an approved sales handoff, shift eyeline clearly to the lens. Increase conversational
 directness while holding the item where its key feature remains visible.
 Alternate the pitch with an approved demonstration or detail, then settle
-into a readable finish. Use the exact authorized dialogue and product facts.
+into a readable finish when the sequence calls for it. Preserve the current
+segment's incoming and outgoing states; it may contain several shots and actions
+without replaying the whole film's confrontation and close.
+Use the exact authorized dialogue and product facts.
 For selected live action, render the final video with natural surfaces and
 the requested human appearance; for animation or illustration, retain that
 treatment instead of removing its defining texture.

@@ -1,17 +1,12 @@
-# Ceremonial language with a commercial payoff
+# Period-flavored speech and comic contrast
 
-Give the authority a short commanding line and the subordinate a hurried,
-specific answer. Use accessible period-flavored speech rather than dense
-historical exposition. A concise pause can make the authority's later change
-of mind funnier than adding another joke.
+Give the approved cast accessible period-flavored speech and performable comic
+reactions. Formal diction, an emphatic interruption, a double take or a pause of
+disbelief can sharpen an existing exchange. A ruler, subordinate or reprimand
+is useful only when the chosen story includes that relationship.
 
-Name exaggerated expressions and physical reactions explicitly in performance
-directions: an accusatory stare, a startled flinch, a skeptical sniff, eyes
-widening at the experience, or an unexpectedly eager demand for more. Vary
-their intensity so the delighted reaction contrasts with the opening anger.
-
-Keep the product name and verified benefit understandable in ordinary speech.
-Let the final endorsement echo the earlier reprimand, then make the offer
-and CTA clear in the user's language. Do not reuse the reference dialogue verbatim,
-invent a historical endorsement, or import the snack's taste claims to a
-different category. The approved creative method determines the actual plot.
+When a scene changes emotional temperature, contrast indignation, skepticism,
+surprise and delight through delivery and reaction coverage. The selected creative
+method determines why that change happens. Preserve the actual product, supported
+claims and confirmed commercial ending. An endorsement echoing an earlier order
+is one possible payoff, not a compulsory authority-conversion story.

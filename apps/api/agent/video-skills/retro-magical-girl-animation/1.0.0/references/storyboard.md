@@ -1,5 +1,11 @@
-# 分镜指导
+# Transformation and graphic continuity
 
-按日常状态、触发、聚能、局部变化、完整轮廓、heroic reveal 排列关键帧。记录脸部、手部、symbolic prop、服装层次和光带方向，确保每个变身阶段能接回上一个阶段。
+Use the required nine-panel grid for the approved local sequence. Where a
+transformation is planned, choose key states that make its trigger, energy,
+changes and resulting silhouette legible. Other sequences may depict daily
+action, anticipation or aftermath without repeating a transformation.
 
-转场可用道具旋转、光带轨迹、姿态匹配或同一动作完成，避免无依据闪白。
+Track face, hands, symbolic props, costume layers and light direction through
+the approved changes. Pose matching, a prop rotation or a light trail can connect
+states. A heroic reveal follows the chosen story; it need not introduce a rescue
+or a new action solely to satisfy the style.

@@ -5,9 +5,10 @@ description: Cinematic surreal brand advertising that moves from tangible everyd
 
 # Surreal Cinematic Product Worlds
 
-Use grounded-to-impossible staging, motivated spatial transitions, tactile
-product detail, and a settled hero finish. Spectacle should feel connected to
-the approved item and action. Favor photographic surfaces and cinematic depth
+Use coherent impossible space, motivated spatial transitions, tactile
+product detail, and legible scale. Grounded-to-impossible staging and a settled
+hero finish suit many briefs; the approved mechanism determines the entry
+point, product timing and ending. Favor photographic surfaces and cinematic depth
 as in the reference; an explicitly requested alternative medium retains its
 own treatment. Surreal events do not automatically require illustrated faces.
 
@@ -39,14 +40,16 @@ for a directed effect. A product transfer must have a visible owner and path.
 
 ## Camera, material, and closure
 
-Move from relational framing to the triggering contact, then open the view
-to reveal the new space. A push, an arc, a reverse view, or a matched cut can
+For a product-triggered change, relational framing, contact detail and an
+opening view can clarify the new space. For another approved mechanism,
+choose coverage that preserves its own information order. A push, an arc, a reverse view, or a matched cut can
 support that reveal without demanding one uninterrupted take. Let camera
 movement and background activity have a clear focus instead of constant orbiting.
 
-After the reveal, shift attention to a tangible detail: food surface, liquid,
-cream, fabric, glass, or a real device control according to the brief. Return
-to an understandable physical use relationship before a stable hero view.
+Tangible details such as food surface, liquid, cream, fabric, glass or a
+device control can connect spectacle to the item. Use them where the concept
+calls for them. When interaction is shown, keep its physical relationship
+understandable; a separate use demonstration is optional.
 The close can remain in the transformed setting; it need not revisit the
 opening room. Quiet secondary movement and leave the actual branding readable.
 

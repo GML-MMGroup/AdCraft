@@ -1,8 +1,12 @@
-九格分镜按离谱升级排布：第 1 格就是离谱结果，中间各格每格只推进一个离谱点，最后一格是冷静收尾或反转。每格都要能看出人物的冷面反应，景别在全景、中景和面部特写之间切换，给急推定格留出面部特写格。
+# Reaction and contrast coverage
 
-需要镜头内重复的动作，用相邻两到三格画出同一动作的相同构图，让视频阶段知道这里是机械重复。
+Use the required nine-panel grid to sample the current approved sequence.
+Choose setup, absurd event, ordinary response, contrasting reaction or product
+detail according to its local purpose. The first panel need not be a gag and
+the final panel need not resolve the whole advertisement.
 
-分镜图本身不画任何文字：花字、字幕、对话气泡和标注都不出现在格子里，花字原文和位置只写在分镜描述中，交给视频阶段生成。
-
-正例：第 4 到 6 格是同一个按按钮的构图，第 7 格急推到眼睛特写。
-反例：在格子里写“离谱”两个字，或者每格都换一个新的离谱事件，彼此没有升级关系。
+Plan a held face, crash-zoom emphasis, in-shot repetition or a quiet wide view
+where it makes the contrast readable. Several cells may sample one action;
+their count does not determine cuts or repetitions. Preserve cast positions,
+product identity and the state passed to the next segment. Keep panels text-free;
+record approved captions and exact finishing in the production handoff.

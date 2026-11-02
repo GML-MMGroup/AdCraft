@@ -30,6 +30,8 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.services.agent_runtime_recovery import require_agent_runtime_ready
+
 from app.api.v2.etag import (
     V2PreconditionError,
     parse_project_if_match,
@@ -1930,8 +1932,14 @@ def create_agent_canvas_runtime(
             rescan_workflow=resume_storyboard_progression,
         )
 
+    runtime_ready = (
+        (lambda: require_agent_runtime_ready(settings))
+        if settings.agent_runtime_mode != "fake" and video_agent_gateway_override is None
+        else None
+    )
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
+        runtime_ready=runtime_ready,
         next_action=durable_next_action.execute,
         capability_command=capability_execution.execute,
         replace_superseded_capability=(durable_next_action.requeue_superseded_capability),
@@ -1986,11 +1994,13 @@ def create_agent_canvas_runtime(
     notified_prompt_dispatch_ids: set[str] = set()
     prompt_preparation_worker = AgentCanvasPromptPreparationWorker(
         prompt_dispatches,
+        runtime_ready=runtime_ready,
         prepare=lambda dispatch, context: prompt_preparation_service.prepare(
             dispatch.workflow_id,
             dispatch.node_id,
             operation_id=dispatch.operation_id,
             context=context,
+            defer_runtime_failure=True,
         ),
         # Production recovery must reconstruct only the immutable snapshot
         # persisted with the dispatch row.  The test-only loader hook remains

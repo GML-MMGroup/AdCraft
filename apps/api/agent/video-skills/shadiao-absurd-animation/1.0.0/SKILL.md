@@ -1,24 +1,34 @@
 ---
 name: 沙雕抽象动画
-description: 以粗线平涂的表情包式角色、物理规则失效、瞬间变形、冷面反应、短花字和喜剧音效组织无厘头抽象风格的二维动画广告。
+description: Graphic absurd comedy with flat-color animation, readable squash-and-stretch, abrupt transformations, deadpan reaction contrast, and optional comic text and sound.
 ---
 
-把 physics break（物理规则失效）、squash and stretch gag（挤压拉伸笑点）、instant transformation（瞬间变形）、deadpan reaction face（冷面反应脸）、短花字和 comedic sound sting（喜剧音效点）作为沙雕动画的共同语法。画面简单、动作夸张、规则随时崩坏，但角色永远一脸淡定。
+# Absurd Graphic Animation
 
-## 画面语言
+## Defining character
 
-- 粗黑描边、平涂高饱和色块、背景极简；角色是圆头圆身的表情包式小人，五官简单，靠眼睛和嘴型变化表达情绪。
-- 动作夸张而清楚：冻成冰块、摔成薄饼、弹到天上、瞬间缩小或变成另一种东西，然后“啵”一声恢复原形。每次变形都要有起因、夸张的过程和回弹。
-- 冷面反应是笑点的落点：离谱结束后切到角色面无表情、眯眼或无语的特写，停顿半秒。
+Use graphic silhouettes, bold contours, flat color and economical backgrounds
+for expressive two-dimensional comedy. Physics break, squash and stretch gag,
+instant transformation and deadpan reaction face are a vocabulary for the approved
+idea. The characteristic contrast is extravagant movement against an ordinary
+reaction; every character need not have the same face, shape or temperament.
 
-## 结构与花字
+## Character and motion
 
-- 开场一秒内出现第一个离谱变化，之后逐级升级，结尾回到若无其事的日常或一个反转。一次只崩坏一条规则。
-- 每个镜头最多一句短花字，1 到 4 个字，用引号写出原文，写清颜色、粗描边和弹出方式；花字放在角色上方或侧边，不遮挡角色面部和产品。
-- 喜剧音效点和动作对齐：“啵”、弹簧声、冻结声、“叮”、滑稽的坠落声、突然静音、罐头笑声；背景音乐交给独立配乐节点。
+Adapt line weight and simplification to the supplied cast. A rounded meme figure
+is one execution; the approved identity remains authoritative.
+Give a deformation a readable force, extreme pose and resulting state. Rebound
+when the story calls for recovery; preserve intentional lasting transformations.
+Use held poses, setup, small reactions and product detail between larger gags.
 
-## 边界
+## Rhythm
 
-- 不使用明星、网红或影视作品的梗、台词和标志性音效，不画版权角色或与之相似的形象。
-- 除用户自己的产品外，画面中的包装和招牌不带真实品牌标志。
-- 不低俗，不拿特定群体、地域、职业或身体特征开涮；医疗、金融、安全类产品不做夸张承诺。
+A quick opening, escalating deformation or a calm final reaction can support the
+selected mechanism. Choose their placement from the whole story rather than
+requiring a new escalation and ending in every segment. Alternate energetic motion
+with readable pauses when that contrast makes the joke land.
+
+Consult the current role reference for dialogue, graphic punctuation and sound
+treatment; apply those directions only to that deliverable. Action effects belong
+to Video; music belongs to BGM. Preserve cast identity and actual product facts
+through stylization.

@@ -1,6 +1,11 @@
-围绕一个可验证的工程命题写脚本，例如稳定、精度、效率、耐用或易维护。用“工作环境—问题输入—设备动作—可观察反馈—结果价值”组织叙事，避免把规格表朗读成旁白。
+# Engineering clarity in the selected story
 
-为每个段落写清操作者或工件的状态、设备做什么、观众应看到什么证据，以及声音如何支持触感和重量。术语只在能帮助理解时出现；不能确认的性能不要擅自承诺。结尾回到设备整体形态和使用场景，让功能结果与品牌可信度相连。
+Use engineering form, functional demonstration and material precision to make
+the approved technical message readable. When a function is shown, identify its
+input, action and visible feedback. A story, comparison or conceptual reveal can
+use this craft without becoming a fixed problem-solution demonstration.
 
-正例：工件在真实位置出现，设备完成一个清楚的加工动作，表面或测量结果给出反馈，旁白只解释受众关心的价值。
-反例：连续罗列“强大、智能、精准”，却没有输入、受力过程或结果。
+Choose concise terminology, operating sounds and pauses around relevant evidence.
+Preserve supplied specifications and actual use relationships. Product role,
+reveal order and ending follow the creative method and confirmed brief; controlled
+light and coverage clarify them rather than inventing a new performance claim.

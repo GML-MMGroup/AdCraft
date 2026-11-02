@@ -91,6 +91,8 @@ class ContinuationDeliveryV2(_ConversationModel):
         "superseded",
     ]
     attempt_count: int = Field(ge=0)
+    runtime_wait_started_at: datetime | None = None
+    runtime_wait_count: int = Field(default=0, ge=0)
     max_attempts: int = Field(ge=1)
     next_attempt_at: datetime
     lease_owner: str | None = None

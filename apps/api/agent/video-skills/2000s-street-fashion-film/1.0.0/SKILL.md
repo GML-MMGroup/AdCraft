@@ -45,9 +45,10 @@ can be bold while anatomy and clothing behave physically. Keep every approved
 model distinct through shot changes and reflections. Preserve visible item
 shape, fit, color, hardware, and branding throughout.
 
-Aim for a 30-second micro-ad when that is the request; the approved runtime and
-frame shape remain authoritative. Finish with a calmer image and readable
-brand typography, with exact layout carried into the editing handoff. Final
+The approved runtime and frame shape remain authoritative. A calmer image
+and readable brand typography can support the planned ending; exact layout
+belongs in the editing handoff. Other closing structures remain available
+when the confirmed creative method calls for them. Final
 footage is live action with photographic surfaces. Intermediate image assets
 follow their own representation contracts rather than imposing a new face rule.
 

@@ -115,8 +115,7 @@ def main() -> None:
         if stopping:
             return
         stopping = True
-        for child in children:
-            _terminate_child(child)
+        _shutdown_children(children, settings)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
@@ -256,6 +255,21 @@ def _terminate_child(
         killpg(process_group, signal.SIGKILL)
     else:
         process.kill()
+
+
+def _shutdown_children(
+    children: list[SupervisedChild],
+    settings: Settings,
+    *,
+    terminate: Callable[..., None] = _terminate_child,
+) -> None:
+    """Keep Pi alive while Uvicorn stops admission and drains accepted authoring."""
+
+    # Operation contracts allow up to 900 seconds plus publication time. The
+    # old ten-second kill budget interrupted healthy Agent authoring on reload.
+    backend_grace = max(900.0, settings.agent_runtime_run_timeout_seconds) + 30.0
+    for child in sorted(children, key=lambda item: item.name != "backend"):
+        terminate(child, timeout_seconds=backend_grace if child.name == "backend" else 10.0)
 
 
 def _runtime_compatible(settings: Settings) -> bool:

@@ -1,5 +1,10 @@
-# 剧本指导
+# Scale as expressive information
 
-先写清人物在宏大环境中的目标、阻碍和一个可验证的结果，再安排远景建立、接近、操作和回望。把 vast scale 变成关系信息，不要只写“震撼”。产品或装置应通过接口、反馈或状态改变承担叙事。
+Use vast scale, sparse geometry and human-to-environment contrast to frame the
+approved idea. A small gesture, distant feedback or slowly changing perspective
+can communicate scale without a tour of the world. Atmospheric depth gives
+distance while the relevant subject remains legible.
 
-每段只引入一个新尺度或功能。正例是人物接近装置后理解环境；反例是连续旁白介绍世界，却没有行动和结果。
+Choose observation, movement, silence or speech for the confirmed sequence.
+An approach to a machine and its operation are optional actions, not a required
+plot. Keep the selected causal mechanism, product role and payoff intact.

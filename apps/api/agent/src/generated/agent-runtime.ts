@@ -424,7 +424,7 @@ export type SceneDesignBoardContentV2 = { readonly "scene_asset_kind"?: "main" |
 
 export type StoryboardPanelV2 = { readonly "panel_index": number; readonly "beat": string; readonly "composition": string; readonly "camera": string; readonly "subject_action": string; readonly "continuity_from_previous": string };
 
-export type StoryboardGridContentV2 = { readonly "production_handoff"?: ReadonlyArray<string>; readonly "sequence_summary": string; readonly "narrative_goal": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<StoryboardPanelV2>; readonly "no_generated_text"?: true };
+export type StoryboardGridContentV2 = { readonly "production_handoff"?: ReadonlyArray<string>; readonly "sequence_summary": string; readonly "narrative_goal": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<StoryboardPanelV2>; readonly "no_generated_text"?: boolean };
 
 export type VideoSegmentContentV2 = { readonly "production_handoff"?: ReadonlyArray<string>; readonly "segment_summary": string; readonly "duration_seconds": number; readonly "storyboard_content": string; readonly "representation_mode"?: "illustrated" | "illustration_to_live_action"; readonly "style_expression"?: VideoStyleExpressionV2 | null; readonly "style"?: VisualStyleContractV2 | null; readonly "dialogue"?: string; readonly "voice_style"?: string; readonly "environment_sound"?: string; readonly "action_effects"?: string; readonly "negative_constraints"?: string; readonly "background_music"?: false };
 

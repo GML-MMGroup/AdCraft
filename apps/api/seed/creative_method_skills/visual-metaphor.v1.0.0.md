@@ -48,6 +48,11 @@ product's most ownable asset.
 
 1. State the abstract value in one word.
 2. Invent the world rule that expresses it physically.
-3. Let the rule operate before any product appears.
-4. Connect the rule to the product at the escalation point.
+3. Establish the rule clearly. The product may reveal, cause or participate
+   in it from the opening when that serves the approved idea.
+4. Make the connection to the product understandable at the decisive beat.
 5. Test the one-question answer before production.
+
+### Adaptation And Combination
+
+Use an abstract value as a readable world rule. Synesthetic Translation renders a concrete sensation, Surreal Displacement uses an impossible juxtaposition, and Product-Triggered World Expansion makes an interaction change the world. A supporting method should contribute a specific trigger or reveal rather than another complete plot.

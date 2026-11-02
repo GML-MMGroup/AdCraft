@@ -2,7 +2,7 @@
   "skill_id": "deadpan-absurd-live-comedy",
   "version": "1.0.0",
   "display_name": "一本正经整活实拍",
-  "description": "以冷面表演、离谱升级、急推定格、短花字和喜剧音效组织无厘头抽象风格的真人商业短视频。",
+  "description": "Photographic deadpan comedy using sincere performance, reaction contrast, selective abrupt emphasis, and optional comic captions and sound accents.",
   "content_locale": "zh-CN",
   "category": "experimental-graphic",
   "tags": [
@@ -27,14 +27,14 @@
   "allows_meme_captions": true,
   "allows_comedic_sound_effects": true,
   "files": {
-    "SKILL.md": "2973092bab45f6985705705a307ca2e5478d2af31a5078d6b5b78ff361457b29",
+    "SKILL.md": "3b03c09e5aa3a736770936d2d5a479f31ce97647720fa01691a16c21f66c9e8b",
     "previews/preview.webp": "231d3c74a9f3b2eeeb74e70ef0218ca24303beb4029a90adff323d36495de991",
-    "references/bgm.md": "b63e9ef3ebcbf36c1791437f83aa273ef2d514a9a7645ddfe22155652591291a",
-    "references/character.md": "687b2d2227f0ff105e20ccc966a96028d8320e465d2ff717cae0f4ca44f09595",
-    "references/product.md": "fd6d23f0edfc1c3d18437d1c2bfe5e535d277d32c3845a12a0b131e013bcd2a7",
-    "references/script.md": "0320764df5db088b6516692307a7aaed8f9b476bb28dd227d6a19a5b8641dcb4",
-    "references/storyboard.md": "86395e0089a4beca27fcc0eada78263f4812563355cecad95ff5fe27a783b96a",
-    "references/video.md": "ed33a9abe436900b6525c5f0281abdcb47dd538e156cd74e14be4c2962daddc1"
+    "references/bgm.md": "eb038af3c1a829991888e9904ac7099015c3fb419919879615c731c886d672ca",
+    "references/character.md": "db7361a34a701adfdc15569b5cc6db05b2e8c9d6423c37c14a62dbf602569d00",
+    "references/product.md": "fca295eb6da452c3cf39d2d1696e8b3ac2953adda96a35608165cf5452d0c3f9",
+    "references/script.md": "9ea9864022605ca7387095cf7ff448a53328773dd9085ea53ca92e25b91e0bbe",
+    "references/storyboard.md": "ea74c62c980bf8edbca968fa7ee523c370fc1b2ac530145f6869cdb8a20baac7",
+    "references/video.md": "2e9369fdb7cf1e471c17f6bb410ed25666e1d5c00634bf2646ceef0cf56b0a46"
   },
   "role_guidance": {
     "bgm": "references/bgm.md",

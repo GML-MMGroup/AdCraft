@@ -7,9 +7,9 @@ description: 以信念驱动的叙事、象征性画面、情绪升级和品牌�
 
 ## 信念与叙事
 
-先写清品牌信念、受众处境和一个可感知的冲突或愿望。选择人物行动、群体关系、环境变化、产品细节或日常片段承载信念。象征元素出现时，说明它与品牌主张的对应关系，不让符号变成脱离内容的装饰。
+Use the confirmed belief and audience context to choose symbolic imagery, vocal register and emphasis. Existing actions, relationships or material details can carry that belief. A new conflict or desire is optional; preserve the selected creative mechanism.
 
-情绪升级来自视野扩大、动作累积、关系建立、阻力变化或声音层次增加。每个升高都要有前因，高潮之后给观众理解品牌的空间。产品可以显性出现，也可以作为行动结果和价值证据出现，但不能完全消失。
+Emotional escalation can use a widening view, repeated gesture or added sound layer when the approved story needs a rise. A quiet or nonlinear structure is also valid. Preserve the confirmed product role and brand resolution rather than imposing a universal crescendo.
 
 ## 画面与品牌落点
 

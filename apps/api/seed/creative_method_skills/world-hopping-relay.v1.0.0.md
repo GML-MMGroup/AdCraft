@@ -14,11 +14,10 @@ consumer_psychology: >
   delivery turns the product into a gift that the whole world conspired to
   bring.
 story_structure: >
-  A grounded protagonist with a small need (tired, blocked, thirsty), the
-  product discovered in the first world, a relay of three to six handoffs
-  across clearly different worlds with one obstacle or gag per leg, the
-  arrival in the protagonist's hand, the product solving the need, and a
-  closing wink from one of the worlds.
+  A recipient has a recognizable need; a product travels through distinct
+  worlds in causally connected transfers, then arrives with a meaningful use
+  or brand payoff. World count and obstacles follow duration and
+  comprehension, rather than a fixed itinerary.
 hook_methods: >
   Show the first world breaking its own rule within seconds: a figure in a
   painting reaches out of the frame, a cartoon hand comes through a screen, a
@@ -33,9 +32,10 @@ suitable_categories_and_goals: >
   services. Brand love, cultural relevance, launch films, and campaigns that
   want to show many styles in one piece.
 unsuitable_cases: >
-  Products without a recognizable physical form, short formats under fifteen
-  seconds where the relay cannot breathe, and categories where whimsy
-  undermines trust such as medical, legal, or financial services.
+  Briefs with too little time to establish distinct worlds and a legible
+  transfer, products that cannot remain identifiable, or a confirmed tone
+  incompatible with playful traversal. Short duration calls for a compact
+  relay rather than automatic exclusion.
 common_mistakes: >
   Worlds that look alike so the borders are not felt; handoffs without a
   physical action linking frames; the product changing its look in each
@@ -62,12 +62,21 @@ a match, and the arrival feels earned.
 ## How To Execute
 
 1. Define the protagonist's small, human need and the moment of delivery.
-2. Choose three to six worlds with maximally different visual languages and
-   order them for contrast and escalation.
+2. Choose distinct worlds that fit the available time. Their contrast may come
+   from era, scale, spatial rules or an explicitly approved change of medium.
+   Use as few worlds as needed for the relay and its payoff to read.
 3. Design each handoff as a physical action that crosses the border between
    frames: reaching, throwing, falling, sliding, swimming.
-4. Give each leg one obstacle or gag that belongs to that world.
+4. Give each leg a useful discovery, transfer, obstacle or gag; a clean handoff
+   can carry momentum without an additional complication.
 5. Keep the product's real form, color, and logo constant in every world.
 6. End with the product doing its everyday job, then one world winks back.
-7. Pair each leg with a matching video style skill, and clear rights for any
-   real artworks or characters.
+7. Describe the approved contrast for each leg using the available style
+   guidance. Method selection does not activate extra style packages. Keep the
+   selected medium unless mixed media is explicitly approved; worlds can still
+   differ through setting, light, scale and action. Use original world designs
+   or supplied authorized references.
+
+### Adaptation And Combination
+
+A causal transfer links distinct worlds. Product Playground Odyssey follows one traversable playground and need not change worlds; a montage of unrelated styles lacks the relay. Multi-package activation is a separate platform capability, not an instruction this method can grant.

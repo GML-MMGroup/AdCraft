@@ -11,7 +11,7 @@ weathered worlds 通过磨损、修补、污渍、标记、天气和使用痕迹
 
 ## 奇观与利害关系
 
-grounded spectacle 先建立可理解的地理和参照，再让规模事件发生。layered stakes 按个人、关系、群体和环境逐层升级，每一层都改变行动选择。高潮之后回到人物手中的具体物件或结果，让奇观有后果。
+Grounded spectacle uses geography, scale references and tangible consequences. Layered stakes can widen emphasis when established by the chosen story; a single personal event can also carry weight. Select intimate detail and wider coverage for the approved rhythm rather than requiring escalation through individual, group and environment.
 
 ## 连续性与纠偏
 

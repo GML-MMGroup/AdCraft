@@ -1,6 +1,13 @@
-先把新品的核心承诺写成一句可验证的广告命题，再选择产品解决问题、人物状态转变、品牌价值或视觉符号作为故事主线。脚本要交代产品行动线、人物行动线和场景行动线如何互相推动，而不是只写一段漂亮旁白。
+# Launch recognition and narrative rhythm
 
-按引入、积累、揭示、验证和品牌回响组织段落。每段写清信息目的、动作原因、情绪变化、画面证据和声音关系。旁白只补充画面无法说明的事实或价值，避免逐句描述画面。新品揭示后必须安排使用结果或可识别的产品全貌，让品牌记忆落在具体证据上。
+Apply the campaign concept and approved creative mechanism through a recurring
+visual anchor, deliberate premium product reveal and a coherent brand arc.
+Choose the anchor's appearances and reveal timing to support the actual story.
+A launch film may use association, humor, conflict or abstraction; it need not
+insert a problem, demonstration and solution that the concept did not establish.
 
-正例：人物遇到明确需求，产品通过一个可观察的操作解决它，镜头从操作细节回到完整轮廓，旁白只说出受众真正关心的承诺。
-反例：用“重新定义未来”等口号替代功能展示，或让产品只在最后一帧作为无关的 Logo 背景出现。
+Make planned recognition moments clear through a light change, material detail,
+gesture or framing transition. Preserve the supplied product role and ending.
+Narration, dialogue and silence follow the brief; exact wording and typography go
+to the production handoff. The final recognition beat belongs to the whole-film
+ending when that is the approved placement.

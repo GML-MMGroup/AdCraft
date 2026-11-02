@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from collections.abc import Callable
 from typing import Literal
 
@@ -138,7 +140,7 @@ class SceneDesignBoardContentV2(_AdMediaModel):
         if self.scene_asset_kind == "main" and len(self.panels) not in {1, 9}:
             raise ValueError("scene_design_board_contract_invalid")
         _require_panel_sequence(self.panels, "scene_design_board_contract_invalid")
-        _require_distinct_panel_values(
+        _warn_repeated_panel_values(
             self.panels,
             lambda panel: (panel.view_or_zone, panel.spatial_description),
             "scene_design_board_contract_invalid",
@@ -161,12 +163,12 @@ class StoryboardGridContentV2(_AdMediaModel):
     narrative_goal: str = Field(min_length=1, max_length=4_096)
     style: VisualStyleContractV2
     panels: tuple[StoryboardPanelV2, ...] = Field(min_length=9, max_length=9)
-    no_generated_text: Literal[True] = True
+    no_generated_text: bool = False
 
     @model_validator(mode="after")
     def validate_panel_sequence(self) -> "StoryboardGridContentV2":
         _require_panel_sequence(self.panels, "storyboard_grid_contract_invalid")
-        _require_distinct_panel_values(
+        _warn_repeated_panel_values(
             self.panels,
             lambda panel: (
                 panel.beat,
@@ -308,11 +310,13 @@ def _require_panel_sequence(panels: tuple[object, ...], error_code: str) -> None
         raise ValueError(error_code)
 
 
-def _require_distinct_panel_values(
+def _warn_repeated_panel_values(
     panels: tuple[object, ...],
     signature: Callable[[object], object],
     error_code: str,
 ) -> None:
     values = [signature(panel) for panel in panels]
     if len(values) != len(set(values)):
-        raise ValueError(error_code)
+        logging.getLogger(__name__).warning(
+            "Repeated image panel descriptions are advisory: %s", error_code
+        )

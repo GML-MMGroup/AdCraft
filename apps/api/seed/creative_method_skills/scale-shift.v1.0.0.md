@@ -55,3 +55,7 @@ the scale where they happen turns an abstract promise into a visible event.
 3. Design one clear transition into the hidden scale.
 4. Show the product acting at that scale with a single discovery.
 5. Return to human scale so the insight connects to everyday life.
+
+### Adaptation And Combination
+
+The discovery made possible by scale is essential. Return to ordinary scale only when the audience needs it to understand the payoff. Miniature Artisan Ritual adds work and visible finishing results; Product-Triggered World Expansion adds a product-caused world change. Small figures alone do not require either supporting method.

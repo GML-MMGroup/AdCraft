@@ -1,25 +1,40 @@
 ---
 name: 一本正经整活实拍
-description: 以冷面表演、离谱升级、急推定格、短花字和喜剧音效组织无厘头抽象风格的真人商业短视频。
+description: Photographic deadpan comedy using sincere performance, reaction contrast, selective abrupt emphasis, and optional comic captions and sound accents.
 ---
 
-把 deadpan performance（冷面表演）、absurd escalation（离谱升级）、crash zoom freeze（急推定格）、短花字、comedic sound sting（喜剧音效点）和 in-shot repetition（镜头内重复）作为“抽象”短视频的共同语法。抽象不是随机热闹，而是一件离谱的事被所有人当成理所当然：画面越离谱，人物越平静。
+# Deadpan Absurd Live Comedy
 
-## 核心规则
+## Defining character
 
-- 每个镜头必须有一个明确的离谱点：违反常识的结果、失控的尺度、物理规则突然失效，或者同一动作被机械地重复。没有离谱点的镜头要删掉或合并。
-- 人物始终一本正经：面无表情、动作认真、不笑场、不对镜头挤眉弄眼。笑点来自反差，不来自表演者自己觉得好笑。
-- 离谱要逐级升级：开场一秒内出现第一个离谱结果，中段更离谱，结尾给一个反转或冷静收尾。一次只升级一件事，观众才看得懂。
-- 产品是离谱事件的起因或解释，卖点只放大一个属性；离谱的是事件本身，不是对产品功效的虚假宣称。
-- 真实摄影质感，可以是手机实拍感、生活化场景或故意过分正经的广告片质感；但人物、服装、场景必须稳定可辨认。
+Use deadpan performance to contrast a believable photographic world with the
+approved absurd event. Serious attention to an unreasonable situation carries
+the humor. Preserve recognizable identities, objects, light and physical contact
+while staging the impossible consequence deliberately.
 
-## 花字与声音
+## Performance and coverage
 
-- 短花字是这个风格的标志：每个镜头最多一句，1 到 4 个字，在提示中用引号写出原文，并写清颜色、粗描边、出现方式（弹出、抖动、放大）和位置。花字放在画面下方或侧边，绝不遮挡人物面部和产品。
-- 喜剧音效点要和画面动作对齐：弹簧声、唱片划过、“叮”、冻结声、夸张的咔嚓声、突然静音、罐头笑声。背景音乐交给独立的配乐节点。
+A composed performer can make an extreme event feel ordinary. Other cast members
+may show surprise, indignation or delight when their contrast serves the story.
+Preparation, ordinary actions, quiet reactions and product inserts give comic
+events room to register. Absurd escalation is useful when the chosen method calls
+for it; it is not a requirement for every shot or a replacement story structure.
 
-## 边界
+An observer-like frame, a held reaction, a sudden cut or crash zoom freeze can
+emphasize a selected beat. In-shot repetition can reveal an increasingly odd
+routine. Choose the devices and their duration for the actual joke; a readable
+pause often works better than applying every device together.
 
-- 不使用明星、网红或影视作品的梗、台词、口头禅和标志性音效，不模仿真实人物；不出现版权角色。
-- 除用户自己的产品外，所有包装、招牌、屏幕都不带真实品牌标志，使用无品牌的通用外观。
-- 不低俗，不拿特定群体、地域、职业或身体特征开涮；医疗、金融、安全类产品不做夸张承诺。
+## Comic timing
+
+Let the contrast register before the next emphasis. Silence or ordinary ambience
+can strengthen a gag. Consult the current role reference for dialogue, graphic
+punctuation and sound treatment; apply those directions only to that deliverable.
+The separate BGM role owns music.
+
+## Adaptation
+
+Apply this performance and editorial treatment to the confirmed creative mechanism.
+The brief determines the first joke, escalation, dialogue and ending. Preserve
+supplied authorized identities and branding, and keep invented supporting graphics
+generic. Fictional exaggeration does not establish an unsupported product claim.

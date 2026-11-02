@@ -7,7 +7,7 @@ description: 以亲密手持观察、柔和日常、自然手势和温暖环境�
 
 ## 日常与动作
 
-先选一个具体 routine：准备、整理、通勤、烹饪、照料、收拾或与人分享。soft routine 由连续小动作组成，natural gestures 保留犹豫、停顿、触碰、视线和手部习惯，不把人物变成摆拍模型。人物身份、服装、物件和空间状态要可追踪。
+Apply soft routine and natural gestures to the approved event, whether preparation, interruption, conversation or a quiet observation. Hesitation, touch, gaze and habitual movements make delivery feel lived. The chosen creative method determines the narrative rather than requiring a domestic routine.
 
 ## 手持与环境
 

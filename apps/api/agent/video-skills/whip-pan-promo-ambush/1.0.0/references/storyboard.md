@@ -4,7 +4,9 @@ Retain the required nine-panel storyboard. Its panels can show key states
 within the signature coverage: A, the disturbance at the boundary; A-to-B,
 the first whip; B, a readable reaction; B-to-A-prime, the return whip;
 A-prime, the unexpected presenter and item; then a settled offer view.
-Nine panels are not nine compulsory cuts or repeated camera swings.
+Nine panels are not nine compulsory cuts or repeated camera swings. Sample only
+the current sequence's assigned portion of this coverage. A later grid may
+continue a move or hold an offer without restaging the interruption and reveal.
 
 For each whip, record start framing, camera-relative travel direction,
 destination framing, and the landmark that confirms arrival. Indicate the

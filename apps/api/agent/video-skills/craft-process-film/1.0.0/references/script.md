@@ -1,5 +1,11 @@
-# 剧本指导
+# Tactile process and maker attention
 
-先说明材料初态、制作者目标和限制，再按准备、判断、处理、检查、修整、完成组织 process causality。每个步骤写清输入、动作和可观察变化，不把工艺压成一句“精心制作”。
+Apply material transformation, hand detail and maker-focused pacing to the
+approved action. Give a selected gesture its intention, contact and observable
+result. A pause to judge a surface or compare a result can be as informative as
+cutting or assembly. Process causality matters when a process is depicted.
 
-让 maker-focused pacing 保留比较、失败和回看。正例是一次调整解决材料问题；反例是只讲匠心口号而没有过程。
+The selected creative method determines whether the film follows manufacture,
+a repair, a memory, a reversal or another idea. Choose the relevant moments
+instead of imposing a full preparation-to-completion tutorial. Use supplied
+facts for real materials and provenance; distinguish fictional craft staging.

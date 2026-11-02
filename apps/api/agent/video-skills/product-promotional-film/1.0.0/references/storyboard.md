@@ -1,6 +1,11 @@
-用“需求情境—产品进入—操作证据—利益揭示—产品收束”组织分镜。为每镜标出信息层级、主体动作、产品可见区域、构图锚点、声音和转场。卖点高点应落在可观察的结果，而不是形容词或无关特效。
+# Commercial readability in the current sequence
 
-保持人物、产品、场景、手部、屏幕方向和光线连续。用动作匹配、遮挡或视线引导连接镜头；复杂情境减少同时变化的卖点。结尾保留干净全貌和必要的信息位置，不让前面建立的产品身份消失。
+Preserve the required nine-panel format and the approved local narrative.
+Choose views that clarify the relevant operation, benefit, contact or reaction.
+Plan readable information hierarchy, product visibility, camera side and sound
+for each selected beat. Natural occlusion is acceptable when the important
+interaction remains understandable.
 
-正例：中景交代使用情境，近景证明关键操作，反应镜头说明利益，再以稳定构图收束产品。
-反例：把包装、使用、结果和品牌文字塞进同一瞬间，没有可读的卖点顺序。
+Use action matching, eyelines or visual anchors to connect views. A display
+frame belongs where the story places it; intermediate grids need not repeat a
+need, demonstration and commercial close. Carry exact text into the handoff.

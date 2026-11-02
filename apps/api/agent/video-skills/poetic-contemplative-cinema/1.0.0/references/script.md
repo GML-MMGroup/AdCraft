@@ -1,5 +1,11 @@
-# 剧本指导
+# Patient attention and sensory meaning
 
-从一个可观察的状态开始，按接近、停留、变化、回望和落地动作组织叙事。用 time 和 repeated action 让情绪自然移动，避免用旁白直接命名情绪。每一段都写清楚观众能看到的材质、环境线索和人物选择。
+Use time, texture, silence and environmental metaphor to give the approved idea
+room to be perceived. A change in light, a touch, a repeated gesture or a material
+trace can carry feeling. Choose observations tied to the actual story or brand
+association, allowing lyrical speech when the brief calls for it.
 
-silence 应有目的：给观察、呼吸或回声留空间。正例是一个物件的磨损连接到人物关系；反例是连续抽象独白而没有可见行动。
+Patient rhythm may deepen a reveal, contrast or unresolved moment without adding
+a fixed approach, wait and resolution arc. Keep the established product role
+and ending. Distinguish expressive staging from factual claims about a person,
+place or product.

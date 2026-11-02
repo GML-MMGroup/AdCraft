@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 
+from app.services.agent_runtime_recovery import (
+    RUNTIME_WAIT_EXPIRED_MESSAGE,
+    RUNTIME_WAIT_MESSAGE,
+    recoverable_runtime_outage,
+    runtime_recovery_wait,
+)
+
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
@@ -63,6 +70,7 @@ class AgentCanvasContinuationWorker:
         dependency_reconciler: DependencyReconciler | None = None,
         on_completed: Callable[[ContinuationDeliveryV2], object] | None = None,
         heartbeat_wait: HeartbeatWait = wait_for_heartbeat,
+        runtime_ready: Callable[[], None] | None = None,
     ) -> None:
         self._outbox = outbox
         self._handlers = {
@@ -83,6 +91,7 @@ class AgentCanvasContinuationWorker:
         self._dependency_reconciler = dependency_reconciler
         self._on_completed = on_completed
         self._heartbeat_wait = heartbeat_wait
+        self._runtime_ready = runtime_ready
 
     def run_once(self) -> ContinuationWorkerCycle:
         claimed = self._outbox.claim_due(
@@ -140,6 +149,8 @@ class AgentCanvasContinuationWorker:
         )
         try:
             with lease_scope as lease_guard:
+                if self._runtime_ready is not None:
+                    self._runtime_ready()
                 if delivery.operation == "capability_materialization":
                     if self._capability_materialization is None:
                         raise V2PersistenceError(
@@ -229,6 +240,34 @@ class AgentCanvasContinuationWorker:
                     raise
             error_code, retryable, turn_retryable = _structured_failure(error)
             try:
+                if recoverable_runtime_outage(error):
+                    wait = runtime_recovery_wait(
+                        now=self._clock(),
+                        started_at=delivery.runtime_wait_started_at,
+                        count=delivery.runtime_wait_count,
+                    )
+                    if wait is None:
+                        return self._record_terminal(
+                            delivery,
+                            error_code="agent_runtime_unavailable",
+                            error_message=RUNTIME_WAIT_EXPIRED_MESSAGE,
+                            turn_retryable=True,
+                        )
+                    self._outbox.defer_for_runtime(
+                        delivery.continuation_id,
+                        worker_id=self._worker_id,
+                        lease_generation=delivery.lease_generation,
+                        started_at=wait.started_at,
+                        next_attempt_at=wait.available_at,
+                        message=RUNTIME_WAIT_MESSAGE,
+                        now=self._clock(),
+                    )
+                    return "retried"
+                if error_code == "agent_runtime_unavailable":
+                    # An interrupted accepted stream may have reached the model.
+                    # Availability alone is not proof that replay is safe.
+                    retryable = False
+                    turn_retryable = True
                 return self._record_failure(
                     delivery,
                     error_code=error_code,

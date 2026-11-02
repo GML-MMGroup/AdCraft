@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_image_presentation import (
+    AUTHORED_IMAGE_PRESENTATION,
+    DEFAULT_IMAGE_OVERLAYS,
+)
+
 import hashlib
 import json
 import logging
@@ -69,24 +74,23 @@ _ROLE_BOUNDARIES = {
         "Do not add people or a narrative environment unless explicitly declared.",
     ),
     "prop": (
-        "Render one isolated prop identity and material design.",
-        "Do not add unrelated products, people, or narrative action.",
+        "Render one prop identity and material design in the authored presentation.",
+        DEFAULT_IMAGE_OVERLAYS,
     ),
     "character": (
-        "Render one character identity, wardrobe, silhouette, and neutral presentation.",
+        "Render one character identity, wardrobe and silhouette in the authored presentation.",
         "Do not add product placement or a narrative scene unless explicitly declared.",
     ),
     "scene": (
         "Render one consistent environment as a complete 3x3 spatial design board.",
-        "Do not progress narrative action across panels.",
+        "Keep the authored views within the same environment. " + DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_sequence": (
         "Render one complete 3x3 storyboard image for one coherent sequence. "
         "Keep all nine distinct frames in strict reading order with consistent "
         "identities, world details, visual style, and narrative continuity. "
-        "Do not render labels or panel numbers anywhere in the image. Use visual "
-        "storytelling without visible text in every frame.",
-        "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
+        "Preserve authored text and original product marks.",
+        DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_video": (
         "Render one video segment from the written story beats, using the bound storyboard grid as loose guidance.",
@@ -352,13 +356,25 @@ class AgentCanvasProviderPromptCompiler:
             if isinstance(structured, CharacterDesignAssetContentV2)
             else None
         )
-        body = _render_content(structured, generation_prompt=node.generation_prompt or "")
+        creative_prompt = node.generation_prompt or node.summary_prompt or ""
+        is_product = node.semantic_role == "product"
+        product_multiview = (
+            is_product
+            and isinstance(structured, DesignAssetContentV2)
+            and structured.asset_kind == "multi_view"
+        )
+        body = (
+            _render_product_identity(structured, creative_prompt)
+            if is_product and isinstance(structured, DesignAssetContentV2)
+            else _render_content(structured, generation_prompt=creative_prompt)
+        )
         reference_identities = _render_reference_identities(
             reference_bundle,
             target_semantic_role=node.semantic_role,
+            known_product_text=f"{creative_prompt}\n{body}" if is_product else "",
         )
         references = "\n".join(
-            f"- Image {index}: {_reference_description(item, node.semantic_role)}"
+            f"- Image {index}: {_reference_description(item, node.semantic_role, product_multiview=product_multiview)}"
             for index, item in enumerate(reference_bundle.references, start=1)
         )
         try:
@@ -394,11 +410,14 @@ class AgentCanvasProviderPromptCompiler:
             if is_video
             else f"Visual style ({style.source}):\n{style.style_prompt}"
         )
+        if is_product and _contains_text(creative_prompt, style.style_prompt):
+            style_clause = ""
         prompt_parts = (
             character_policy.positive_boundary if character_policy is not None else "",
             registration.boundary,
-            f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
-            f"Structured role content:\n{body}",
+            AUTHORED_IMAGE_PRESENTATION if node.node_type == "image" else "",
+            f"Creative prompt:\n{creative_prompt}",
+            f"Structured role content:\n{body}" if body else "",
             reference_identities,
             storyboard_anchor_clause,
             (
@@ -413,7 +432,7 @@ class AgentCanvasProviderPromptCompiler:
             for part in (
                 (*prompt_parts, style_clause)
                 if is_video
-                else (*prompt_parts[:5], style_clause, *prompt_parts[5:])
+                else (*prompt_parts[:6], style_clause, *prompt_parts[6:])
             )
             if part
         )
@@ -434,6 +453,18 @@ class AgentCanvasProviderPromptCompiler:
             if character_policy is not None
             else registration.registry_digest
         )
+        if node.node_type == "image":
+            registry_digest = _digest(
+                {
+                    "role_registry_digest": registry_digest,
+                    "image_presentation_revision": 1,
+                    "authored_presentation": AUTHORED_IMAGE_PRESENTATION,
+                }
+            )
+        if is_product:
+            registry_digest = _digest(
+                {"role_registry_digest": registry_digest, "product_serialization_revision": 2}
+            )
         context = {
             "node_id": node.node_id,
             "node_revision": node.revision,
@@ -605,6 +636,8 @@ def _is_storyboard_style_anchor(
 def _reference_description(
     reference: ResolvedAdReferenceV2,
     target_semantic_role: str,
+    *,
+    product_multiview: bool = False,
 ) -> str:
     if _is_storyboard_style_anchor(reference, target_semantic_role):
         return (
@@ -612,6 +645,15 @@ def _reference_description(
             "lighting. Do not reuse its panels."
         )
     semantic_role = reference.semantic_reference_role
+    if product_multiview and (
+        reference.source_semantic_role == "product" or semantic_role == "product_reference"
+    ):
+        return (
+            "Product Main identity reference: preserve shape, proportions, materials, colors, "
+            "and existing packaging marks. Render this same product in the requested multi-view "
+            "layout; the source image's composition does not determine the target layout. "
+            "Keep markings on their actual surfaces and accept natural occlusion at each angle."
+        )
     if semantic_role == "storyboard_visual_reference":
         if target_semantic_role in {"storyboard_video", "general_video"}:
             return (
@@ -628,7 +670,7 @@ def _reference_description(
         if reference.source_semantic_role == "product":
             return (
                 "Product reference: preserve the exact shape, proportions, materials, colors, and "
-                "marks. Do not reproduce any multi-view layout."
+                "marks. Use this identity within the authored target layout."
             )
         if reference.source_semantic_role == "prop":
             return "Prop reference: preserve the exact shape, materials, and colors."
@@ -645,12 +687,12 @@ def _reference_description(
     if semantic_role == "environment_reference":
         return (
             "Scene reference: use it only for spatial layout, materials, lighting, and "
-            "atmosphere. Do not reproduce any multi-view grid layout."
+            "atmosphere. Use this environment within the authored target layout."
         )
     if semantic_role == "product_reference":
         return (
             "Product reference: preserve the exact shape, proportions, materials, colors, and "
-            "marks. Do not reproduce any multi-view layout."
+            "marks. Use this identity within the authored target layout."
         )
     if semantic_role == "prop_reference":
         return "Prop reference: preserve the exact shape, materials, and colors."
@@ -741,6 +783,24 @@ def _style_from_projection(
                 "Video style projection exceeds the bounded style contract.",
             ) from error
     return resolve_visual_style()
+
+
+def _contains_text(prompt: str, value: str) -> bool:
+    """Only elide text already present verbatim apart from whitespace."""
+
+    normalized = " ".join(value.split())
+    return bool(normalized) and normalized in " ".join(prompt.split())
+
+
+def _render_product_identity(structured: DesignAssetContentV2, prompt: str) -> str:
+    return "\n".join(
+        f"{label}: {value}"
+        for label, value in (
+            ("Identity", structured.subject_identity),
+            ("Design", structured.design_summary),
+        )
+        if not _contains_text(prompt, value)
+    )
 
 
 def _render_content(structured: object, *, generation_prompt: str = "") -> str:
@@ -873,6 +933,7 @@ def _render_reference_identities(
     reference_bundle: AdReferenceBundleV2,
     *,
     target_semantic_role: str,
+    known_product_text: str = "",
 ) -> str:
     identities = [
         {
@@ -881,12 +942,25 @@ def _render_reference_identities(
             "semantic_reference_role": reference.semantic_reference_role,
             "occurrence_id": reference.occurrence_id,
             "character_phase": reference.character_phase,
-            "facts": reference.source_identity_facts,
+            "facts": {
+                key: value
+                for key, value in reference.source_identity_facts.items()
+                if not (
+                    target_semantic_role == "product"
+                    and reference.source_semantic_role == "product"
+                    and isinstance(value, str)
+                    and _contains_text(known_product_text, value)
+                )
+            },
         }
         for reference in reference_bundle.references
         if reference.source_identity_facts
         and not _is_storyboard_style_anchor(reference, target_semantic_role)
     ]
+    if target_semantic_role == "product":
+        identities = [item for item in identities if item["facts"]]
+        if not identities:
+            return ""
     if not identities and not reference_bundle.references:
         return ""
     turnaround_clause = (
@@ -936,7 +1010,7 @@ def _render_reference_identities(
         "Reference availability does not require every subject to appear in every shot.\n"
         + turnaround_clause
         + "\n".join(
-            f"- {json.dumps(identity, sort_keys=True, ensure_ascii=True)}"
+            f"- {json.dumps(identity, sort_keys=True, ensure_ascii=target_semantic_role != 'product')}"
             for identity in identities
         )
     )

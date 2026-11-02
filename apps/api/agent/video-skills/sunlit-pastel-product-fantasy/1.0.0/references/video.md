@@ -1,7 +1,8 @@
 # Moving-image treatment
 
-Translate each approved segment into a starting state, one primary action,
-one dominant camera path, and a precise ending state. Use smooth tracking,
+Translate each approved segment into a starting state, ordered actions and
+camera paths, and a precise ending state. Give each beat a clear focus while
+allowing multiple shots and movements within the segment. Use smooth tracking,
 controlled push-ins, low sweeping travel, or a restrained orbit. Keep the
 horizon and screen direction understandable during speed changes.
 
@@ -20,8 +21,9 @@ trajectory and gradual acceleration. Maintain realistic material response
 throughout. If a landing exists, decelerate before contact, establish contact
 shadow, and use only a small material-appropriate settling movement.
 
-Resolve to a calmer hero composition with stable form and readable approved
-branding. Hold long enough for recognition within the specified segment.
+When the approved segment contains the commercial finish, resolve to a calmer
+hero composition with stable form and readable branding. Elsewhere, preserve
+the planned local ending and the state needed by the next sequence.
 Preserve the supplied frame shape, timing, and representation requirements.
 
 When the existing brief requests native environmental sound, sparse contact,
