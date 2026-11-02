@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_image_presentation import (
+    AUTHORED_IMAGE_PRESENTATION,
+    DEFAULT_IMAGE_OVERLAYS,
+)
+
 import hashlib
 import json
 import logging
@@ -69,24 +74,23 @@ _ROLE_BOUNDARIES = {
         "Do not add people or a narrative environment unless explicitly declared.",
     ),
     "prop": (
-        "Render one isolated prop identity and material design.",
-        "Do not add unrelated products, people, or narrative action.",
+        "Render one prop identity and material design in the authored presentation.",
+        DEFAULT_IMAGE_OVERLAYS,
     ),
     "character": (
-        "Render one character identity, wardrobe, silhouette, and neutral presentation.",
+        "Render one character identity, wardrobe and silhouette in the authored presentation.",
         "Do not add product placement or a narrative scene unless explicitly declared.",
     ),
     "scene": (
         "Render one consistent environment as a complete 3x3 spatial design board.",
-        "Do not progress narrative action across panels.",
+        "Keep the authored views within the same environment. " + DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_sequence": (
         "Render one complete 3x3 storyboard image for one coherent sequence. "
         "Keep all nine distinct frames in strict reading order with consistent "
         "identities, world details, visual style, and narrative continuity. "
-        "Do not render labels or panel numbers anywhere in the image. Use visual "
-        "storytelling without visible text in every frame.",
-        "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
+        "Preserve authored text and original product marks.",
+        DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_video": (
         "Render one video segment from the written story beats, using the bound storyboard grid as loose guidance.",
@@ -411,6 +415,7 @@ class AgentCanvasProviderPromptCompiler:
         prompt_parts = (
             character_policy.positive_boundary if character_policy is not None else "",
             registration.boundary,
+            AUTHORED_IMAGE_PRESENTATION if node.node_type == "image" else "",
             f"Creative prompt:\n{creative_prompt}",
             f"Structured role content:\n{body}" if body else "",
             reference_identities,
@@ -427,7 +432,7 @@ class AgentCanvasProviderPromptCompiler:
             for part in (
                 (*prompt_parts, style_clause)
                 if is_video
-                else (*prompt_parts[:5], style_clause, *prompt_parts[5:])
+                else (*prompt_parts[:6], style_clause, *prompt_parts[6:])
             )
             if part
         )
@@ -448,6 +453,14 @@ class AgentCanvasProviderPromptCompiler:
             if character_policy is not None
             else registration.registry_digest
         )
+        if node.node_type == "image":
+            registry_digest = _digest(
+                {
+                    "role_registry_digest": registry_digest,
+                    "image_presentation_revision": 1,
+                    "authored_presentation": AUTHORED_IMAGE_PRESENTATION,
+                }
+            )
         if is_product:
             registry_digest = _digest(
                 {"role_registry_digest": registry_digest, "product_serialization_revision": 2}
@@ -657,7 +670,7 @@ def _reference_description(
         if reference.source_semantic_role == "product":
             return (
                 "Product reference: preserve the exact shape, proportions, materials, colors, and "
-                "marks. Do not reproduce any multi-view layout."
+                "marks. Use this identity within the authored target layout."
             )
         if reference.source_semantic_role == "prop":
             return "Prop reference: preserve the exact shape, materials, and colors."
@@ -674,12 +687,12 @@ def _reference_description(
     if semantic_role == "environment_reference":
         return (
             "Scene reference: use it only for spatial layout, materials, lighting, and "
-            "atmosphere. Do not reproduce any multi-view grid layout."
+            "atmosphere. Use this environment within the authored target layout."
         )
     if semantic_role == "product_reference":
         return (
             "Product reference: preserve the exact shape, proportions, materials, colors, and "
-            "marks. Do not reproduce any multi-view layout."
+            "marks. Use this identity within the authored target layout."
         )
     if semantic_role == "prop_reference":
         return "Prop reference: preserve the exact shape, materials, and colors."
