@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 
+from app.services.agent_runtime_recovery import (
+    RUNTIME_WAIT_EXPIRED_MESSAGE,
+    RUNTIME_WAIT_MESSAGE,
+    recoverable_runtime_outage,
+    runtime_recovery_wait,
+)
+
 from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
     AgentCanvasPromptPreparationDispatchRepository,
 )
@@ -58,6 +65,7 @@ class AgentCanvasPromptPreparationWorker:
         barrier_callback: BarrierCallback | None = None,
         stale_dispatch_reconciler: StaleDispatchReconciler | None = None,
         heartbeat_wait: HeartbeatWait = wait_for_prompt_preparation_heartbeat,
+        runtime_ready: Callable[[], None] | None = None,
     ) -> None:
         if not worker_id:
             raise ValueError("Prompt-preparation worker requires an identity.")
@@ -75,6 +83,7 @@ class AgentCanvasPromptPreparationWorker:
         self._barrier_callback = barrier_callback
         self._stale_dispatch_reconciler = stale_dispatch_reconciler
         self._heartbeat_wait = heartbeat_wait
+        self._runtime_ready = runtime_ready
 
     def run_once(self) -> PromptPreparationWorkerCycle:
         completed = retried = superseded = lease_lost = 0
@@ -145,6 +154,8 @@ class AgentCanvasPromptPreparationWorker:
                     dispatch,
                     now=self._clock(),
                 )
+                if self._runtime_ready is not None:
+                    self._runtime_ready()
                 if dispatch.context_json:
                     try:
                         context = StageAuthoringContextV1.model_validate(dispatch.context_json)
@@ -249,6 +260,35 @@ class AgentCanvasPromptPreparationWorker:
         if current.status in {"completed", "superseded"}:
             return "completed" if current.status == "completed" else "superseded"
         error_code, retryable = _failure(error)
+        if recoverable_runtime_outage(error) and current.status == "leased":
+            wait = runtime_recovery_wait(
+                now=self._clock(),
+                started_at=dispatch.runtime_wait_started_at,
+                count=dispatch.runtime_wait_count,
+            )
+            if wait is not None:
+                try:
+                    self._dispatches.defer_for_runtime(
+                        dispatch,
+                        worker_id=self._worker_id,
+                        started_at=wait.started_at,
+                        next_attempt_at=wait.available_at,
+                        message=RUNTIME_WAIT_MESSAGE,
+                        now=self._clock(),
+                    )
+                    return "retried"
+                except V2PersistenceError as lease_error:
+                    if lease_error.code == "prompt_preparation_dispatch_lease_stale":
+                        return "lease_lost"
+                    if lease_error.code == "prompt_preparation_dispatch_stale":
+                        return self._supersede_stale(dispatch, str(lease_error))
+                    raise
+            error = PiAgentRuntimeError(
+                "agent_runtime_unavailable",
+                RUNTIME_WAIT_EXPIRED_MESSAGE,
+                retryable=True,
+            )
+            retryable = False
         if error_code in _ONE_AUTOMATIC_RETRY_CODES and dispatch.attempt_no < 2:
             # User rule (2026-10-20): a provider timeout is often transient, so
             # retry once automatically before asking the user to continue.

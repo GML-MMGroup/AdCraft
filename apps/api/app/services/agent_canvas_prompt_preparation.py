@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from time import monotonic
 
+from app.services.agent_runtime_recovery import recoverable_runtime_outage
+
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
@@ -110,6 +112,7 @@ class NodePromptPreparationService:
         *,
         operation_id: str,
         context: StageAuthoringContextV1,
+        defer_runtime_failure: bool = False,
     ) -> CanvasNodeV2:
         started_at = _now()
         started_monotonic = monotonic()
@@ -511,6 +514,10 @@ class NodePromptPreparationService:
                 )
             return persisted
         except Exception as error:
+            if defer_runtime_failure and recoverable_runtime_outage(error):
+                # The durable worker owns the wait and eventual failure publication.
+                # Keep its lease and Node operation alive until it records that wait.
+                raise
             error_code = str(getattr(error, "code", "prompt_preparation_failed"))
             error_details = _prompt_preparation_error_details(error, role_context)
             actionable_failure = error_details.get("actionable_failure")
