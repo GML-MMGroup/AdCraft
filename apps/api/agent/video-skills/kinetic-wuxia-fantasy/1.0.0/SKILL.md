@@ -7,7 +7,7 @@ description: 以可读的动作地理、衣摆与兵器运动、诗性山水和�
 
 ## 动作地理
 
-先建立地形、双方起点、目标、退路和不可穿越区域。readable action geography 记录攻击线、闪避线、镜头轴线和每次换位后的相对关系。动作段落按试探、逼近、反制、停顿和结果组织，不把所有招式压成一团。
+Readable action geography establishes the relevant terrain, paths and changing relationships. For an approved confrontation, track attack and evasion lines. Travel, a gesture or an encounter can use the same flowing craft without inventing combat. Choose preparation, impact and recovery for the actual action rather than a mandatory tactical sequence.
 
 ## 材质与节奏
 

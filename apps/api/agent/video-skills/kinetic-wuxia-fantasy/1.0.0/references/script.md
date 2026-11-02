@@ -1,5 +1,11 @@
-# 剧本指导
+# Action rhythm and poetic contrast
 
-先写双方目标、地形限制和一次会改变局势的动作，再按试探、逼近、反制、停顿、结果组织 rhythmic combat。每个动作都应有目的和代价，避免只罗列招式名称。让诗性环境与人物选择发生关系。
+Apply readable action geography, fabric and weapon motion and poetic landscapes
+to the approved events. Rhythmic combat is useful when a confrontation exists;
+travel, anticipation, a gesture or a comic exchange can use the same flowing
+motion language without adding an opponent or fight.
 
-为关键交锋写清谁获得高度、距离或视线优势。正例是一次借地形完成的反制；反例是连续炫技但冲突状态不变。
+Mark preparation, impact, recovery and stillness where they clarify the chosen
+action. Let breath, footsteps, fabric and environment shape local tempo. Preserve
+the approved objectives, product role and outcome rather than requiring a fixed
+approach, counterattack and victory sequence.
