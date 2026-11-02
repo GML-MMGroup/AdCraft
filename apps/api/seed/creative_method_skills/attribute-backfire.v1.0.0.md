@@ -20,7 +20,7 @@ story_structure: >
   product introduced as a reasonable help at the emotional peak, the backfire
   where the attribute overshoots and destroys the plan, an optional second
   attempt that uses the same attribute on purpose and escalates the disaster,
-  and a product card that names the attribute in two to four words.
+  and a product payoff that makes the attribute clear.
 hook_methods: >
   Open inside the crisis with genre signals turned up: survival music, sweat,
   a map, a clasped hand over a drop, a phone call at night. The first seconds
@@ -72,7 +72,11 @@ and the viewer replays the moment to see the attribute do it.
 4. Let the attribute overshoot into a physical result at blockbuster scale.
 5. Optionally insert a quick product card, then return for a second, bigger
    backfire that uses the same attribute on purpose.
-6. Close on a product card that names the attribute in two to four words;
-   for fictional or spec brands add a small "fictional brand" note.
-7. Keep the format reusable: same characters and genre, a new product and
-   attribute each episode.
+6. Make the attribute clear in the payoff and approved wording. A concise
+   product card is one option; its length and layout follow the brief.
+7. A recurring cast and genre can support a series. For a standalone film,
+   choose the relationship and setting that best serve the attribute.
+
+### Adaptation And Combination
+
+Keep the causal reversal: the product over-delivers and defeats the original plan. Extreme Hyperbole needs magnitude but no backfire; Genre Hijack needs recognizable genre grammar but no overperformance. Product-card word counts and recurring casts are optional execution examples.
