@@ -1,7 +1,7 @@
 # Continuous ownership across an impossible event
 
-Start with believable contact, grip, posture, and item state. Use the approved
-interaction to motivate the threshold. Match the same identity, product pose,
+For an approved interaction, establish believable contact, grip, posture
+and item state. Use its causal role to motivate a threshold when present. Match the same identity, product pose,
 motion direction, and spatial anchor as the environment changes. A wipe,
 light boundary, unfolding surface, or perspective reveal can carry the effect;
 the reference's gold ring is not compulsory.
@@ -20,7 +20,8 @@ Direct scale changes deliberately: establish the comparison, preserve design
 proportions, and recover a legible interaction scale where use requires it.
 Particles or secondary objects follow the chosen rule and a readable path.
 
-Shift from spectacle to a tactile view that suits the category, then settle.
+Use a tactile view or a settled reveal where the current approved sequence
+needs one; intermediate segments can retain an unresolved local ending.
 A bite, sip, application, control action, or material detail must preserve
 physical state and remain connected to the marketed item. Stabilize the closing
 silhouette and branding while the background moves quietly, if at all.
