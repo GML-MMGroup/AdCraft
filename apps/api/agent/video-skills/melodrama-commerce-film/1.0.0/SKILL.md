@@ -5,11 +5,12 @@ description: Heightened short-drama performance, confrontational framing, reacti
 
 # Melodrama Commerce Film
 
-Use polished short-drama tension that changes into a confident commercial
-finish. The signature is confrontational framing, reaction cuts, tactile
-product inserts, and a direct-to-camera sales finish. Apply this treatment
-to the approved story; do not require a particular relationship, location,
-product category, or creative method.
+Use polished short-drama tension and confident commercial presentation.
+The signature is confrontational framing, reaction cuts, tactile product
+inserts, and assertive delivery at a planned direct-to-camera sales finish.
+The approved story determines the conflict, reversal, product entry and ending;
+apply this treatment to its existing beats and current segment. Relationships,
+locations, product categories and creative mechanisms remain open.
 
 ## Visual character
 
@@ -24,12 +25,13 @@ scoped rules; this style does not impose illustration on everything.
 
 ## Dramatic contrast
 
-Begin with readable spatial tension and emotionally committed delivery.
+For a dramatic exchange, use readable spatial tension and emotionally committed delivery.
 Favor a controlled frame over constant movement. Selective tight emphasis
 and brief pauses make a decisive gesture feel larger. Hold a meaningful
 detail long enough to understand it, then return to a strong response.
-The payoff changes from tense restraint to assertive confidence, then settles
-into an appealing, readable display. Avoid a uniformly frantic montage or
+At a planned turn, a change from tense restraint to assertive confidence can
+register the payoff. A product display can retain that energy without adding
+another reversal or sales ending to an intermediate segment. Avoid a uniformly frantic montage or
 constant shouting that leaves no room for contrast.
 
 ## Commercial clarity

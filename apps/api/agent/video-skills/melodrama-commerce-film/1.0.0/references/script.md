@@ -9,18 +9,20 @@ Avoid disconnected catchphrases and repeated insults that do not advance the sce
 
 Attribute each line to its speaker and addressee in the required script fields.
 Pair key lines with delivery, reaction, interruption, or a meaningful pause.
-Write a comeback that answers the opening insult or demand and connects to the
-supported product detail. Narration, silent expressions, and physical retaliation
+For an approved rebuttal, answer the earlier insult or demand and connect to the
+supported product detail where relevant. Narration, silent expressions, and physical retaliation
 can support the exchange but do not replace its verbal conflict or payoff.
 Use a pause or look before the reversal so the audience can register the
 change in power; escalation does not require every line to be louder.
 
-Write the handoff from in-world dialogue to direct audience address as an
+When the approved story includes a sales handoff, render the shift from in-world
+dialogue to direct audience address as an
 explicit performance beat. Carry a phrase, gesture, or visible product detail
 through that pivot. Retain the same presenter and item unless the approved
-story says otherwise. Reserve a distinct closing passage for the product
-name, supported benefit, relevant demonstration, and one purchase invitation.
-Do not let the final dramatic reaction consume all available selling time.
+story says otherwise. Give its product name, supported benefit, relevant
+demonstration and purchase invitation enough speaking and recognition time.
+An intermediate segment retains its assigned outgoing state; this style does
+not add a sales close, comeback or product demonstration to every segment.
 
 Keep product numbers, prices, comparisons, and offers grounded in the brief.
 Use the user's language for dialogue and approved on-screen wording. A concise

@@ -11,12 +11,14 @@ Keep screen direction, hand occupancy, eye level, and item orientation stable.
 An object close-up must explain an actual beat or supported feature. A visual
 impact followed by an intact object is dramatic emphasis, not technical proof.
 
-Mark the handoff when the protagonist turns from the opponent to the lens.
-Give the closing offer a readable presenter-and-item composition, then an
-approved use or detail view and a stable hero finish. Plan space for later
+Where the approved sequence includes a sales handoff, mark the turn from the
+opponent to the lens. Give a planned offer a readable presenter-and-item
+composition, with use, detail and hero coverage as needed. Plan space for later
 sales text without obscuring eyes or the important product feature. Keep
 generated storyboard panels free of typography as required by their contract;
 record overlays and CTA wording in the designated script or editing fields.
 
-Adapt coverage to the requested runtime and frame shape. Fewer clear beats
-are preferable to tiny unreadable panels or recreating every source shot.
+Retain nine ordered panels for the current sequence. Several panels can show
+successive states of one beat; their count does not require nine cuts. Preserve
+the sequence's local start and end states, including unresolved tension when
+the payoff belongs later. Adapt framing to the requested frame shape.
