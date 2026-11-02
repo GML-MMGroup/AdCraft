@@ -1,20 +1,12 @@
-# A short feeling with a concrete use
+# Seasonal atmosphere and local rhythm
 
-Organize the approved idea around one summer occasion and a believable product
-action. Connect a sensory cue to the encounter, use, small response, and clear
-product finish. Keep the item recognizable before the closing display.
+Use wind, luminous light, water, easy movement or quiet observation to shape the
+approved idea. Select connected sensations that support its emotional meaning.
+An active encounter, domestic ritual, conversation or product-centered image can
+all use this treatment; the creative method determines what happens and why.
 
-An active route can lead from light movement to a pause and use. A quiet route
-can lead from wind or changing daylight into a small domestic ritual. Choose
-the route from the brief rather than requiring running, spinning, a beach,
-or a young solo model. Cast size and relationships remain approved story facts.
-
-For a 15-second brief, leave a few seconds for the closing product read; a
-30-second version can deepen the action and sensory pauses. Avoid filling the
-extra time with repeated drinking or unrelated scenic footage. Narration is
-optional; preserve requested speech and its assigned speaker.
-
-Keep seasonal feeling separate from factual claims. Supply exact brand wording
-and any supported tagline or CTA in the audience's language. Carry typography
-placement and timing into the production handoff rather than asking scenery
-or water to generate lettering.
+Choose sensory pauses, natural delivery and environmental sound around the
+existing action. Preserve a product use moment when the concept includes it;
+the style does not require another sip or demonstration. Cast, location, reveal
+timing and ending follow the confirmed brief. Keep approved wording and claims
+separate from atmospheric metaphor, with exact typography in the handoff.

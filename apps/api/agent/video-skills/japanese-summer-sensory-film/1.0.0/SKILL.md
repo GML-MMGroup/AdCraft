@@ -33,8 +33,9 @@ may use a loose turn, a walk, or a playful gesture. The quiet route may use a
 window-side rest, a small reach, or an everyday preparation. Both should feel
 lived rather than continuously posed.
 
-Alternate an environmental view with a tactile close-up, a use action, and a
-human response when the cast calls for it. Gentle tracking, a modest handheld
+Choose environmental views, tactile close-ups, use coverage and human
+responses where they support the approved narrative; their order follows
+the selected mechanism. Gentle tracking, a modest handheld
 drift, a motivated low view, or a held close-up are options. Let movement resolve
 before a calm hero view. Wind, highlights, water, or background activity can
 keep that ending alive while the product remains legible.
