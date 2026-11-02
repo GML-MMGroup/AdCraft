@@ -7,7 +7,7 @@ description: 以轴线构图、精选色盘、章节式调度和精确喜剧节�
 
 ## 叙事秩序
 
-先确定一个简单、可观察的愿望和阻碍，再把内容拆成章节式的进入、等待、误会、变化和回收。每一章只引入一个新的关系或信息，重复出现的动作、道具或构图可以逐渐改变含义。precise comic timing 依赖准备、停顿、反应和回扣，不要把笑点写成无因果的夸张表情。
+Apply chapter-like staging to the approved structure through recurring frames, entrances or visual punctuation. Waiting, misunderstanding and a comic reversal are optional plot choices. Precise comic timing can use preparation, pauses and callbacks around the existing events; preserve the selected motivation and product role.
 
 ## 构图与色彩
 
