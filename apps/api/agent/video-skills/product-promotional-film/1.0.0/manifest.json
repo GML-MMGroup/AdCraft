@@ -2,7 +2,7 @@
   "skill_id": "product-promotional-film",
   "version": "1.0.0",
   "display_name": "商品卖点宣传片",
-  "description": "以卖点层级、使用情境、利益揭示和清晰收束组织可理解、可转化的商品广告。",
+  "description": "Clear product communication through readable use coverage, feature hierarchy, tangible benefit details, and an uncluttered commercial finish.",
   "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
@@ -22,10 +22,10 @@
   },
   "display_order": 30,
   "files": {
-    "SKILL.md": "4e273f5a1a5a1ffbb01cfb0b9d53726e10fabb84e77c6ac35aa7964544860f3b",
-    "references/script.md": "f3c484fdc0823d39f794c037cae0622efb675a4374572ea565ff732f8213fed8",
+    "SKILL.md": "f31015a3e79be16cb1b2e07bda753c546d0d463b9f307328321bd730fa464c10",
+    "references/script.md": "3fc2bbe598e6ab5147b2bc34f1d44eec827ec5025f0f5102b20ebb3503467bb8",
     "references/product.md": "b43ae0e4d5e26a4fc5774b7277e9ba1ad3bde1651d7a89c85005c6156f97b10c",
-    "references/storyboard.md": "62f28b8f175d2cf97febb783a2b376dc4eaf8d055472bf364bf08927d0849762",
+    "references/storyboard.md": "bf74d3d8fad81285ea5a35ab0edf556319686455959203e79ef3c8c8af4cec8a",
     "references/video.md": "99ec712b92a3509282e4582ba578d431e8431ca958de90633b510a8afcfec9fe",
     "previews/preview.webp": "8bf2f5943990aac744d930481edd615f0db4be7bcfbbf4cf183de8f85e21ba17"
   },

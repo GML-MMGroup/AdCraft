@@ -1,6 +1,11 @@
-先写出一个单一主卖点，再为它安排需求、使用动作、利益结果和品牌收束。脚本中的每一句话都应服务于事实、操作或情绪，不用夸张口号填补证据空白。
+# Readable commercial information
 
-让人物先处于可理解的使用情境，再通过产品动作推动状态变化。多个卖点按层级出现，次要信息可以作为结果旁证。旁白、对白和画面不要重复同一信息，结尾明确产品名称、利益或品牌记忆点。
+Use selling-point hierarchy to make the approved message easy to follow.
+Emphasize the relevant operation, contact, result or spoken evidence where the
+story places it. Use context can be established in a few details; a separate
+problem-solution plot is optional rather than a requirement of this style.
 
-正例：用户在真实情境中遇到麻烦，产品通过一个可见动作解除麻烦，结果被人物反应和产品细节共同证明。
-反例：人物从开头到结尾只微笑举着商品，旁白却声称解决了多个问题。
+Choose pauses and wording that leave the main supported benefit understandable.
+Additional claims remain subordinate and verified. Apply clean packshot logic
+to planned display beats while retaining the confirmed story, product role and
+ending. A middle segment continues its local purpose without restarting a pitch.
