@@ -1,5 +1,11 @@
-# 剧本指导
+# Psychological information and delivery
 
-先列出观众、人物与品牌各自掌握的信息，再安排延迟揭示和证据回收。用重复操作、异常细节和反应变化制造 restrained tension，确保每次隐藏都有后续解释。产品或品牌的价值应成为解决问题的证据，而不是最后突然出现的口号。
+Start from the approved audience knowledge, character motivation and payoff.
+Shape restrained tension through what a performer notices, pauses over or
+chooses not to say. Procedural visual detail can emphasize an existing clue;
+motivated darkness and sound can delay its perception without changing causality.
 
-把关键动作写成可执行的次序：看见、确认、尝试、发现、判断、解决。正例是一个小状态变化重新解释前文；反例是依靠尖叫和无关惊吓推进故事。
+Choose preparation and release around the meaningful turn. A fixed sequence of
+checking, discovery and resolution is unnecessary; a conversation, association
+or product encounter can carry the selected idea. Preserve confirmed dialogue
+and the product role rather than making the item solve a newly invented mystery.
