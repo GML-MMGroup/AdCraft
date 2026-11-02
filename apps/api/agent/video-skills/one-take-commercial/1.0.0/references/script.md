@@ -1,6 +1,11 @@
-脚本先写空间路径和信息顺序，再写对白与动作。每个段落说明主体从哪里来、要到哪里去、途中遇到什么触发点、产品或品牌信息如何被揭示。对话要短而有动作目的，不能让人物停在原地解释空间。
+# Continuous action and reveal timing
 
-把一条连续行动拆成可验证的交接点：进入、发现、接触、传递、转向、揭示、离开。每个交接点都保留前后动作方向和情绪状态。若需要隐藏剪辑，脚本应指出遮挡或动作依据。
+Organize the approved events into a legible continuous spatial choreography.
+Connect changes of attention with a path, moving subject, occlusion, sound or
+focus shift. A held camera, a pause or a conversation can remain part of the
+continuous take; constant travel and a product relay are optional.
 
-正例：人物寻找目标，沿路径遇到产品并完成一次交接，交接改变下一个人的行动，结尾自然抵达品牌空间。
-反例：用旁白跳过所有空间过程，下一句对白却把人物放到无法到达的位置。
+Choose motivated transitions that preserve the selected reveal dependencies and
+character intentions. Hidden joins maintain the apparent path and action. The
+creative method owns the plot and commercial ending; this style makes its space
+and time feel continuous rather than adding a compulsory journey.
