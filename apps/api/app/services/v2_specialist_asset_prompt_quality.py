@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import re
+import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.schemas.workflow_v2_planning import V2ExpertBriefPlan
+
+logger = logging.getLogger(__name__)
 
 SpecialistType = Literal["product", "character", "scene"]
 
@@ -45,9 +48,7 @@ class V2SpecialistAssetPromptQualityValidator:
     def validate_plan(self, plan: V2ExpertBriefPlan, **kwargs: Any) -> V2SpecialistQualityAudit:
         del kwargs
         violations = self.evaluate_plan(plan)
-        if violations:
-            raise V2SpecialistAssetPromptQualityError(violations)
-        return V2SpecialistQualityAudit()
+        return _admit_prompt_findings(violations)
 
     def evaluate_plan(self, plan: V2ExpertBriefPlan) -> list[V2SpecialistQualityViolation]:
         violations: list[V2SpecialistQualityViolation] = []
@@ -94,9 +95,7 @@ class V2SpecialistAssetPromptQualityValidator:
             slot_type=slot_type,
             prompt=prompt,
         )
-        if violations:
-            raise V2SpecialistAssetPromptQualityError(violations)
-        return V2SpecialistQualityAudit()
+        return _admit_prompt_findings(violations)
 
     def evaluate_asset_prompts(
         self,
@@ -184,6 +183,23 @@ class V2SpecialistAssetPromptQualityValidator:
             repair_instruction=repair_instruction,
             evidence=evidence,
         )
+
+
+def _admit_prompt_findings(
+    violations: list[V2SpecialistQualityViolation],
+) -> V2SpecialistQualityAudit:
+    blocking = [item for item in violations if item.code == SPECIALIST_ASSET_PROMPT_QUALITY_FAILED]
+    if blocking:
+        raise V2SpecialistAssetPromptQualityError(blocking)
+    if violations:
+        logger.warning(
+            "Specialist prompt presentation advice: %s",
+            [
+                {"item_id": item.item_id, "slot_type": item.slot_type, "code": item.code}
+                for item in violations
+            ],
+        )
+    return V2SpecialistQualityAudit(violations=violations)
 
 
 def specialist_quality_audit(
@@ -323,7 +339,7 @@ def _is_shallow_wrapper(prompt: str) -> bool:
 
 def _message(specialist_type: SpecialistType, detected: list[str]) -> str:
     return (
-        f"{specialist_type.title()} asset prompt contains forbidden cross-layer context: "
+        f"{specialist_type.title()} asset prompt may include cross-layer context for author review: "
         f"{', '.join(detected)}."
     )
 
