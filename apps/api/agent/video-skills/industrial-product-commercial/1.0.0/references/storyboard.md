@@ -1,4 +1,4 @@
-用“工程问题—产品部件—动作过程—物理反馈—结果验证—整体回收”组织分镜。每个镜头只承担一个主要功能证据，并记录开始、变化和结束状态。需要剖面或示意时，明确它是解释层，不要让观众误认产品实际结构。
+Choose engineering form, functional detail and physical feedback to clarify the approved local sequence; a complete problem-to-solution demonstration is optional. 每个镜头只承担一个主要功能证据，并记录开始、变化和结束状态。需要剖面或示意时，明确它是解释层，不要让观众误认产品实际结构。
 
 保持设备、工件、操作者、指示状态、镜头轴线和光源连续。用接口、轨道、工件边缘或灯光方向作为视觉锚点。用切削声、卡合声、气流声或环境底噪帮助观众感到重量与精度，但声音不能代替画面证据。
 
