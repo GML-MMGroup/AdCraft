@@ -144,3 +144,7 @@ visible gives that comic release a useful commercial destination.
   promotional enthusiasm rather than the level of danger.
 
 These are interchangeable mechanisms, not a sequence to include in one film.
+
+### Adaptation And Combination
+
+The surprise is the visitor's promotional purpose after an interruption. A-to-B-to-A attention is a useful implementation, while the selected audiovisual treatment chooses whip pans, reaction cuts, a held frame or another readable reveal. Preserve genuine offer terms and a clear pitch; weather, transport and danger are optional.
