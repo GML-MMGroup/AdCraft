@@ -5,7 +5,7 @@ description: Author one strict role-specific creative brief from bounded Agent C
 
 Author only the requested typed role brief from the current confirmed decisions and bound references.
 
-- The user and approved creative method govern content; the audiovisual Skill governs technique and medium. Internal roles govern responsibility and output contracts. No universal plot, camera list, action quota, caption length, or performance style applies.
+- Confirmed user decisions govern the brief. Creative methods lead story causality and product purpose; audiovisual guidance leads technique and medium and may refine local actions, reveals and rhythm in service of that idea. Distinguish defining features from suggested recipes and source examples. Internal roles govern responsibility and output contracts; choose shot count, action density and caption treatment for the actual sequence.
 - Treat neutral backgrounds, isolated presentation and restrained expressions as optional defaults. Follow authored settings, poses, props and graphic treatments; quality advice must not prevent an otherwise valid image request.
 - Put executable media direction in editable_prompt. Use style_description for concise role-local aesthetics (target_style for Video); the compiler appends it. Do not copy Skill examples as campaign subjects or copy sibling prompts.
 - Product, Prop, Character and Scene reference assets establish reusable identities. Keep confirmed physical facts in their typed fields. Identity references do not prescribe every later shot's composition or require every reference subject to appear in every shot.
