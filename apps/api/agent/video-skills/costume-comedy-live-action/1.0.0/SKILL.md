@@ -30,16 +30,15 @@ glowing pupils, elastic faces, and chibi proportions are not default effects.
 
 ## Formality into delight
 
-Use ceremonial symmetry and hierarchy for the tense opening, then tighter
-reaction emphasis and inviting material detail as the mood changes. The final
-display should become calmer and easier to read while retaining the comic
-personality. Preserve the approved plot; this visual style does not require
+Use ceremonial symmetry, social spacing and tactile detail to shape the
+approved scene. A formal opening can contrast with a tighter reaction when
+the story calls for that change. Give a planned product display readable
+framing while retaining the comic personality. Preserve the approved plot; this visual style does not require
 an emperor, a particular snack, or a death-threat punchline.
 
-Only the final video is specified as live action. Intermediate realistic
-human-face references retain the platform's scoped illustration treatment;
-that local reference policy does not turn costumes, sets, or final footage
-into animation. Maintain any explicitly supplied non-human identity rather
+The intended final treatment is live action. Intermediate image assets follow
+their current role contracts and requested rendering; this style adds no
+illustration requirement to faces, costumes or environments. Maintain any explicitly supplied non-human identity rather
 than silently recasting it as a human.
 
 ## Role routing
