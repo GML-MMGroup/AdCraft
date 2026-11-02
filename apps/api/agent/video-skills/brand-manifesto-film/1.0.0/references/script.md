@@ -1,6 +1,11 @@
-先把品牌信念写成可被人物经历证明的命题，再设计冲突、行动、转折和 brand resolution。旁白可以有诗意，但每个抽象句都应由一个具体的人、产品、环境或行为支撑。
+# Voice and symbolic emphasis
 
-情绪升级不要只靠音量和剪辑速度。让人物选择、关系变化、空间扩大或阻力消失推动情绪。产品出现时说明它是解决方案、见证者、象征物还是行动结果，避免品牌与故事脱节。
+Translate the confirmed brand belief into a voice, image motif and emotional
+rhythm. Belief-led narration may be poetic or direct; ground factual statements
+in supplied evidence. Symbolic imagery should reinforce an established meaning
+without inventing a character's history or replacing the chosen mechanism.
 
-正例：从一个普通人的具体选择开始，逐步连接更多相似处境，结尾回到品牌能实际支持的行动。
-反例：把“改变世界”重复多次，却没有任何可观察的行动或品牌责任。
+Use repetition, widening perspective, pauses or vocal intensity to shape
+emotional escalation where the story calls for it. A quiet or nonlinear structure
+can also express conviction. Brand resolution should preserve the approved
+takeaway rather than force a new hero story or universal crescendo.

@@ -1,6 +1,11 @@
-用“生活事实—信念线索—行动累积—情绪转折—品牌落点”设计分镜。每镜记录人物目标、象征元素、真实证据、情绪状态、声音和下一镜锚点。让象征画面服务于人物或产品，不让它独立漂浮。
+# Motif and emotional emphasis
 
-通过重复构图、动作、色彩或声音建立 motif，但每次重复应有发展。高潮可以扩大空间、增加关系或完成动作；之后保留稳定镜头让 brand resolution 被读懂。检查人物、道具、场景和视线连续。
+Sample the approved sequence in the required nine-panel grid. Choose symbolic
+imagery, repeated composition, scale or light to reinforce its established
+meaning. A motif should develop through the selected actions, not introduce a
+new story or a different brand claim.
 
-正例：同一个门口动作从犹豫变成出发，镜头逐渐打开环境，最后落到品牌支持的真实行动。
-反例：每镜换一个象征物，视觉很丰富却没有可追踪的叙事线。
+Give a planned emotional turn preparation and perceptible change. Brand resolution
+belongs at its designated point in the whole film. Preserve identities, eyelines,
+product facts and local ending states while choosing coverage for the actual
+mechanism; every grid need not build to a new climax.
