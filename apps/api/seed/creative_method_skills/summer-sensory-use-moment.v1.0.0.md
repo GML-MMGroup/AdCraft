@@ -106,3 +106,7 @@ visible use and a deliberate product finish carry the commercial argument.
    honest audience takeaway, and brand close for each beat. Distinguish
    environmental freshness from proven product function. Each scene should
    either deepen the feeling, show use, or strengthen product recognition.
+
+### Adaptation And Combination
+
+Seasonal sensation earns a concrete product encounter. The Japanese Summer Sensory Film style supplies one photographic treatment; other approved visual languages can express the same mechanism. Compared with Private Ritual, personal solitude is optional; compared with Synesthetic Translation, the sensation need not become an abstract world.
