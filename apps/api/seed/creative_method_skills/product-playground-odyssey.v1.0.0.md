@@ -14,7 +14,7 @@ consumer_psychology: >
   attention on the product and makes the final display feel earned.
 story_structure: >
   A spectacular prize arena, selection and lift, a motivated release through
-  an exit, a journey past two recognizable landmarks, and a controlled arrival
+  an exit, a journey past recognizable spatial anchors, and a controlled arrival
   at a branded hero destination with time to recognize the package.
 hook_methods: >
   Open on an oversized but immediately understandable attraction already
@@ -78,8 +78,8 @@ turning it into a face, character, or unrelated toy.
 
 ### Design one traversable world
 
-Draw a route from the selecting mechanism to its exit, past two landmarks,
-and toward the destination. Keep shared geography, background landmarks, and
+Draw a route from the selecting mechanism through its exit and toward the
+destination. Use enough landmarks to make that route legible. Keep shared geography, background landmarks, and
 light direction coherent. Use apparent scale and small human figures to make
 the product monumental; explain any actual size change as a separate event.
 
@@ -110,11 +110,10 @@ and landmark movement subordinate to the traveling hero.
 
 ### Apply a brand-specific visual treatment
 
-Derive the set's primary color from the package, add one supporting accent,
-and preserve strong product-to-background separation. For the playful premium
-treatment, use clear daylight, soft-edged shadows, polished metal, believable
-glass, and tactile product surfaces. Pastel attractions and a waterfront skyline
-are optional scene choices, not requirements of the method.
+Let the selected audiovisual treatment choose palette, lighting, optics and
+materials presentation while keeping the product identifiable along the route.
+A daylight pastel park is one reference execution; the same selection, journey
+and arrival can work in other worlds and visual treatments.
 
 Use increasing travel energy followed by a restrained landing and a stable
 closing composition. A small rebound is optional when it suits the material.
@@ -126,9 +125,9 @@ these sound suggestions as factual analysis of a reference soundtrack.
 
 For each image or storyboard keyframe, specify the unchanged product identity,
 world anchor, product pose, camera position, lighting, and visible destination.
-For each video segment, specify the starting state, one primary action,
-camera path, occlusion if any, and the exact ending state needed by the next
-segment. Keep model, duration, format, and provider decisions with the project.
+For each video segment, specify the starting state, ordered actions and
+camera paths, occlusions if useful, and the ending state needed by the next
+segment. Several shots or actions may serve one segment. Keep model, duration, format, and provider decisions with the project.
 
 Adaptable concept prompt:
 
