@@ -124,14 +124,18 @@ _SPECIAL_POLICIES = {
             "product_multiview.exact_product_main",
             "product_multiview.authored_views",
             "product_multiview.isolated_presentation",
+            "product_multiview.packaging_marks",
         ),
         "positive": (
             "Use the sole exact bound Product Main identity source.",
             "Render the authored views, preserving the bound product geometry and visible features.",
             "Use one clean neutral studio presentation.",
+            "Preserve existing brand marks and printed packaging text on their actual surfaces; "
+            "allow natural occlusion in rear and detail views without relocating the marks.",
         ),
         "negative": (
-            "No people, hands, active use, application scene, narrative scene, labels, captions, or visible text.",
+            "No people, hands, active use, application scene, narrative scene, overlay text, "
+            "panel labels, captions, or watermarks. Existing product printing is not an overlay.",
         ),
         "engine_owned_fields": {},
         "required_reference_purposes": ("product_main_identity",),
@@ -174,7 +178,9 @@ def _default_policy(recipe) -> PromptAssertionPolicyV1:
             recipe.recipe_id,
             recipe.recipe_version,
             **special,
-            policy_version="2" if role in {"product_multiview", "video_segment"} else "1",
+            policy_version=(
+                "3" if role == "product_multiview" else "2" if role == "video_segment" else "1"
+            ),
         )
     return _policy(
         recipe.recipe_id,
@@ -227,22 +233,31 @@ class PromptAssertionPolicyRegistry:
         """Resolve the Video policy with an applicable native-audio assertion."""
 
         policy = self.resolve(recipe_id, recipe_version)
-        if policy_version == "1" and recipe_id.endswith(".product_multiview"):
+        if policy_version in {"1", "2"} and recipe_id.endswith(".product_multiview"):
             special = dict(_SPECIAL_POLICIES["product_multiview"])
             special.update(
                 assertion_ids=(
                     "product_multiview.exact_product_main",
-                    "product_multiview.canonical_views",
+                    "product_multiview.canonical_views"
+                    if policy_version == "1"
+                    else "product_multiview.authored_views",
                     "product_multiview.isolated_presentation",
                 ),
                 positive=(
                     "Use the sole exact bound Product Main identity source.",
-                    "Render front, side, back, three-quarter, and detail views in that order.",
+                    "Render front, side, back, three-quarter, and detail views in that order."
+                    if policy_version == "1"
+                    else "Render the authored views, preserving the bound product geometry and visible features.",
                     "Use one clean neutral studio presentation.",
                 ),
-                engine_owned_fields={"views": PRODUCT_MULTIVIEW_VIEWS},
+                negative=(
+                    "No people, hands, active use, application scene, narrative scene, labels, captions, or visible text.",
+                ),
+                engine_owned_fields={"views": PRODUCT_MULTIVIEW_VIEWS}
+                if policy_version == "1"
+                else {},
             )
-            policy = _policy(recipe_id, recipe_version, **special)
+            policy = _policy(recipe_id, recipe_version, **special, policy_version=policy_version)
         elif policy_version == "1" and recipe_id.endswith(".video_segment"):
             special = dict(_SPECIAL_POLICIES["video_segment"])
             special["positive"] = (

@@ -740,7 +740,8 @@ def _render(
             f"Use the exact bound Product Main as identity authority. Preserve {identity}; "
             f"{design_summary}. Render {', '.join(brief.views)} on a clean neutral "
             "studio background.",
-            "No people, hands, active use, application scene, unrelated prop, labels, captions, "
+            "Preserve existing printed packaging text. No people, hands, active use, application "
+            "scene, unrelated prop, added panel labels, overlay captions, "
             "storyboard layout, or Product Main prompt reuse.",
         )
     if isinstance(brief, ProductMainRoleBriefV2):
@@ -749,7 +750,8 @@ def _render(
             f"Identity: {brief.identity}. Geometry: {brief.geometry}. Materials: "
             f"{brief.materials}. Brand marks: {brief.marks}. Palette: {brief.palette}.",
             "No people, hands, active use, application scene, narrative environment, accessory "
-            "clutter, unrelated props, labels, captions, or storyboard layout.",
+            "clutter, unrelated props, added panel labels, overlay captions, or storyboard layout. "
+            "Preserve existing printed packaging text.",
         )
     if isinstance(brief, PropRoleBriefV2):
         return (
