@@ -26,8 +26,9 @@ suitable_categories_and_goals: >
   Luxury, fragrance, fashion, design objects, art collaborations, beverages,
   and premium technology; brand-image, artfulness, and stopping-power goals.
 unsuitable_cases: >
-  Mass-market promotions, functional demonstrations, or audiences that read
-  surrealism as pretentious.
+  Briefs that require literal proof or whose audience cannot decode the
+  proposed association. Promotional or mass-market use can work when the
+  impossible image clarifies the actual message.
 common_mistakes: >
   Displacements chosen for strangeness with no shared logic, comedic delivery
   that cheapens the image, too many displaced elements in one frame, and no
@@ -53,9 +54,14 @@ as the brand.
 
 1. Name the product quality to transfer.
 2. Choose familiar objects that can be displaced in place, size, or material to express it.
-3. Keep compositions clean and still so each displacement is unmistakable.
+3. Make the impossible juxtaposition easy to recognize. Still tableaux,
+   movement or montage may work when they preserve that relationship.
 4. Make all displacements obey one shared logic.
 5. Reveal the product as the source of that logic.
 
 This method differs from Visual Metaphor: a metaphor runs one world rule
 through a story, while displacement composes isolated impossible images.
+
+### Adaptation And Combination
+
+Preserve the meaningful mismatch of place, size or material. Scale Shift changes the audience's viewpoint; Visual Metaphor develops a value through a world rule. Select the method that explains why this image belongs to this product, leaving palette, stillness and camera movement to the audiovisual treatment.
