@@ -14,10 +14,10 @@ consumer_psychology: >
   from their screens, so seeing them on a body is both funny and painfully
   accurate, and it makes an invisible technical benefit concrete.
 story_structure: >
-  An ordinary morning where the protagonist's reactions arrive half a second
-  late, escalating glitches in front of neighbors, family, or colleagues,
-  a moment where someone names the cause in plain words, the product or
-  technician arriving, and a smooth real-time ending with the tagline.
+  A familiar digital frustration appears in physical behavior or surroundings,
+  its consequences become legible, and a product encounter restores the
+  relevant experience. Choose settings and escalation length for the brief;
+  explanation can be visual or spoken.
 hook_methods: >
   Open on a greeting that is answered two seconds late, a face that freezes
   mid-smile, or a person whose movement stutters while the world moves
@@ -35,10 +35,9 @@ unsuitable_cases: >
   calm prestige rather than comedy, and cases where the glitch could be read
   as a flaw of the advertiser's own product.
 common_mistakes: >
-  Using glitches that do not match the pain point (pixelation for a speed
-  problem without lag); stacking every effect at once; characters noticing
-  the joke and laughing; forgetting a line that names the cause; ending
-  without showing the smooth, fixed version of the same moment.
+  A glitch unrelated to the actual pain point, competing effects that obscure
+  cause, an unclear product contribution, or no recognizable contrast between
+  the impaired and restored experience.
 cross_category_examples: >
   Fibre broadband: a man's neighbors watch him freeze, lag and pixelate in his own garden until a fibre technician arrives, tagline "Fibre. It's how we internet now".
   Phone camera: a mother at a school play sees her child in blocky low resolution until she lifts the new phone.
@@ -60,9 +59,14 @@ cure becomes obvious.
 
 1. Choose the one glitch that best matches the product benefit: lag, freeze,
    buffering, pixelation, dropped audio, low resolution.
-2. Apply it only to the protagonist so the contrast with the smooth world is
-   clear.
-3. Escalate across three or four everyday scenes with witnesses.
-4. Let one witness name the cause in plain words.
+2. Choose who or what carries the glitch and retain a readable unaffected
+   comparison. A person, group, object or environment can carry the metaphor.
+3. Develop consequences in the available time. One location or several may
+   work; add a scene only when it changes the audience's understanding.
+4. Clarify the cause visually or with concise speech when explanation helps.
 5. Bring in the product or technician as an ordinary, friendly arrival.
 6. Replay a moment from the start in smooth real time, then the tagline.
+
+### Adaptation And Combination
+
+Keep the digital frustration, physical metaphor and product-supported relief causally connected. A narrator, witness, technician or morning routine is optional. Let the selected audiovisual treatment choose comic, restrained or expressive performance without changing the actual product claim.
