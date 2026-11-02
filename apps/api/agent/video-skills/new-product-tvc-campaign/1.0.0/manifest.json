@@ -2,7 +2,7 @@
   "skill_id": "new-product-tvc-campaign",
   "version": "1.0.0",
   "display_name": "新品视觉TVC广告",
-  "description": "以广告概念、产品高级感揭示、视觉锚点和品牌弧线组织新品商业影像。",
+  "description": "Launch-film treatment with a memorable visual anchor, designed product reveals, coherent brand imagery, and polished material presentation.",
   "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
@@ -22,8 +22,8 @@
   },
   "display_order": 10,
   "files": {
-    "SKILL.md": "5b2498d479bd860fbbe363f0f379223653cd45259b892dd3ea13eb224e7c2d92",
-    "references/script.md": "7b9af270b96bc5d3c03a4210bd86284d488100e213a80b6996a21fbd43bb1ab5",
+    "SKILL.md": "cc31830ee4e1a7b7141ad18c4d28e4954840647148e91a6bc7cdbd48d68bb96f",
+    "references/script.md": "137bdebd0e59557f8fdd181cecd941d9c83e66fc47b427a2d3b4ad3b171dc5bb",
     "references/product.md": "85e9ed6838a5fddd72407d1b249e903791f63ac2da7e07dd45b12da94b6c0691",
     "references/storyboard.md": "0546349d32dd4f6ff4b850fe29c0aa8a813eed3772e153f39655963e04d7705c",
     "references/video.md": "44a70ffbdab84e9e4068c4e84b1d2d9b4acc13792aee3b678b900510e211b917",
