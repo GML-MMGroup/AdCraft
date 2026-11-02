@@ -1,5 +1,11 @@
-# 剧本指导
+# Intimate everyday delivery
 
-选择一个具体日常目的和一个微小变化，按准备、尝试、停顿、完成、分享组织 soft routine。让 natural gestures 和物件状态承担叙事，避免为普通动作添加夸张冲突或虚构对白。
+Express the approved idea through natural gestures, soft routine and warm ambient
+detail. Select hesitations, small reaches, changes of attention and casual speech
+that make the established action feel lived. An intimate handheld observation
+can follow an emotional turn without adding a new domestic story.
 
-每段写清人物在做什么、为何做和结果是什么。正例是一次寻找改变了日常顺序；反例是只有“起床、喝咖啡”的流水账。
+A routine may be interrupted, reversed, shared or simply observed as the creative
+method requires. Keep confirmed dialogue and conflict while adjusting delivery
+to an everyday register. Choose pauses and emphasis from the actual sequence,
+not a compulsory preparation, attempt, completion and sharing structure.
