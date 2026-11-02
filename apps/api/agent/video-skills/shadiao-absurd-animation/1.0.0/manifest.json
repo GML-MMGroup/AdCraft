@@ -2,7 +2,7 @@
   "skill_id": "shadiao-absurd-animation",
   "version": "1.0.0",
   "display_name": "沙雕抽象动画",
-  "description": "以粗线平涂的表情包式角色、物理规则失效、瞬间变形、冷面反应、短花字和喜剧音效组织无厘头抽象风格的二维动画广告。",
+  "description": "Graphic absurd comedy with flat-color animation, readable squash-and-stretch, abrupt transformations, deadpan reaction contrast, and optional comic text and sound.",
   "content_locale": "zh-CN",
   "category": "animation-illustration",
   "tags": [
@@ -27,13 +27,13 @@
   "allows_meme_captions": true,
   "allows_comedic_sound_effects": true,
   "files": {
-    "SKILL.md": "261c8f3fa1fec5a96ddfb5b8dfe7e098f1f021935d7afee3530b6d65706b7e15",
+    "SKILL.md": "5e107cd37319177f7a0efa35dba97fae0db3d1b156f739c131fdbc2058185925",
     "previews/preview.webp": "23a4fdc70af808c2ea88aa205d761242fd8752d77c8913fa09ae5068a28b1274",
-    "references/bgm.md": "038f57cc409c60060bfe7f352ef2c23cf2b1006a1780ed10e2bdb97c7ff8fdc8",
-    "references/character.md": "43711e8071639b8979be08fbc5a1bfcc0481e81b6615707998c89f10e6e36214",
-    "references/script.md": "374105c07fbed2176eee19faec47e9a09bbb5a06bc0020ec32504253a6fc676a",
-    "references/storyboard.md": "7971a0d4a03526bebe491a47b1354dcaae8b39582002b3d8d70cc00798282ee9",
-    "references/video.md": "a3859c86b2822abfe76fc01f7ef0051ba9e480144dbe5517275fc42630927037"
+    "references/bgm.md": "c4fa9430d9936e3aa9a6f0503a896d5e330a1f0e7ba6f00c95c2800a69bdb10f",
+    "references/character.md": "b7c12abf2ac2f2a92a3fd8078cc58003704c9b3b16487f7c9b6940c28a3ed3d3",
+    "references/script.md": "d81d6afef829dee0339312ee0f6369ddde09266c66a28976b89df674ed56390f",
+    "references/storyboard.md": "900e32e13d139f9b7d06dcf56d98e45948bf010137e08dca11e6fb3c373ba76a",
+    "references/video.md": "27c546c800f1f73e398d7e27f6a46c0cab77ca3bb689d1cd61fd5b51a50074ba"
   },
   "role_guidance": {
     "bgm": "references/bgm.md",

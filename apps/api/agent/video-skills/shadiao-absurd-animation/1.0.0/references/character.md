@@ -1,6 +1,10 @@
-角色是表情包式的二维小人：圆头圆身、粗黑描边、白色或单色平涂，五官极简，靠眼睛（圆点、圆圈、眯眼、横线）和嘴型变化表达情绪。可以用领带、帽子、眼镜等一个小配件区分身份。
+# Graphic identity and expression
 
-角色原创，不模仿或接近任何版权动画角色、表情包原作和品牌吉祥物。
+Adapt the supplied cast to economical two-dimensional shapes, bold contours and
+flat color. Preserve distinguishing silhouette, face or head features, wardrobe
+and accessories. Rounded meme figures are one option; approved people, animals,
+robots and mascots retain their own proportions and identities.
 
-正例：白色圆头小人，系一条黑色细领带，常态表情是眯眼的淡定脸。
-反例：长得像某个知名卡通形象，或者细节繁复、需要写实阴影的角色。
+Choose an expressive range that supports the story, including a composed reaction
+for comic contrast. Define recoverable deformation around stable identity cues;
+reference poses do not limit later performance or approved transformations.

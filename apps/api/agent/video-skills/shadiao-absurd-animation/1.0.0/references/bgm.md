@@ -1,6 +1,8 @@
-配乐轻快、魔性、像动画片里的滑稽小调：玩具乐器、木琴、口哨、短促的铜管，旋律动机简单并反复出现。在变形和冷面定格处停顿或变调，给喜剧音效留出空间。
+# Playful instrumental punctuation
 
-不要引用或模仿已有歌曲、动画主题曲、广告歌和影视配乐的旋律。
-
-正例：一段跳跃的木琴小调，在角色被压成薄饼时突然停住，回弹后接回。
-反例：抒情钢琴曲从头铺到尾，和画面的滑稽节奏不搭。
+Toy percussion, woodwind-like tones, mallet figures or short brass gestures can
+complement graphic motion. Select a motif and energy suited to the approved
+sequence; constant bouncy music is optional. Leave room for speech, deformation
+effects and useful silence. Align intended accents with the actual edit and
+carry the musical arc across segments. Describe original instrumental direction
+without imposing a tempo or borrowing a recognizable theme.
