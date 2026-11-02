@@ -4,17 +4,19 @@ version: 1.0.0
 skill_kind: creative_method
 title: Extreme Hyperbole
 core_principle: >
-  Push one product attribute to an absurd, impossible extreme and demonstrate
-  it with a straight face. The exaggeration is so clearly unreal that it reads
-  as confidence, not as a claim.
+  Push a product attribute to a clearly impossible magnitude so its meaning
+  becomes instantly legible. The exaggeration is a fictional demonstration,
+  not evidence for an unsupported performance claim; its comedic or
+  spectacular tone follows the brief.
 consumer_psychology: >
   Humor through absurdity and memory through exaggeration; obvious overstatement
   is decoded as a playful signal of strength and is remembered far longer than
   a literal specification.
 story_structure: >
-  A normal setup for testing the attribute, the attribute performing beyond
-  expectation, a bigger and more absurd test, the most extreme demonstration,
-  and a calm product close that treats the extreme as ordinary.
+  Establish an attribute or its extreme result, make the impossible magnitude
+  legible through a comparison or escalating demonstration, and connect the
+  payoff to the product. A single decisive exaggeration can work without
+  repeated tests.
 hook_methods: >
   Open with the extreme result already happening, with no warning, and let the
   audience search for the cause.
@@ -40,8 +42,8 @@ cross_category_examples: >
 
 # Extreme Hyperbole
 
-The commercial exaggerates one attribute until it becomes impossible, then
-treats the impossible as perfectly normal.
+The commercial exaggerates one attribute until it becomes impossible, so
+the audience can immediately grasp the intended attribute.
 
 ## Why It Works
 
@@ -53,10 +55,16 @@ shorthand.
 
 1. Choose the one attribute the brand most wants to own.
 2. Escalate it to a version that is clearly impossible, not merely impressive.
-3. Demonstrate it with deadpan seriousness.
+3. Make the impossible magnitude unmistakable. Sincere demonstration often
+   strengthens it; performance and reaction intensity follow the chosen style.
 4. Keep every escalation tied to the same attribute.
-5. Close calmly, as if the extreme were the expected result.
+5. Let the payoff connect the magnitude to the intended attribute. A calm
+   close is one option; choose the ending from the approved commercial idea.
 
 This method differs from Consequence Chain: hyperbole exaggerates one
 attribute in a single demonstration, while a chain follows causes into
 effects.
+
+### Adaptation And Combination
+
+Choose this when impossible magnitude makes an attribute memorable. Absurd Meme Comedy instead depends on an ordinary response to absurd circumstances; Attribute Backfire needs overperformance to undo a plan. Add either only when that second mechanism matters to the idea.
