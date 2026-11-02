@@ -16,8 +16,6 @@ from app.services.provider_model_catalog import ProviderModelCatalogService
 
 
 _BOOTSTRAP_LOCK = Lock()
-_ARK_MINI_TEXT_MODEL_REF = "volcengine_ark:doubao-seed-2-0-mini-260428"
-_ARK_PRO_TEXT_MODEL_REF = "volcengine_ark:doubao-seed-2-1-pro-260628"
 
 
 @dataclass(frozen=True)
@@ -79,58 +77,50 @@ class ProviderModelBootstrapService:
         existing = catalog.get_default_records()
         candidates = {
             key: model_ref
-            for key, model_ref in self._recognized_defaults().items()
+            for key, model_ref in self._recognized_defaults(catalog).items()
             if key not in existing
         }
-        valid_candidates: dict[str, str] = {}
-        for key, model_ref in candidates.items():
-            try:
-                model = self._repository.get_model(model_ref)
-            except ValueError:
-                continue
-            if model.availability != "available":
-                continue
-            valid_candidates[key] = model_ref
-        migrated_defaults: dict[str, str] = {}
-        try:
-            ark_pro = catalog.get_model(_ARK_PRO_TEXT_MODEL_REF)
-        except ValueError:
-            ark_pro = None
-        if ark_pro is not None and ark_pro.availability == "available":
-            migrated_defaults = {
-                key: _ARK_PRO_TEXT_MODEL_REF
-                for key in ("agent", "text")
-                if existing.get(key) is not None
-                and existing[key].model_ref == _ARK_MINI_TEXT_MODEL_REF
-            }
-        default_updates = {**migrated_defaults, **valid_candidates}
-        if default_updates:
-            catalog.set_defaults(default_updates, now=now)
+        if candidates:
+            catalog.set_defaults(candidates, now=now)
         return ProviderModelBootstrapResult(
             seeded_providers=tuple(seeded_providers),
-            seeded_defaults=tuple(valid_candidates),
+            seeded_defaults=tuple(candidates),
         )
 
-    def _recognized_defaults(self) -> dict[str, str]:
-        text_ref = "fake:deterministic-text"
-        if self._settings.agent_runtime_mode != "fake":
-            text_ref = (
-                "siliconflow:zai-org/GLM-5.2"
-                if self._settings.siliconflow_api_key
-                else _ARK_PRO_TEXT_MODEL_REF
-            )
-        if self._settings.media_mode == "mock":
-            return {
-                "agent": text_ref,
-                "text": text_ref,
-                "image": "fake:deterministic-image",
-                "video": "fake:deterministic-video",
-                "audio": "fake:deterministic-audio",
-            }
-        return {
-            "agent": text_ref,
-            "text": text_ref,
-            "image": "volcengine_ark:doubao-seedream-5-0-lite-260128",
-            "video": "volcengine_ark:doubao-seedance-2-0-fast-260128",
-            "audio": "tianpuyue:TemPolor-i3",
+    def _recognized_defaults(self, catalog: ProviderModelCatalogService) -> dict[str, str]:
+        configured = {
+            "agent": self._settings.llm_front_desk_model,
+            "text": self._settings.llm_team_model,
+            "image": self._settings.image_generation_model,
+            "video": self._settings.video_generation_model,
+            "audio": self._settings.bgm_model,
         }
+        if self._settings.agent_runtime_mode == "fake":
+            configured.update(agent="fake:deterministic-text", text="fake:deterministic-text")
+        if self._settings.media_mode == "mock":
+            configured.update(
+                image="fake:deterministic-image",
+                video="fake:deterministic-video",
+                audio="fake:deterministic-audio",
+            )
+        recognized: dict[str, str] = {}
+        for key, value in configured.items():
+            if not value or not value.strip():
+                continue
+            identifier = value.strip()
+            models = catalog.list_models(purpose=key)
+            matches = tuple(model for model in models if model.model_ref == identifier)
+            if not matches:
+                if key == "audio":
+                    models = tuple(
+                        model
+                        for model in models
+                        if model.provider_id == self._settings.bgm_provider
+                    )
+                matches = tuple(model for model in models if model.provider_model_id == identifier)
+            if not matches and key == "audio":
+                # Legacy BGM settings use the catalog's human-readable display name.
+                matches = tuple(model for model in models if model.display_name == identifier)
+            if len(matches) == 1:
+                recognized[key] = matches[0].model_ref
+        return recognized

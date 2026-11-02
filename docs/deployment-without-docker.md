@@ -138,6 +138,47 @@ Default addresses:
 
 The browser normally opens after a successful start. If it does not, open the Web address in a browser on the same computer. In the web page, enter provider API keys in API Space.
 
+### Choose the models used for generation
+
+In API Space, select and save a default for each capability you use. Saved defaults are
+preserved across restarts, including when the configured environment changes. If a saved
+model becomes unavailable or retired, select a supported replacement explicitly; startup
+does not silently switch it to another version or a more expensive model.
+
+For a new installation, the backend can initialize missing defaults from these settings:
+
+| Default | Setting |
+| --- | --- |
+| Agent | `LLM_FRONT_DESK_MODEL` |
+| Text | `LLM_TEAM_MODEL` |
+| Image | `IMAGE_GENERATION_MODEL` |
+| Video | `VIDEO_GENERATION_MODEL` |
+| Audio | `BGM_MODEL`, scoped by `BGM_PROVIDER` for an unqualified ID/name |
+
+Use an exact model ID already registered and available in the catalog, or its full
+`provider_id:model_id` reference. An unqualified ID must identify a single compatible
+model. The existing exact Tianpuyue display names such as `TemPolor i3` are also accepted
+for audio. Empty, unknown, ambiguous, incompatible, or unavailable values leave that
+default unconfigured. During initialization, the backend does not add a date suffix or
+substitute another model.
+Choose a valid default in API Space before generating. Models outside the catalog require
+registration with a compatible adapter and review before they can be selected.
+
+For Tianpuyue, the exact catalog IDs/references in `BGM_MODEL` and `BGM_LONG_MODEL` map
+to the same model's provider name (`TemPolor i3` or `TemPolor i3.5`). A configuration
+that conflicts with an already selected model fails before submission; it cannot change
+that request to another model. An explicitly empty audio model setting remains empty.
+
+When a setting is omitted entirely, its initial value comes from `Settings`; the example
+environment lists the intended initial models. These are installation defaults, not
+fallbacks after a provider rejects a request. Model IDs and account access can change, so
+verify the chosen model is available to your provider account.
+
+Adding a provider key does not choose that provider's model automatically. For example,
+a SiliconFlow-only installation should select a SiliconFlow default in API Space or set
+both text settings to the exact registered SiliconFlow model reference. An Ark initial
+default is not substituted with a SiliconFlow model just because only that key is present.
+
 ## If a port is already in use
 
 First stop any previous AdCraft native service. If another program still owns the port, use the commands below from the AdCraft project root.
