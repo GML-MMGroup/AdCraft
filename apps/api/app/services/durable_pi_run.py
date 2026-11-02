@@ -307,6 +307,7 @@ class DurablePiRunService:
                             expected_lease_generation=record.lease_generation,
                             lease_owner_id=lease_owner_id,
                             lease_duration_seconds=lease_duration,
+                            deadline_at=request.deadline_at,
                         )
                         if reopen
                         else repository.acquire_lease(
