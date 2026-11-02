@@ -1,19 +1,33 @@
 ---
 name: 几何悬疑叙事
-description: 以空间悬疑、受控视点、视觉母题和结构递进组织具有几何秩序的商业故事。
+description: Spatial suspense through controlled viewpoints, architectural framing, recurring geometric motifs, and revealing changes of perspective.
 ---
 
-把 spatial suspense、controlled viewpoint、visual motifs、structural escalation 作为几何悬疑的四个创作支点。空间本身就是叙事信息：门、走廊、框线、镜面和重复形体可以限制视线、隐藏关系，也可以在揭示时重新定义距离。
+# Geometric Suspense Cinema
 
-## 空间与视点
+## Defining character
 
-先画出平面路径、可见区、遮挡区、入口和出口，再决定观众站在哪里。controlled viewpoint 要明确哪些信息被镜头允许看到，哪些被几何边界暂时遮住。每次视点变化都要带来新证据，不要为了炫技随意翻转轴线。
+Use spatial suspense, controlled viewpoint, visual motifs and structural
+escalation to make space influence what the viewer understands. Doorways,
+occlusion, reflections, repeated frames and changes of distance are the primary
+craft. Controlled Psychological Thriller instead emphasizes mental uncertainty,
+performance and small procedural evidence.
 
-visual motifs 可以是重复的形状、缺口、影子、颜色或动作，但每次出现要有一致的基础含义，再随 structural escalation 改变权重。悬疑升级来自空间选择和信息关系，而不是单纯加速。
+## Viewpoint and composition
 
-## 连续性与纠偏
+Map the relevant path, visible zones and occluded zones. Choose where the audience
+stands and what a camera move or cut reveals. Repeated shapes may connect places
+or alter an apparent relationship; keep their geometry and reflection logic
+readable. Structural escalation can come from a changing view, even in a quiet scene.
 
-保持消失点、主体方向、镜面关系、光源、道具位置和视线连续。结果不清楚时，先恢复平面路径和视点，再减少镜面、分割画面和同时动作。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供空间叙事判断。
+Motifs support the selected idea and retain a recognizable relationship. Use
+light and negative space to guide the eye toward a reveal without filling every
+frame with mirrors or corridors. Camera movement is one option; a held frame
+with changing occlusion can create the same spatial discovery.
 
-正例：重复门框先隐藏人物，视点沿同一条路径推进后揭示门框其实连接两个关系空间。
-反例：镜头不断翻转，空间、左右关系和母题都改变，观众无法判断线索。
+## Narrative adaptation
+
+Realize the approved information order and payoff rather than adding a compulsory
+mystery, obstacle or reversal. The product may be a participant, clue, destination
+or observed object as the creative method requires. Preserve identity, eyelines
+and spatial anchors through cuts and deliberate perspective changes.

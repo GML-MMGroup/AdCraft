@@ -1,5 +1,11 @@
-# 剧本指导
+# Spatial information rhythm
 
-先定义空间限制、观众知道的信息和一个会被重新解释的视觉母题。按发现、受阻、换位、验证、回收组织 structural escalation，每次升级都改变角色选择或观众理解。
+Use controlled viewpoint to shape how the approved events are understood.
+A doorway may hide a relationship, a reflection may connect spaces, or a change
+of position may clarify distance. Select a visual motif that supports the
+established mechanism; structural escalation can happen through perception alone.
 
-把门、镜面、走廊、缺口和重复动作写成因果，不要只写“神秘”。正例是同一形状在结尾获得新含义；反例是用随机反转制造悬疑。
+Describe the meaningful visible and hidden information at each selected beat.
+Discovery, obstruction and reversal are possibilities, not compulsory plot steps.
+Retain the confirmed motivation, product role and ending while suggesting local
+pauses or reveals through spatial craft.

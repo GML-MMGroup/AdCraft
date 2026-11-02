@@ -2,7 +2,7 @@
   "skill_id": "geometric-suspense-cinema",
   "version": "1.0.0",
   "display_name": "几何悬疑叙事",
-  "description": "以空间悬疑、受控视点、视觉母题和结构递进组织具有几何秩序的商业故事。",
+  "description": "Spatial suspense through controlled viewpoints, architectural framing, recurring geometric motifs, and revealing changes of perspective.",
   "content_locale": "zh-CN",
   "category": "cinematic-narrative",
   "tags": [
@@ -22,8 +22,8 @@
   },
   "display_order": 260,
   "files": {
-    "SKILL.md": "67e2f971de862aedad8ce7a564c105613e86dc7b6c3c48aac0fe820b249c1500",
-    "references/script.md": "21408efa8a43bda23c440d793114989a2982a2ce17f27f1c4b9365125af8d878",
+    "SKILL.md": "1e3b28a8f9db4c7b85b717e8a31f179e89c75f9611b0bf8ed9f242db02bf4fff",
+    "references/script.md": "19c423c14ab114e7a0bd31b0e797f01113036974b555f59875dcabbc368b7e50",
     "references/scene.md": "cb628a68cbef28697c058279f5f92a769f5b4ae6d304bc4de5c342f769d479b8",
     "references/storyboard.md": "1295c23b42dd83ec6734b7a9bad0e9ba764760bb4ccbb27ee33aef7eeb384428",
     "references/video.md": "9a018854021e5da95e3607d380c33c4fcef2722669e30bafe4ad2a2f8a9b070e",
