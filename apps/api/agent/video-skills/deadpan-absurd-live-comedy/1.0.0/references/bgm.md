@@ -1,6 +1,8 @@
-配乐要魔性、洗脑、短循环：简单的旋律动机反复出现，节奏清楚，适合在离谱点处戛然而止或突然变调。配乐给笑点留出空白，在急推定格和突然静音的位置让出空间，不和视频里的喜剧音效抢同一时刻。
+# Musical contrast and comic space
 
-可以用玩具乐器、口哨、合成器小调、正经过头的庄严配器等反差手法，但不要引用或模仿已有歌曲、广告歌和影视配乐的旋律。
-
-正例：一段八拍的电子小调循环，在最离谱的画面处断掉一拍，再接回原来的循环。
-反例：情绪煽动的大编制配乐，从头铺到尾，盖住所有喜剧音效。
+Choose a simple recurring motif, toy-like instrumentation, a restrained electronic
+figure or unusually solemn orchestration when it strengthens the approved joke.
+Silence and a sparse score are also valid. Time accents, stops or changes to actual
+edit landmarks, leaving room for speech and native comic effects. Develop the
+music across the whole ad rather than restarting a buildup and payoff each clip.
+Describe original instrumental character without a fixed tempo or quoted melody.

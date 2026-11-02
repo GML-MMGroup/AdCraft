@@ -1,10 +1,14 @@
-视频提示要把抽象拆成模型能执行的具体动作和镜头：写清离谱事件的起因、过程和结果，人物的面无表情反应，以及每个笑点使用的手法，例如 crash zoom 急推到面部并定格半秒、同一动作快速重复三遍后突然停住、人物面无表情直视镜头、突然跳切到更离谱的结果。
+# Photographic comic performance
 
-花字直接由视频模型生成：每个镜头最多一句，1 到 4 个字，用引号写出原文，并写清颜色、粗黑描边、出现方式和位置，例如“画面下方弹出黄色粗黑描边大字「够用」，轻微抖动”。花字放在画面下方或侧边，不遮挡人物面部和产品；有台词时字幕使用台词原文。
+Render the approved scene with photographic surfaces and sincere, composed
+performance at the comic contrast. Other cast members may react differently.
+Choose observer-like framing, a held reaction, a quick push, abrupt cut or
+in-shot repetition for the actual beat. A segment may contain several shots,
+actions and pauses; preserve its local start and end states.
 
-喜剧音效点写在对应动作上：弹簧声、唱片划过声、“叮”、冻结声、夸张的咔嚓声、突然静音、罐头笑声。不要使用来自明星、广告或影视作品的标志性音效和梗，背景音乐由独立配乐节点负责。
-
-真实摄影质感，人物是真人，皮肤真实干净。除用户产品外，包装和招牌不带真实品牌标志。
-
-正例：她第三次按下按钮后画面定格，急推到眼睛特写，下方弹出蓝色粗描边花字「再来亿杯」，伴随唱片划过声，随后咖啡从机器里喷向天花板，她面无表情地举杯接住。
-反例：只写“搞笑夸张、节奏很快、加花字”，没有具体的离谱事件、花字原文和音效位置。
+Optional captions and comedic sound stings accent selected moments. Choose
+wording and reading time from the brief. Exact text, typography and freeze-frame
+finishing use the production handoff; native short captions follow actual
+capability. Preserve approved dialogue with speaker and timing. Video owns
+ambience and action effects; the separate BGM role owns music. Keep cast identity,
+product geometry and contact coherent through deliberate impossible events.
