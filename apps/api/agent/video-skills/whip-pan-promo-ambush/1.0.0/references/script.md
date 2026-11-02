@@ -1,13 +1,14 @@
 # A short reversal with an actual sales line
 
-Use the approved disturbance, reaction, and unexpected visitor as the route
-into a direct pitch. Establish the product at the reveal. A home knock can
-carry the same mechanism as a storm outside a vehicle; preserve the chosen
-intensity instead of automatically escalating to a disaster.
+Translate the approved interruption, reaction and reveal into speaking rhythm
+and readable pauses. The creative method determines the disturbance, reveal
+subject, product entry and commercial outcome. A home knock or storm outside
+a vehicle are examples; preserve the chosen intensity and causal structure.
 
 Write speaker-attributed lines in the user's language. Distinguish the
 witness's reaction, if any, from the presenter's audience-facing offer.
-Give the presenter a short bridge that answers the apparent urgency, then
+When the story includes a sales handoff, give the presenter a short bridge
+that answers the apparent urgency, then
 the actual item, one supported benefit, the supplied event and genuine terms,
 and a clear CTA. For a very short ad, combine functions into fewer natural
 phrases rather than accelerating speech beyond intelligibility.
@@ -17,7 +18,9 @@ validity when supplied, and purchase destination. A reference promotion is
 not an approved offer. Request missing essentials before finalizing selling
 lines; keep pending placeholders out of final spoken and graphic content.
 
-Reserve enough time after the second whip for the item and terms to be read.
+Where the paired whip reveals an offer, reserve enough stable time for the item
+and terms to be read. An intermediate segment may cover only setup, reaction or
+camera travel; preserve its outgoing state without adding a complete pitch.
 Longer versions may add a relevant question or supported demonstration.
 Record exact graphic wording and material conditions in the handoff. A final
 exit joke is optional and follows, rather than replaces, the commercial close.

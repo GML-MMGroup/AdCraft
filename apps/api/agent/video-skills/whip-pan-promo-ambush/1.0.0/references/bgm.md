@@ -10,7 +10,7 @@ Choose an accent that fits the brand and leaves the first promotional words
 clear. Keep density lower while prices, bundle terms, or conditions are spoken.
 Resolve beneath a readable ending rather than launching another escalation.
 
-Fit the approved 8-30 second creative range and actual audio mode. Dialogue,
+Fit the approved duration, emotional arc and actual audio mode. Dialogue,
 weather, knocks, and contact sounds belong to their designated audio handoff.
 Any frame-specific accent is an editing intention, not an already executed
 mix. Source melody, exact instruments, and measured tempo were not established.

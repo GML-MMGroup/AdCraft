@@ -2,7 +2,7 @@
   "skill_id": "whip-pan-promo-ambush",
   "version": "1.0.0",
   "display_name": "Whip-Pan Promo Ambush",
-  "description": "An urgent interruption, two motivated whip pans, an unexpected threshold-side presenter, and a readable direct product-and-offer pitch for portrait-led 8-30 second promotional reversals in vehicles, homes, or other everyday settings.",
+  "description": "Paired motivated whip pans, readable threshold geography, expressive reaction coverage and a stable presenter-and-product hold for promotional reveals.",
   "content_locale": "en-US",
   "category": "cinematic-narrative",
   "tags": [
@@ -28,17 +28,17 @@
   "allows_meme_captions": false,
   "allows_comedic_sound_effects": true,
   "files": {
-    "SKILL.md": "c575f1e143ef22292798059f121ad6d4c46a34e4d94eba2b2756476b59ddac93",
+    "SKILL.md": "d95f53105b77c1b5fba2a6fb567dd7619cbc7d6e58231051c0dfb6954d153ea7",
     "previews/preview.webp": "667722155d5756448128113976d0299cfcc73b7c89f1803304f3c4647f8c3317",
-    "references/bgm.md": "6fe85051c9b475368231846c8c9965267bb106ebb3c23d34843a73f7a9433a11",
+    "references/bgm.md": "da256b5c1de4e8edccb13886cdf36ba8bcae6b1ac4c6b9347992dfd327c04d79",
     "references/character.md": "c5add585a1cd07a288a7402c33ee2ce8e99e9245002cc86d7b8d600a21e85646",
     "references/product.md": "1ea83220ff4ade59e7bb5c583aae2792ad0998fa981ae0c89f0a1daa3e3e9d35",
     "references/prop.md": "06518c81312b482932402932aee03370afbc19c2db460c7f27d09f827571839f",
     "references/scene.md": "a3d28baff7baca96717d1c2321893630e83a37ef28c96ba5aaea1ff0da7f14a0",
-    "references/script.md": "17664298f6733c4e993e4574cf597ca0db810fb57360a5ec92b8f067c568a582",
+    "references/script.md": "a150182ecfe2e271c27630d6b60eb67b9c6df8bd40791c73b11d9e4ea0cf6478",
     "references/source-analysis.md": "2b204e63b1775de45c0c4cc02d12f629ce644468719454f76a12a18b3569db0a",
-    "references/storyboard.md": "251ef31d969131311fdc974a7b157164f03df16a88e07507c40c4980f3f07784",
-    "references/video.md": "42aceb03376afa35eb8cba40bd710f685b48216f2dbb2dbb6f4909887f864ec0"
+    "references/storyboard.md": "73550b887908687073327ab3b2e3daf2632d5131bd88457ef0bcdb8f2252de2c",
+    "references/video.md": "ce83100d10789bf891f421bb96c653dcdb1f8336b7b2d44803da7f84d43485cc"
   },
   "role_guidance": {
     "script": "references/script.md",

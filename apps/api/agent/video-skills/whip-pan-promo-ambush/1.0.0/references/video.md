@@ -1,10 +1,13 @@
 # Motivated swings followed by a stable pitch
 
-Establish the boundary and its disturbance briefly. Execute the first whip
+Execute the current segment's assigned coverage, preserving its incoming and
+outgoing states. The whole reveal uses this spatial pattern: establish the
+boundary and disturbance, execute the first whip
 toward the reaction, land long enough to understand it, and execute the second
 whip back to the same boundary for the presenter-and-item reveal. Match screen
 direction, camera height, light, and landmarks across any concealed join.
-Maintain a legible start and finish for both moves.
+Maintain a legible start and finish for both moves. A segment need not repeat
+the entire pattern; place the paired movement only where the sequence plans it.
 
 Use directional motion blur only during the fast travel. Recover focus and
 a steady composition for the face and actual item. Keep bodies, hands,

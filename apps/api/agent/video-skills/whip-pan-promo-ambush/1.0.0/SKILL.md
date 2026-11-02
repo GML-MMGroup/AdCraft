@@ -1,27 +1,29 @@
 ---
 name: Whip-Pan Promo Ambush
-description: An urgent interruption, two motivated whip pans, an unexpected threshold-side presenter, and a readable direct product-and-offer pitch for portrait-led 8-30 second promotional reversals in vehicles, homes, or other everyday settings.
+description: Paired motivated whip pans, readable threshold geography, expressive reaction coverage and a stable presenter-and-product hold for promotional reveals.
 ---
 
 # Whip-Pan Promo Ambush
 
 Combine threshold suspense, a two-whip reveal, emphatic direct address, and a
-stable offer hold. The visual joke comes from a serious expectation meeting
-a surprisingly committed sales pitch. Weather, vehicle type, location, cast,
-and event follow the brief rather than the reference's aircraft storm.
+stable offer hold at the approved reveal. The paired movement and contrast
+between rapid travel and a readable landing define the treatment. The creative
+method determines why attention shifts and what the reveal means. Weather,
+vehicle type, location, cast and event follow the brief.
 
 ## Spatial grammar
 
 Establish view A at a doorway, window, or hatch with a clear reason to look.
 Whip to view B for the reaction, then whip back to A-prime: the same boundary
-now frames the unexpected presenter and merchandise. Each whip needs a known
+now frames the approved reveal subject, often a presenter and merchandise. Each whip needs a known
 start, direction, landing subject, and readable pause. The return must retain
 the original geography rather than reveal an unrelated doorway.
 
 Use brief directional motion blur during travel, then recover a sharp face
 and item. The energy belongs in the transition; the final pitch needs stable
 framing. Concealed joins are acceptable when screen direction, position, and
-light match. The two-move design does not require one continuous generation.
+light match. The paired reveal belongs at its planned point in the whole film;
+each generation segment executes only its assigned portion of that coverage.
 
 ## Look and performance
 
@@ -38,17 +40,16 @@ individual identities, eyelines, grips, and ownership of foreground hands.
 
 ## Promotional reveal
 
-Bring the actual item into view with the presenter. Place the face and item
+At an approved product reveal, bring the actual item into view with the presenter. Place the face and item
 in separate readable areas, with the branded side toward the viewer and
 enough space for approved offer typography. A compact object can be held near
 the lens; a large item needs an appropriate display or a motivated detail view.
 
-Portrait composition is the default application. Adapt to the approved frame
-shape, retaining the boundary, reaction, and presenter-plus-item hierarchy.
-The intended 8-30 seconds is a creative range, not a provider clip limit.
+Adapt to the approved duration and frame shape, retaining readable geography,
+reaction coverage and a clear presenter-plus-item hierarchy where applicable.
 Keep price, bundle, validity, and campaign wording exactly as supplied.
 
-Let the last stretch settle so the offer can be understood. A brief sonic or
+At a planned offer, let the frame settle so its information can be understood. A brief sonic or
 graphic accent can mark the reversal, but it must not obscure speech or turn
 the entire pitch into uncontrolled camera shake. Typography and exact finishing
 belong in the authorized production handoff, not in storyboard panels.
