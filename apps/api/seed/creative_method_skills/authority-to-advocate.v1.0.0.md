@@ -47,8 +47,8 @@ cross_category_examples: >
 
 # Authority to Advocate
 
-Use an openly fictional period-comedy setting to make a modern product
-irresistibly interesting. The mechanism is a conversion in attitude caused
+Use a fictional relationship with a legible difference in authority or
+expectations to make the product irresistibly interesting. The mechanism is a conversion in attitude caused
 by experience, not a concealed identity reveal or a victim's revenge.
 
 ## Why It Works
@@ -65,16 +65,17 @@ mechanism, not a promise of measured advertising performance.
 1. Identify the actual product, one primary supported benefit, a brief
    demonstration, audience, approved offer, and purchase destination. Decide
    what can be seen or heard honestly in a short encounter with the item.
-2. Choose a compact fictional hierarchy: ruler and attendant, household
-   host and steward, teacher and pupil, or another appropriate relationship.
-   Give each side a clear desire. The palace is an option, not an obligation.
+2. Choose a relationship with clear expectations: manager and employee,
+   coach and learner, family members, host and guest, or a period hierarchy.
+   Give each side a desire and a reason for initial resistance. Era and
+   social setting follow the brief.
 3. Open on the subordinate secretly enjoying or making apparently improper
    use of the item, then interrupt with authority. Make the accusation brief
    and theatrical. An exaggerated reprimand can supply the stakes without
    requiring literal violence, execution, or the reference's exact dialogue.
-4. Turn the subordinate's explanation into a product reveal and offer to try
-   it. Make the modern packaging or device an intentional comic anachronism;
-   do not disguise the actual product to pretend historical accuracy.
+4. Turn the challenged character's explanation into a product reveal and
+   firsthand trial. In a period setting, contemporary packaging may provide
+   comic contrast. Preserve the real item in whichever era is selected.
 5. Stage the decisive experience. For food, it may be opening, aroma, texture,
    and one bite; for a non-food item, choose the actual mechanism, tactile
    quality, or useful output. Preserve approved branding and feature facts.
@@ -94,11 +95,15 @@ mechanism, not a promise of measured advertising performance.
    about one quarter on discovery, one quarter on the reveal, one third on
    the experience and reaction, and the remainder on the offer. Compress
    dialogue rather than cutting the benefit or final product recognition.
-10. Hand off the conflict, demonstration, emotional turn, payoff, and sales
-    ending as distinct beats with exact approved spoken claims. For this
-    reference adaptation, use the live-action costume-comedy style: real
-    actors, expressive performances, tangible costumes, and physical sets.
+10. Hand off the conflict, firsthand experience, emotional turn and commercial
+    payoff with exact approved claims. The selected audiovisual Skill sets
+    rendering, performance intensity, coverage and sound. Live-action costume
+    comedy is one compatible treatment, alongside contemporary or animated ones.
 
 Vary the product, setting, and relationship together. Preserve the causal
 chain from reprimand to firsthand experience to advocacy rather than copying
 the source snack, imperial cast, or demand for a fixed number of packets.
+
+### Adaptation And Combination
+
+The defining turn is firsthand product experience changing resistance into advocacy. A hidden identity or revenge alone belongs to another reversal mechanism. Period hierarchy, theatrical anger and comic anachronism are optional settings and treatments.
