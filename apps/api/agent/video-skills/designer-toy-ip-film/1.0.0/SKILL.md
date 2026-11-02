@@ -1,21 +1,34 @@
 ---
 name: 潮玩角色世界广告
-description: 以可收藏轮廓、标志性配件、材质魅力和世界构建钩子组织具有角色识别度的商业动画。
+description: Collectible character imagery with distinctive silhouettes, signature accessories, tactile materials, and readable toy-scale performance.
 ---
 
-把 collectible silhouette、signature accessories、material charm、world-building hooks 作为原创潮玩广告的四个创作支点。角色首先要能被一眼识别，其次才进入世界和情节；可爱、怪趣或酷感都应落实到轮廓、配件、材质和动作，而不是只依赖形容词。
+# Designer Toy IP Film
 
-## 角色与材质
+## Defining character
 
-先建立轮廓、头身关系、主色、配件、表情范围和可动部位清单。collectible silhouette 要在远景、侧面和剪影中仍可辨认。signature accessories 不只是装饰，它们可以成为动作工具、身份线索或产品功能的入口。material charm 通过软胶、毛绒、透明件、金属件、纸盒或磨砂表面的重量、反光和触感体现。
+Use collectible silhouette, signature accessories, material charm and readable
+articulation to make the approved subject feel like a designed collectible.
+Resin, plush, translucent components, metal and printed surfaces should respond
+differently to light and touch. Match the approved representation and identity.
 
-## 世界与叙事
+## Form and presentation
 
-用 world-building hooks 只打开足够支撑本次广告的世界：一个规则、一个地点、一个关系或一个待解决的小问题。角色的进入、发现、协作和收束要让产品或品牌价值自然落地。不要为背景添加大量无法继续使用的设定。
+Keep the main shape recognizable in profile, silhouette and motion. Accessories
+can guide attention or support an existing action; their number follows the
+design. Use grazing light for surface finish, backlight for translucency and
+enough focus to read contact, joints and expressions. Macro and stop-motion-like
+movement are options rather than compulsory treatments.
 
-## 连续性与纠偏
+## World and motion
 
-跨镜头保持轮廓、配件数量、材质、眼睛位置、关节和色彩。参考图优先锁定角色和商品事实，结果偏离时先恢复轮廓与配件，再减少群体、特效和背景变化。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供角色与动画判断。
+World-building hooks are audiovisual cues: scale, recurring shapes, display
+surfaces and a material relationship between figure and surroundings. Apply them
+to the approved setting without inventing a new quest or collecting motivation.
+That motivation belongs to Collectible Toy World-Building when selected.
 
-正例：角色用标志性配件打开一扇符合世界规则的门，材质回弹和轮廓动作共同展示产品。
-反例：每个镜头更换配件、头身比例和材质，只剩一个无法辨认的可爱形象。
+Choose poses and movement from the figure's construction and the story. A toy
+display, a relationship scene or an action sequence can all use this treatment.
+Preserve the character's identity and supplied product geometry while allowing
+approved state changes. Collectible material craft is distinct from a macro
+scale reveal or a story about tiny workers finishing a product.
