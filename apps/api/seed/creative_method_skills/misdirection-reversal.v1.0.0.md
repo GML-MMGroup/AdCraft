@@ -50,3 +50,7 @@ must make the product more necessary, not merely more visible.
 3. Plant the anomalous detail where rewatching rewards attention.
 4. Execute the reversal at the latest point the story allows.
 5. Reinterpret at least one earlier scene so the twist reaches backwards.
+
+### Adaptation And Combination
+
+This is the broad mechanism of revising an audience expectation. Use Melodrama Commerce Reversal for spoken interpersonal conflict, Authority to Advocate for experience-led attitude change, or Interruption-to-Offer Reversal for an unexpected sales purpose. Select a specific variant when it already explains the idea; adding the parent method alone does not add a second contribution.
