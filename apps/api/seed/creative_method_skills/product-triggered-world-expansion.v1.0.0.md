@@ -116,3 +116,7 @@ from a readable everyday state into a coherent altered state.
    For each transition, state where the subject starts, what happens during
    the threshold, and where it arrives. Preserve clear narrative and product
    logic even if the camera path or effects treatment changes.
+
+### Adaptation And Combination
+
+A meaningful product interaction changes the space or a world rule. Scale Shift can explain a scale reveal, and Synesthetic Translation can motivate the new world through sensation. Keep their local contribution clear rather than repeating several complete enter-explore-return structures.
