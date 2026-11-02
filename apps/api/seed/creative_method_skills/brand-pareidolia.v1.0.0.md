@@ -14,10 +14,10 @@ consumer_psychology: >
   logo into an emotion. Each found shape is a small mental rehearsal of the
   brand mark.
 story_structure: >
-  A series of ordinary people in unrelated places, each in a moment of
-  desire, each noticing one found shape that echoes the brand mark, a quiet
-  rhythm of sightings that grows more beautiful or more absurd, then the cut
-  to the real product being made or eaten, and the logo with the tagline.
+  A recognizable desire sharpens perception; found shapes echo a supplied
+  brand asset, recognition grows, and a product or brand reveal rewards the
+  association. Use one observer or several when their perspectives add
+  meaning.
 hook_methods: >
   Open on a found shape with a slightly lingering camera, such as a number in
   a notebook, two cranes on a building site, or reflections on a wet road,
@@ -61,9 +61,15 @@ in their own head, which builds memory more strongly than showing a logo.
 1. Identify the single brand asset simple enough to be found in the world.
 2. Define the desire that sharpens the character's eye (hunger, thirst,
    fatigue, longing).
-3. Find five to eight real-world shapes that echo the asset across different
-   places, people, and times of day.
+3. Choose enough distinct found shapes to build recognition within the brief.
+   A short film may need only a few; each sighting adds a new association.
 4. Frame each shape so it is visible without a pointer; let the camera
    linger a beat longer than usual.
-5. Hold back the product and logo until the final ten seconds.
-6. Close with the product being made or enjoyed, then the logo and tagline.
+5. Time explicit recognition to reward the preceding discoveries. A delayed
+   reveal is useful; its duration follows the brief, not a fixed final window.
+6. Land recognition in a product encounter or clear brand signature that fits
+   the selected method and approved copy.
+
+### Adaptation And Combination
+
+The recognition reward comes from found echoes of a supplied brand asset. Brand Mark in Context supplies integration and reveal craft; this method adds desire-driven perception. Choose sighting count, cast and reveal duration for the actual brief.
