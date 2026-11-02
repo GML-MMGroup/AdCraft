@@ -1,5 +1,10 @@
-# 剧本指导
+# Observed places and personal annotation
 
-先写旅行者的寻找目标和每个地点的停留原因，再按抵达、探索、停留、转向、离开组织 location rhythm。让 travel observation 通过具体动作和感官细节推进，不用泛泛旁白描述“很美”。
+Use travel observation and location rhythm to make the approved journey or
+encounter feel personally noticed. A ticket, sound, surface, gesture or route
+can connect moments through scrapbook continuity. Choose the observations that
+support the selected idea rather than adding a sightseeing itinerary.
 
-为每一站指定一个回忆物件或手势，形成 scrapbook continuity。正例是票据触发下一段路线；反例是景点清单没有人物选择。
+Drawn overlays may mark a remembered sensation, path or emphasis. Carry exact
+lettering into the editing handoff. Arrival, departure and multiple destinations
+are optional story choices; preserve the confirmed cast, product role and payoff.
