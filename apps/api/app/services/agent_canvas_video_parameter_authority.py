@@ -9,6 +9,10 @@ from app.schemas.agent_canvas_video_parameters import (
 from app.services.agent_canvas_prompt_projection_lag import (
     normalize_derived_parameter_prompt_authority,
 )
+from app.services.agent_canvas_parameter_policy import (
+    NON_PROVIDER_NODE_PARAMETER_KEYS,
+    provider_node_parameters,
+)
 
 
 def compiled_parameters_from_snapshot(
@@ -66,8 +70,19 @@ def parameter_compilation_revision_is_current(
             current.parameters == original.parameters
             and current.parameter_provenance == original.parameter_provenance
         )
+    original_controls = {
+        key: value
+        for key, value in original.parameters.items()
+        if key in NON_PROVIDER_NODE_PARAMETER_KEYS
+    }
+    current_controls = {
+        key: value
+        for key, value in current.parameters.items()
+        if key in NON_PROVIDER_NODE_PARAMETER_KEYS
+    }
     return (
-        current.parameters == compiled.authoring_parameters
+        current_controls == original_controls
+        and provider_node_parameters(current.parameters) == compiled.authoring_parameters
         and _manual_authority_provenance(current) == compiled.parameter_provenance
     )
 
@@ -85,6 +100,8 @@ def _manual_authority_provenance(
 
     provenance: dict[str, CanvasParameterProvenanceV2] = {}
     for field, value in node.parameters.items():
+        if field in NON_PROVIDER_NODE_PARAMETER_KEYS:
+            continue
         entry = node.parameter_provenance.get(field)
         if entry is None:
             if not isinstance(value, (str, int, float, bool)):
