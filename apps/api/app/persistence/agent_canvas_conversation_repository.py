@@ -6914,6 +6914,13 @@ def _materialization_progress(
     if proposal is None:
         return entry
     status = str(proposal["materialization_status"])
+    segment_progress = entry.metadata.get("type") == "storyboard_authoring_progress"
+    if (
+        segment_progress
+        and status in {"queued", "working"}
+        and entry.metadata.get("attempt") == proposal["materialization_attempt_no"]
+    ):
+        return entry
     failure = _materialization_actionable_failure(proposal) if status == "failed" else None
     content = {
         "failed": "Preparing the selected direction failed. Please review the recovery action.",
@@ -6927,6 +6934,7 @@ def _materialization_progress(
             "actionable_failure": failure,
             "metadata": {
                 **entry.metadata,
+                **({"message_key": None, "message_args": {}} if segment_progress else {}),
                 "status": status,
                 "turn_id": str(proposal["materialization_turn_id"]),
                 "retryable": failure.retryable if failure else False,

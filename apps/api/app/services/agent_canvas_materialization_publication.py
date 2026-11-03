@@ -28,6 +28,7 @@ from app.persistence.agent_canvas_execution_settings_repository import (
 from app.persistence.agent_canvas_storyboard_prompt_ready_promotion_repository import (
     StoryboardPromptReadyPromotionRepository,
 )
+from app.persistence.agent_canvas_storyboard_progress import StoryboardAuthoringProgress
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
@@ -268,6 +269,7 @@ class CapabilityMaterializationPublicationService:
                 normalization,
                 materialization_context,
                 session.session_id,
+                lease_guard=lease_guard,
             )
         authority_documents += self._prepare_guided_document_stage(
             envelope,
@@ -1500,6 +1502,8 @@ class CapabilityMaterializationPublicationService:
         normalization: MaterializationNormalizationV1,
         context: CapabilityMaterializationContextV1,
         session_id: str,
+        *,
+        lease_guard: Callable[[], None] | None = None,
     ) -> tuple[MaterializationNormalizationV1, tuple[MaterializationDocumentWriteV1, ...]]:
         if (
             envelope.capability_id != "storyboard_design"
@@ -1627,6 +1631,21 @@ class CapabilityMaterializationPublicationService:
             if _existing_segment_draft(content, sequence.sequence_id) is None
         )
         target_sequence_id = pending_sequence_ids[0] if pending_sequence_ids else None
+        progress = StoryboardAuthoringProgress(self._workflows.database, self._conversations.events)
+        completed_count = len(content.segments) - len(pending_sequence_ids)
+
+        def publish_progress() -> None:
+            if lease_guard is not None:
+                lease_guard()
+            progress.publish(
+                envelope,
+                attempt_no=attempt_no,
+                completed=completed_count,
+                total=len(content.segments),
+                response_locale=context.response_locale,
+            )
+
+        publish_progress()
         for sequence in content.segments:
             sequence_id = sequence.sequence_id
             existing_draft = _existing_segment_draft(content, sequence_id)
@@ -1675,6 +1694,8 @@ class CapabilityMaterializationPublicationService:
                     sequence_id,
                 ),
             )
+            completed_count += 1
+            publish_progress()
         target_sequence = next(
             (
                 sequence
