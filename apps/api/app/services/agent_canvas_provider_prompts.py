@@ -89,7 +89,10 @@ _ROLE_BOUNDARIES = {
         "Render one complete 3x3 storyboard image for one coherent sequence. "
         "Keep all nine distinct frames in strict reading order with consistent "
         "identities, world details, visual style, and narrative continuity. "
-        "Preserve authored text and original product marks.",
+        "Preserve non-dialogue authored text and original product marks. "
+        "Do not render spoken dialogue as subtitles, speech bubbles or quoted lines in the grid. "
+        "Allow packaging print, logos, environmental signs and other authored non-dialogue text "
+        "at the approved story moment; text permission does not advance a product or brand reveal.",
         DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_video": (
