@@ -21,6 +21,8 @@ SELECTED_SEQUENCE_VISUAL_STYLE = (
     "Follow the user's requested visual style and the selected audiovisual Skill."
 )
 
+IMAGE25_TURNAROUND_MODEL_REF = "teamorouter:gpt-image-2.5-sunburst"
+
 PAINTED_PEOPLE_RULE = (
     "Mandatory rule: render every person as a hand-painted color illustration with visible "
     "brushstrokes and gouache or watercolor texture, including painted skin and faces; "
@@ -83,6 +85,14 @@ FACE_ONLY_STORYBOARD_RULE = (
     "Keep animals, robots, creatures, objects and other non-human characters in their selected "
     "style; do not restyle them or turn intentionally stylized faces into realistic human faces."
 )
+
+
+def uses_image25_turnaround_face_drawing(context: RolePromptPreparationContextV2) -> bool:
+    """The selected pencil method is authored by the Agent for this exact role/model."""
+    return (
+        context.role_variant == "character_turnaround"
+        and context.node_parameters.get("model_ref") == IMAGE25_TURNAROUND_MODEL_REF
+    )
 
 
 def human_style_rule(

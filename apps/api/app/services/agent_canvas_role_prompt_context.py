@@ -28,6 +28,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     SceneEnvironmentViewV1,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
+from app.services.agent_canvas_human_style_rules import IMAGE25_TURNAROUND_MODEL_REF
 from app.services.agent_canvas_video_representation import resolve_video_representation_mode
 from app.services.brand_production_context import (
     BrandProductionContextBudgetError,
@@ -160,6 +161,7 @@ class RolePromptContextProjector:
         scene_environment_projection: SceneEnvironmentProjectionV1 | None = None,
         product_identity_projection: ProductIdentityAuthorityProjectionV1 | None = None,
         allow_uninitialized_scene: bool = False,
+        turnaround_model_ref: str | None = None,
     ) -> RolePromptPreparationContextV2:
         if stage_context.workflow_id != node.workflow_id:
             raise _error(
@@ -345,7 +347,17 @@ class RolePromptContextProjector:
             explicit_controls=explicit_controls or {},
             bound_text_controls=bound_text_controls,
             node_parameters={
-                **node.parameters,
+                **{
+                    key: value
+                    for key, value in node.parameters.items()
+                    if role_variant != "character_turnaround" or key != "model_ref"
+                },
+                **(
+                    {"model_ref": turnaround_model_ref}
+                    if role_variant == "character_turnaround"
+                    and turnaround_model_ref == IMAGE25_TURNAROUND_MODEL_REF
+                    else {}
+                ),
                 **(
                     {"scene_asset_kind": node.structured_content.get("scene_asset_kind")}
                     if role_variant == "scene_board"
