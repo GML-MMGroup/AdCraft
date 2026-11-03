@@ -955,6 +955,7 @@ def _structured_content(
     if (
         isinstance(brief, CharacterMainRoleBriefV2)
         and human_style_rule(brief) is not None
+        and not uses_image25_turnaround_face_drawing(context)
         and style.human_face_rendering == "photorealistic"
     ):
         # The Character-only face rule is appended to the final image prompt.
