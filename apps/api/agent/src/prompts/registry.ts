@@ -255,6 +255,9 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
     ].join(" ");
   }
   if (operation === "author_role_brief") {
+    const nodeParameters = context.node_parameters as Readonly<Record<string, unknown>> | undefined;
+    const image25Turnaround = context.role_variant === "character_turnaround"
+      && nodeParameters?.model_ref === "teamorouter:gpt-image-2.5-sunburst";
     return [
       "Author only the typed creative brief for the current role variant.",
       "Return one localized editable_prompt in the same structured response as the typed brief.",
@@ -275,6 +278,12 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "For scene_board, do not add positive Character, Product, Prop, or narrative progression content; explicit structural exclusions such as no characters or props remain valid.",
       "For bgm, translate only the reviewed music direction into instrumental pace, rhythm, instrumentation, mood, and energy timing. Keep footsteps, room tone, ambience, dialogue, and synchronized action effects in the Video sound intent; do not promise final mixing or overlays.",
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
+      ...(image25Turnaround ? [
+        "Image 2.5 Turnaround face drawing: author the selected colored-pencil cross-hatching method directly in editable_prompt for realistic human faces. Preserve nonhuman and intentionally stylized faces in their approved medium. This local technique does not determine the rendering style of the rest of the character or image.",
+        "Limit drawing treatment to the facial surface inside the hairline and jawline in each view where the face is visible. Preserve facial silhouette, feature positions, eye size and direction, age, expression and natural complexion. Preserve the shapes and strands of eyebrows, moustache and beard. Keep ears, neck, hands, scalp hair, costume, materials, body proportions, background and lighting in their approved treatment. A back view without a visible face needs no facial drawing.",
+        "Describe clearly visible controlled cross-hatching: two or three intersecting directions of short terracotta, ochre, umber and restrained cool-shadow pencil strokes build facial midtones and shadows. Adapt pigment balance to the character's original complexion. Use lighter single hatching on forehead and nose highlights, fine paper-tooth gaps, distinct layered color and contours that follow anatomical planes. Preserve facial volume; avoid a smooth airbrushed face with a faint texture overlay, excessive whitening, heavy blush, added spots or extra wrinkles. Keep linework legible at the complete sheet's viewing scale.",
+        "Keep this local drawing direction consistent in editable_prompt, face_and_hair and style_description, with human_face_rendering stylized when applied. Preserve the bound Main identity and existing front/side/back, full-body and landscape 16:9 requirements. Do not inherit a portrait Main's aspect ratio, set a fixed pixel resolution, add portrait insets, assume another style-reference image exists, or describe post-generation compositing. Current explicit user edits remain authoritative.",
+      ] : []),
     ].join(" ");
   }
   if (operation === "plan_storyboard_sequence_outline") {
