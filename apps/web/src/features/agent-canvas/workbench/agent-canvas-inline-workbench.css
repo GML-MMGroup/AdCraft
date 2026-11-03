@@ -642,6 +642,16 @@
   margin-top: 18px;
 }
 
+.agent-node-workbench__video-toggles {
+  display: flex;
+  gap: 4px;
+  margin-top: 20px;
+}
+
+.agent-node-workbench__video-toggles .agent-node-workbench__audio-toggle {
+  margin-top: 0;
+}
+
 .agent-node-workbench__audio-toggle {
   position: relative;
   display: block;
@@ -772,7 +782,7 @@
   .agent-node-workbench__video-toolbar > .agent-node-workbench__options--inline { grid-column: 2 / -1; }
   .agent-node-workbench__video-toolbar > :is(.agent-node-workbench__asset-actions, .agent-node-workbench__options--inline) { margin-top: 0; }
   .agent-node-workbench__video-toolbar > .agent-node-workbench__model-parameters--inline { grid-column: 1 / -1; }
-  .agent-node-workbench__audio-toggle { grid-column: 3; margin-top: 0; align-self: center; }
+  .agent-node-workbench__video-toggles { grid-column: 3; margin-top: 0; align-self: center; }
   .agent-node-workbench__footer--video .agent-node-workbench__run { grid-column: 4; margin-top: 0; }
 }
 
