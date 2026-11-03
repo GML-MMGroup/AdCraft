@@ -17,6 +17,7 @@ from app.schemas.language import canonicalize_bcp47_tag
 PresentationMessageKey = Literal[
     "concept_proposal.review",
     "planning_progress.next_action",
+    "storyboard.authoring_progress",
     "expert_activity.working",
     "expert_activity.completed",
     "expert_activity.failed",
