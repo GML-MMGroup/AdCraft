@@ -226,7 +226,7 @@ export function MediaPromptWorkbench({
                 onChange={(enabled) => draft.setParameters({ ...draft.parameters, generate_audio: enabled })}
               />
               <VideoSubtitleToggle
-                checked={draft.parameters.generate_subtitles === true}
+                checked={(draft.parameters.generate_subtitles ?? true) === true}
                 disabled={draft.pending || preparingPrompt === true}
                 onChange={(enabled) => draft.setParameters({ ...draft.parameters, generate_subtitles: enabled })}
               />

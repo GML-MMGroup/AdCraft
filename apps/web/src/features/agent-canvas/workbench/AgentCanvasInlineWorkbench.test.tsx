@@ -479,7 +479,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
-  it("defaults subtitles off and saves the enabled setting before running a video", async () => {
+  it("defaults subtitles on and saves an explicit disabled setting before running a video", async () => {
     const node = { ...makeNode("video"), parameters: { duration_seconds: 8, generate_audio: false } };
     const patchNode = vi.fn(async (_id, patch, options) => { options.onSaved({ ...node, ...patch, revision: 2 }); });
     const props = renderWorkbench(node, {
@@ -488,17 +488,24 @@ describe("AgentCanvasInlineWorkbench", () => {
     });
     const toggle = screen.getByRole("button", { name: "Generate subtitles" });
     expect(toggle.closest("footer")).toBeTruthy();
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(props.patchNode).not.toHaveBeenCalled();
     fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
-      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: true },
+      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: false },
     }), expect.any(Object)));
     await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
-      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: true },
+      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: false },
     })));
+  });
+
+  it("preserves an explicitly disabled subtitle setting on load", () => {
+    const node = { ...makeNode("video"), parameters: { generate_subtitles: false } };
+    const props = renderWorkbench(node);
+    expect(screen.getByRole("button", { name: "Generate subtitles" }).getAttribute("aria-pressed")).toBe("false");
+    expect(props.patchNode).not.toHaveBeenCalled();
   });
 
   it("restores saved subtitles and persists disabling them independently of audio", async () => {
