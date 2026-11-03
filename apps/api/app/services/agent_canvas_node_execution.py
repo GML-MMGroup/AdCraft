@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.core.config import Settings, get_settings
+from app.services.agent_canvas_video_subtitles import apply_video_subtitle_control
+from app.services.agent_canvas_parameter_policy import NON_PROVIDER_NODE_PARAMETER_KEYS
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_runtime import (
     AgentCanvasScriptOutput,
@@ -648,13 +650,18 @@ class MediaNodeExecutor:
             )
             if character_prompt:
                 provider_prompt = f"{provider_prompt}\n\n{character_prompt}"
+            provider_prompt = apply_video_subtitle_control(provider_prompt, context.node.parameters)
         provider_payload: dict[str, Any] = {
             "provider_prompt": provider_prompt,
             "prompt": provider_prompt,
             "node_id": context.node.node_id,
             "semantic_role": context.node.semantic_role,
             "model_id": context.model_resolution.provider_model_id,
-            **effective_parameters,
+            **{
+                key: value
+                for key, value in effective_parameters.items()
+                if key not in NON_PROVIDER_NODE_PARAMETER_KEYS
+            },
         }
         provider_payload.update(
             {
