@@ -6,6 +6,7 @@ import type {
 type PresentationMessageKey =
   | "concept_proposal.review"
   | "planning_progress.next_action"
+  | "storyboard.authoring_progress"
   | "expert_activity.working"
   | "expert_activity.completed"
   | "expert_activity.failed"
@@ -26,6 +27,7 @@ const EN_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
     return count === null ? null : `Review ${count} option${count === 1 ? "" : "s"}.`;
   },
   "planning_progress.next_action": () => "Planning the next creative action.",
+  "storyboard.authoring_progress": (args) => storyboardProgressMessage(args, "en"),
   "expert_activity.working": (args) => capabilityLabel(args, "is working."),
   "expert_activity.completed": () => null,
   "expert_activity.failed": (args) => capabilityLabel(args, "failed."),
@@ -46,6 +48,7 @@ const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
     return count === null ? null : `请查看 ${count} 个方案。`;
   },
   "planning_progress.next_action": () => "正在规划下一项创作操作。",
+  "storyboard.authoring_progress": (args) => storyboardProgressMessage(args, "zh"),
   "expert_activity.working": (args) => capabilityLabel(args, "正在工作。"),
   "expert_activity.completed": () => null,
   "expert_activity.failed": (args) => capabilityLabel(args, "失败。"),
@@ -59,6 +62,20 @@ const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   "action.element_excluded": () => "该元素已排除。",
   "prompt_preparation.failed": (args) => promptFailureMessage(args, "zh"),
 };
+
+function storyboardProgressMessage(args: Record<string, unknown>, locale: "en" | "zh"): string | null {
+  const completed = positiveIntegerArgument(args, "completed");
+  const total = positiveIntegerArgument(args, "total");
+  if (completed === null || total === null || total < 1 || completed > total) return null;
+  if (locale === "zh") {
+    if (completed === total) return `${total}/${total} 段分镜已编写完成，正在准备画布节点。`;
+    if (completed === 0) return `正在编写分镜，共 ${total} 段。`;
+    return `分镜编写完成 ${completed}/${total}，正在编写第 ${completed + 1} 段。`;
+  }
+  if (completed === total) return `${total}/${total} storyboard segments written. Preparing canvas nodes.`;
+  if (completed === 0) return `Writing the storyboard (${total} segments).`;
+  return `Storyboard writing: ${completed}/${total} complete. Writing segment ${completed + 1}.`;
+}
 
 const MEDIA_REVIEW_ACTION_LABELS = {
   en: {
