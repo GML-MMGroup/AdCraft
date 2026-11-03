@@ -445,6 +445,25 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "clinic-suspense-comedy",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "contained consultation framing",
+        "delayed reaction cuts",
+        "freeze-frame finish"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed the reference duration, landscape framing, specific cast appearance, windshield-fluid packaging and exact dialogue as reusable requirements.",
+        "Kept the requested clinic, three-role premise and closing instruction in the creative method; audiovisual guidance controls staging, performance, sound and the requested final still without selecting a provider or forcing subtitles."
+      ],
+      "naming_adaptation": "Named Clinic Suspense Comedy for its consultation-room treatment and comic reaction rhythm, distinct from the broader Suspense to Sensory Release style.",
+      "commercial_adaptation": "Adapted consultation framing, a brief late functional cutaway, the return to doctor and nurse, patient reactions and end-card clarity from the user-provided reference. The latest user clarification supersedes the blanket ban on outside functional imagery and category inference: effects, supporting mechanisms and results may clarify the benefit late in the film while the advertised item and brand remain unseen. Return to the same clinic for the final exchange and instruction before the final still. Visibility depends on what is being sold, so the advertised item cannot be disguised as a generic supporting prop. The final still uses a credible product-use setting and a large exact brand name appearing simultaneously with the product. Exact closing dialogue comes from the user, not an asserted audio transcript. Creative guidance owns whether the insert helps the clue; audiovisual guidance executes its framing, sound and return. The latest user clarification makes the closing patient reaction optional, superseding the earlier mandatory-beat treatment. A story-motivated smile, gaze or gesture may add characterization; otherwise cut directly from the final dialogue to the brand freeze. This choice is independent of the optional functional insert, and fixes neither a clinical sign nor a timestamp.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "poetic-contemplative-cinema",
       "version": "1.0.0",
       "sources": [

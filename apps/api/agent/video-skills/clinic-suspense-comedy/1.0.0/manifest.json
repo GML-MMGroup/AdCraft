@@ -1,0 +1,49 @@
+{
+  "skill_id": "clinic-suspense-comedy",
+  "version": "1.0.0",
+  "display_name": "Clinic Suspense Comedy",
+  "description": "Contained consultation framing, optional late functional cutaways with a return to the comic exchange, and a contextual final product freeze with simultaneous large brand-name typography.",
+  "content_locale": "en-US",
+  "category": "cinematic-narrative",
+  "tags": [
+    "clinic atmosphere",
+    "deadpan comedy",
+    "reaction timing",
+    "freeze-frame finish"
+  ],
+  "supported_use_cases": [
+    "doctor-patient brand reversals",
+    "dialogue-led product ads",
+    "suspense-to-comedy brand films"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Consultation and comic reaction frames from the user-provided reference, arranged as a three-role diptych.",
+    "media_url": "/api/v2/video-skills/clinic-suspense-comedy/preview?v=1.0.0"
+  },
+  "display_order": 226,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "40a70633e4b5c129970695196690e404c0cf446312ff31125f9010510dfdafce",
+    "references/bgm.md": "fe908396cdc3a854c77cc53dadd416f43f7fbce4bdf1203b8c3e35650f6c73bc",
+    "references/character.md": "e9b0b94301f9120642bf40e9af973743ba0f8b916d542e9cef321b29771a08b8",
+    "references/product.md": "eae8f2cd7cb9eba44d926786da16b910d3495e3c7b2af18124957b22665ecc3a",
+    "references/prop.md": "33cbb1710e1f4b53fc17ca0cf8a49b39311ac3a940f9d889fb45c995d362fe8f",
+    "references/scene.md": "8a32f419be3a2982fa5c045fdf081bd0a6a5f7dad3027a866e91063520861789",
+    "references/script.md": "9b60ab9ea06fea6dd6bf4396f0a65f64f03464639f6da3169b62b8244f4c435e",
+    "references/storyboard.md": "cd0e938dfc4486521f7f222076ecaba9077979973d882ed26e16f324ac43f6d4",
+    "references/video.md": "6fbf0164e14469e8e572ffb6e5acda8088067117aa13943355f0818c48b806e1",
+    "previews/preview.webp": "8aee6e6d217dbe825eeed6d7fb370e021bb9289eadddc78e944b32b1937e6d1f"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "character": "references/character.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

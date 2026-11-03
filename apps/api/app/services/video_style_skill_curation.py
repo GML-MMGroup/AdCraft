@@ -33,6 +33,7 @@ EXPECTED_CURATED_SKILL_IDS = (
     "symmetrical-storybook-cinema",
     "controlled-psychological-thriller",
     "suspense-to-sensory-release",
+    "clinic-suspense-comedy",
     "poetic-contemplative-cinema",
     "monumental-minimalist-science-fiction",
     "lived-in-epic-cinema",

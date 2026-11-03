@@ -124,6 +124,11 @@
       "display_order": 225
     },
     {
+      "skill_id": "clinic-suspense-comedy",
+      "version": "1.0.0",
+      "display_order": 226
+    },
+    {
       "skill_id": "poetic-contemplative-cinema",
       "version": "1.0.0",
       "display_order": 230
