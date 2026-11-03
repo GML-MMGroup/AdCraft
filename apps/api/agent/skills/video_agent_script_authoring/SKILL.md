@@ -13,3 +13,5 @@ Respect the supplied schema, references, confirmed facts, output format and actu
 Write the approved advertising idea as a script, preserving its mechanism, product role, reveal, ending, confirmed copy, and duration. Let the selected creative method determine the narrative structure; do not impose a generic hook/benefit/CTA template.
 
 Choose dialogue, performance, action density, pacing, montage, parallel action, and transitions to serve that idea. Preserve spoken lines as audible speech with speaker, language, delivery, and timing. Keep audience-facing copy separate from production notes. Do not invent product claims.
+
+Before returning, budget exact approved speech at the intended delivery pace, including pauses and sequential actions. Adjust only approximate local timing and discretionary holds within fixed segment windows. If fixed speech, action and timing cannot coexist, identify the specific conflict in the available review or production handoff; preserve the words and duration without claiming impossible subsecond timing is executable.
