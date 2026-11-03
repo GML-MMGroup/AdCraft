@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { videoAgentBasePolicy } from "./agents.js";
 import { nativeVideoAudioPolicy } from "./audio-policy.js";
+import { shotCoveragePolicy, storyboardTextPolicy, speechTimingPolicy } from "./shot-authoring.js";
 import { listOperationDescriptors } from "../registry.js";
 
 const capabilityOptionSubjects: Readonly<Record<string, string>> = {
@@ -16,6 +17,7 @@ const capabilityOptionSubjects: Readonly<Record<string, string>> = {
 };
 
 const shotDirectionPolicy = [
+  shotCoveragePolicy,
   "For Storyboard and Video, associate each character with its supplied occurrence identity and references; use stable descriptive names in the authored direction. Reference views and repeated panel appearances depict their owning character. Keep different character identities separate and preserve each one's own appearance; similar faces or clothing do not merge cast members.",
   "Within each shot or panel, give each visible character one physical position and identify who owns an over-the-shoulder foreground, reaching hand, or reaction. Carry positions, eyelines and movement across the cut or camera move without retaining a duplicate in the old position. A reference's availability does not require its character to appear in every shot.",
   "For Storyboard and Video only, the Plan owns story causality, identities, key actions, product facts, sequence order, timing, and ending; do not replace those facts with a new story.",
@@ -261,10 +263,10 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
     return [
       "Author only the typed creative brief for the current role variant.",
       "Return one localized editable_prompt in the same structured response as the typed brief.",
-      "Keep summaries and typed fields concise; do not repeat long scene, character or style descriptions across fields. Put complete executable direction in editable_prompt, preserving approved spoken lines verbatim with their speaker, language and timing. Return complete JSON within the output budget.",
+      "Keep summaries and typed fields concise; do not repeat long scene, character or style descriptions across fields. Put complete executable direction in editable_prompt. Script and Video retain exact approved speech with speaker and delivery; storyboard images convey the same meaning through visible acting. Return complete JSON within the output budget.",
       "For visual roles, return style_description as concise role-local aesthetics derived from the frozen global and current-role advice; the compiler appends these aesthetics to editable_prompt. For video_segment use target_style. Advisory examples illustrate technique only: never copy their subjects, actions, or full guidance into the brief or provider prompt. Keep approved story and role boundaries authoritative.",
       "For image roles, always set human_face_rendering to photorealistic, stylized, or absent according to the faces actually requested in this image's final editable_prompt. Photorealistic requires a photographically rendered human or humanoid face; realistic scenery with illustrated faces is stylized. Animals, robots and objects without human faces are absent. Do not inherit this classification from a reference or the target video's medium. It describes the chosen style and must not change that style.",
-      "For script, storyboard_grid and video_segment, retain planned editing, exact typography, compositing and music synchronization in production_handoff. These are pending separate execution, not provider instructions or completed effects.",
+      "For script, storyboard_grid and video_segment, retain planned editing, exact typography, compositing and music synchronization in production_handoff. These are pending separate execution, not completed effects. Enabled ordinary Video subtitles belong in editable_prompt as native generation instructions; do not defer them solely to production_handoff.",
       "Do not request a translation operation or a second model submission.",
       "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
       "For storyboard_grid and video_segment, use storyboard_projection as the exact Plan/sequence/shot authority.",
@@ -278,6 +280,8 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "For scene_board, do not add positive Character, Product, Prop, or narrative progression content; explicit structural exclusions such as no characters or props remain valid.",
       "For bgm, translate only the reviewed music direction into instrumental pace, rhythm, instrumentation, mood, and energy timing. Keep footsteps, room tone, ambience, dialogue, and synchronized action effects in the Video sound intent; do not promise final mixing or overlays.",
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
+      ...(context.role_variant === "storyboard_grid" ? [storyboardTextPolicy] : []),
+      ...(context.role_variant === "video_segment" ? [speechTimingPolicy] : []),
       ...(image25Turnaround ? [
         "Image 2.5 Turnaround face drawing: author the selected colored-pencil cross-hatching method directly in editable_prompt for realistic human faces. Preserve nonhuman and intentionally stylized faces in their approved medium. This local technique does not determine the rendering style of the rest of the character or image.",
         "Limit drawing treatment to the facial surface inside the hairline and jawline in each view where the face is visible. Preserve facial silhouette, feature positions, eye size and direction, age, expression and natural complexion. Preserve the shapes and strands of eyebrows, moustache and beard. Keep ears, neck, hands, scalp hair, costume, materials, body proportions, background and lighting in their approved treatment. A back view without a visible face needs no facial drawing.",
