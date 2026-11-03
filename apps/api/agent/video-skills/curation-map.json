@@ -427,6 +427,24 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "suspense-to-sensory-release",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "withheld sound sources",
+        "source-revealing cuts",
+        "deadpan performance"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed the supplied script duration, clinic setting, fixed time, food identity, and prescribed blackout from reusable audiovisual guidance."
+      ],
+      "naming_adaptation": "Named the treatment for its suspense-to-release contrast rather than the source product or clinical setting.",
+      "commercial_adaptation": "Authored from the user-provided It Woke Again script, not an observed reference film; preserves sound-source continuity and tactile clarity across categories, with narrative causality owned by the creative method. The user approved adding both reviewed skills.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "poetic-contemplative-cinema",
       "version": "1.0.0",
       "sources": [

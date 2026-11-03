@@ -1,0 +1,50 @@
+{
+  "skill_id": "suspense-to-sensory-release",
+  "version": "1.0.0",
+  "display_name": "Suspense to Sensory Release",
+  "description": "Restrained suspense, withheld sound sources, deadpan performance, and a coordinated shift into clear tactile product imagery for humorous advertising reveals across categories.",
+  "content_locale": "en-US",
+  "category": "cinematic-narrative",
+  "tags": [
+    "deadpan suspense",
+    "source-revealing cuts",
+    "sensory contrast",
+    "restrained performance"
+  ],
+  "supported_use_cases": [
+    "product feature reveals",
+    "humorous brand films",
+    "material and interaction demonstrations",
+    "cross-category suspense reversals"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Original abstract illustration of a concealed pulse resolving into a clear illuminated source.",
+    "media_url": "/api/v2/video-skills/suspense-to-sensory-release/preview?v=1.0.0"
+  },
+  "display_order": 225,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": false,
+  "files": {
+    "SKILL.md": "fcb990293eb0f18e697f227113790df3007afd2ccfc1a9545c60e2a89286533c",
+    "references/bgm.md": "0fa9b137d62662bce0aaffcb06228ef60667a288550e4d7eca8893b170f7c33d",
+    "references/character.md": "8e8f77b72252d41d530da9c93ff51161f842e18b52abf54a58acb4db3c1cf151",
+    "references/product.md": "f8c2f49325db6df2a0b6bd1466128269d2a3b92167769a6758152e2cfd82a1b5",
+    "references/prop.md": "d8553fb73172b80b91c66b6516709e09b9c414513b8595dd6f6cbadeff05b4f5",
+    "references/scene.md": "f1573c77a50a9d60c0c2abb11e1b4ec113a10c141031d87800af4747a6bb82f0",
+    "references/script.md": "d44b403c00c2ce778f4be14e45119507d4626f30ad766aed6af44f015a3f16d0",
+    "references/storyboard.md": "a656787962d54668059658644a873e4c2c8f1e9bccc61c50808e4033d1aef0c8",
+    "references/video.md": "e8e518b9d5cc8338a4fb7c1e84badd771abf7ae154309048964e542077403377",
+    "previews/preview.webp": "36f6a7c7429035da9891b490d302872b07490d6a83daf5467fe9a7bcd1041ddb"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "character": "references/character.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}
