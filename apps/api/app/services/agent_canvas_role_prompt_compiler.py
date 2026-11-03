@@ -60,6 +60,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 from app.services.agent_canvas_human_style_rules import (
     SELECTED_SEQUENCE_VISUAL_STYLE,
     human_style_rule,
+    uses_image25_turnaround_face_drawing,
 )
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionPolicyRegistry,
@@ -347,6 +348,10 @@ class AgentCanvasRolePromptCompiler:
         rule = human_style_rule(
             concrete_brief if isinstance(concrete_brief, CharacterMainRoleBriefV2) else context
         )
+        if uses_image25_turnaround_face_drawing(context):
+            # The Agent authors the selected face-only method visibly. Do not
+            # append the older rule that also repaints ears, neck and hands.
+            rule = None
         if rule is not None:
             # User decision (2026-10-26): the rule is visible in the node prompt.
             prompt = f"{prompt}\n\n{rule}"
