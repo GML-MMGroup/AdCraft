@@ -982,7 +982,15 @@ class DynamicCanvasScheduler:
                         }
                     )
                     prompt_authority_node = _parameter_snapshot_prompt_authority(
-                        node,
+                        # The CAS above proves this is the compiler's own write.
+                        # Keep accepted prompt authority even though mutable
+                        # Node projections now advance with derived parameters.
+                        prompt_authority_node.model_copy(
+                            update={
+                                "parameters": node.parameters,
+                                "parameter_provenance": node.parameter_provenance,
+                            }
+                        ),
                         parameter_compilation_snapshot,
                         execution_id=execution_id,
                         member_id=member.member_id,

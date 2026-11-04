@@ -88,10 +88,9 @@ from app.services.agent_canvas_requirements import (
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_character_prompt_reuse import retain_legacy_character_proof
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
-from app.services.agent_canvas_prompt_projection_lag import (
-    normalize_derived_parameter_prompt_authority,
-    projection_consistency,
-    resync_derived_parameter_lag,
+from app.services.agent_canvas_node_revision_authority import (
+    PromptRevisionIntent,
+    reconcile_node_prompt_revision,
 )
 
 
@@ -824,6 +823,7 @@ class AgentCanvasWorkflowRepository:
         expected_revision: int,
         expected_node_revision: int | None = None,
         node_scoped: bool = False,
+        prompt_revision_intent: PromptRevisionIntent = "carry",
         update_position: bool = False,
     ) -> AgentCanvasWorkflowV2:
         """Replace one node record and advance authoring once."""
@@ -949,6 +949,12 @@ class AgentCanvasWorkflowRepository:
                         values = _node_values(node)
                         values.pop("node_id")
                         values.pop("workflow_id")
+                    node = reconcile_node_prompt_revision(
+                        current_node, node, intent=prompt_revision_intent
+                    )
+                    values = _node_values(node)
+                    values.pop("node_id")
+                    values.pop("workflow_id")
                     updated = connection.execute(
                         update(AgentCanvasNodeRow)
                         .where(
@@ -1049,9 +1055,6 @@ class AgentCanvasWorkflowRepository:
         values = _node_values(node)
         values.pop("node_id")
         values.pop("workflow_id")
-        # Prompt results must never replace coordinates from an earlier snapshot.
-        values.pop("position_x")
-        values.pop("position_y")
         replayed = False
         try:
             with self._database.engine.connect() as connection:
@@ -1082,6 +1085,25 @@ class AgentCanvasWorkflowRepository:
                             node.workflow_id,
                             expected_workflow_revision,
                         )
+                        node = reconcile_node_prompt_revision(
+                            current,
+                            node,
+                            intent="invalidate"
+                            if current.generation_prompt and not node.generation_prompt
+                            else "author"
+                            if node.prompt_preparation.status == "ready"
+                            and (
+                                node.generation_prompt != current.generation_prompt
+                                or node.prompt_presentation != current.prompt_presentation
+                            )
+                            else "carry",
+                        )
+                        values = _node_values(node)
+                        values.pop("node_id")
+                        values.pop("workflow_id")
+                        # Prompt results must never replace coordinates from an earlier snapshot.
+                        values.pop("position_x")
+                        values.pop("position_y")
                         updated = connection.execute(
                             update(AgentCanvasNodeRow)
                             .where(
@@ -1253,11 +1275,9 @@ class AgentCanvasWorkflowRepository:
                     ):
                         connection.commit()
                         return current
-                    synced = resync_derived_parameter_lag(current)
                     refreshed = current.model_copy(
                         update={
                             "revision": current.revision + 1,
-                            "prompt_presentation": _advance_in_sync_presentation(synced),
                             "updated_at": datetime.fromisoformat(now),
                             "prompt_preparation": current.prompt_preparation.model_copy(
                                 update={
@@ -1271,10 +1291,10 @@ class AgentCanvasWorkflowRepository:
                                 **safe_prompt_assertion_metadata(assertion_evidence),
                                 "prompt_reference_bundle_digest": binding_digest,
                                 "prepared_reference_snapshots": prepared_reference_snapshots,
-                                **_advance_in_sync_review_marker(synced),
                             },
                         }
                     )
+                    refreshed = reconcile_node_prompt_revision(current, refreshed)
                     values = _node_values(refreshed)
                     values.pop("node_id")
                     values.pop("workflow_id")
@@ -1590,10 +1610,20 @@ class AgentCanvasWorkflowRepository:
                     ):
                         connection.commit()
                         return current
-                    # Keep repeated derivations and intervening manual edits
-                    # within the intentional one-revision lag.
-                    current = normalize_derived_parameter_prompt_authority(current)
+                    # Keep derived parameters and inherited prompt authority
+                    # synchronized in the same authoring revision.
                     updated_revision = expected_node_revision + 1
+                    successor = reconcile_node_prompt_revision(
+                        current,
+                        current.model_copy(
+                            update={
+                                "revision": updated_revision,
+                                "parameters": parameters,
+                                "parameter_provenance": provenance,
+                                "updated_at": now,
+                            }
+                        ),
+                    )
                     updated = connection.execute(
                         update(AgentCanvasNodeRow)
                         .where(
@@ -1609,7 +1639,7 @@ class AgentCanvasWorkflowRepository:
                                     for field, item in provenance.items()
                                 }
                             ),
-                            metadata_json=_node_values(current)["metadata_json"],
+                            metadata_json=_node_values(successor)["metadata_json"],
                             revision=updated_revision,
                             updated_at=timestamp,
                         )
@@ -2170,9 +2200,9 @@ class AgentCanvasWorkflowRepository:
                             "status": status,
                             "revision": current.revision + 1,
                             "updated_at": _parse_datetime(now),
-                            "prompt_presentation": _advance_in_sync_presentation(current),
                         }
                     )
+                    node = reconcile_node_prompt_revision(current, node)
                     connection.execute(
                         update(AgentCanvasNodeRow)
                         .where(AgentCanvasNodeRow.node_id == node_id)
@@ -3438,36 +3468,6 @@ def _reconcile_editing_manifest_for_node(
     )
 
 
-def _advance_in_sync_presentation(
-    node: CanvasNodeV2,
-) -> EditablePromptProjectionV1 | None:
-    """Move a coherent editable prompt with a reference-only revision bump.
-
-    Media publication may advance the reviewed Node once without changing its
-    prompt. Carry that reviewed projection forward too, or a later reference
-    refresh widens its valid one-revision lag into a conflict. Genuine conflicts
-    remain untouched; reference refresh normalizes derived parameter lag first.
-    """
-
-    presentation = node.prompt_presentation
-    if projection_consistency(node) not in {"in_sync", "review_advanced"}:
-        return presentation
-    assert presentation is not None
-    return presentation.model_copy(update={"revision": node.revision + 1})
-
-
-def _advance_in_sync_review_marker(node: CanvasNodeV2) -> dict[str, object]:
-    """Keep the guided review marker on the projection it reviewed."""
-
-    review_revision = node.metadata.get("guided_review_node_revision")
-    if (
-        projection_consistency(node) not in {"in_sync", "review_advanced"}
-        or review_revision != node.revision
-    ):
-        return {}
-    return {"guided_review_node_revision": node.revision + 1}
-
-
 def _node_values(node: CanvasNodeV2) -> dict[str, object]:
     metadata = dict(node.metadata)
     if node.prompt_presentation is not None:
@@ -3752,6 +3752,7 @@ def _invalidate_target_prompt_preparation(
             "updated_at": _parse_datetime(updated_at),
         }
     )
+    queued_node = reconcile_node_prompt_revision(node, queued_node, intent="invalidate")
     queued_node = normalize_queued_node(
         queued_node,
         bindings=bindings,
@@ -3923,6 +3924,19 @@ def _make_target_prompt_user_owned(
     }
     if presentation is not None:
         metadata["editable_prompt_projection"] = presentation.model_dump(mode="json")
+    successor = reconcile_node_prompt_revision(
+        node,
+        node.model_copy(
+            update={
+                "revision": node.revision + 1,
+                "generation_prompt": prompt or None,
+                "prompt_presentation": presentation,
+                "metadata": metadata,
+            }
+        ),
+        intent="author",
+    )
+    metadata = successor.metadata
     values = {
         "generation_prompt": prompt or None,
         "prompt_preparation_json": preparation.model_dump_json(),
@@ -3953,6 +3967,7 @@ def _make_target_prompt_user_owned(
         update={
             "generation_prompt": prompt or None,
             "prompt_presentation": presentation,
+            "metadata": metadata,
             "prompt_preparation": preparation,
             "prompt_context_snapshot_id": None,
             "revision": node.revision + 1,
