@@ -301,7 +301,7 @@ class BrandGuidedInteractionBridge:
     def claim_card_generation(
         self,
         workflow_id: str,
-        stage: Literal["hypothesis", "adspec", "skill-stack", "treatment"],
+        stage: Literal["hypothesis", "adspec", "skill-stack", "skill-stack-early", "treatment"],
         stage_revision: int,
         *,
         generation_scope: str | None = None,
@@ -862,6 +862,7 @@ def _brand_interaction_context(stage: str, response_locale: str) -> str:
             "hypothesis": "创意假设",
             "adspec": "广告规格",
             "skill-stack": "技能组合",
+            "skill-stack-early": "技能组合（可跳过）",
             "treatment": "创意方案",
             "production": "制作",
         }

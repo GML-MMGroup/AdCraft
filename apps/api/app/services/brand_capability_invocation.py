@@ -986,6 +986,7 @@ class BrandCapabilityInvocationService:
             input_payload={
                 "product_context": context.payload,
                 "response_locale": self._workflow_response_locale(brand_id),
+                **BrandSkillStackService(self._database).early_direction_context(brand_id),
                 "custom_text_mode": "answer" if count == 1 else "request_more_options",
                 **(
                     {"user_requirements": custom_text}
@@ -1256,6 +1257,7 @@ class BrandCapabilityInvocationService:
                     "product_context": product_context.payload,
                     "skills": list(self._catalog.injection_summaries()),
                     "response_locale": self._workflow_response_locale(brand_id),
+                    **BrandSkillStackService(self._database).early_direction_context(brand_id),
                     "confirmed_values": [
                         value.model_dump(mode="json")
                         for value in self._repository.get_slot_values(brand_id)
@@ -1589,9 +1591,12 @@ class BrandCapabilityInvocationService:
             journey = self._repository.get_journey_in_transaction(connection, brand_id)
             if journey is None:
                 raise _not_found()
-            self._repository.save_journey_in_transaction(
-                connection, brand_id, advance_brand_stage(journey)
-            )
+            next_journey = advance_brand_stage(journey)
+            if self._repository.early_skills_confirmed_in_transaction(connection, brand_id):
+                next_journey = next_journey.model_copy(
+                    update={"stage": "treatment", "treatment_substep": "hook"}
+                )
+            self._repository.save_journey_in_transaction(connection, brand_id, next_journey)
 
     def _project_adspec_items(self, brand_id: str) -> tuple[AdSpecItemV1, ...]:
         """Derive the creation contract from confirmed brand, campaign and creative authority."""
@@ -1701,26 +1706,28 @@ class BrandCapabilityInvocationService:
         """Persist a recommended skill stack and expose its confirmation card."""
 
         journey = self._repository.get_journey(brand_id)
-        if journey is None or journey.stage != "skill-stack":
+        if journey is None or journey.stage not in {"skill-stack", "skill-stack-early"}:
             raise _stage_mismatch()
         stack = self._repository.get_skill_stack(brand_id)
         if stack is None:
             stack = self._recommended_skill_stack(brand_id)
         card = BrandOptionCardV1(
             card_id=f"{brand_id}_skill_stack_{journey.stage_revision}",
-            stage="skill-stack",
+            stage=journey.stage,
             stage_revision=journey.stage_revision,
             target_slot_id=None,
-            question=self._skill_stack_question(brand_id),
-            options=self._skill_stack_options(brand_id),
+            question=self._skill_stack_question(
+                brand_id, early=journey.stage == "skill-stack-early"
+            ),
+            options=self._skill_stack_options(brand_id, early=journey.stage == "skill-stack-early"),
         )
-        _validate_card(card, "skill-stack")
+        _validate_card(card, journey.stage)
         with self._database.engine.begin() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             current = self._repository.get_journey_in_transaction(connection, brand_id)
             if (
                 current is None
-                or current.stage != "skill-stack"
+                or current.stage != journey.stage
                 or current.stage_revision != journey.stage_revision
             ):
                 raise _stage_mismatch()
@@ -1729,7 +1736,7 @@ class BrandCapabilityInvocationService:
                 self._append_log(
                     connection,
                     brand_id=brand_id,
-                    stage="skill-stack",
+                    stage=journey.stage,
                     action="recommend",
                     target_type="skill_stack",
                     target_id=None,
@@ -1746,7 +1753,7 @@ class BrandCapabilityInvocationService:
         card_id: str,
         option_id: str,
     ) -> None:
-        """Confirm the recommended stack and advance to the treatment stage."""
+        """Confirm Skills, or defer an early choice, and advance atomically."""
 
         if option_id == "adjust":
             raise V2PersistenceError(
@@ -1758,30 +1765,45 @@ class BrandCapabilityInvocationService:
         with self._database.engine.begin() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             card = self._repository.get_open_card_in_transaction(connection, brand_id)
-            if card is None or card.card_id != card_id or card.stage != "skill-stack":
+            if (
+                card is None
+                or card.card_id != card_id
+                or card.stage not in {"skill-stack", "skill-stack-early"}
+            ):
                 raise _stage_mismatch()
             if not any(option.option_id == option_id for option in card.options):
                 raise _card_invalid("Selected option is not on the open card.")
             journey = self._repository.get_journey_in_transaction(connection, brand_id)
             if (
                 journey is None
-                or journey.stage != "skill-stack"
+                or journey.stage not in {"skill-stack", "skill-stack-early"}
+                or journey.stage != card.stage
                 or journey.stage_revision != card.stage_revision
             ):
                 raise _stage_mismatch()
             stack = self._repository.get_skill_stack_in_transaction(connection, brand_id)
-            BrandSkillStackService(self._database).activate(
-                connection, brand_id, stack or SkillStackV1(), card_id
-            )
+            if option_id == "skip":
+                if journey.stage != "skill-stack-early":
+                    raise _stage_mismatch()
+                self._repository.replace_skill_stack_in_transaction(
+                    connection, brand_id, SkillStackV1()
+                )
+            else:
+                BrandSkillStackService(self._database).activate(
+                    connection, brand_id, stack or SkillStackV1(), card_id
+                )
             self._repository.resolve_card_in_transaction(connection, brand_id, card_id)
             self._append_log(
                 connection,
                 brand_id=brand_id,
-                stage="skill-stack",
-                action="confirm",
+                stage=journey.stage,
+                action="skip" if option_id == "skip" else "confirm",
                 target_type="skill_stack",
                 target_id=option_id,
-                detail={"card_id": card_id},
+                detail={
+                    "card_id": card_id,
+                    **(stack.model_dump(mode="json") if stack and option_id != "skip" else {}),
+                },
                 now=now,
             )
             journey = self._repository.get_journey_in_transaction(connection, brand_id)
@@ -1829,7 +1851,7 @@ class BrandCapabilityInvocationService:
             runtime_result, presentation_stream = self._run_with_presentation(
                 spec,
                 brand_id=brand_id,
-                stage="skill-stack",
+                stage=journey.stage if journey else "skill-stack",
                 stage_revision=journey.stage_revision if journey is not None else 1,
                 substep_or_slot="recommendation",
             )
@@ -1860,10 +1882,11 @@ class BrandCapabilityInvocationService:
             card = self._repository.get_open_card_in_transaction(connection, brand_id)
             if (
                 journey is None
-                or journey.stage != "skill-stack"
+                or journey.stage not in {"skill-stack", "skill-stack-early"}
                 or journey.stage_revision != request.expected_stage_revision
                 or card is None
                 or card.card_id != request.card_id
+                or card.stage != journey.stage
                 or card.stage_revision != journey.stage_revision
             ):
                 raise _stage_mismatch()
@@ -1895,7 +1918,7 @@ class BrandCapabilityInvocationService:
             self._append_log(
                 connection,
                 brand_id=brand_id,
-                stage="skill-stack",
+                stage=journey.stage,
                 action="confirm" if request.confirm else "edit",
                 target_type="skill_stack",
                 target_id=card.card_id,
@@ -1903,12 +1926,32 @@ class BrandCapabilityInvocationService:
                 now=datetime.now(timezone.utc),
             )
 
-    def _skill_stack_question(self, brand_id: str) -> str:
+    def _skill_stack_question(self, brand_id: str, *, early: bool = False) -> str:
+        if early:
+            if self._workflow_response_locale(brand_id).lower().startswith("zh"):
+                return "可以先选创意方法与视听风格，再生成创意方向；也可以跳过，稍后按原流程选择。"
+            return "Choose Skills before creative directions, or skip and choose later in the usual flow."
         if self._workflow_response_locale(brand_id).lower().startswith("zh"):
             return "请确认当前推荐的创意方法与视听风格组合，确认后进入创意方案。"
         return "Please confirm the recommended creative method and audiovisual style stack."
 
-    def _skill_stack_options(self, brand_id: str) -> tuple[BrandShortOptionV1, ...]:
+    def _skill_stack_options(
+        self, brand_id: str, *, early: bool = False
+    ) -> tuple[BrandShortOptionV1, ...]:
+        if early:
+            zh = self._workflow_response_locale(brand_id).lower().startswith("zh")
+            return (
+                BrandShortOptionV1(
+                    option_id="delegate", label="采用当前组合" if zh else "Use the current stack"
+                ),
+                BrandShortOptionV1(
+                    option_id="adjust", label="选择 Skills" if zh else "Choose Skills"
+                ),
+                BrandShortOptionV1(
+                    option_id="skip",
+                    label="暂时跳过，稍后选择" if zh else "Skip for now, choose later",
+                ),
+            )
         if self._workflow_response_locale(brand_id).lower().startswith("zh"):
             return (
                 BrandShortOptionV1(
