@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { videoAgentBasePolicy } from "./agents.js";
 import { nativeVideoAudioPolicy } from "./audio-policy.js";
+import { downstreamDialogueContinuityPolicy, scriptDialogueDevelopmentPolicy } from "./dialogue-authority.js";
 import { shotCoveragePolicy, storyboardTextPolicy, speechTimingPolicy } from "./shot-authoring.js";
 import { listOperationDescriptors } from "../registry.js";
 
@@ -282,6 +283,8 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
       ...(context.role_variant === "storyboard_grid" ? [storyboardTextPolicy] : []),
       ...(context.role_variant === "video_segment" ? [speechTimingPolicy] : []),
+      ...(context.role_variant === "script" ? [scriptDialogueDevelopmentPolicy] : []),
+      ...(["storyboard_grid", "video_segment"].includes(String(context.role_variant)) ? [downstreamDialogueContinuityPolicy] : []),
       ...(image25Turnaround ? [
         "Image 2.5 Turnaround face drawing: author the selected colored-pencil cross-hatching method directly in editable_prompt for realistic human faces. Preserve nonhuman and intentionally stylized faces in their approved medium. This local technique does not determine the rendering style of the rest of the character or image.",
         "Limit drawing treatment to the facial surface inside the hairline and jawline in each view where the face is visible. Preserve facial silhouette, feature positions, eye size and direction, age, expression and natural complexion. Preserve the shapes and strands of eyebrows, moustache and beard. Keep ears, neck, hands, scalp hair, costume, materials, body proportions, background and lighting in their approved treatment. A back view without a visible face needs no facial drawing.",
@@ -292,6 +295,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   }
   if (operation === "plan_storyboard_sequence_outline") {
     return [
+      downstreamDialogueContinuityPolicy,
       "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",
       "Planning rule: one storyboard sequence represents one bounded downstream video segment and one later ordered 3x3 storyboard grid, not one shot, camera setup, panel, or story beat.",
       "Preserve the supplied sequence count. Preserve fixed timing windows exactly; with timing_mode=adaptive, allocate contiguous unequal windows to the narrative within the total duration and max_sequence_duration_seconds. Generation windows do not prescribe internal shot lengths.",
@@ -305,6 +309,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   }
   if (operation === "materialize_storyboard_segment") {
     return [
+      downstreamDialogueContinuityPolicy,
       "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied approved narrative, selected direction, Brand decisions, prior final panel, prior end state, terminal policy, product purpose, and CTA; do not author platform identifiers.",
       shotDirectionPolicy,
       "Return the rows and generation prompt in response_locale in this operation. Do not request a translation or a second creative operation.",
@@ -313,6 +318,9 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   if (operation === "author_guided_script_checkpoint") {
     return [
       "Author only the internal document checkpoint named by capability_context.journey_stage.",
+      capabilityContext?.journey_stage === "narrative_direction"
+        ? scriptDialogueDevelopmentPolicy
+        : downstreamDialogueContinuityPolicy,
       ...(methodRule ? [methodRule] : []),
       ...(fallbackRule ? [fallbackRule] : []),
       "Return exactly one closed GuidedScriptCheckpointDraftV1 object with only title, summary_prompt, and content.",
