@@ -13,6 +13,7 @@ BrandMode = Literal["creation", "brand"]
 BrandStage = Literal[
     "brand-memory",
     "campaign",
+    "skill-stack-early",
     "hypothesis",
     "adspec",
     "skill-stack",
@@ -456,6 +457,8 @@ class BrandTreatmentDocumentV1(_BrandModel):
 class BrandDecisionPanelV1(_BrandModel):
     """Read model behind the frontend decision panel."""
 
+    early_skills_confirmed: bool = False
+
     project_id: str
     workflow_id: str
     mode: BrandMode
@@ -483,6 +486,7 @@ class BrandDecisionLogEntryV1(_BrandModel):
     action: Literal[
         "select",
         "reject",
+        "skip",
         "fusion",
         "recommend",
         "edit",

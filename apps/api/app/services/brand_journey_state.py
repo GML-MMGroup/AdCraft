@@ -17,6 +17,7 @@ from app.schemas.brand_professional_mode import (
 BRAND_STAGE_ORDER: tuple[BrandStage, ...] = (
     "brand-memory",
     "campaign",
+    "skill-stack-early",
     "hypothesis",
     "adspec",
     "skill-stack",

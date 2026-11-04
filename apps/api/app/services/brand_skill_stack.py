@@ -53,6 +53,18 @@ class BrandSkillStackService:
             ],
         }
 
+    def early_direction_context(self, brand_id: str) -> dict[str, object]:
+        with self._database.engine.connect() as connection:
+            confirmed = self._repository.early_skills_confirmed_in_transaction(connection, brand_id)
+        if not confirmed:
+            return {}
+        context = self.treatment_context(brand_id, None)
+        return {
+            key: context[key]
+            for key in ("skill_stack", "creative_methods", "style_guidance")
+            if key in context
+        }
+
     def treatment_context(self, brand_id: str, substep: str | None) -> dict[str, object]:
         with self._database.engine.connect() as connection:
             hypotheses = self._repository.get_hypotheses_in_transaction(connection, brand_id)

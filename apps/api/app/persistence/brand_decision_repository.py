@@ -550,6 +550,21 @@ class BrandDecisionRepository:
 
     # ---- Skill stack -------------------------------------------------------
 
+    def early_skills_confirmed_in_transaction(self, connection: Connection, brand_id: str) -> bool:
+        return (
+            connection.execute(
+                select(BrandDecisionLogRow.log_id)
+                .where(
+                    BrandDecisionLogRow.brand_id == brand_id,
+                    BrandDecisionLogRow.stage == "skill-stack-early",
+                    BrandDecisionLogRow.action == "confirm",
+                    BrandDecisionLogRow.target_type == "skill_stack",
+                )
+                .limit(1)
+            ).first()
+            is not None
+        )
+
     def replace_skill_stack_in_transaction(
         self,
         connection: Connection,
