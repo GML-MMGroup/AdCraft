@@ -190,7 +190,16 @@ class V2DeliveredProviderReference(BaseModel):
     rendition_width: int | None = None
     rendition_height: int | None = None
     storyboard_downscaled_for: Literal["seedance_2_5"] | None = None
-    image_processing: Literal["storyboard_soften_v1", "human_face_blur_sigma7_v1"] | None = None
+    image_processing: (
+        Literal[
+            "storyboard_soften_v1",
+            "human_face_blur_sigma7_v1",
+            "human_face_blur_sigma8_v2",
+            "human_face_blur_sigma10_v1",
+            "human_face_blur_sigma12_v1",
+        ]
+        | None
+    ) = None
     max_dimension: int | None = None
     reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
     reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
@@ -304,7 +313,13 @@ class V2DeliveredReferenceSet(BaseModel):
                         else {}
                     ),
                     **(
-                        {"blur_sigma": 7}
+                        {"blur_sigma": 8}
+                        if reference.image_processing == "human_face_blur_sigma8_v2"
+                        else {"blur_sigma": 10}
+                        if reference.image_processing == "human_face_blur_sigma10_v1"
+                        else {"blur_sigma": 12}
+                        if reference.image_processing == "human_face_blur_sigma12_v1"
+                        else {"blur_sigma": 7}
                         if reference.image_processing == "human_face_blur_sigma7_v1"
                         else {}
                     ),
@@ -792,7 +807,7 @@ class V2ProviderReferenceInputDeliveryService:
                 input_type="data_url",
                 input_value="",
                 source="local_file",
-            ).model_copy(update={"image_processing": "human_face_blur_sigma7_v1"})
+            ).model_copy(update={"image_processing": "human_face_blur_sigma8_v2"})
             rendition = self._deliver_canvas_provider_reference_rendition(
                 input_snapshot,
                 version,

@@ -68,7 +68,13 @@ class V2AssetRenditionService:
         kind: str,
         max_dimension: int | None = None,
         min_short_side: int | None = None,
-        image_processing: Literal["storyboard_soften_v1", "human_face_blur_sigma7_v1"]
+        image_processing: Literal[
+            "storyboard_soften_v1",
+            "human_face_blur_sigma7_v1",
+            "human_face_blur_sigma8_v2",
+            "human_face_blur_sigma10_v1",
+            "human_face_blur_sigma12_v1",
+        ]
         | None = None,
     ) -> AssetRendition:
         if kind not in {"preview", "poster", "provider_reference"}:
@@ -78,7 +84,14 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         if image_processing is not None and (
-            image_processing not in {"storyboard_soften_v1", "human_face_blur_sigma7_v1"}
+            image_processing
+            not in {
+                "storyboard_soften_v1",
+                "human_face_blur_sigma7_v1",
+                "human_face_blur_sigma8_v2",
+                "human_face_blur_sigma10_v1",
+                "human_face_blur_sigma12_v1",
+            }
             or kind != "provider_reference"
             or media_type != "image"
         ):
@@ -116,7 +129,12 @@ class V2AssetRenditionService:
                     ),
                     stage="v2_asset_rendition_service",
                 )
-            if image_processing != "human_face_blur_sigma7_v1":
+            if image_processing not in {
+                "human_face_blur_sigma7_v1",
+                "human_face_blur_sigma8_v2",
+                "human_face_blur_sigma10_v1",
+                "human_face_blur_sigma12_v1",
+            }:
                 max_dimension = max_dimension or 2048
             if min_short_side is not None and (
                 max_dimension not in {1024, 768, 512, 320}
@@ -183,6 +201,12 @@ class V2AssetRenditionService:
                 filters += f",gblur=sigma={sigma}:steps=3"
             elif image_processing == "human_face_blur_sigma7_v1":
                 filters += ",gblur=sigma=7:steps=3"
+            elif image_processing == "human_face_blur_sigma8_v2":
+                filters += ",gblur=sigma=8:steps=3"
+            elif image_processing == "human_face_blur_sigma10_v1":
+                filters += ",gblur=sigma=10:steps=3"
+            elif image_processing == "human_face_blur_sigma12_v1":
+                filters += ",gblur=sigma=12:steps=3"
             command = [
                 self._ffmpeg_path,
                 "-y",
