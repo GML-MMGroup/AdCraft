@@ -5,6 +5,8 @@ from __future__ import annotations
 from app.services.agent_canvas_image_presentation import (
     AUTHORED_IMAGE_PRESENTATION,
     DEFAULT_IMAGE_OVERLAYS,
+    SCENE_ENVIRONMENT_PRESENTATION,
+    SCENE_ENVIRONMENT_EXCLUSIONS,
 )
 
 import hashlib
@@ -467,6 +469,18 @@ class AgentCanvasProviderPromptCompiler:
         if is_product:
             registry_digest = _digest(
                 {"role_registry_digest": registry_digest, "product_serialization_revision": 2}
+            )
+        if node.semantic_role == "scene":
+            # Apply the current role boundary without rewriting historical preparation evidence.
+            prompt += "\n\nScene environment boundary:\n" + SCENE_ENVIRONMENT_PRESENTATION
+            prompt += "\n" + SCENE_ENVIRONMENT_EXCLUSIONS
+            negative += "\n" + SCENE_ENVIRONMENT_EXCLUSIONS
+            registry_digest = _digest(
+                {
+                    "role_registry_digest": registry_digest,
+                    "scene_environment_presentation": SCENE_ENVIRONMENT_PRESENTATION,
+                    "scene_environment_exclusions": SCENE_ENVIRONMENT_EXCLUSIONS,
+                }
             )
         context = {
             "node_id": node.node_id,

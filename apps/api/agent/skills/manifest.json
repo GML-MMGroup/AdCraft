@@ -42,12 +42,12 @@
     },
     {
       "path": "video_agent_role_prompt_authoring/SKILL.md",
-      "sha256": "345b020e1e7cc2baeba174017c4cf7f4fc3a522dcf51d936d8f0010d8c8a48fe",
+      "sha256": "0b1a9126cb707cefb7f4b25c0037a889ffcaad02019c91a7b0dfdb56f574db5c",
       "skill_id": "video_agent_role_prompt_authoring"
     },
     {
       "path": "video_agent_scene_design/SKILL.md",
-      "sha256": "34cbb4a5ec775761a8e94c117df6a11d28f3490477af3f810fcfd021bbbafb11",
+      "sha256": "5fa677201008ba5ada0dfb8a4d106bc77f1e3644fc7925e21d7a1743726af0f4",
       "skill_id": "video_agent_scene_design"
     },
     {
