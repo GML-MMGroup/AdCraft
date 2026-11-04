@@ -291,6 +291,7 @@ class AgentCanvasNodeService:
             expected_revision=expected_revision,
             expected_node_revision=current.revision,
             node_scoped=expected_node_revision is not None,
+            update_position="position" in changes,
         )
         return self._repository.get_node(workflow_id, node_id)
 

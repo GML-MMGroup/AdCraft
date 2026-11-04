@@ -824,6 +824,7 @@ class AgentCanvasWorkflowRepository:
         expected_revision: int,
         expected_node_revision: int | None = None,
         node_scoped: bool = False,
+        update_position: bool = False,
     ) -> AgentCanvasWorkflowV2:
         """Replace one node record and advance authoring once."""
 
@@ -857,6 +858,11 @@ class AgentCanvasWorkflowRepository:
                     if current_row is None:
                         raise _node_not_found_error()
                     current_node = _node_from_row(current_row)
+                    if not update_position:
+                        # Layout has its own revision and can change while authoring runs.
+                        node = node.model_copy(update={"position": current_node.position})
+                        values["position_x"] = current_node.position.x
+                        values["position_y"] = current_node.position.y
                     if (
                         expected_node_revision is not None
                         and current_node.revision != expected_node_revision
@@ -953,6 +959,12 @@ class AgentCanvasWorkflowRepository:
                     )
                     if updated.rowcount != 1:
                         raise _node_not_found_error()
+                    if update_position and node.position != current_node.position:
+                        connection.execute(
+                            update(AgentCanvasWorkflowRow)
+                            .where(AgentCanvasWorkflowRow.workflow_id == node.workflow_id)
+                            .values(layout_revision=AgentCanvasWorkflowRow.layout_revision + 1)
+                        )
                     if node.prompt_preparation.status == "queued":
                         self._prompt_dispatch.supersede_and_enqueue_in_transaction(
                             connection,
@@ -1037,6 +1049,9 @@ class AgentCanvasWorkflowRepository:
         values = _node_values(node)
         values.pop("node_id")
         values.pop("workflow_id")
+        # Prompt results must never replace coordinates from an earlier snapshot.
+        values.pop("position_x")
+        values.pop("position_y")
         replayed = False
         try:
             with self._database.engine.connect() as connection:
