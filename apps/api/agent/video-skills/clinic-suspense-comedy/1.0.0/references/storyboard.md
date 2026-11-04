@@ -6,6 +6,10 @@ when addressed. Each shot should expose new evidence or a meaningful response;
 vary scale and subject purpose instead of repeating nearly identical portraits.
 Distinguish stable individual shots from a fixed viewpoint across the segment.
 Keep an explicitly approved long take; the grid imposes no cut count.
+Frame the approved product-related evidence and its progression clearly;
+reaction coverage supports these clues rather than replacing them. Preserve
+the visual connection between an earlier condition and its later changed
+meaning, without adding an unapproved demonstration or revealing the item.
 
 Show speech through acting and eyelines, without rendering dialogue subtitles,
 speech bubbles or quoted spoken lines. Packaging print, environmental signs

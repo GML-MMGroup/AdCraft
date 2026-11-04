@@ -4,6 +4,11 @@ Pace the approved consultation as a serious exchange. Leave a short silence
 after an ambiguous answer and let the listener's interrupted gesture register.
 Avoid an early wink, playful cadence or explanatory aside that spoils the
 information order. Give each answer a distinct emotional intention.
+Preserve the approved link between each key answer and the product experience;
+give changes in that evidence enough time to register. Keep the source unnamed
+without turning a functional clue into a generic ominous line. If the approved
+story lacks a causal turn, flag the gap in the handoff rather than inventing
+new events or silently replacing its dialogue.
 
 Separate the verbal turn from the product reveal. Play the late answer and
 comic response without naming the advertised item or brand. A late functional

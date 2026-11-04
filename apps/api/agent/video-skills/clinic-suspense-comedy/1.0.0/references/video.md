@@ -15,22 +15,20 @@ functional cutaway. Exclude its packaging, identifying interface, recognizable
 worn form and brand text even when its reference is supplied as input. Native
 speech and sound also withhold its name and brand; late functional cues may
 make the benefit or category understandable.
+Keep the approved evidence progression visible in performance, action and
+shot timing. Let viewers register the condition and any authored change;
+camera movement or reaction shots must not erase the functional link. Render
+only the supported result and timing in the story, without inventing an
+instant repair to make the payoff more dramatic.
 
-When authored, render the late external passage as a brief, causally clear
-effect, supporting mechanism or result. Keep the marketed item off screen,
-including reflections and background views. Use the approved sound or speech
-bridge, then return to the established clinic for the final exchange and the
-doctor's instruction. If a segment ends during the insert, preserve this return
-in the next segment rather than jumping straight to the brand still.
+When authored, bridge the brief functional passage with the approved sound
+or speech, then return to the clinic for the final exchange and instruction.
+If the insert crosses segments, preserve that return in the next segment.
 
-If the approved sequence includes a patient reaction after the doctor's
-instruction, perform it with
-a clear onset and brief hold: its smile, pause or small gesture should echo
-the character's scripted unusual state. Keep facial identity stable and the
-action readable instead of turning it into arbitrary face distortion. When
-the reaction is omitted, move directly from the final dialogue to the brand
-still; do not invent a smile, gesture or extra pause to fill the gap. This
-choice is independent of whether a functional cutaway is included.
+An approved closing patient reaction needs a clear onset and brief hold,
+echoing the scripted unusual state while preserving facial identity. Otherwise,
+cut directly from the final dialogue to the brand still without adding a
+reaction. This choice is independent of the functional cutaway.
 
 For the final segment, specify the cut from the final dialogue or chosen reaction to the
 brand still as the first product appearance. Use the approved real-use

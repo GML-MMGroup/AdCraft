@@ -8,6 +8,10 @@ description: Contained consultation framing, optional late functional cutaways w
 Give an approved clinic comedy an oppressive opening and a legible, funny
 release. The signature is contained consultation framing, delayed reaction
 cuts and a freeze-frame finish. Emphasize the exchange, reaction timing and closing graphic hold.
+Keep the approved product-related evidence legible throughout: conceal the
+commercial source while preserving the gestures, surfaces and changes that
+let the final reveal explain the exchange. Suspense comes from interpretation,
+not from obscuring every functional clue.
 
 ## Contained consultation framing
 
@@ -40,17 +44,13 @@ readable and brief; save identifiable commercial detail shots for the final stil
 
 ## Freeze-frame finish
 
-After the closing instruction, or an optional patient reaction, cut to a decisive still
-image: this is the first product appearance and brand reveal. Until that cut,
-keep the advertised item and its identifying packaging or interface out of
-the shot, including background placement and worn accessories. Functional
-effects and supporting mechanisms may appear in the approved late cutaway;
-they do not authorize a shot of the marketed item. Finish the return to the
-consultation before this final cut. Stage the final composition in the
-approved real-use setting, with a credible supporting surface, scale and
-contact shadows. This closing environment may differ from the consultation
-room. Keep enough environmental detail readable to establish the use context,
-while retaining sharp product detail and accurate material color.
+After the closing instruction or optional patient reaction, cut to the first
+product appearance and brand reveal as a decisive still. Earlier functional
+effects may appear; keep the item, identifying packaging and interface hidden,
+including in backgrounds and accessories. Complete the clinic return before
+this cut. Stage the still in the approved real-use setting, which may differ
+from the clinic, with credible placement, scale and contact shadows. Retain
+readable surroundings, sharp product detail and accurate material color.
 
 Show the exact approved brand name in large, prominent typography from the
 first frozen frame, simultaneously with the product, and hold both together.

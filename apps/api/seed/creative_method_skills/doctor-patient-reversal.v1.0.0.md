@@ -4,6 +4,10 @@ version: 1.0.0
 skill_kind: creative_method
 title: Doctor-Patient Reversal
 core_principle: >
+  Build the entire suspense and reversal around a supported product function,
+  use experience or problem it solves. Conceal the product's identity, not its
+  causal relationship to the story: each key beat advances clues that the
+  final reveal explains.
   In one medical consultation room, a doctor questions a psychiatric patient
   while a nurse attends. An optional late functional cutaway shows the effect
   without the advertised item, then returns to the consultation for the final
@@ -17,7 +21,8 @@ consumer_psychology: >
   fair explanation rewards curiosity; the doctor's disproportionate or relieved
   response releases tension, and the final product reveal completes the meaning.
 story_structure: >
-  Doctor-patient dialogue, escalating ambiguous clues, a late verbal turn
+  Product-grounded doctor-patient dialogue, ambiguous clues that advance one
+  causal thread from lived problem to meaningful change, a late verbal turn
   optionally supported by an outside functional cutaway, a return to the room
   for the final exchange and the doctor's instruction to the nurse, an optional patient reaction,
   and the first product appearance in a context-appropriate final freeze-frame
@@ -29,9 +34,11 @@ hook_methods: >
   functional imagery may suggest the use or category, while the advertised
   item and brand remain unseen until the final freeze.
 product_role: >
-  The product or supported service explains the patient's experience and gives
-  the closing exchange its meaning. Its real benefit shapes the clues and
-  reveal; the brand cannot be an interchangeable sponsor after an unrelated joke.
+  The product or supported service drives the setup, developing evidence and
+  payoff while its identity stays hidden. Its supported benefit explains the
+  patient's experience and gives the closing exchange its meaning. A list of
+  category problems followed by a product still is insufficient; the reveal
+  must complete a causal explanation already prepared by the conversation.
 suitable_categories_and_goals: >
   Cross-category brand and product advertising with an experience that can
   support double meanings, a legible reveal and a comic clinic framing;
@@ -43,7 +50,9 @@ unsuitable_cases: >
   final product setting may use other environments.
 common_mistakes: >
   Showing the advertised item or brand before the final freeze, repeating questions without
-  new evidence, unrelated wordplay, an unexplained twist, a nurse who never
+  new evidence, hiding functional relevance along with product identity,
+  piling up category problems without a functional turn, unrelated wordplay,
+  an unexplained twist, a nurse who never
   receives the instruction, both ending lines used mechanically, extra dialogue
   cast or locations, a contextless product backdrop, a tiny or delayed brand
   name, forcing a closing patient reaction into every story, failing to return
@@ -85,19 +94,34 @@ settings appropriate to the benefit. These inserts add no new speaking role;
 return to the same consultation room for the final dialogue and instruction.
 
 Begin with the supplied brand story, one supported product benefit and the
-real experience that could be misunderstood. Design the final brand still
+real experience that could be misunderstood. Build the setup, developing
+evidence, verbal turn and payoff around that same benefit. The audience
+misreads the experience, not an unrelated story retrofitted with a sponsor.
+Design the final brand still
 before writing the conversation: its product or service identifier and
 concise benefit must connect the decisive clues to the advertised item.
 An earlier functional insert may reveal the effect, but not its commercial source.
 
-### Make the setup fair and commercially invisible
+### Hide the identity while advancing product-grounded clues
 
 Map each important clue as: **true product fact or use experience -> patient's
 ambiguous wording -> alarming audience inference -> optional functional evidence
 -> final brand-frame identification**.
-Choose enough distinct clues for the requested length. Each doctor question
-must uncover evidence or alter the interpretation, not merely repeat fear,
-time or place. The patient's sincere answers carry the mystery.
+For each key beat, identify the supported function, use experience or problem
+behind it, the audience's initial misreading, and what the eventual reveal
+will explain. Use this mapping to choose clues, not to insert sales language
+into dialogue. Each doctor question must uncover evidence or alter the
+interpretation; each answer advances the same causal thread. Small gestures,
+pauses and connective lines may serve performance without carrying a new claim.
+
+Progress beyond listing affected objects or symptoms: establish a meaningful
+change, outcome or misunderstood action connected to the product's real use.
+Let a later answer reinterpret earlier evidence and earn the doctor's closing
+response. This can happen entirely through dialogue; an external functional
+cutaway remains optional. Problem clues alone plus a final product still do
+not establish that turn. Keep timing, mechanism and results within supported
+claims; a product that prevents a problem does not automatically repair its
+existing damage or produce an instant transformation.
 
 The advertised item's first on-screen appearance is the final brand freeze.
 Until then, exclude that item, its recognizable silhouette or packaging,
@@ -202,6 +226,17 @@ their existence or connection as inputs does not authorize early screen presence
 Use existing authoring fields for the clue mapping, timed dialogue, verbal turn,
 selected instruction, any chosen patient reaction and brand close. Check that
 the spoken lines, pauses, optional reaction and hold fit the requested duration.
+
+Before handing off a proposed story, mentally remove the final brand frame:
+the remaining mystery must still trace the selected product's function or use,
+with its source unresolved. Restore the frame: it must explain the decisive
+earlier clues and the turn, not merely announce a remedy for listed problems.
+Replacing it with an unrelated product category should break that explanation;
+do not invent brand-exclusive capabilities to distinguish similar products.
+Revise disconnected beats while developing proposals. If an already confirmed
+story lacks this connection, surface the gap and a targeted revision proposal
+in the available handoff instead of silently replacing approved dialogue or events.
+
 Camera, lighting, sound and
 typography belong to the selected audiovisual treatment and runtime options;
 the source video's length, product, exact dialogue and appearance are not defaults.
