@@ -186,20 +186,6 @@ def validate_character_occurrence_authority(
         )
     if presence is not None and presence.presence == "exclude":
         return CharacterOccurrenceAuthorityProjection(status="resolved_zero", occurrences=())
-    if presence is not None and presence.presence == "include":
-        compatibility = CharacterOccurrenceV1(
-            occurrence_id="character-1",
-            occurrence_index=1,
-            role="Character",
-            identity_summary=presence.source_text,
-            presence="include",
-            source_revision_no=presence.created_revision_no,
-            specification_state="specified",
-        )
-        return CharacterOccurrenceAuthorityProjection(
-            status="resolved_positive",
-            occurrences=(compatibility,),
-        )
     return CharacterOccurrenceAuthorityProjection(status="unresolved", occurrences=())
 
 
@@ -275,7 +261,7 @@ def _target_count(
             if candidate_count is not None:
                 return candidate_count
             included = sum(item.presence == "include" for item in roster)
-            return included or 1
+            return included or None
         return None
     return None
 

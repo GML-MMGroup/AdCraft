@@ -57,6 +57,11 @@ class BrandTreatmentConfirmationService:
                 )
             if content_digest != document.content_digest:
                 raise stale_context()
+            if frozen is None and document.review is None:
+                raise V2PersistenceError(
+                    "brand_treatment_review_required",
+                    "The final production inventory review is still required before confirmation.",
+                )
             if frozen is None:
                 repository.append_decision_log_in_transaction(
                     connection,
