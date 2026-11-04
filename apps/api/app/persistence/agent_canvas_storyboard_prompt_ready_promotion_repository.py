@@ -18,6 +18,7 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
     guidance_awaiting_from_row,
 )
 from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
+from app.persistence.agent_canvas_node_revision_write import node_revision_values
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -181,9 +182,15 @@ class StoryboardPromptReadyPromotionRepository:
                                 AgentCanvasNodeRow.revision == pair.expected_node_revision,
                             )
                             .values(
-                                metadata_json=_dump(metadata),
-                                revision=pair.expected_node_revision + 1,
-                                updated_at=timestamp,
+                                **node_revision_values(
+                                    row,
+                                    {
+                                        "metadata_json": _dump(metadata),
+                                        "revision": pair.expected_node_revision + 1,
+                                        "updated_at": timestamp,
+                                    },
+                                    intent="review",
+                                )
                             )
                         )
                         if updated.rowcount != 1:
