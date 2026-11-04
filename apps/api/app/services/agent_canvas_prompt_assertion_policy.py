@@ -503,6 +503,7 @@ def current_source_snapshots_for_evidence(
     """Rebuild binding source identities from the current workflow authority."""
 
     nodes = {node.node_id: node for node in workflow.nodes}
+    assets = {asset.asset_id: asset for asset in getattr(workflow, "assets", ())}
     current: list[PromptAssertionSourceSnapshotV1] = []
     for snapshot in evidence.source_snapshots:
         if snapshot.source_kind != "binding" or snapshot.source_node_id is None:
@@ -527,9 +528,16 @@ def current_source_snapshots_for_evidence(
                 pinned_version_id = candidate
         if pinned_version_id is not None:
             asset_version_id = pinned_version_id
-        elif asset_version_id is None and asset_resolver is not None and asset_id is not None:
-            asset = asset_resolver(asset_id)
-            asset_version_id = getattr(asset, "version_id", None) or asset_version_id
+        elif asset_id is not None:
+            # Regeneration can advance an AssetVersion without changing the
+            # source Node revision or Asset ID. Never treat a saved evidence
+            # version as the current output authority.
+            current_version_id = getattr(source, "output_asset_version_id", None)
+            if current_version_id is None:
+                current_version_id = getattr(assets.get(asset_id), "version_id", None)
+            if current_version_id is None and asset_resolver is not None:
+                current_version_id = getattr(asset_resolver(asset_id), "version_id", None)
+            asset_version_id = current_version_id or asset_version_id
         current.append(
             snapshot.model_copy(
                 update={
