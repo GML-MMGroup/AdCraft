@@ -3426,15 +3426,16 @@ def _reconcile_editing_manifest_for_node(
 def _advance_in_sync_presentation(
     node: CanvasNodeV2,
 ) -> EditablePromptProjectionV1 | None:
-    """Move an in-sync editable prompt projection with a reference-only revision bump.
+    """Move a coherent editable prompt with a reference-only revision bump.
 
-    Keep a synchronized projection on the current Node revision (production
-    incident 2026-10-20). Other states are left alone; the reference refresh
-    resyncs intentional derived parameter lag before calling this helper.
+    Media publication may advance the reviewed Node once without changing its
+    prompt. Carry that reviewed projection forward too, or a later reference
+    refresh widens its valid one-revision lag into a conflict. Genuine conflicts
+    remain untouched; reference refresh normalizes derived parameter lag first.
     """
 
     presentation = node.prompt_presentation
-    if projection_consistency(node) != "in_sync":
+    if projection_consistency(node) not in {"in_sync", "review_advanced"}:
         return presentation
     assert presentation is not None
     return presentation.model_copy(update={"revision": node.revision + 1})
@@ -3444,7 +3445,10 @@ def _advance_in_sync_review_marker(node: CanvasNodeV2) -> dict[str, object]:
     """Keep the guided review marker on the projection it reviewed."""
 
     review_revision = node.metadata.get("guided_review_node_revision")
-    if projection_consistency(node) != "in_sync" or review_revision != node.revision:
+    if (
+        projection_consistency(node) not in {"in_sync", "review_advanced"}
+        or review_revision != node.revision
+    ):
         return {}
     return {"guided_review_node_revision": node.revision + 1}
 
