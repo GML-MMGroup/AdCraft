@@ -7,6 +7,7 @@ import { ImageResolutionControls } from "./ImageResolutionControls.tsx";
 import { staleImageResolutionParameters } from "./imageResolutionCapabilities.ts";
 import { ModelParameterControls } from "./ModelParameterControls.tsx";
 import { VideoAudioToggle } from "./VideoAudioToggle.tsx";
+import { VideoSubtitleToggle } from "./VideoSubtitleToggle.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import { NodeAssetActions } from "./NodeAssetActions.tsx";
 import { validateModelParameters } from "./modelParameterDescriptors.ts";
@@ -218,11 +219,18 @@ export function MediaPromptWorkbench({
             />
           ) : null}
           {node.node_type === "video" ? (
-            <VideoAudioToggle
-              checked={audioEnabled}
-              disabledReason={audioDisabledReason}
-              onChange={(enabled) => draft.setParameters({ ...draft.parameters, generate_audio: enabled })}
-            />
+            <div className="agent-node-workbench__video-toggles">
+              <VideoAudioToggle
+                checked={audioEnabled}
+                disabledReason={audioDisabledReason}
+                onChange={(enabled) => draft.setParameters({ ...draft.parameters, generate_audio: enabled })}
+              />
+              <VideoSubtitleToggle
+                checked={(draft.parameters.generate_subtitles ?? true) === true}
+                disabled={draft.pending || preparingPrompt === true}
+                onChange={(enabled) => draft.setParameters({ ...draft.parameters, generate_subtitles: enabled })}
+              />
+            </div>
           ) : null}
           <button
             type="button"

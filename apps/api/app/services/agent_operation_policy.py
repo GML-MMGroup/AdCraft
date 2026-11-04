@@ -48,7 +48,10 @@ _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
 _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
 # Role briefs include structured production details and a complete editable prompt.
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
-_ROLE_BRIEF_BUDGET = _OperationBudget(360, 190, 140, 30, 8_192, 2_048)
+_ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
+_STORYBOARD_SEGMENT_BUDGET = _OperationBudget(570, 270, 270, 30, 4_096, None)
+# These operations execute an approved plan; planning retains deep reasoning.
+_APPROVED_PLAN_EXECUTION_OPERATIONS = {"author_role_brief", "materialize_storyboard_segment"}
 _ROUTING_OPERATIONS = {
     "brand_hypothesis",
     "brand_slot_form",
@@ -193,6 +196,8 @@ class AgentOperationPolicyRegistryV2:
         budget = (
             _ROLE_BRIEF_BUDGET
             if operation == "author_role_brief"
+            else _STORYBOARD_SEGMENT_BUDGET
+            if operation == "materialize_storyboard_segment"
             else _BRAND_FORM_BUDGET
             if operation == "brand_slot_form"
             else _BRAND_HYPOTHESIS_BUDGET
@@ -203,8 +208,10 @@ class AgentOperationPolicyRegistryV2:
         )
         return AgentOperationPolicyV2(
             policy_id=(
-                "agent.author_role_brief.v2"
+                "agent.author_role_brief.v3"
                 if operation == "author_role_brief"
+                else "agent.materialize_storyboard_segment.v2"
+                if operation == "materialize_storyboard_segment"
                 else f"agent.{operation}.v1"
                 if operation in {"brand_slot_form", "brand_slot_question"}
                 else f"agent.{policy_class}.v1"
@@ -218,8 +225,14 @@ class AgentOperationPolicyRegistryV2:
             recovery_timeout_seconds=budget.recovery_timeout_seconds,
             persistence_reserve_seconds=budget.persistence_reserve_seconds,
             max_output_tokens=budget.max_output_tokens,
-            reasoning_mode="low" if policy_class == "routing" else "deep",
-            enable_thinking=policy_class != "routing",
+            reasoning_mode=(
+                "low"
+                if policy_class == "routing" or operation in _APPROVED_PLAN_EXECUTION_OPERATIONS
+                else "deep"
+            ),
+            enable_thinking=(
+                policy_class != "routing" and operation not in _APPROVED_PLAN_EXECUTION_OPERATIONS
+            ),
             thinking_budget_tokens=budget.thinking_budget_tokens,
             max_model_submissions=2,
             recovery_mode="transport_retry_or_structured_repair",

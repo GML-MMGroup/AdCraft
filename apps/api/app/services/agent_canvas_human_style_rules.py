@@ -21,6 +21,8 @@ SELECTED_SEQUENCE_VISUAL_STYLE = (
     "Follow the user's requested visual style and the selected audiovisual Skill."
 )
 
+IMAGE25_TURNAROUND_MODEL_REF = "teamorouter:gpt-image-2.5-sunburst"
+
 PAINTED_PEOPLE_RULE = (
     "Mandatory rule: render every person as a hand-painted color illustration with visible "
     "brushstrokes and gouache or watercolor texture, including painted skin and faces; "
@@ -68,8 +70,12 @@ REAL_PEOPLE_VIDEO_RULE = (
 FACE_ONLY_CHARACTER_RULE = (
     "Mandatory rule: Preserve the selected visual style. If a realistic human face appears, "
     "render only the human face, ears, neck and hands as an obvious colored-pencil drawing "
-    "with visible cross-hatching, outlines and paper grain, retaining natural skin tones and "
-    "accurate facial proportions. Preserve the selected treatment of hair, clothing, bodies, "
+    "with visible cross-hatching, outlines and paper grain. On the facial surface, use fine "
+    "but clearly legible pencil strokes in cheek and jaw midtones, light crossing strokes "
+    "in shadows and subtle paper texture. Keep soft highlights and smooth facial volume, "
+    "retaining natural skin tones and accurate facial proportions. Aim for a refined "
+    "colored-pencil portrait with moderate texture; avoid dense dark hatching, thick outlines, "
+    "exaggerated blush or added blemishes. Preserve the selected treatment of hair, clothing, bodies, "
     "materials and background. Do not apply this face treatment to animals, robots, creatures, "
     "objects or other non-human characters, and do not turn an intentionally stylized face "
     "into a realistic human face."
@@ -83,6 +89,14 @@ FACE_ONLY_STORYBOARD_RULE = (
     "Keep animals, robots, creatures, objects and other non-human characters in their selected "
     "style; do not restyle them or turn intentionally stylized faces into realistic human faces."
 )
+
+
+def uses_image25_turnaround_face_drawing(context: RolePromptPreparationContextV2) -> bool:
+    """The selected pencil method is authored by the Agent for this exact role/model."""
+    return (
+        context.role_variant == "character_turnaround"
+        and context.node_parameters.get("model_ref") == IMAGE25_TURNAROUND_MODEL_REF
+    )
 
 
 def human_style_rule(

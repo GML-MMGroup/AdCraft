@@ -1,5 +1,7 @@
 """Shared authority for compiler-owned revisions and immutable recovery."""
 
+from app.persistence.errors import V2PersistenceError
+from app.services.agent_canvas_node_revision_authority import reconcile_node_prompt_revision
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_video_parameters import (
     CanvasParameterProvenanceV2,
@@ -8,6 +10,10 @@ from app.schemas.agent_canvas_video_parameters import (
 )
 from app.services.agent_canvas_prompt_projection_lag import (
     normalize_derived_parameter_prompt_authority,
+)
+from app.services.agent_canvas_parameter_policy import (
+    NON_PROVIDER_NODE_PARAMETER_KEYS,
+    provider_node_parameters,
 )
 
 
@@ -36,8 +42,18 @@ def parameter_compilation_revision_is_current(
 
     if current.revision not in {original.revision, original.revision + 1}:
         return False
-    if current.revision != original.revision:
-        original = normalize_derived_parameter_prompt_authority(original)
+    revision_advanced = current.revision != original.revision
+    if revision_advanced:
+        legacy = normalize_derived_parameter_prompt_authority(original)
+        try:
+            synchronized = reconcile_node_prompt_revision(
+                original, original.model_copy(update={"revision": current.revision})
+            )
+        except V2PersistenceError:
+            return False
+        # Frozen historical compiler results retain their original lag. New
+        # mutable writes use synchronized authority; never rewrite either run.
+        original = synchronized if current.metadata == synchronized.metadata else legacy
     for field in (
         "node_id",
         "workflow_id",
@@ -49,6 +65,7 @@ def parameter_compilation_revision_is_current(
         "execution_mode",
         "summary_prompt",
         "generation_prompt",
+        "prompt_presentation",
         "structured_content",
         "model_selection_mode",
         "model_ref",
@@ -61,13 +78,24 @@ def parameter_compilation_revision_is_current(
     ):
         if getattr(current, field) != getattr(original, field):
             return False
-    if current.revision == original.revision:
+    if not revision_advanced:
         return (
             current.parameters == original.parameters
             and current.parameter_provenance == original.parameter_provenance
         )
+    original_controls = {
+        key: value
+        for key, value in original.parameters.items()
+        if key in NON_PROVIDER_NODE_PARAMETER_KEYS
+    }
+    current_controls = {
+        key: value
+        for key, value in current.parameters.items()
+        if key in NON_PROVIDER_NODE_PARAMETER_KEYS
+    }
     return (
-        current.parameters == compiled.authoring_parameters
+        current_controls == original_controls
+        and provider_node_parameters(current.parameters) == compiled.authoring_parameters
         and _manual_authority_provenance(current) == compiled.parameter_provenance
     )
 
@@ -85,6 +113,8 @@ def _manual_authority_provenance(
 
     provenance: dict[str, CanvasParameterProvenanceV2] = {}
     for field, value in node.parameters.items():
+        if field in NON_PROVIDER_NODE_PARAMETER_KEYS:
+            continue
         entry = node.parameter_provenance.get(field)
         if entry is None:
             if not isinstance(value, (str, int, float, bool)):

@@ -20,6 +20,8 @@ from app.services.agent_canvas_image_presentation import (
     AUTHORED_IMAGE_PRESENTATION,
     DEFAULT_IMAGE_OVERLAYS,
     DEFAULT_REFERENCE_PRESENTATION,
+    SCENE_ENVIRONMENT_PRESENTATION,
+    SCENE_ENVIRONMENT_EXCLUSIONS,
 )
 
 
@@ -206,7 +208,7 @@ _IMAGE_ROLE_BOUNDARIES = {
 }
 
 
-def _default_policy(recipe) -> PromptAssertionPolicyV1:
+def _default_policy(recipe, *, legacy_scene: bool = False) -> PromptAssertionPolicyV1:
     role = recipe.role_variant
     if role == "product_multiview":
         special = dict(_SPECIAL_POLICIES[role])
@@ -220,13 +222,21 @@ def _default_policy(recipe) -> PromptAssertionPolicyV1:
         return _policy(recipe.recipe_id, recipe.recipe_version, **special, policy_version="4")
     if role in _IMAGE_ROLE_BOUNDARIES:
         historical = _historical_default_policy(recipe)
+        scene = role == "scene_board" and not legacy_scene
         return _policy(
             recipe.recipe_id,
             recipe.recipe_version,
             historical.assertion_ids,
-            (_IMAGE_ROLE_BOUNDARIES[role] + " " + AUTHORED_IMAGE_PRESENTATION,),
-            (DEFAULT_IMAGE_OVERLAYS,),
-            policy_version="2",
+            (
+                _IMAGE_ROLE_BOUNDARIES[role]
+                + " "
+                + AUTHORED_IMAGE_PRESENTATION
+                + (" " + SCENE_ENVIRONMENT_PRESENTATION if scene else ""),
+            ),
+            (DEFAULT_IMAGE_OVERLAYS, SCENE_ENVIRONMENT_EXCLUSIONS)
+            if scene
+            else (DEFAULT_IMAGE_OVERLAYS,),
+            policy_version="3" if scene else "2",
         )
     return _historical_default_policy(recipe)
 
@@ -276,6 +286,8 @@ class PromptAssertionPolicyRegistry:
         role = recipe_id.rsplit(".", 1)[-1]
         if policy_version == "1" and role in _IMAGE_ROLE_BOUNDARIES:
             policy = _historical_default_policy(RolePromptRecipeRegistry().resolve(role))
+        if policy_version == "2" and role == "scene_board":
+            policy = _default_policy(RolePromptRecipeRegistry().resolve(role), legacy_scene=True)
         if policy_version == "3" and role == "product_multiview":
             policy = _historical_default_policy(RolePromptRecipeRegistry().resolve(role))
         if policy_version in {"1", "2"} and recipe_id.endswith(".product_multiview"):
@@ -313,6 +325,7 @@ class PromptAssertionPolicyRegistry:
             )
             policy = _policy(recipe_id, recipe_version, **special)
         if recipe_id == "adcraft.agent_canvas.scene_board" and scene_asset_kind == "multi_view":
+            unoccupied = policy_version not in {"1", "2", "3"}
             policy = _policy(
                 recipe_id,
                 recipe_version,
@@ -331,17 +344,20 @@ class PromptAssertionPolicyRegistry:
                         " " + AUTHORED_IMAGE_PRESENTATION
                         if policy_version not in {"1", "2"}
                         else ""
-                    ),
+                    )
+                    + (" " + SCENE_ENVIRONMENT_PRESENTATION if unoccupied else ""),
                 ),
                 ("No other locations, people, text, captions, or narrative action.",)
                 if policy_version in {"1", "2"}
+                else (DEFAULT_IMAGE_OVERLAYS, SCENE_ENVIRONMENT_EXCLUSIONS)
+                if unoccupied
                 else (DEFAULT_IMAGE_OVERLAYS,),
                 engine_owned_fields=(
                     {"views": SCENE_MULTIVIEW_VIEWS}
                     if policy_version == "1"
                     else {"layout": "3x3", "panel_count": 9}
                 ),
-                policy_version=policy_version if policy_version in {"1", "2"} else "3",
+                policy_version=policy_version if policy_version in {"1", "2", "3"} else "4",
                 required_reference_purposes=("scene_main_identity",),
                 policy_ref=f"{recipe_id}.multi_view.prompt_assertions",
             )
@@ -487,6 +503,7 @@ def current_source_snapshots_for_evidence(
     """Rebuild binding source identities from the current workflow authority."""
 
     nodes = {node.node_id: node for node in workflow.nodes}
+    assets = {asset.asset_id: asset for asset in getattr(workflow, "assets", ())}
     current: list[PromptAssertionSourceSnapshotV1] = []
     for snapshot in evidence.source_snapshots:
         if snapshot.source_kind != "binding" or snapshot.source_node_id is None:
@@ -511,9 +528,16 @@ def current_source_snapshots_for_evidence(
                 pinned_version_id = candidate
         if pinned_version_id is not None:
             asset_version_id = pinned_version_id
-        elif asset_version_id is None and asset_resolver is not None and asset_id is not None:
-            asset = asset_resolver(asset_id)
-            asset_version_id = getattr(asset, "version_id", None) or asset_version_id
+        elif asset_id is not None:
+            # Regeneration can advance an AssetVersion without changing the
+            # source Node revision or Asset ID. Never treat a saved evidence
+            # version as the current output authority.
+            current_version_id = getattr(source, "output_asset_version_id", None)
+            if current_version_id is None:
+                current_version_id = getattr(assets.get(asset_id), "version_id", None)
+            if current_version_id is None and asset_resolver is not None:
+                current_version_id = getattr(asset_resolver(asset_id), "version_id", None)
+            asset_version_id = current_version_id or asset_version_id
         current.append(
             snapshot.model_copy(
                 update={

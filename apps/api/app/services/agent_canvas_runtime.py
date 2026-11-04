@@ -12,6 +12,11 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from app.services.agent_canvas_parameter_policy import (
+    NON_PROVIDER_NODE_PARAMETER_KEYS,
+    provider_node_parameters,
+)
+
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
@@ -914,7 +919,14 @@ class DynamicCanvasScheduler:
                     )
                     node = node.model_copy(
                         update={
-                            "parameters": parameter_compilation_snapshot.requested_parameters,
+                            "parameters": {
+                                **{
+                                    key: value
+                                    for key, value in node.parameters.items()
+                                    if key in NON_PROVIDER_NODE_PARAMETER_KEYS
+                                },
+                                **parameter_compilation_snapshot.requested_parameters,
+                            },
                             "parameter_provenance": (
                                 parameter_compilation_snapshot.parameter_provenance
                             ),
@@ -958,12 +970,27 @@ class DynamicCanvasScheduler:
                         )
                     node = current_node.model_copy(
                         update={
-                            "parameters": compiled.requested_parameters,
+                            "parameters": {
+                                **{
+                                    key: value
+                                    for key, value in current_node.parameters.items()
+                                    if key in NON_PROVIDER_NODE_PARAMETER_KEYS
+                                },
+                                **compiled.requested_parameters,
+                            },
                             "parameter_provenance": compiled.parameter_provenance,
                         }
                     )
                     prompt_authority_node = _parameter_snapshot_prompt_authority(
-                        node,
+                        # The CAS above proves this is the compiler's own write.
+                        # Keep accepted prompt authority even though mutable
+                        # Node projections now advance with derived parameters.
+                        prompt_authority_node.model_copy(
+                            update={
+                                "parameters": node.parameters,
+                                "parameter_provenance": node.parameter_provenance,
+                            }
+                        ),
                         parameter_compilation_snapshot,
                         execution_id=execution_id,
                         member_id=member.member_id,
@@ -2425,7 +2452,7 @@ def _parameter_snapshot_prompt_authority(
         and snapshot.member_id == member_id
         and snapshot.node_id == node.node_id
         and snapshot.node_revision == node.revision
-        and snapshot.requested_parameters == node.parameters
+        and snapshot.requested_parameters == provider_node_parameters(node.parameters)
         and snapshot.parameter_provenance == _manual_authority_provenance(node)
     ):
         return node

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_node_revision_authority import reconcile_node_prompt_revision
+
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, func, or_, select, update
@@ -269,6 +271,7 @@ class StoryboardPromptContextRepository:
                     bindings=bindings,
                     context_digest=digest,
                 )
+                successor_node = reconcile_node_prompt_revision(node, successor_node)
                 values = _node_values(successor_node)
                 values.pop("node_id")
                 values.pop("workflow_id")

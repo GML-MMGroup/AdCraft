@@ -6914,6 +6914,13 @@ def _materialization_progress(
     if proposal is None:
         return entry
     status = str(proposal["materialization_status"])
+    segment_progress = entry.metadata.get("type") == "storyboard_authoring_progress"
+    if (
+        segment_progress
+        and status in {"queued", "working"}
+        and entry.metadata.get("attempt") == proposal["materialization_attempt_no"]
+    ):
+        return entry
     failure = _materialization_actionable_failure(proposal) if status == "failed" else None
     content = {
         "failed": "Preparing the selected direction failed. Please review the recovery action.",
@@ -6921,12 +6928,25 @@ def _materialization_progress(
         "queued": "The selected direction is being prepared as an editable Draft.",
         "working": "The selected direction is being prepared as an editable Draft.",
     }.get(status, entry.content)
+    progress_args = entry.metadata.get("message_args", {})
+    if status in {"failed", "queued", "working"} and isinstance(progress_args, dict):
+        completed, total = progress_args.get("completed"), progress_args.get("total")
+        if type(completed) is int and type(total) is int and 0 <= completed <= total and total > 0:
+            phase = "Canvas preparation" if completed == total else "Storyboard writing"
+            content = (
+                f"{phase} failed: {completed}/{total} segments written. "
+                "Completed work is retained. Please review the recovery action."
+                if status == "failed"
+                else f"Resuming storyboard preparation: {completed}/{total} segments written. "
+                "Reusing completed work and waiting for the remaining text."
+            )
     return entry.model_copy(
         update={
             "content": content,
             "actionable_failure": failure,
             "metadata": {
                 **entry.metadata,
+                **({"message_key": None} if segment_progress else {}),
                 "status": status,
                 "turn_id": str(proposal["materialization_turn_id"]),
                 "retryable": failure.retryable if failure else False,

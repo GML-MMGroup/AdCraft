@@ -31,7 +31,6 @@ from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.agent_canvas_node_change_authority import creative_node_inputs_changed
 from app.services.agent_canvas_prompt_projection_lag import (
     projection_consistency,
-    resync_derived_parameter_lag,
 )
 from app.services.model_selection import ModelSelectionService
 
@@ -156,6 +155,12 @@ class AgentCanvasNodeService:
                 node_scoped=expected_node_revision is not None,
             )
             return self._repository.get_node(workflow_id, node_id)
+        if (
+            "generation_prompt" not in request.model_fields_set
+            and current.prompt_presentation is not None
+            and current.prompt_preparation.status == "ready"
+        ):
+            _validate_inherited_prompt_projection(current)
         if "position" in changes:
             changes["position"] = request.position
         now = datetime.now(timezone.utc)
@@ -243,16 +248,6 @@ class AgentCanvasNodeService:
                     str(changes["generation_prompt"]),
                     now,
                 )
-        if (
-            "prompt_presentation" not in changes
-            and current.prompt_presentation is not None
-            and current.prompt_preparation.status == "ready"
-        ):
-            current = resync_derived_parameter_lag(current)
-            _validate_inherited_prompt_projection(current)
-            changes["prompt_presentation"] = current.prompt_presentation.model_copy(
-                update={"revision": current.revision + 1}
-            )
         status = (
             current.status
             if source_only_product
@@ -291,6 +286,8 @@ class AgentCanvasNodeService:
             expected_revision=expected_revision,
             expected_node_revision=current.revision,
             node_scoped=expected_node_revision is not None,
+            prompt_revision_intent="author" if "prompt_presentation" in changes else "carry",
+            update_position="position" in changes,
         )
         return self._repository.get_node(workflow_id, node_id)
 

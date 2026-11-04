@@ -24,6 +24,7 @@ from app.schemas.seedance_inputs import (
     StoryboardReferenceIdentityAuditV1,
 )
 from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
+from app.services.agent_canvas_video_subtitles import apply_video_subtitle_control
 from app.services.agent_canvas_character_identity_prompt import (
     LabeledIdentityReference,
     compile_character_identity_prompt,
@@ -98,6 +99,7 @@ class AgentCanvasSeedanceInputCompiler:
         )
         if character_prompt:
             compiled_prompt = f"{compiled_prompt}\n\n{character_prompt}"
+        compiled_prompt = apply_video_subtitle_control(compiled_prompt, node.parameters)
         manifest = SeedanceInputManifestV1(
             node_id=node.node_id,
             model_id=model_id,

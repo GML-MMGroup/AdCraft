@@ -35,6 +35,7 @@ def append_brand_answer_in_transaction(
         ("confirm", "adspec"),
         ("edit", "adspec"),
         ("confirm", "skill_stack"),
+        ("skip", "skill_stack"),
     }:
         return False
     conversations = (
@@ -56,7 +57,7 @@ def append_brand_answer_in_transaction(
         return False
     conversation = conversations[0]
     card_id = entry.detail.get("card_id")
-    if entry.target_type == "skill_stack":
+    if entry.target_type == "skill_stack" and not card_id:
         card_id = entry.target_id
     option_id = (
         entry.detail.get("option_id") if entry.target_type == "treatment_step" else entry.target_id
@@ -116,7 +117,7 @@ def append_brand_answer_in_transaction(
 def _answer_value(entry: BrandDecisionLogEntryV1, option: dict[str, Any] | None) -> str | None:
     if entry.target_type == "skill_stack":
         titles = [item["title"] for item in entry.detail.get("entries", []) if item.get("selected")]
-        return " / ".join(titles) or None
+        return " / ".join(titles) or (option["label"] if option else None)
     if entry.target_type == "option" and entry.target_id in {"custom", "delegate"}:
         if entry.target_id == "delegate":
             return "Delegated"

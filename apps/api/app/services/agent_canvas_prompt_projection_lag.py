@@ -1,4 +1,4 @@
-"""Shared normalization of the intentional derived Video parameter lag."""
+"""Read compatibility for historical prompt projection lag; new writers synchronize."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def projection_consistency(
 
 
 def normalize_derived_parameter_prompt_authority(node: CanvasNodeV2) -> CanvasNodeV2:
-    """Prepare valid authority to lag exactly once after a derived parameter write."""
+    """Reconstruct the authority used by historical derived-parameter writes."""
 
     if projection_consistency(node) not in {"in_sync", "review_advanced", "derived_lag"}:
         return node
@@ -60,7 +60,7 @@ def normalize_derived_parameter_prompt_authority(node: CanvasNodeV2) -> CanvasNo
 def resync_derived_parameter_lag(node: CanvasNodeV2) -> CanvasNodeV2:
     """Treat the derived Video parameter lag as in sync before another revision bump.
 
-    A derived parameter write leaves the projection and review marker one
+    Historical derived parameter writes left projection and review marker one
     revision behind on purpose. A later reference-only refresh would otherwise
     widen that lag to two, which no run can restore (production incident
     2026-10-27). The prompt text itself is unchanged, so the projection moves

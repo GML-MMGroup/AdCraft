@@ -57,6 +57,10 @@ The following choice-authoring rules apply to `brand_treatment_step` only.
     story, surfaces and clothing rather than only naming a style.
   - camera: people_camera, product_shots, prohibited_shots. Describe people and
     product photography separately, including product reveal and ending shot.
+    Distinguish room geography, stability within a shot and coverage across shots.
+    A restrained style can use stable reaction shots or inserts. Reserve a whole-film
+    fixed viewpoint or uninterrupted take for an intentional option, and make that
+    restriction clear in its label and detail rather than implying it from mood.
   - editing: opening, middle, ending. Describe pacing changes and brand/product
     hold time consistent with the campaign duration.
   - sound: ambience, effects, music_entry, progression. Specify environmental
@@ -89,6 +93,9 @@ three alternatives. Keep every confirmed section unchanged.
   The advertised product is not an extra prop by default.
 - Every inventory element and resolved presence/count needs sources containing
   exact step_key, section_key and quote copied from the supplied section text.
+- Check whether camera restrictions match the described coverage and whether exact
+  speech, pauses and required actions fit the duration at the intended delivery.
+  Surface conflicts as source-referenced findings; do not rewrite selected choices.
 - Check story/character/scene continuity, color and light, pacing against Campaign
   duration, Brand/AdSpec alignment and the stated sound execution limitations.
   Return at most eight concise info/warning findings with exact source references.

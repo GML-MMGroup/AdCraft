@@ -745,7 +745,9 @@ def _validate_matching_request(
         or record.validation_profile != request.validation_profile
         or record.expected_target_revision != expected_revision
         or (
-            bool(record.frozen_policy_digest)
+            # A validated result needs no new execution; its original policy stays immutable.
+            record.status != "completed"
+            and bool(record.frozen_policy_digest)
             and record.frozen_policy_digest != _frozen_policy_digest(request)
         )
         or (

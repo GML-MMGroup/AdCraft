@@ -15,6 +15,7 @@ from app.services.agent_runtime_recovery import recoverable_runtime_outage
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_errors import ActionableFailureV1, CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
@@ -943,7 +944,20 @@ class NodePromptPreparationService:
             scene_environment_projection=scene_projection,
             product_identity_projection=product_projection,
             allow_uninitialized_scene=(node.creative_role == "scene" and scene_projection is None),
+            turnaround_model_ref=self._turnaround_model_ref(node),
         )
+
+    def _turnaround_model_ref(self, node: CanvasNodeV2) -> str | None:
+        """Expose the actual image selection only to Turnaround prompt authoring."""
+        if (
+            node.creative_role != "character"
+            or node.structured_content.get("character_asset_kind") != "turnaround"
+        ):
+            return None
+        if node.model_selection_mode == "explicit":
+            return node.model_ref
+        default = ProviderModelRepository(self._workflows.database).get_defaults().get("image")
+        return default.model_ref if default is not None else None
 
     def _world_view_projection(self, node: CanvasNodeV2) -> str | None:
         workflow = self._workflows.get_workflow(node.workflow_id)
@@ -1120,23 +1134,6 @@ class NodePromptPreparationService:
         *,
         context: StageAuthoringContextV1 | None = None,
     ) -> CanvasNodeV2:
-        presentation = current.prompt_presentation
-        if (
-            current.creative_role == "character"
-            and next_node.prompt_preparation.status in {"working", "failed"}
-            and presentation is not None
-            and next_node.prompt_presentation == presentation
-            and next_node.generation_prompt == current.generation_prompt == presentation.text
-            and presentation.prompt_digest
-            == f"sha256:{sha256(presentation.text.encode('utf-8')).hexdigest()}"
-        ):
-            next_node = next_node.model_copy(
-                update={
-                    "prompt_presentation": presentation.model_copy(
-                        update={"revision": next_node.revision}
-                    )
-                }
-            )
         workflow = self._workflows.get_workflow(current.workflow_id)
         return self._workflows.update_node_prompt_preparation(
             next_node,

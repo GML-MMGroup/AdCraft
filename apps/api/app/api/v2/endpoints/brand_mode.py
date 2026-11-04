@@ -264,7 +264,13 @@ def post_next_question(
             else None
         )
         card_claim = None
-        if card is None and journey.stage in {"hypothesis", "adspec", "skill-stack", "treatment"}:
+        if card is None and journey.stage in {
+            "hypothesis",
+            "adspec",
+            "skill-stack",
+            "skill-stack-early",
+            "treatment",
+        }:
             card_claim = bridge.claim_card_generation(
                 workflow_id,
                 journey.stage,
@@ -319,7 +325,7 @@ def post_next_question(
                         )
                 elif journey.stage == "adspec":
                     card = service.run_adspec_question(brand_id)
-                elif journey.stage == "skill-stack":
+                elif journey.stage in {"skill-stack", "skill-stack-early"}:
                     card = service.run_skill_stack_question(brand_id)
                 else:
                     raise V2PersistenceError(
@@ -492,6 +498,9 @@ def get_brand_decisions(
         adspec = repository.get_adspec_in_transaction(connection, brand_id)
         skill_stack = repository.get_skill_stack_in_transaction(connection, brand_id)
         steps = repository.get_treatment_steps_in_transaction(connection, brand_id)
+        early_skills_confirmed = repository.early_skills_confirmed_in_transaction(
+            connection, brand_id
+        )
         document = BrandDecisionDocumentService(database).read_in_transaction(connection, brand_id)
         open_form = None
         interaction_row = connection.execute(
@@ -526,6 +535,7 @@ def get_brand_decisions(
         selected_hypothesis_id=selected,
         adspec=adspec,
         skill_stack=skill_stack,
+        early_skills_confirmed=early_skills_confirmed,
         treatment_steps=steps,
         treatment_locked=treatment_locked,
         brand_profile=document.brand_profile,

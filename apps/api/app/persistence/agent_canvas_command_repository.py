@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.persistence.agent_canvas_node_revision_write import node_revision_values
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -751,6 +752,34 @@ class AgentCanvasCommandRepository:
                                     str | None,
                                     values.get("model_ref", current["model_ref"]),
                                 ),
+                            )
+                            if "generation_prompt" in changes:
+                                metadata = json.loads(str(current["metadata_json"]))
+                                prompt = changes["generation_prompt"]
+                                if prompt:
+                                    from app.schemas.agent_canvas_role_prompt_preparation import (
+                                        EditablePromptProjectionV1,
+                                    )
+
+                                    prior = metadata.get("editable_prompt_projection", {})
+                                    metadata["editable_prompt_projection"] = (
+                                        EditablePromptProjectionV1(
+                                            text=prompt,
+                                            locale=prior.get("locale", "und"),
+                                            source="agent_authored",
+                                            revision=int(current["revision"]) + 1,
+                                            prompt_digest="sha256:"
+                                            + hashlib.sha256(prompt.encode()).hexdigest(),
+                                        ).model_dump(mode="json")
+                                    )
+                                else:
+                                    metadata.pop("editable_prompt_projection", None)
+                                metadata.pop("guided_review_node_revision", None)
+                                values["metadata_json"] = _dump(metadata)
+                            values = node_revision_values(
+                                current,
+                                values,
+                                intent="author" if "generation_prompt" in changes else "carry",
                             )
                             connection.execute(
                                 update(AgentCanvasNodeRow)

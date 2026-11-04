@@ -46,13 +46,13 @@ export type WorkflowModelCallReceiptV1 = { readonly "call_id": string; readonly 
 
 export type BrandSkillRecommendationV1 = { readonly "skill_id": string; readonly "version": string; readonly "reason": string };
 
-export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };
+export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };
 
 export type BrandSlotEvidenceV1 = { readonly "stage": "brand-memory" | "campaign"; readonly "slot_id": string; readonly "source_id": string; readonly "source_quote": string };
 
 export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail"?: TreatmentDetailV1 | null };
 
-export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
+export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
 
 export type BrandFormOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null };
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 from app.services.agent_canvas_image_presentation import (
     AUTHORED_IMAGE_PRESENTATION,
     DEFAULT_IMAGE_OVERLAYS,
+    SCENE_ENVIRONMENT_PRESENTATION,
+    SCENE_ENVIRONMENT_EXCLUSIONS,
 )
 
 import hashlib
@@ -89,7 +91,10 @@ _ROLE_BOUNDARIES = {
         "Render one complete 3x3 storyboard image for one coherent sequence. "
         "Keep all nine distinct frames in strict reading order with consistent "
         "identities, world details, visual style, and narrative continuity. "
-        "Preserve authored text and original product marks.",
+        "Preserve non-dialogue authored text and original product marks. "
+        "Do not render spoken dialogue as subtitles, speech bubbles or quoted lines in the grid. "
+        "Allow packaging print, logos, environmental signs and other authored non-dialogue text "
+        "at the approved story moment; text permission does not advance a product or brand reveal.",
         DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_video": (
@@ -464,6 +469,18 @@ class AgentCanvasProviderPromptCompiler:
         if is_product:
             registry_digest = _digest(
                 {"role_registry_digest": registry_digest, "product_serialization_revision": 2}
+            )
+        if node.semantic_role == "scene":
+            # Apply the current role boundary without rewriting historical preparation evidence.
+            prompt += "\n\nScene environment boundary:\n" + SCENE_ENVIRONMENT_PRESENTATION
+            prompt += "\n" + SCENE_ENVIRONMENT_EXCLUSIONS
+            negative += "\n" + SCENE_ENVIRONMENT_EXCLUSIONS
+            registry_digest = _digest(
+                {
+                    "role_registry_digest": registry_digest,
+                    "scene_environment_presentation": SCENE_ENVIRONMENT_PRESENTATION,
+                    "scene_environment_exclusions": SCENE_ENVIRONMENT_EXCLUSIONS,
+                }
             )
         context = {
             "node_id": node.node_id,
