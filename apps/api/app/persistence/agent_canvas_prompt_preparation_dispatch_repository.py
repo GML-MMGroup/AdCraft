@@ -19,6 +19,7 @@ from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import aliased
 
+from app.persistence.agent_canvas_node_revision_write import node_revision_values
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -2106,9 +2107,14 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 AgentCanvasNodeRow.revision == node_row["revision"],
             )
             .values(
-                prompt_preparation_json=failed_preparation.model_dump_json(),
-                revision=int(node_row["revision"]) + 1,
-                updated_at=timestamp,
+                **node_revision_values(
+                    node_row,
+                    {
+                        "prompt_preparation_json": failed_preparation.model_dump_json(),
+                        "revision": int(node_row["revision"]) + 1,
+                        "updated_at": timestamp,
+                    },
+                )
             )
         )
         if changed.rowcount != 1:
