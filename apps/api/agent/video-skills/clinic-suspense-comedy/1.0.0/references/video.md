@@ -15,6 +15,9 @@ functional cutaway. Exclude its packaging, identifying interface, recognizable
 worn form and brand text even when its reference is supplied as input. Native
 speech and sound also withhold its name and brand; late functional cues may
 make the benefit or category understandable.
+Preserve the approved developing exchanges across cuts. Reactions and detail
+shots can accompany speech when authored; do not replace follow-up lines with
+silent montage or stretch every pause. Keep listening and speech timing natural.
 Keep the approved evidence progression visible in performance, action and
 shot timing. Let viewers register the condition and any authored change;
 camera movement or reaction shots must not erase the functional link. Render

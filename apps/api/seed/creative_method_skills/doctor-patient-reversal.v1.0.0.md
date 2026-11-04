@@ -4,8 +4,10 @@ version: 1.0.0
 skill_kind: creative_method
 title: Doctor-Patient Reversal
 core_principle: >
-  Build the entire suspense and reversal around a supported product function,
-  use experience or problem it solves. Conceal the product's identity, not its
+  Use progressive doctor-patient exchanges as the main narrative engine,
+  with images supporting the evidence. Build the entire suspense and reversal
+  around a supported product function, use experience or problem it solves.
+  Conceal the product's identity, not its
   causal relationship to the story: each key beat advances clues that the
   final reveal explains.
   In one medical consultation room, a doctor questions a psychiatric patient
@@ -51,6 +53,7 @@ unsuitable_cases: >
 common_mistakes: >
   Showing the advertised item or brand before the final freeze, repeating questions without
   new evidence, hiding functional relevance along with product identity,
+  replacing developing dialogue with long silent object displays or reactions,
   piling up category problems without a functional turn, unrelated wordplay,
   an unexplained twist, a nurse who never
   receives the instruction, both ending lines used mechanically, extra dialogue
@@ -110,9 +113,8 @@ ambiguous wording -> alarming audience inference -> optional functional evidence
 For each key beat, identify the supported function, use experience or problem
 behind it, the audience's initial misreading, and what the eventual reveal
 will explain. Use this mapping to choose clues, not to insert sales language
-into dialogue. Each doctor question must uncover evidence or alter the
-interpretation; each answer advances the same causal thread. Small gestures,
-pauses and connective lines may serve performance without carrying a new claim.
+into dialogue. Small gestures, pauses and connective lines may serve performance
+without carrying a new claim.
 
 Progress beyond listing affected objects or symptoms: establish a meaningful
 change, outcome or misunderstood action connected to the product's real use.
@@ -131,6 +133,31 @@ opening ambiguous. In the later part, the benefit or category may become
 inferable from functional evidence; preserving suspense does not require
 hiding every effect until the end. The specific product and brand supply
 the last connection. Do not invent events the supported benefit cannot explain.
+
+### Let the conversation carry the story
+
+Build a developing exchange: the doctor probes a concrete experience, change
+or contradiction in the previous answer, and the patient's reply supplies a
+new clue or changes its interpretation. Each substantive exchange advances
+the same product-grounded mystery toward the verbal turn. Vary what is learned
+about the supported problem, use or outcome without turning the conversation
+into a feature checklist. Connective questions, misunderstandings and jokes
+may support the exchange; every line need not encode another selling point.
+
+After reserving the final brand hold and necessary actions, let question-and-answer
+exchanges carry the main body at a natural speaking pace. Scale their depth
+and number to the available duration, not a fixed line count, speaking-time
+percentage or segment count. Use pauses at meaningful changes; lengthy silence,
+object handling and repeated reactions should not fill time that the mystery
+needs for follow-up questions. Visual evidence and optional functional inserts
+substantiate the conversation rather than routinely replacing it.
+
+Before handoff, check what each substantive exchange adds, why its next question
+follows, and whether the timed dialogue leaves room for listening and acting.
+If an underwritten middle is mostly objects and looks, develop the missing
+exchange while drafting. If speech overruns, remove redundant wording or beats
+while preserving the causal links; do not force rushed delivery. Follow the
+confirmed-story revision boundary below when the existing dialogue is approved.
 
 ### Optionally show the effect, then return to the room
 
