@@ -3200,10 +3200,29 @@ class AgentCanvasMaterializationRepository:
                         "turn_id": turn_id,
                         "error_code": error_code[:160],
                         "retryable": retryable,
+                        "refresh": ["timeline"],
                     },
                 ),
             )
             turn = _require_turn(connection, turn_id)
+            progress_args = {}
+            progress_rows = connection.execute(
+                select(AgentCanvasChatEntryRow.metadata_json)
+                .where(
+                    AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
+                    AgentCanvasChatEntryRow.entry_type == "planning_progress",
+                    func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.materialization_id")
+                    == proposal["materialization_id"],
+                    func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.attempt")
+                    == proposal["materialization_attempt_no"],
+                    func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.type")
+                    == "storyboard_authoring_progress",
+                )
+                .order_by(AgentCanvasChatEntryRow.sequence_no.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if progress_rows is not None:
+                progress_args = json.loads(progress_rows).get("message_args", {})
             _append_timeline_entry(
                 connection,
                 conversation_id=str(turn["conversation_id"]),
@@ -3217,6 +3236,7 @@ class AgentCanvasMaterializationRepository:
                     "capability_id": str(proposal["capability_id"]),
                     "turn_id": turn_id,
                     "status": "failed",
+                    "message_args": progress_args,
                 },
                 created_at=now,
             )

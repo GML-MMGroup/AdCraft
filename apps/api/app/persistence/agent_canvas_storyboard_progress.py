@@ -54,6 +54,29 @@ class StoryboardAuthoringProgress:
             if proposal is None or existing is not None:
                 connection.commit()
                 return
+            if attempt_no > 1:
+                retained = connection.execute(
+                    select(
+                        func.max(
+                            func.json_extract(
+                                AgentCanvasChatEntryRow.metadata_json, "$.message_args.completed"
+                            )
+                        )
+                    ).where(
+                        AgentCanvasChatEntryRow.conversation_id == envelope.conversation_id,
+                        func.json_extract(
+                            AgentCanvasChatEntryRow.metadata_json, "$.materialization_id"
+                        )
+                        == envelope.materialization_id,
+                        func.json_extract(
+                            AgentCanvasChatEntryRow.metadata_json, "$.message_args.total"
+                        )
+                        == total,
+                    )
+                ).scalar_one_or_none()
+                if isinstance(retained, int) and completed < retained:
+                    connection.commit()
+                    return
             sequence = (
                 1
                 + connection.execute(
