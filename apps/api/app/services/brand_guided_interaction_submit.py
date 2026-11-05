@@ -188,7 +188,7 @@ class BrandGuidedInteractionSubmitter:
                 provenance="user_confirmed",
             )
         self._bridge.close_current_interaction(workflow_id)
-        submission_identity = f"submission_{sha256(submission_id.encode()).hexdigest()[:32]}"
+        submission_identity = submission_id
         revision = self._session_revision(workflow_id) or 1
         accepted = GuidedInteractionAcceptedV1(
             workflow_id=workflow_id,
@@ -234,6 +234,7 @@ class BrandGuidedInteractionSubmitter:
             stage,  # type: ignore[arg-type]
             stage_revision,
             generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
+            lease_seconds=900 if stage == "treatment" else 600,
         )
         if claim.role == "ready":
             return True, False
@@ -246,6 +247,7 @@ class BrandGuidedInteractionSubmitter:
                 stage,  # type: ignore[arg-type]
                 stage_revision,
                 generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
+                lease_seconds=900 if stage == "treatment" else 600,
             )
             if claim.role == "ready":
                 return True, False

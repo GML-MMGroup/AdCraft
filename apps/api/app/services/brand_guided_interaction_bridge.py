@@ -443,13 +443,15 @@ class BrandGuidedInteractionBridge:
                     .mappings()
                     .one_or_none()
                 )
-            if row is None or int(row["lease_until"]) <= int(time.time()):
+            if row is None:
                 return None
             if str(row["status"]) == "published" and row["form_json"]:
                 try:
                     return BrandOptionCardV1.model_validate_json(str(row["form_json"]))
                 except ValueError:
                     return None
+            if int(row["lease_until"]) <= int(time.time()):
+                return None
             time.sleep(0.05)
         return None
 
