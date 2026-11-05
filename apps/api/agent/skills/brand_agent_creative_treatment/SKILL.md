@@ -41,6 +41,9 @@ equal force. Keep confirmed steps intact and develop alternatives in open choice
 The following choice-authoring rules apply to `brand_treatment_step` only.
 
 - Follow authoring_mode and the supplied schema; return only the current step.
+  In both modes the root has exactly `step`. Inside `step`, always include
+  `step_key` equal to the supplied substep, `question`, and `options`.
+  Never omit step_key or place it beside step at the root.
 - In summary mode, return exactly three distinct choices, each with a short label
   (at most 48 characters) and a concrete summary in `why` (at most 180 characters,
   usually one or two short sentences). `why` is the existing display field, not
@@ -51,7 +54,11 @@ The following choice-authoring rules apply to `brand_treatment_step` only.
 - In detail mode, return exactly one option with complete detail.sections. Expand
   selected_summary faithfully, retaining its causal turn, cast, setting, tone and
   product timing, and all previous confirmed choices. Do not switch to an alternative,
-  add another confirmation, or repeat rationale. A custom answer in user_requirements
+  add another confirmation, or repeat rationale. Preserve deliberate absences and
+  first-appearance cues exactly within their selected scope. In sound, instrumental
+  tension beds, tonal drones and string pads count as music: never add them before
+  a selected music-entry cue or describe them as a music-free environment.
+  A custom answer in user_requirements
   is the chosen direction; realize that answer once, not three variations.
 - Detail sections have canonical keys, user-language titles (at most 80 characters)
   and concrete text (at most 400 characters). Keep the established useful detail,

@@ -184,7 +184,7 @@ _CUSTOM_CARD_ANSWER_MODE_INSTRUCTION = (
     " Answer mode: the user wrote their own idea in `user_requirements`. Every concrete instruction "
     "in it is mandatory for every candidate — including order of shots or events, what opens the "
     "step, which subject appears first, tone, and anything to include or avoid. Implement each one "
-    "literally; never reorder, drop, soften, or substitute them. The three candidates may differ "
+    "literally; never reorder, drop, soften, or substitute them. Candidates may differ "
     "only in details the user left unspecified. Keep the user's wording as the core of the label."
 )
 

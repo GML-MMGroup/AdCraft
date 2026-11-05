@@ -42,10 +42,8 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
 }
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
 _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
-# A hypothesis batch contains three rich candidates.  Keeping this operation
-# on the routing deadline is appropriate for its bounded decision step, but
-# the generic routing output ceiling truncates the required candidate fields
-# before the structured validator can inspect them.
+# New directions use a compact schema. Retain the compatible routing budget;
+# the schema, rather than a smaller token ceiling, bounds their visible content.
 _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
 # Role briefs include structured production details and a complete editable prompt.
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
