@@ -49,11 +49,13 @@ _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
 _ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
 _STORYBOARD_SEGMENT_BUDGET = _OperationBudget(570, 270, 270, 30, 4_096, None)
-# Catalog selection and approved-plan execution do not use deep reasoning.
+# Catalog selection, BGM options and approved-plan execution do not use deep reasoning.
 _NON_THINKING_AUTHORING_OPERATIONS = {
     "brand_skill_recommendation",
     "author_role_brief",
     "materialize_storyboard_segment",
+    "propose_bgm_options",
+    "revise_bgm_options",
 }
 _ROUTING_OPERATIONS = {
     "brand_hypothesis",
@@ -241,6 +243,8 @@ class AgentOperationPolicyRegistryV2:
                 if summary_treatment
                 else "agent.brand_skill_recommendation.v2"
                 if operation == "brand_skill_recommendation"
+                else "agent.bgm_options.v1"
+                if operation in {"propose_bgm_options", "revise_bgm_options"}
                 else "agent.author_role_brief.v3"
                 if operation == "author_role_brief"
                 else "agent.materialize_storyboard_segment.v2"
