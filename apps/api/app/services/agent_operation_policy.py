@@ -212,6 +212,7 @@ class AgentOperationPolicyRegistryV2:
         )
         sound_treatment = False
         summary_treatment = False
+        story_summary = False
         if operation == "brand_treatment_step" and isinstance(
             getattr(context, "user_input", None), str
         ):
@@ -223,16 +224,19 @@ class AgentOperationPolicyRegistryV2:
             summary_treatment = (
                 isinstance(payload, dict) and payload.get("authoring_mode") == "summary"
             )
+            story_summary = summary_treatment and payload.get("substep") == "story"
         enable_thinking = (
             policy_class != "routing"
             and operation not in _NON_THINKING_AUTHORING_OPERATIONS
             and not sound_treatment
-            and not summary_treatment
+            and (not summary_treatment or story_summary)
         )
         return AgentOperationPolicyV2(
             policy_id=(
                 "agent.brand_treatment_sound.v1"
                 if sound_treatment
+                else "agent.brand_treatment_story_summary.v1"
+                if story_summary
                 else "agent.brand_treatment_summary.v1"
                 if summary_treatment
                 else "agent.brand_skill_recommendation.v2"
