@@ -327,6 +327,7 @@ class RolePromptContextProjector:
             selected_direction=selected_direction,
             user_prompt=user_prompt,
             response_locale=(response_locale if isinstance(response_locale, str) else "und"),
+            prior_editable_prompt=_prior_image_prompt(node, role_variant),
             internal_skill_ref=stage_context.internal_skill_ref,
             style_projection=projected_style,
             global_style_guidance=(
@@ -602,6 +603,23 @@ def _aesthetic_style_projection(
         if line.strip():
             retained.append(line.strip())
     return "\n".join(retained) or None
+
+
+def _prior_image_prompt(node: CanvasNodeV2, role_variant: RolePromptVariantV2) -> str | None:
+    """Expose only the same Node's verified creative presentation as baseline data."""
+
+    if node.node_type != "image" or role_variant == "storyboard_grid":
+        return None
+    presentation = node.prompt_presentation
+    if (
+        presentation is None
+        or presentation.source == "deterministic_projection"
+        or presentation.revision > node.revision
+        or presentation.prompt_digest
+        != f"sha256:{sha256(presentation.text.encode('utf-8')).hexdigest()}"
+    ):
+        return None
+    return presentation.text
 
 
 def _authoring_user_prompt(node: CanvasNodeV2) -> str | None:

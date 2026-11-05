@@ -69,9 +69,9 @@ const definitions = Object.freeze([
   ),
   definition(
     "RolePromptPreparationContextV2",
-    "role-prompt-selected-direction-v1",
+    "role-prompt-current-request-v2",
     primaryPlusTypedContext,
-    firstTopLevelString("selected_direction", "user_prompt"),
+    firstTopLevelString("user_prompt", "selected_direction"),
   ),
   ...["NextActionContextV1", "CapabilityInvocationContextV2"].map(
     (contextContractName) =>
@@ -207,7 +207,7 @@ function firstTopLevelString(
   return (context) => {
     for (const key of keys) {
       const value = nonEmptyString(context[key]);
-      if (value !== undefined) return value;
+      if (value !== undefined && value.trim().length > 0) return value;
     }
     return undefined;
   };

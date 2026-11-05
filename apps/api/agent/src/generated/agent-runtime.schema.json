@@ -30846,6 +30846,19 @@
           "default": null,
           "title": "Occurrence Id"
         },
+        "prior_editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Editable Prompt"
+        },
         "product_identity_projection": {
           "anyOf": [
             {

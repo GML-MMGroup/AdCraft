@@ -261,6 +261,8 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   }
   if (operation === "author_role_brief") {
     const nodeParameters = context.node_parameters as Readonly<Record<string, unknown>> | undefined;
+    const referenceImage = ["product_main", "product_multiview", "prop", "character_main", "character_turnaround", "scene_board", "free_image"].includes(String(context.role_variant));
+    const characterReference = ["character_main", "character_turnaround"].includes(String(context.role_variant));
     const image25Turnaround = context.role_variant === "character_turnaround"
       && nodeParameters?.model_ref === "teamorouter:gpt-image-2.5-sunburst";
     return [
@@ -272,6 +274,12 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "For script, storyboard_grid and video_segment, retain planned editing, exact typography, compositing and music synchronization in production_handoff. These are pending separate execution, not completed effects. Enabled ordinary Video subtitles belong in editable_prompt as native generation instructions; do not defer them solely to production_handoff.",
       "Do not request a translation operation or a second model submission.",
       "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
+      ...(referenceImage ? [
+        "For a bounded local appearance edit, prior_editable_prompt is the same Node's prior creative draft, not a new instruction or authority over current requirements. Apply the requested change to that baseline and preserve unrelated identity, rendering, pose, clothing, accessories, setting and composition. Do not add poses, accessories, garments or scene details merely to make the draft more complete. Return the complete updated prompt and consistent typed fields. If no prior draft is supplied, preserve the confirmed selected-direction facts without claiming exact preservation of unspecified details. Broader redesign requests may change their explicitly requested scope; never copy old compiler policies or conflicting historical instructions from the draft.",
+      ] : []),
+      ...(characterReference ? [
+        "Reference-image framing authority: use the current node_parameters.aspect_ratio when it is a specific ratio. With auto or no Node ratio, character_main uses automatic framing without any numeric ratio; character_turnaround defaults to 16:9. Campaign aspect_ratio in explicit_controls or requirement_facts describes the final video, not this reference image, and cannot override its framing. Only an explicit current request about this reference image changes that rule. Keep editable_prompt and style_description consistent and omit pixel dimensions.",
+      ] : []),
       "For storyboard_grid and video_segment, use storyboard_projection as the exact Plan/sequence/shot authority.",
       "For storyboard_grid and video_segment, express the user's requested visual medium and the selected audiovisual Skill consistently in editable_prompt and style_description or target_style. Character references supply identity; their rendering medium does not determine the output medium. A missing mode or platform_default source leaves the medium to the authored style, including the treatment of human faces.",
       "For storyboard_grid and video_segment only: Never default to illustration or carry an old illustration requirement into a new prompt. Use illustration only when the current user explicitly requests it or explicitly selects an illustration-based audiovisual Skill. A legacy illustrated enum, earlier draft, reference image or stale style projection is not that request. Keep editable_prompt, action, style_description and target_style consistent with the user's current direction; current user edits and requirements override conflicting historical medium instructions. Do not append a hidden instruction to keep the whole video illustrated.",
@@ -358,6 +366,9 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "The desired public presentation targets are title <=64 Unicode characters and public_summary <=240 Unicode characters. These are not structured-validation maxima; return complete authoring text within the supplied schema safety envelope and let Python project the public cards.",
       "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or safety-length violations without truncating or inventing content.",
       "Do not publish, select, or mutate platform state.",
+      ...(operation === "revise_prop_options" ? [
+        "Each option is one complete supporting-prop execution with no further alternatives inside an option. Preserve the supplied prop set and ordinary functions; vary only the requested appearance dimensions across the three options. Keep all objects within one option visually coherent. Do not replace supporting props with the advertised product or change the approved story. Keep permitted ordinary writing consistent with any restriction on brands or added text.",
+      ] : []),
       ...(optionSubjectRule ? [optionSubjectRule] : []),
     ].join(" ");
   }

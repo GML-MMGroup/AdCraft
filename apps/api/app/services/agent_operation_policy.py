@@ -49,15 +49,14 @@ _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
 _ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
 _STORYBOARD_SEGMENT_BUDGET = _OperationBudget(570, 270, 270, 30, 4_096, None)
-_PRODUCT_PROP_OPTIONS_OPERATIONS = {
+_LOW_REASONING_OBJECT_OPTIONS = {
     "propose_product_options",
     "revise_product_options",
-    "propose_prop_options",
     "revise_prop_options",
 }
 # Catalog selection, object/music options and approved-plan execution use low reasoning.
 _NON_THINKING_AUTHORING_OPERATIONS = {
-    *_PRODUCT_PROP_OPTIONS_OPERATIONS,
+    *_LOW_REASONING_OBJECT_OPTIONS,
     "brand_skill_recommendation",
     "author_role_brief",
     "materialize_storyboard_segment",
@@ -252,8 +251,10 @@ class AgentOperationPolicyRegistryV2:
                 if operation == "brand_skill_recommendation"
                 else "agent.bgm_options.v1"
                 if operation in {"propose_bgm_options", "revise_bgm_options"}
+                else "agent.prop_recommendation.v2"
+                if operation == "propose_prop_options"
                 else "agent.product_prop_options.v1"
-                if operation in _PRODUCT_PROP_OPTIONS_OPERATIONS
+                if operation in _LOW_REASONING_OBJECT_OPTIONS
                 else "agent.author_role_brief.v3"
                 if operation == "author_role_brief"
                 else "agent.materialize_storyboard_segment.v2"

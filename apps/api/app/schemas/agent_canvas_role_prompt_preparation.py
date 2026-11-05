@@ -394,6 +394,9 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     selected_direction: str | None = Field(default=None, max_length=8_192)
     user_prompt: str | None = Field(default=None, max_length=16_384)
+    prior_editable_prompt: str | None = Field(
+        default=None, max_length=32_768, exclude_if=lambda value: value is None
+    )
     response_locale: str = Field(default="und", min_length=2, max_length=35)
     internal_skill_ref: str = Field(min_length=1, max_length=320)
     style_projection: str | None = Field(default=None, max_length=8_192)
