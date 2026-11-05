@@ -20,7 +20,17 @@ export type TreatmentSectionV1 = { readonly "key": "action_sequence" | "ambience
 
 export type TreatmentDetailV1 = { readonly "sections": ReadonlyArray<TreatmentSectionV1> };
 
-export type TreatmentCandidateV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail": TreatmentDetailV1 };
+export type TreatmentCandidateV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail": TreatmentDetailV1; readonly "authoring_mode"?: "detailed" | "summary" };
+
+export type TreatmentSummaryCandidateV1 = { readonly "option_id": string; readonly "label": string; readonly "why": string; readonly "detail"?: null; readonly "authoring_mode"?: "summary" };
+
+export type StoryDirectionV1 = { readonly "candidate_id": string; readonly "label": string; readonly "hypothesis": string };
+
+export type StoryDirectionsV1 = { readonly "candidates": ReadonlyArray<StoryDirectionV1> };
+
+export type SelectedTreatmentStepV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "question": string; readonly "options": ReadonlyArray<TreatmentCandidateV1> };
+
+export type CreativeTreatmentDetailOutputV1 = { readonly "step": SelectedTreatmentStepV1 };
 
 export type TreatmentStepResultV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "selected_label": string; readonly "detail"?: string; readonly "confirmed_at": string; readonly "structured_detail"?: TreatmentDetailV1 | null };
 
@@ -50,7 +60,7 @@ export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "
 
 export type BrandSlotEvidenceV1 = { readonly "stage": "brand-memory" | "campaign"; readonly "slot_id": string; readonly "source_id": string; readonly "source_quote": string };
 
-export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail"?: TreatmentDetailV1 | null };
+export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail"?: TreatmentDetailV1 | null; readonly "authoring_mode"?: "detailed" | "summary" };
 
 export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
 
@@ -68,9 +78,9 @@ export type BrandCardCustomIntentV1 = { readonly "intent": "answer" | "request_m
 
 export type BrandFormSubmitV1 = { readonly "submission_kind"?: "brand_form"; readonly "form_id": string; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "answers": ReadonlyArray<BrandFormAnswerV1>; readonly "confirm"?: true };
 
-export type CreativeHypothesisCandidateV1 = { readonly "candidate_id": string; readonly "label": string; readonly "insight": string; readonly "mechanism": string; readonly "hypothesis": string; readonly "product_role": string; readonly "hook_mechanism": string; readonly "why"?: string | null };
+export type CreativeHypothesisCandidateV1 = { readonly "candidate_id": string; readonly "label": string; readonly "insight"?: string; readonly "mechanism"?: string; readonly "hypothesis": string; readonly "product_role"?: string; readonly "hook_mechanism"?: string; readonly "why"?: string | null };
 
-export type CreativeTreatmentStepOutputV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "question": string; readonly "options": ReadonlyArray<TreatmentCandidateV1> };
+export type CreativeTreatmentStepOutputV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "question": string; readonly "options": ReadonlyArray<TreatmentCandidateV1 | TreatmentSummaryCandidateV1> };
 
 export type BrandSkillRecommendationsV1 = { readonly "creative_methods": ReadonlyArray<BrandSkillRecommendationV1>; readonly "audiovisual_styles": ReadonlyArray<BrandSkillRecommendationV1> };
 

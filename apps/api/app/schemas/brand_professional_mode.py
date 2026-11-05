@@ -62,6 +62,7 @@ class BrandShortOptionV1(_BrandModel):
     label: str = Field(min_length=1, max_length=48)
     why: str | None = Field(default=None, max_length=240)
     detail: TreatmentDetailV1 | None = None
+    authoring_mode: Literal["detailed", "summary"] = "detailed"
 
 
 class BrandOptionCardV1(_BrandModel):
@@ -215,11 +216,11 @@ class CreativeHypothesisCandidateV1(_BrandModel):
 
     candidate_id: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=1, max_length=48)
-    insight: str = Field(min_length=1, max_length=800)
-    mechanism: str = Field(min_length=1, max_length=300)
+    insight: str = Field(default="", max_length=800)
+    mechanism: str = Field(default="", max_length=300)
     hypothesis: str = Field(min_length=1, max_length=1200)
-    product_role: str = Field(min_length=1, max_length=300)
-    hook_mechanism: str = Field(min_length=1, max_length=300)
+    product_role: str = Field(default="", max_length=300)
+    hook_mechanism: str = Field(default="", max_length=300)
     why: str | None = Field(default=None, max_length=240)
 
 
@@ -235,19 +236,34 @@ class TreatmentCandidateV1(BrandShortOptionV1):
     detail: TreatmentDetailV1
 
 
+class TreatmentSummaryCandidateV1(BrandShortOptionV1):
+    """A concrete choice summary, without pre-authored sections or rationale."""
+
+    authoring_mode: Literal["summary"] = "summary"
+    why: str = Field(
+        min_length=1,
+        max_length=180,
+        description="Concrete plan summary, not a recommendation reason.",
+    )
+    detail: None = None
+
+
 class CreativeTreatmentStepOutputV1(_BrandModel):
     """Three options for one treatment sub-step."""
 
     step_key: BrandTreatmentSubstep
     question: str = Field(min_length=1, max_length=400)
-    options: tuple[TreatmentCandidateV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[TreatmentCandidateV1 | TreatmentSummaryCandidateV1, ...] = Field(
+        min_length=3, max_length=3
+    )
 
     @model_validator(mode="after")
     def complete_candidates(self) -> "CreativeTreatmentStepOutputV1":
         if len({option.option_id for option in self.options}) != len(self.options):
             raise ValueError("Treatment option IDs must be unique.")
         for option in self.options:
-            option.detail.validate_step(self.step_key)
+            if option.detail is not None:
+                option.detail.validate_step(self.step_key)
         return self
 
 

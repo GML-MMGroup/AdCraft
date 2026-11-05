@@ -45,6 +45,10 @@ from app.schemas.brand_professional_mode import (
     CreativeStrategyOutputV1,
     CreativeTreatmentOutputV1,
 )
+from app.schemas.brand_treatment_generation import (
+    CreativeTreatmentDetailOutputV1,
+    StoryDirectionsV1,
+)
 from app.schemas.agent_canvas_role_prompt_preparation import RoleCreativeBriefV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
@@ -114,6 +118,8 @@ class AgentStructuredContractRegistryError(ValueError):
 
 
 _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
+    CreativeTreatmentDetailOutputV1,
+    StoryDirectionsV1,
     SpecialistDraft,
     AgentActionEnvelopeV2,
     AgentCanvasScriptOutput,

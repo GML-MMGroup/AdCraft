@@ -8522,6 +8522,15 @@
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",
       "properties": {
+        "authoring_mode": {
+          "default": "detailed",
+          "enum": [
+            "detailed",
+            "summary"
+          ],
+          "title": "Authoring Mode",
+          "type": "string"
+        },
         "detail": {
           "anyOf": [
             {
@@ -14628,8 +14637,8 @@
           "type": "string"
         },
         "hook_mechanism": {
+          "default": "",
           "maxLength": 300,
-          "minLength": 1,
           "title": "Hook Mechanism",
           "type": "string"
         },
@@ -14640,8 +14649,8 @@
           "type": "string"
         },
         "insight": {
+          "default": "",
           "maxLength": 800,
-          "minLength": 1,
           "title": "Insight",
           "type": "string"
         },
@@ -14652,14 +14661,14 @@
           "type": "string"
         },
         "mechanism": {
+          "default": "",
           "maxLength": 300,
-          "minLength": 1,
           "title": "Mechanism",
           "type": "string"
         },
         "product_role": {
+          "default": "",
           "maxLength": 300,
-          "minLength": 1,
           "title": "Product Role",
           "type": "string"
         },
@@ -14679,12 +14688,8 @@
       },
       "required": [
         "candidate_id",
-        "hook_mechanism",
         "hypothesis",
-        "insight",
-        "label",
-        "mechanism",
-        "product_role"
+        "label"
       ],
       "title": "CreativeHypothesisCandidateV1",
       "type": "object"
@@ -14842,6 +14847,19 @@
       "title": "CreativeStrategyOutputV1",
       "type": "object"
     },
+    "CreativeTreatmentDetailOutputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "$ref": "#/$defs/SelectedTreatmentStepV1"
+        }
+      },
+      "required": [
+        "step"
+      ],
+      "title": "CreativeTreatmentDetailOutputV1",
+      "type": "object"
+    },
     "CreativeTreatmentOutputV1": {
       "additionalProperties": false,
       "description": "Structured output of the creative-treatment capability.",
@@ -14862,7 +14880,14 @@
       "properties": {
         "options": {
           "items": {
-            "$ref": "#/$defs/TreatmentCandidateV1"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TreatmentCandidateV1"
+              },
+              {
+                "$ref": "#/$defs/TreatmentSummaryCandidateV1"
+              }
+            ]
           },
           "maxItems": 3,
           "minItems": 3,
@@ -32451,6 +32476,47 @@
       "title": "SelectedProposalCardV2",
       "type": "object"
     },
+    "SelectedTreatmentStepV1": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/TreatmentCandidateV1"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "options",
+        "question",
+        "step_key"
+      ],
+      "title": "SelectedTreatmentStepV1",
+      "type": "object"
+    },
     "SetAspectRatioDecisionEffectV1": {
       "additionalProperties": false,
       "properties": {
@@ -33238,6 +33304,56 @@
         "value"
       ],
       "title": "SpokenLanguageControlV1",
+      "type": "object"
+    },
+    "StoryDirectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "hypothesis": {
+          "description": "One sentence telling the complete story, including the turn or ending.",
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "hypothesis",
+        "label"
+      ],
+      "title": "StoryDirectionV1",
+      "type": "object"
+    },
+    "StoryDirectionsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/StoryDirectionV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "StoryDirectionsV1",
       "type": "object"
     },
     "StoryboardExcludedMediaV3": {
@@ -35410,6 +35526,15 @@
     "TreatmentCandidateV1": {
       "additionalProperties": false,
       "properties": {
+        "authoring_mode": {
+          "default": "detailed",
+          "enum": [
+            "detailed",
+            "summary"
+          ],
+          "title": "Authoring Mode",
+          "type": "string"
+        },
         "detail": {
           "$ref": "#/$defs/TreatmentDetailV1"
         },
@@ -35571,6 +35696,49 @@
         "step_key"
       ],
       "title": "TreatmentStepResultV1",
+      "type": "object"
+    },
+    "TreatmentSummaryCandidateV1": {
+      "additionalProperties": false,
+      "description": "A concrete choice summary, without pre-authored sections or rationale.",
+      "properties": {
+        "authoring_mode": {
+          "const": "summary",
+          "default": "summary",
+          "title": "Authoring Mode",
+          "type": "string"
+        },
+        "detail": {
+          "default": null,
+          "title": "Detail",
+          "type": "null"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "description": "Concrete plan summary, not a recommendation reason.",
+          "maxLength": 180,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "option_id",
+        "why"
+      ],
+      "title": "TreatmentSummaryCandidateV1",
       "type": "object"
     },
     "TurnIntentContextV2": {
@@ -40051,6 +40219,8 @@
     "RolePromptPreparationContextV2"
   ],
   "x-agent-structured-contracts": [
+    "CreativeTreatmentDetailOutputV1",
+    "StoryDirectionsV1",
     "SpecialistDraft",
     "AgentActionEnvelopeV2",
     "AgentCanvasScriptOutput",
