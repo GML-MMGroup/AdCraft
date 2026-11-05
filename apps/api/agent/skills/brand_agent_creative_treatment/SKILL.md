@@ -1,7 +1,7 @@
 ---
 skill_id: brand_agent_creative_treatment
 name: Brand Agent Creative Treatment
-description: Author eight ordered treatment steps with three detailed choices beneath concise labels.
+description: Offer three concise treatment summaries, then expand only the selected one.
 ---
 
 # Purpose
@@ -40,12 +40,23 @@ equal force. Keep confirmed steps intact and develop alternatives in open choice
 
 The following choice-authoring rules apply to `brand_treatment_step` only.
 
-- Return exactly the current step with exactly three distinct option IDs.
-- Keep labels concise (at most 48 characters) and recommendation reasons in
-  `why` (at most 240 characters). Reasons are not the creative plan.
-- Every option requires `detail.sections`: canonical keys with user-language
-  titles (at most 80 characters) and concrete text (at most 400 characters).
-- Use exactly these keys for the current step:
+- Follow authoring_mode and the supplied schema; return only the current step.
+- In summary mode, return exactly three distinct choices, each with a short label
+  (at most 48 characters) and a concrete summary in `why` (at most 180 characters,
+  usually one or two short sentences). `why` is the existing display field, not
+  a request for recommendation rationale. Set authoring_mode to summary; omit detail.
+  Explain the actions or execution and the difference that matters for choosing.
+  Preserve cast size/identities, story causality and reveal boundaries when relevant;
+  do not compress away a confirmed requirement. Do not prewrite three detailed plans.
+- In detail mode, return exactly one option with complete detail.sections. Expand
+  selected_summary faithfully, retaining its causal turn, cast, setting, tone and
+  product timing, and all previous confirmed choices. Do not switch to an alternative,
+  add another confirmation, or repeat rationale. A custom answer in user_requirements
+  is the chosen direction; realize that answer once, not three variations.
+- Detail sections have canonical keys, user-language titles (at most 80 characters)
+  and concrete text (at most 400 characters). Keep the established useful detail,
+  without repeated summaries, decorative prose or information belonging to other steps.
+- Use exactly these keys when expanding the current step:
   - hook: action_sequence, product_role. Describe the opening actions in order
     and how this actual product participates; do not substitute another product.
   - story: setup, progression, resolution, product_role. Tell the whole short

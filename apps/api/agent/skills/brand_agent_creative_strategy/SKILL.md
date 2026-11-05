@@ -34,13 +34,14 @@ confirmed selection. Python owns whether and when the user chooses Skills.
 
 # Output Guidance
 
-- Internally diverge 8-12 directions, cluster by core mechanism, remove
-  duplicates, and drop directions that mismatch the brand, product, or
-  platform.
-- For a hypothesis operation, return three candidates, each with insight, mechanism, hypothesis, product
-  role, hook mechanism, and a short `why`.
-- The selected candidate's mechanism must name the Creative Method Skill it
-  uses whenever one applies.
+- For a hypothesis operation, return exactly three genuinely different directions.
+- Each candidate has only candidate_id, a short label and hypothesis: one sentence
+  telling the whole story, including the central event and its turn or ending.
+  Make the three stories comparable at a glance, not slogans or vague themes.
+- Do not output separate insight, mechanism, product role, opening hook or
+  recommendation rationale. Let product relevance emerge through the story.
+- Preserve the confirmed Skill combination and facts; elaborate execution only
+  in subsequent Treatment steps. No hidden requirement to brainstorm 8-12 plans.
 - For AdSpec, classify items as locked, open, or variable; never silently alter
   confirmed brand facts.
 

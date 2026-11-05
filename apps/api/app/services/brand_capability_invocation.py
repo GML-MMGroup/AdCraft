@@ -50,7 +50,11 @@ from app.schemas.brand_professional_mode import (
     TreatmentCandidateV1,
 )
 from app.persistence.models import BrandDecisionLogRow, BrandOptionCardRow
-from app.schemas.brand_treatment_generation import treatment_output_model
+from app.schemas.brand_treatment_generation import (
+    treatment_output_model,
+    treatment_summary_model,
+    hypothesis_output_model,
+)
 from app.services.brand_skill_stack import BrandSkillStackService
 from app.services.brand_question_context import BrandQuestionContextService
 from app.services.brand_question_policy import (
@@ -974,7 +978,7 @@ class BrandCapabilityInvocationService:
         existing_options = [{"label": option.label, "why": option.why} for option in card.options]
         spec = StructuredGenerationSpec[CreativeStrategyOutputV1](
             stage_name="brand_hypothesis_custom",
-            contract_name="CreativeStrategyOutputV1",
+            contract_name="StoryDirectionsV1",
             model_id=self._settings.llm_creative_model,
             system_prompt=(
                 _CREATIVE_STRATEGY_PROMPT
@@ -995,7 +999,7 @@ class BrandCapabilityInvocationService:
                 ),
             },
             # The ``brand_hypothesis`` contract requires exactly three candidates.
-            output_model=CreativeStrategyOutputV1,
+            output_model=hypothesis_output_model(),
             trace_metadata={"workflow_id": context.workflow_id},
             operation="brand_hypothesis",
         )
@@ -1006,7 +1010,9 @@ class BrandCapabilityInvocationService:
             stage_revision=card.stage_revision,
             substep_or_slot="user-idea" if count == 1 else "more-options",
         )
-        output = runtime_result.output
+        output = CreativeStrategyOutputV1.model_validate(
+            runtime_result.output.model_dump(mode="json")
+        )
         candidates = tuple(output.candidates)
         if len(candidates) < count:
             raise _card_invalid("Generated hypothesis options did not match the requested count.")
@@ -1044,11 +1050,13 @@ class BrandCapabilityInvocationService:
         context = BrandQuestionContextService(self._database).read(brand_id)
         spec = StructuredGenerationSpec(
             stage_name="brand_treatment_custom",
-            contract_name="CreativeTreatmentOutputV1",
+            contract_name="CreativeTreatmentDetailOutputV1"
+            if count == 1
+            else "CreativeTreatmentOutputV1",
             model_id=self._settings.llm_creative_model,
             system_prompt=(
                 _CREATIVE_TREATMENT_PROMPT
-                + " Always return exactly three options for the current step."
+                + " Return one detailed option in answer mode; otherwise return three summaries."
                 + _CUSTOM_CARD_ANSWER_MODE_INSTRUCTION
                 + " In request_more_options mode do "
                 + "not repeat or paraphrase existing options and follow the supplied direction."
@@ -1057,6 +1065,7 @@ class BrandCapabilityInvocationService:
                 "product_context": context.payload,
                 **BrandSkillStackService(self._database).treatment_context(brand_id, step_key),
                 "substep": step_key,
+                "authoring_mode": "detail" if count == 1 else "summary",
                 "response_locale": self._workflow_response_locale(brand_id),
                 "custom_text_mode": "answer" if count == 1 else "request_more_options",
                 **(
@@ -1073,8 +1082,9 @@ class BrandCapabilityInvocationService:
                     }
                 ),
             },
-            # The ``brand_treatment_step`` contract publishes three options.
-            output_model=treatment_output_model(step_key),
+            output_model=treatment_output_model(step_key, option_count=1)
+            if count == 1
+            else treatment_summary_model(step_key),
             trace_metadata={"workflow_id": context.workflow_id},
             operation="brand_treatment_step",
         )
@@ -1090,7 +1100,8 @@ class BrandCapabilityInvocationService:
             raise _card_invalid("Generated Treatment options did not match the current step.")
         selected_options = tuple(output.step.options[:count])
         for candidate in selected_options:
-            candidate.detail.validate_step(step_key)
+            if candidate.detail is not None:
+                candidate.detail.validate_step(step_key)
         digest = sha256(
             f"{card.card_id}:{len(card.options)}:{custom_text}".encode("utf-8")
         ).hexdigest()[:16]
@@ -1250,7 +1261,7 @@ class BrandCapabilityInvocationService:
         if output is None:
             spec = StructuredGenerationSpec[CreativeStrategyOutputV1](
                 stage_name="brand_hypothesis",
-                contract_name="CreativeStrategyOutputV1",
+                contract_name="StoryDirectionsV1",
                 model_id=model_id or self._settings.llm_creative_model,
                 system_prompt=_CREATIVE_STRATEGY_PROMPT,
                 input_payload={
@@ -1263,7 +1274,7 @@ class BrandCapabilityInvocationService:
                         for value in self._repository.get_slot_values(brand_id)
                     ],
                 },
-                output_model=CreativeStrategyOutputV1,
+                output_model=hypothesis_output_model(),
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
             runtime_result, presentation_stream = self._run_with_presentation(
@@ -1276,6 +1287,7 @@ class BrandCapabilityInvocationService:
             output = runtime_result.output
         else:
             presentation_stream = None
+        output = CreativeStrategyOutputV1.model_validate(output.model_dump(mode="json"))
         now = datetime.now(timezone.utc)
         with self._database.engine.begin() as connection:
             state = BrandQuestionState(self._database)
@@ -1373,7 +1385,7 @@ class BrandCapabilityInvocationService:
                 BrandShortOptionV1(
                     option_id=candidate.candidate_id,
                     label=candidate.label,
-                    why=candidate.why,
+                    why=candidate.why or candidate.hypothesis[:240],
                 ),
             )
             merged = self._merge_card_options(card, additions)
@@ -1489,7 +1501,7 @@ class BrandCapabilityInvocationService:
                 BrandShortOptionV1(
                     option_id=candidate.candidate_id,
                     label=candidate.label,
-                    why=candidate.why,
+                    why=candidate.why or candidate.hypothesis[:240],
                 )
                 for candidate in candidates
             ),
@@ -2026,6 +2038,9 @@ class BrandCapabilityInvocationService:
         journey = self._repository.get_journey(brand_id)
         if journey is None or journey.stage != "treatment":
             raise _stage_mismatch()
+        if journey.stage_status == "working":
+            self.complete_pending_treatment(brand_id)
+            journey = self._repository.get_journey(brand_id)
         if self.prepare_treatment_confirmation(brand_id):
             raise V2PersistenceError(
                 "brand_treatment_confirmation_required",
@@ -2045,13 +2060,14 @@ class BrandCapabilityInvocationService:
                         brand_id, journey.treatment_substep
                     ),
                     "substep": journey.treatment_substep,
+                    "authoring_mode": "summary",
                     "response_locale": self._workflow_response_locale(brand_id),
                     "confirmed_values": [
                         value.model_dump(mode="json")
                         for value in self._repository.get_slot_values(brand_id)
                     ],
                 },
-                output_model=treatment_output_model(cast_step(journey.treatment_substep)),
+                output_model=treatment_summary_model(cast_step(journey.treatment_substep)),
                 trace_metadata={"workflow_id": product_context.workflow_id},
             )
             runtime_result, presentation_stream = self._run_with_presentation(
@@ -2099,6 +2115,12 @@ class BrandCapabilityInvocationService:
         )
         return step
 
+    def complete_pending_treatment(self, brand_id: str) -> bool:
+        """Resume the durable selected-summary expansion before asking the next question."""
+        from app.services.brand_treatment_expansion import BrandTreatmentExpansionService
+
+        return BrandTreatmentExpansionService(self).complete(brand_id)
+
     def apply_treatment_selection(
         self,
         brand_id: str,
@@ -2108,6 +2130,10 @@ class BrandCapabilityInvocationService:
         selected_label: str,
         detail: str,
     ) -> None:
+        from app.services.brand_treatment_expansion import BrandTreatmentExpansionService
+
+        if BrandTreatmentExpansionService(self).reserve(brand_id, card_id, option_id):
+            return
         now = datetime.now(timezone.utc)
         state = BrandQuestionState(self._database)
         observed = self._repository.get_journey(brand_id)
@@ -2259,6 +2285,7 @@ class BrandCapabilityInvocationService:
                     label=item.label,
                     why=item.why,
                     detail=item.detail,
+                    authoring_mode=item.authoring_mode,
                 )
                 for item in candidates
             )
@@ -2486,13 +2513,13 @@ _BRAND_STRATEGY_PROMPT = (
 )
 _CREATIVE_STRATEGY_PROMPT = (
     "You are the Creative Strategy capability of the AdCraft Brand Professional "
-    "Mode. Diverge 8-12 directions internally and return exactly 3 candidates."
+    "Mode. Return exactly three one-sentence complete story directions."
     " The input_payload response_locale gives the user's conversation language;"
     " write candidate text in that language."
 )
 _CREATIVE_TREATMENT_PROMPT = (
     "You are the Creative Treatment capability of the AdCraft Brand Professional "
-    "Mode. Propose exactly three short options for the current treatment step."
+    "Mode. In summary mode propose three short concrete summaries; in detail mode expand only the selected option into complete current-step sections."
     " The input_payload response_locale gives the user's conversation language;"
     " write question and option text in that language."
 )

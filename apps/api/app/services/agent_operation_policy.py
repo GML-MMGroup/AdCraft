@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -164,6 +165,7 @@ class AgentOperationPolicyRegistryV2:
         agent_name: str,
         operation: str,
         contract_id: str,
+        context: BaseModel | None = None,
     ) -> AgentOperationPolicyV2:
         capability = next(
             (item for item in self._capabilities.agents if item.name == agent_name),
@@ -210,12 +212,25 @@ class AgentOperationPolicyRegistryV2:
             if operation == "brand_slot_question"
             else self._budgets[policy_class]
         )
+        sound_treatment = False
+        if operation == "brand_treatment_step" and isinstance(
+            getattr(context, "user_input", None), str
+        ):
+            try:
+                payload = json.loads(context.user_input)
+            except (ValueError, TypeError):
+                payload = None
+            sound_treatment = isinstance(payload, dict) and payload.get("substep") == "sound"
         enable_thinking = (
-            policy_class != "routing" and operation not in _NON_THINKING_AUTHORING_OPERATIONS
+            policy_class != "routing"
+            and operation not in _NON_THINKING_AUTHORING_OPERATIONS
+            and not sound_treatment
         )
         return AgentOperationPolicyV2(
             policy_id=(
-                "agent.brand_skill_recommendation.v2"
+                "agent.brand_treatment_sound.v1"
+                if sound_treatment
+                else "agent.brand_skill_recommendation.v2"
                 if operation == "brand_skill_recommendation"
                 else "agent.author_role_brief.v3"
                 if operation == "author_role_brief"
@@ -302,6 +317,7 @@ class AgentRunRequestFactory:
             agent_name=agent_name,
             operation=operation,
             contract_id=contract_name,
+            context=context,
         )
         operation_policy = apply_agent_thinking_mode(operation_policy, thinking_mode)
         run_policy = AgentRunPolicy(
@@ -369,6 +385,7 @@ def validate_agent_run_operation_policy(
         agent_name=request.agent_name,
         operation=request.operation,
         contract_id=contract_name,
+        context=request.context,
     )
     expected_run_policy = AgentRunRequestFactory(
         policy_registry=registry,

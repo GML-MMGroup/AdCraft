@@ -62,6 +62,7 @@ _STATUS_BY_CODE = {
     "brand_review_invalid": 422,
     "brand_context_stale": 409,
     "brand_treatment_incomplete": 409,
+    "brand_treatment_expansion_retry_required": 503,
     "brand_treatment_review_required": 409,
     "brand_slot_evidence_invalid": 422,
     "brand_question_target_invalid": 422,
@@ -254,6 +255,8 @@ def post_next_question(
             except Exception:
                 bridge.release_form_generation(claim)
                 raise
+        service.complete_pending_treatment(brand_id)
+        journey = service._repository.get_journey(brand_id)
         if service.prepare_treatment_confirmation(brand_id):
             bridge.close_current_interaction(workflow_id, status="superseded")
             return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -275,6 +278,7 @@ def post_next_question(
                 workflow_id,
                 journey.stage,
                 journey.stage_revision,
+                lease_seconds=600 if journey.stage == "treatment" else 300,
             )
             if card_claim.role == "ready":
                 try:
@@ -293,6 +297,7 @@ def post_next_question(
                         workflow_id,
                         journey.stage,
                         journey.stage_revision,
+                        lease_seconds=600 if journey.stage == "treatment" else 300,
                     )
                     if card_claim.role == "ready":
                         try:
@@ -421,6 +426,7 @@ def post_treatment_selection(
             selected_label=request.selected_label,
             detail=request.detail,
         )
+        service.complete_pending_treatment(brand_id)
     except V2PersistenceError as error:
         raise _map_brand_error(error) from error
     journey = service._repository.get_journey(brand_id)

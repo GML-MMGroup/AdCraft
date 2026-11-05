@@ -66,6 +66,8 @@ const descriptors = Object.freeze(
 );
 const byOperation = new Map(descriptors.map((item) => [item.operation, item]));
 const concreteContractFamilies = new Map<string, ReadonlySet<string>>([
+  ["brand_hypothesis", new Set(["StoryDirectionsV1"])],
+  ["brand_treatment_step", new Set(["CreativeTreatmentDetailOutputV1"])],
   [
     "product_prompt",
     new Set(["V2ProductMainPromptPlan", "V2ProductMultiViewPromptPlan"]),
