@@ -251,7 +251,7 @@ class AgentOperationPolicyRegistryV2:
                 if operation == "brand_skill_recommendation"
                 else "agent.bgm_options.v1"
                 if operation in {"propose_bgm_options", "revise_bgm_options"}
-                else "agent.prop_recommendation.v2"
+                else "agent.prop_recommendation.v3"
                 if operation == "propose_prop_options"
                 else "agent.product_prop_options.v1"
                 if operation in _LOW_REASONING_OBJECT_OPTIONS

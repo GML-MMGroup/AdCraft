@@ -1376,7 +1376,12 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
   readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 } {
   if (policy.reasoning_control === "ark_thinking") {
-    return { thinking: { type: policy.enable_thinking ? "enabled" : "disabled" } };
+    return {
+      thinking: { type: policy.enable_thinking ? "enabled" : "disabled" },
+      ...(policy.enable_thinking && policy.reasoning_effort != null
+        ? { reasoning_effort: policy.reasoning_effort }
+        : {}),
+    };
   }
   if (policy.reasoning_control === "reasoning_effort") {
     if (policy.reasoning_effort == null) {
@@ -1399,8 +1404,8 @@ const RETRY_REASONING_EFFORT: Readonly<Record<string, "minimal" | "low" | "mediu
 
 /**
  * A transport retry runs inside the shorter recovery budget, so a deep
- * reasoning call thinks one step less there. Boolean thinking controls have
- * no intermediate level and stay unchanged.
+ * reasoning-effort-only call thinks one step less there. Ark thinking retains
+ * its frozen effort, and boolean thinking controls stay unchanged.
  */
 export function retryReasoningPayload(
   policy: AgentCredentialSnapshot["execution_policy"],

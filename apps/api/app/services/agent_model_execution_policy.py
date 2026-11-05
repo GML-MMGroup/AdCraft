@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1
@@ -10,6 +11,12 @@ from app.services.video_agent_operation_registry import (
     VideoAgentOperationRegistry,
     VideoAgentOperationRegistryError,
 )
+
+
+# Only evaluated model/policy pairs opt in; older frozen policies retain defaults.
+_ARK_REASONING_EFFORT_OVERRIDES: Mapping[tuple[str, str], Literal["high"]] = {
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.prop_recommendation.v3"): "high",
+}
 
 
 class AgentModelExecutionPolicyError(ValueError):
@@ -106,6 +113,10 @@ def resolve_agent_model_execution_policy(
     reasoning_effort = None
     if reasoning_control == "reasoning_effort":
         reasoning_effort = "minimal" if operation_policy.reasoning_mode == "low" else "medium"
+    elif reasoning_control == "ark_thinking" and enable_thinking:
+        reasoning_effort = _ARK_REASONING_EFFORT_OVERRIDES.get(
+            (model_ref, operation_policy.policy_id)
+        )
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,

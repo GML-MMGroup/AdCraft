@@ -302,6 +302,9 @@ class AgentModelExecutionPolicyV1(_StrictModel):
                 raise ValueError("Reasoning-effort policy cannot use legacy thinking fields.")
             if self.thinking_budget_tokens is not None:
                 raise ValueError("Reasoning-effort policy cannot use a thinking budget.")
+        elif self.reasoning_control == "ark_thinking":
+            if self.reasoning_effort is not None and not self.enable_thinking:
+                raise ValueError("Ark reasoning effort requires enabled thinking.")
         elif self.reasoning_effort is not None:
             raise ValueError("Reasoning effort is only valid for its matching control.")
         if (
