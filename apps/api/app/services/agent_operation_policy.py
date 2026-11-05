@@ -211,6 +211,7 @@ class AgentOperationPolicyRegistryV2:
             else self._budgets[policy_class]
         )
         sound_treatment = False
+        summary_treatment = False
         if operation == "brand_treatment_step" and isinstance(
             getattr(context, "user_input", None), str
         ):
@@ -219,15 +220,21 @@ class AgentOperationPolicyRegistryV2:
             except (ValueError, TypeError):
                 payload = None
             sound_treatment = isinstance(payload, dict) and payload.get("substep") == "sound"
+            summary_treatment = (
+                isinstance(payload, dict) and payload.get("authoring_mode") == "summary"
+            )
         enable_thinking = (
             policy_class != "routing"
             and operation not in _NON_THINKING_AUTHORING_OPERATIONS
             and not sound_treatment
+            and not summary_treatment
         )
         return AgentOperationPolicyV2(
             policy_id=(
                 "agent.brand_treatment_sound.v1"
                 if sound_treatment
+                else "agent.brand_treatment_summary.v1"
+                if summary_treatment
                 else "agent.brand_skill_recommendation.v2"
                 if operation == "brand_skill_recommendation"
                 else "agent.author_role_brief.v3"
