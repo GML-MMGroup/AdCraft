@@ -18,7 +18,7 @@ export type BrandProductionContextV1 = { readonly "projection_version"?: "brand_
 
 export type TreatmentSectionV1 = { readonly "key": "action_sequence" | "ambience" | "appearance" | "boundaries" | "color_and_light" | "effects" | "ending" | "identity" | "materials" | "middle" | "music_entry" | "opening" | "people_camera" | "performance" | "product_role" | "product_shots" | "progression" | "prohibited_shots" | "resolution" | "setup" | "spaces" | "wardrobe"; readonly "title": string; readonly "text": string };
 
-export type TreatmentDetailV1 = { readonly "sections": ReadonlyArray<TreatmentSectionV1> };
+export type TreatmentDetailV1 = { readonly "sections": ReadonlyArray<TreatmentSectionV1>; readonly "production_requirements"?: BrandProductionRequirementsV1 | null };
 
 export type TreatmentCandidateV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail": TreatmentDetailV1; readonly "authoring_mode"?: "detailed" | "summary" };
 

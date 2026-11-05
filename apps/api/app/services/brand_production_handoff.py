@@ -57,6 +57,7 @@ from app.services.agent_canvas_storyboard_sequence_windows import (
 )
 from app.services.workflow_v2 import WorkflowV2Service
 from app.services.brand_question_context import BrandQuestionContextService
+from app.schemas.brand_treatment_inventory import BrandProductionRequirementsV1
 
 
 @dataclass(frozen=True)
@@ -68,10 +69,8 @@ class BrandHandoffResult:
 def reviewed_inventory_patch(
     document: BrandTreatmentDocumentV1,
 ) -> tuple[RequirementPatchV1, tuple[RequirementElementPresencePatchV1, ...]]:
-    """Project only reviewed typed facts; unknown historical inventory stays unresolved."""
-    if document.review is None:
-        return RequirementPatchV1(), ()
-    inventory = document.review.production_requirements
+    """Project user-approved typed facts; unknown historical inventory stays unresolved."""
+    inventory = confirmed_production_inventory(document)
     controls = []
     elements = []
     occurrences = None
@@ -118,6 +117,31 @@ def reviewed_inventory_patch(
     return RequirementPatchV1(
         controls_to_set=tuple(controls), character_occurrences_to_set=occurrences
     ), tuple(elements)
+
+
+def confirmed_production_inventory(
+    document: BrandTreatmentDocumentV1,
+) -> BrandProductionRequirementsV1:
+    """Combine scoped authoring metadata, with matched historical assessment compatibility."""
+    inventory = (
+        document.review.production_requirements
+        if document.review
+        else BrandProductionRequirementsV1()
+    )
+    fields_by_step = {
+        "character": ("character_count", "characters", "character_sources"),
+        "scene": ("scene_presence", "scenes", "scene_sources", "prop_presence", "prop_sources"),
+    }
+    for step in document.treatment_steps:
+        detail = step.structured_detail
+        if detail is None or detail.production_requirements is None:
+            continue
+        detail.validate_step(step.step_key)
+        authored = detail.production_requirements
+        inventory = inventory.model_copy(
+            update={key: getattr(authored, key) for key in fields_by_step[step.step_key]}
+        )
+    return inventory
 
 
 class BrandProductionHandoffService:

@@ -13,6 +13,7 @@ from app.schemas.brand_professional_mode import (
     CreativeTreatmentStepOutputV1,
     TreatmentCandidateV1,
     TreatmentSummaryCandidateV1,
+    BrandProductionRequirementsV1,
 )
 from app.schemas.brand_treatment_detail import (
     TREATMENT_SECTION_KEYS,
@@ -54,6 +55,11 @@ def treatment_output_model(
                 max_length=len(required),
                 description=f"Include each required key exactly once: {', '.join(required)}.",
             ),
+        ),
+        **(
+            {"production_requirements": (BrandProductionRequirementsV1, ...)}
+            if step_key in {"character", "scene"}
+            else {}
         ),
     )
     candidate_model = create_model(

@@ -8,6 +8,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.brand_treatment_detail import TreatmentDetailV1, TreatmentSectionV1
+from app.schemas.brand_treatment_inventory import (
+    BrandTreatmentSubstep as BrandTreatmentSubstep,
+    BrandTreatmentSourceV1 as BrandTreatmentSourceV1,
+    BrandProductionElementV1 as BrandProductionElementV1,
+    BrandProductionRequirementsV1 as BrandProductionRequirementsV1,
+)
 
 BrandMode = Literal["creation", "brand"]
 BrandStage = Literal[
@@ -19,16 +25,6 @@ BrandStage = Literal[
     "skill-stack",
     "treatment",
     "production",
-]
-BrandTreatmentSubstep = Literal[
-    "hook",
-    "story",
-    "character",
-    "scene",
-    "visual",
-    "camera",
-    "editing",
-    "sound",
 ]
 BrandCapabilityId = Literal[
     "brand-strategy",
@@ -389,45 +385,6 @@ class BrandAssetReferenceV1(_BrandModel):
     version_id: str
     display_name: str
     input_role: str
-
-
-class BrandTreatmentSourceV1(_BrandModel):
-    step_key: BrandTreatmentSubstep
-    section_key: str = Field(min_length=1, max_length=80)
-    quote: str = Field(min_length=1, max_length=400)
-
-
-class BrandProductionElementV1(_BrandModel):
-    label: str = Field(min_length=1, max_length=80)
-    summary: str = Field(min_length=1, max_length=400)
-    sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
-
-
-class BrandProductionRequirementsV1(_BrandModel):
-    character_count: int | None = Field(default=None, ge=0, le=32)
-    characters: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
-    character_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
-    prop_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
-    prop_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
-    scene_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
-    scenes: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
-    scene_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
-
-    @model_validator(mode="after")
-    def grounded_inventory(self) -> "BrandProductionRequirementsV1":
-        if self.character_count is not None and (
-            self.character_count != len(self.characters) or not self.character_sources
-        ):
-            raise ValueError("Resolved character count requires matching inventory and sources.")
-        if self.prop_presence != "unspecified" and not self.prop_sources:
-            raise ValueError("Resolved prop presence requires sources.")
-        if self.scene_presence != "unspecified" and not self.scene_sources:
-            raise ValueError("Resolved scene presence requires sources.")
-        if (self.scene_presence == "include" and not self.scenes) or (
-            self.scene_presence == "exclude" and self.scenes
-        ):
-            raise ValueError("Scene inventory must agree with its presence decision.")
-        return self
 
 
 class BrandTreatmentFindingV1(_BrandModel):

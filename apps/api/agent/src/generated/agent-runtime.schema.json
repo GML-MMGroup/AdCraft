@@ -35575,6 +35575,17 @@
     "TreatmentDetailV1": {
       "additionalProperties": false,
       "properties": {
+        "production_requirements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandProductionRequirementsV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "sections": {
           "items": {
             "$ref": "#/$defs/TreatmentSectionV1"

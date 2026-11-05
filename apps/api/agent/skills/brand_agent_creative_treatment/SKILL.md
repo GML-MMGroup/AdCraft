@@ -96,31 +96,24 @@ The following choice-authoring rules apply to `brand_treatment_step` only.
 - Do not produce the screenplay, shot list, or provider prompts.
 - Do not contradict previously confirmed steps.
 
-# Bounded Review Operation
+# Production Inventory in Selected Details
 
-For `brand_treatment_review`, return only `production_requirements` and advisory
-`findings` for the supplied `treatment_document`; do not return another step or
-three alternatives. Keep every confirmed section unchanged.
+When authoring complete character or scene details (including a custom detailed
+choice), include `detail.production_requirements` in the same response. Summary
+choices and other steps omit this field. This is a structured copy of the selected
+content for production, not an additional assessment or decision.
 
-- Normalize distinct character identities, not appearances, outfits or storyboard
-  cells. Return character_count and exactly that many character summaries only
-  when the selected content establishes a complete cast. Otherwise use null.
-  Zero requires explicit absence evidence; missing information is not absence.
-- Describe the confirmed spaces separately. Resolve scene_presence and
-  prop_presence only from explicit selected content; otherwise use unspecified.
-  The advertised product is not an extra prop by default.
-- Every inventory element and resolved presence/count needs sources containing
-  exact step_key, section_key and quote copied from the supplied section text.
-- Check whether camera restrictions match the described coverage and whether exact
-  speech, pauses and required actions fit the duration at the intended delivery.
-  Surface conflicts as source-referenced findings; do not rewrite selected choices.
-- Check story/character/scene continuity, color and light, pacing against Campaign
-  duration, Brand/AdSpec alignment and the stated sound execution limitations.
-  Return at most eight concise info/warning findings with exact source references.
-  An empty findings list means this bounded review found no specific issue; it is
-  not a guarantee of creative quality or execution support.
-- Findings are advisory. Do not rewrite, resolve, silently harmonize or override
-  confirmed decisions. Do not invent identity counts, asset IDs or authorization,
-  provider capabilities, extra mixing support, or unsupported product claims.
-- Render labels, summaries and finding messages in response_locale. Keep field
-  names, source keys and enums in canonical English; quotes remain verbatim.
+- Character: list every distinct confirmed identity in `characters`, with
+  `character_count` equal to the roster length and `character_sources` citing the
+  complete cast. Count identities once across outfits, poses and shots. Explicitly
+  character-free content uses zero with absence evidence. If the cast remains
+  undetermined, use null rather than guessing. Leave scene and prop fields unspecified.
+- Scene: list the confirmed spaces in `scenes` with `scene_presence` and
+  `scene_sources`. Resolve `prop_presence` only when the selected scene explicitly
+  establishes it; the advertised product is not an extra prop by default. Leave
+  character fields unresolved; this step preserves the previously chosen cast.
+- Every element and resolved count/presence includes sources with this step_key,
+  a section_key and an exact quote from the detail.sections authored in this response.
+  Keep labels and summaries in response_locale and source quotes verbatim.
+- Keep the typed inventory and visible prose consistent. The final complete
+  Treatment is reviewed and confirmed by the user; there is no final LLM review.
