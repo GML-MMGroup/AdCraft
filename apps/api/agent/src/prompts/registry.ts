@@ -314,8 +314,9 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       downstreamDialogueContinuityPolicy,
       "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",
       "Planning rule: one storyboard sequence represents one bounded downstream video segment and one later ordered 3x3 storyboard grid, not one shot, camera setup, panel, or story beat.",
-      "Preserve the supplied sequence count. Preserve fixed timing windows exactly; with timing_mode=adaptive, allocate contiguous unequal windows to the narrative within the total duration and max_sequence_duration_seconds. Generation windows do not prescribe internal shot lengths.",
-      "Otherwise use the minimum sequence count required by the total duration and the 15-second maximum; group multiple ordered shots and beats inside each sequence.",
+      "With timing_mode=narrative, choose both sequence count and durations from the approved story: supplied windows are provisional seeds, not a fixed count or equal-split target. With timing_mode=adaptive, preserve the explicit sequence count but allocate durations freely. With timing_mode=fixed, preserve all supplied windows exactly.",
+      "Plan each sequence's dialogue, actions, pauses, emotional turn and shot rhythm together before allocating its duration. Carry the key beats and pacing rationale in narrative_goal and concrete start/end states so the later nine-panel grid develops that same timed content. Do not choose empty time boxes first and pad or squeeze the story into them.",
+      "Every sequence must be at most 15 seconds and all sequences must sum to the confirmed total. For whole-second totals, use whole-second generation durations; subsecond timing belongs inside shots. Prefer coherent, substantial segments; do not create a separate generation for every short reaction, insert, cut or product hold. Group brief beats within a segment when they fit naturally. A shorter segment is valid when the story needs that boundary; avoid tiny leftovers, unnecessary fragmentation, padding and rushing approved speech. Do not force the minimum count or equal lengths.",
       "Cover the total duration with contiguous, non-overlapping sequences and preserve the narrative handoff between adjacent sequences.",
       "Allocate the approved_narrative supplied in capability_facts together with selected_option and reviewed brand_decisions into distinct local goals and concrete opening/closing states. Preserve approved product purpose, ending, and CTA. A timing placeholder is not a creative direction; a Style Skill example is not the approved story.",
       "Choose action density, shot rhythm, performance, montage and transitions from the approved narrative and selected Skills. Do not discard approved escalation or impose a universal action quota.",
@@ -328,6 +329,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       downstreamDialogueContinuityPolicy,
       "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied approved narrative, selected direction, Brand decisions, prior final panel, prior end state, terminal policy, product purpose, and CTA; do not author platform identifiers.",
       shotDirectionPolicy,
+      "Develop the nine panels from this sequence's allocated beats and pacing rationale; density, holds and progression must fit its exact duration. The grid and Video share the same local story and timing. Nine cells are visual samples, not nine equal time slots; do not borrow later segments' actions or add events to fill cells.",
       "Return the rows and generation prompt in response_locale in this operation. Do not request a translation or a second creative operation.",
     ].join(" ");
   }
@@ -342,7 +344,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "Return exactly one closed GuidedScriptCheckpointDraftV1 object with only title, summary_prompt, and content.",
       'Use exactly {"title":"...","summary_prompt":"...","content":"..."}.',
       "Do not return duration, sequence count, shot maps, provider fields, Canvas Nodes, Bindings, persistence identifiers, or user-choice copy.",
-      "Preserve the supplied accepted creative facts and response locale; Python owns duration and downstream sequence controls.",
+      "Preserve the supplied accepted creative facts and response locale; Python owns the confirmed total and validates downstream sequence limits; the later Storyboard operation authors the narrative allocation.",
     ].join(" ");
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
