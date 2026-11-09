@@ -44,7 +44,7 @@ class StoryboardSequenceAuthorityPlanV2(_FrozenStoryboardSequenceModel):
     aspect_ratio: str = Field(min_length=1, max_length=32)
     total_duration_seconds: float = Field(gt=0, le=3_600)
     max_sequence_duration_seconds: float = Field(default=15, gt=0, le=15)
-    timing_mode: Literal["fixed", "adaptive"] = "fixed"
+    timing_mode: Literal["fixed", "adaptive", "narrative"] = "fixed"
     windows: tuple[StoryboardSequenceWindowV2, ...] = Field(
         min_length=1,
         max_length=128,

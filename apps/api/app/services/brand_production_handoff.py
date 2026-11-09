@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from math import ceil
 import re
 import unicodedata
 
@@ -47,14 +46,9 @@ from app.schemas.agent_canvas_requirements import (
     RequirementElementPresencePatchV1,
     RequirementDirectivePatchV1,
     RequirementPatchV1,
-    StoryboardSequenceCountControlPatchV1,
-    VideoSegmentCountControlPatchV1,
 )
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
-from app.services.agent_canvas_storyboard_sequence_windows import (
-    StoryboardSequenceWindowPlanner,
-)
 from app.services.workflow_v2 import WorkflowV2Service
 from app.services.brand_question_context import BrandQuestionContextService
 from app.schemas.brand_treatment_inventory import BrandProductionRequirementsV1
@@ -316,22 +310,11 @@ class BrandProductionHandoffService:
         )
         current_controls = {item.control: item.value for item in current.ledger.hard_controls}
         extracted_duration = _extract_duration_seconds(duration_text)
-        duration_value = (
-            extracted_duration
-            if extracted_duration is not None
-            else int(current_controls.get("duration_seconds", 30))
-        )
         extracted_aspect = _extract_aspect_ratio(aspect_text)
-        # Brand Professional Mode never declares a Storyboard sequence or video
-        # segment count, so the handoff projects the platform duration policy
-        # instead of freezing a count the duration authority would reject.
-        segment_count = _media_segment_count(duration_value)
+        # Segment counts belong to narrative planning unless explicitly requested.
         controls_to_set = [
             AudioModeControlPatchV1(value="bgm_only", source_quote="BGM audio"),
             ProductCountControlPatchV1(value=1, source_quote="one product"),
-            StoryboardSequenceCountControlPatchV1(
-                value=segment_count, source_quote=duration_text or "30 seconds"
-            ),
         ]
         if extracted_duration is not None and extracted_duration != current_controls.get(
             "duration_seconds"
@@ -346,12 +329,6 @@ class BrandProductionHandoffService:
             controls_to_set.insert(
                 1,
                 AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
-            )
-        if current_controls.get("video_segment_count") != segment_count:
-            controls_to_set.append(
-                VideoSegmentCountControlPatchV1(
-                    value=segment_count, source_quote=duration_text or "30 seconds"
-                )
             )
         patch = RequirementPatchV1(
             controls_to_set=tuple(controls_to_set),
@@ -530,13 +507,7 @@ class BrandProductionHandoffService:
         aspect_text = slots["campaign_aspect_ratio"]
         controls = {control.control: control.value for control in current.ledger.hard_controls}
         extracted_duration = _extract_duration_seconds(duration_text)
-        duration = (
-            extracted_duration
-            if extracted_duration is not None
-            else int(controls.get("duration_seconds", 30))
-        )
         extracted_aspect = _extract_aspect_ratio(aspect_text)
-        segments = _media_segment_count(duration)
         audio_mode = controls.get("audio_mode", "bgm_only")
         product_count = controls.get("product_count", 1)
         source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
@@ -552,7 +523,6 @@ class BrandProductionHandoffService:
             ProductCountControlPatchV1(
                 value=product_count, source_quote=f"product count {product_count}"
             ),
-            StoryboardSequenceCountControlPatchV1(value=segments, source_quote=duration_text),
         ]
         if extracted_duration is not None and extracted_duration != controls.get(
             "duration_seconds"
@@ -565,10 +535,6 @@ class BrandProductionHandoffService:
             controls_to_set.insert(
                 1,
                 AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
-            )
-        if controls.get("video_segment_count") != segments:
-            controls_to_set.append(
-                VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text)
             )
         requirements.apply_user_turn_patch_in_transaction(
             connection,
@@ -705,15 +671,6 @@ def _extract_duration_seconds(text: str) -> int | None:
     if len(values) != 1:
         return None
     return max(1, min(values.pop(), 300))
-
-
-def _media_segment_count(duration_seconds: int) -> int:
-    """Split a duration into the platform's bounded media segment count."""
-
-    return max(
-        1,
-        ceil(duration_seconds / StoryboardSequenceWindowPlanner.MAX_SEQUENCE_DURATION_SECONDS),
-    )
 
 
 def _extract_aspect_ratio(value: str) -> str | None:

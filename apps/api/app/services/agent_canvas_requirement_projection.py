@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_requirements import (
 from app.services.agent_canvas_requirement_directives import (
     canonicalize_requirement_directives,
 )
+from app.services.agent_canvas_guided_duration import is_derived_brand_sequence_count
 
 
 _DIRECTIVE_BUDGET = 24 * 1024
@@ -132,6 +133,7 @@ class AgentCanvasRequirementProjectionService:
             item
             for item in revision.ledger.hard_controls
             if item.control in _CONTROL_VISIBILITY[capability_id]
+            and not is_derived_brand_sequence_count(item)
         )
         controls = tuple(sorted(controls, key=lambda item: item.control))
         direct_text_inputs, text_warnings = _direct_text_inputs(
