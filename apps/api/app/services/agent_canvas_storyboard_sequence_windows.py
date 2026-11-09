@@ -12,7 +12,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
 
 
 class StoryboardSequenceWindowPlanner:
-    """Create the immutable platform-owned sequence topology before Agent dispatch."""
+    """Bound Agent allocation and validate its windows before freezing topology."""
 
     MAX_SEQUENCE_DURATION_SECONDS = 15.0
     MAX_SEQUENCE_COUNT = 128
@@ -62,10 +62,32 @@ class StoryboardSequenceWindowPlanner:
                 aspect_ratio=normalized_aspect_ratio,
                 total_duration_seconds=duration,
                 windows=windows,
-                timing_mode="adaptive",
+                timing_mode="narrative" if explicit_sequence_count is None else "adaptive",
             )
         except ValueError as error:
             raise cls._invalid("Storyboard sequence windows are invalid.") from error
+
+    @staticmethod
+    def accept_authored_windows(
+        authority: StoryboardSequenceAuthorityPlanV2,
+        windows: tuple[StoryboardSequenceWindowV2, ...],
+    ) -> StoryboardSequenceAuthorityPlanV2:
+        """Validate without rounding, repartitioning or mutating the request authority."""
+
+        if authority.timing_mode != "narrative" and len(windows) != len(authority.windows):
+            raise ValueError("Storyboard outline count does not match authority.")
+        if authority.timing_mode == "fixed" and windows != authority.windows:
+            raise ValueError("Storyboard outline timing does not match fixed authority.")
+        if authority.timing_mode == "narrative" and authority.total_duration_seconds.is_integer():
+            if any(
+                not (window.end_seconds - window.start_seconds).is_integer() for window in windows
+            ):
+                raise ValueError(
+                    "Use whole-second generation durations; subsecond timing belongs inside shots."
+                )
+        return StoryboardSequenceAuthorityPlanV2.model_validate(
+            {**authority.model_dump(mode="json"), "windows": windows}
+        )
 
     @staticmethod
     def _duration(value: object) -> float:
