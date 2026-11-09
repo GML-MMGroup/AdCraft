@@ -461,7 +461,10 @@ function isExecutionPolicy(
       (policy.reasoning_effort == null ||
         policy.enable_thinking ||
         policy.thinking_budget_tokens !== null)) ||
+    (policy.reasoning_control === "ark_thinking" &&
+      !policy.enable_thinking && policy.reasoning_effort != null) ||
     (policy.reasoning_control !== "reasoning_effort" &&
+      policy.reasoning_control !== "ark_thinking" &&
       policy.reasoning_effort != null)
   ) {
     return false;
