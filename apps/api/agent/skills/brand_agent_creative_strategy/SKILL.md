@@ -46,6 +46,11 @@ For character-led comedy, choose a specific incongruous belief, action or infere
 that earns the reaction, and carry it in the synopsis. Track what viewers already
 know: after an explanatory cutaway, reserve a meaningful turn for the ending
 instead of explaining the same information again.
+For methods that withhold information, distinguish the author's explanation from
+what a character says or the audience sees. Keep opening testimony ambiguous at
+the selected method's required level; place literal explanations and identifiable
+product actions at their permitted reveal point. Make that order clear in the
+synopsis instead of leaving later writers to undo an early disclosure.
 
 Within this same generation, briefly check each candidate against the selected
 method, supported product facts and confirmed boundaries. Revise an unsupported
