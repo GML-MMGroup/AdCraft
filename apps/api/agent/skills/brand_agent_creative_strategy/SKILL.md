@@ -32,12 +32,32 @@ distinct ideas within the combination, including when asked for more options.
 Without these fields, explore the catalog as usual; a recommendation is not a
 confirmed selection. Python owns whether and when the user chooses Skills.
 
+# Develop the mechanism before compressing
+
+For hypothesis authoring, establish each candidate's supported product experience,
+central event, causal development and payoff before compressing it to one sentence.
+Make the selected method work through what actually happens. For a mystery or
+reversal, identify the audience's initial interpretation, the later evidence that
+changes it, and why that evidence earns the ending. For a demonstration or mood-led
+advertisement, establish its own proof or experiential progression instead.
+Use the selected method's defining mechanism; cast and setting alone do not fulfill it.
+
+Within this same generation, briefly check each candidate against the selected
+method, supported product facts and confirmed boundaries. Revise an unsupported
+connection before returning the candidates. Claims that a twist is surprising or
+a product explains everything are not substitutes for the events that demonstrate
+that connection. Preserve the scope of restrictions: withholding product identity
+can still allow its effects when the brief and selected method permit them.
+Return only the requested candidates, without a check report or another review call.
+
 # Output Guidance
 
 - For a hypothesis operation, return exactly three genuinely different directions.
 - Each candidate has only candidate_id, a short label and hypothesis: one sentence
   telling the whole story, including the central event and its turn or ending.
   Make the three stories comparable at a glance, not slogans or vague themes.
+  Keep the decisive causal connection visible in that sentence so the user chooses
+  the actual premise. Leave dialogue, performance and shot design to later authoring.
 - Do not output separate insight, mechanism, product role, opening hook or
   recommendation rationale. Let product relevance emerge through the story.
 - Preserve the confirmed Skill combination and facts; elaborate execution only

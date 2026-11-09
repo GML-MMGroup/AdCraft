@@ -44,9 +44,9 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
 _BRAND_TREATMENT_DETAIL_BUDGET = _OperationBudget(480, 270, 180, 30, 8_192, 3_072)
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
 _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
-# New directions use a compact schema. Retain the compatible routing budget;
-# the schema, rather than a smaller token ceiling, bounds their visible content.
-_BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
+# Creative directions reason about the mechanism before emitting a compact schema.
+# Allow reasoning time without adding submissions or enlarging visible output.
+_BRAND_HYPOTHESIS_BUDGET = _OperationBudget(360, 300, 40, 20, 4_096, 2_048)
 # Role briefs include structured production details and a complete editable prompt.
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
 _ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
@@ -66,7 +66,6 @@ _NON_THINKING_AUTHORING_OPERATIONS = {
     "revise_bgm_options",
 }
 _ROUTING_OPERATIONS = {
-    "brand_hypothesis",
     "brand_slot_form",
     "brand_slot_question",
     "command_replan",
@@ -80,6 +79,7 @@ _ROUTING_OPERATIONS = {
     "workflow_creation",
 }
 _PROPOSAL_OPERATIONS = {
+    "brand_hypothesis",
     "brand_skill_recommendation",
     "author_decision_bundle",
     "author_role_brief",
@@ -246,7 +246,9 @@ class AgentOperationPolicyRegistryV2:
         )
         return AgentOperationPolicyV2(
             policy_id=(
-                "agent.brand_treatment_sound.v1"
+                "agent.brand_hypothesis.v2"
+                if operation == "brand_hypothesis"
+                else "agent.brand_treatment_sound.v1"
                 if sound_treatment
                 else "agent.brand_treatment_story_summary.v1"
                 if story_summary
