@@ -27852,6 +27852,15 @@
           "title": "Parameter Descriptors",
           "type": "array"
         },
+        "parameter_legal_combinations": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 256,
+          "title": "Parameter Legal Combinations",
+          "type": "array"
+        },
         "parameter_schema_id": {
           "anyOf": [
             {
