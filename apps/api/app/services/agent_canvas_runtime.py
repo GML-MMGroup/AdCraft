@@ -462,10 +462,15 @@ class DynamicCanvasScheduler:
                     owner_id=self._owner_id,
                     now=now,
                     ttl=timedelta(seconds=60),
+                    generation_limits=self._limits,
+                    total_limit=self._total_limit,
                 )
                 if lease is None:
                     continue
                 leases.append(lease)
+            if not leases:
+                self._finish_if_quiescent(execution_id)
+                return
             with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
                 dependency_barrier_seen = False
                 all_deferred_refreshed_in_place = True

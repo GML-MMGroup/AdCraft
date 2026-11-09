@@ -488,6 +488,9 @@ class ProviderModelSummaryV2(ProviderModelSummaryV1):
         default_factory=tuple,
         max_length=64,
     )
+    parameter_legal_combinations: tuple[dict[str, object], ...] = Field(
+        default_factory=tuple, max_length=256
+    )
     reference_policy: ReferenceInputPolicyV1 | None = None
     image_resolution_capabilities: ImageResolutionCapabilitiesV1 | None = None
 

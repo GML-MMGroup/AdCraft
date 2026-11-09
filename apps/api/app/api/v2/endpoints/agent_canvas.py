@@ -31,6 +31,9 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.services.agent_runtime_recovery import require_agent_runtime_ready
+from app.services.agent_canvas_run_preflight import AgentCanvasRunPreflight
+from app.services.local_runtime_statistics import LocalRuntimeStatisticsService
+from app.schemas.local_runtime_statistics import LocalRuntimeStatisticsV1
 
 from app.api.v2.etag import (
     V2PreconditionError,
@@ -1447,6 +1450,7 @@ def create_agent_canvas_runtime(
         runtime_repository,
         event_repository,
         run_snapshots=run_snapshots,
+        eligibility_validator=AgentCanvasRunPreflight(model_resolution).validate,
         blank_prompt_eligibility_validator=lambda node: _validate_reference_only_run(
             node,
             bindings=binding_service,
@@ -4406,6 +4410,14 @@ def _agent_settings_expected_revision(value: str | None) -> int:
     return revision
 
 
+@router.get("/local-runtime/statistics", response_model=LocalRuntimeStatisticsV1)
+def local_runtime_statistics(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+) -> LocalRuntimeStatisticsV1:
+    return LocalRuntimeStatisticsService(runtime.database).summarize(days=days)
+
+
 def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
     status_code = {
         "brand_skill_selection_required": 409,
@@ -4517,6 +4529,13 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "model_unavailable": 409,
         "model_default_not_configured": 409,
         "model_capability_mismatch": 409,
+        "model_parameter_incompatible": 422,
+        "model_parameter_unsupported": 422,
+        "provider_credentials_missing": 409,
+        "provider_credentials_invalid": 409,
+        "model_adapter_unavailable": 409,
+        "model_conformance_required": 409,
+        "model_conformance_revoked": 409,
         "agent_model_incompatible": 409,
         "layout_revision_conflict": 409,
         "layout_node_not_found": 404,

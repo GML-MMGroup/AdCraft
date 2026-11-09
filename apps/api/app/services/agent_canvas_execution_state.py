@@ -23,6 +23,28 @@ APPROVED_TRANSIENT_ERROR_CODES = frozenset(
         "provider_transport_interrupted",
     }
 )
+INPUT_REVISION_ERROR_CODES = frozenset(
+    {
+        "model_parameter_incompatible",
+        "model_parameter_unsupported",
+        "node_parameter_unsupported",
+        "manual_media_parameter_unsupported",
+        "provider_inputs_unsupported",
+        "reference_input_mode_unsupported",
+        "reference_count_exceeded",
+        "canvas_reference_limit_exceeded",
+        "model_capability_mismatch",
+        "binding_model_incompatible",
+        "node_prompt_empty",
+    }
+)
+PROVIDER_DELIVERY_ERROR_CODES = frozenset(
+    {
+        "provider_poll_temporary_failure",
+        "provider_result_download_failed",
+        "provider_result_download_timeout",
+    }
+)
 
 
 def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeErrorV2:
@@ -65,6 +87,15 @@ def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeEr
         else explicitly_retryable
         and (code in APPROVED_TRANSIENT_ERROR_CODES or image_url_download_failed)
     )
+    if code in INPUT_REVISION_ERROR_CODES:
+        actionable_failure = ActionableFailureV1(
+            failure_class="deterministic", retry_scope="none", user_action="revise"
+        )
+        retryable = False
+    elif retryable and (code in PROVIDER_DELIVERY_ERROR_CODES or image_url_download_failed):
+        actionable_failure = ActionableFailureV1(
+            failure_class="transient", retry_scope="provider_delivery", user_action="retry"
+        )
     return CanvasNodeErrorV2(
         code=code,
         message=(str(error) or "Execution failed.")[:1024],

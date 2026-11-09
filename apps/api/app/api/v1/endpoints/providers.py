@@ -270,6 +270,9 @@ def _adapter_response_fields(metadata: dict[str, object]) -> dict[str, object]:
     if isinstance(matrix, dict):
         fields.setdefault("parameter_schema_id", matrix.get("schema_id"))
         descriptors = matrix.get("descriptors")
+        combinations = matrix.get("legal_combinations")
+        if isinstance(combinations, list):
+            fields["parameter_legal_combinations"] = tuple(combinations)
     if isinstance(descriptors, list):
         fields["parameter_descriptors"] = tuple(descriptors)
     return fields

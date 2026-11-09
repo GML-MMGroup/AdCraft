@@ -233,7 +233,10 @@ class ProviderTaskRecoveryService:
                 code,
                 "Provider result download did not complete.",
                 stage="provider_result_download",
-                details={"source_code": str(source_code)} if source_code else None,
+                details={
+                    "retryable": True,
+                    **({"source_code": str(source_code)} if source_code else {}),
+                },
             ) from error
         node = self._workflows.get_node(task.workflow_id, task.node_id)
         member = next(
