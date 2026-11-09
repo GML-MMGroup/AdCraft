@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.schemas.agent_canvas_capabilities import CapabilityInvocationContextV2
 from app.schemas.agent_operation_recovery import (
     AgentOperationPolicyClassV2,
     AgentOperationPolicyV2,
@@ -244,9 +245,16 @@ class AgentOperationPolicyRegistryV2:
             and not sound_treatment
             and (not summary_treatment or story_summary)
         )
+        storyboard_plan = (
+            operation == "author_guided_script_checkpoint"
+            and isinstance(context, CapabilityInvocationContextV2)
+            and context.capability_context.get("journey_stage") == "storyboard_plan"
+        )
         return AgentOperationPolicyV2(
             policy_id=(
-                "agent.brand_hypothesis.v2"
+                "agent.guided_storyboard_plan.v1"
+                if storyboard_plan
+                else "agent.brand_hypothesis.v2"
                 if operation == "brand_hypothesis"
                 else "agent.brand_treatment_sound.v1"
                 if sound_treatment
