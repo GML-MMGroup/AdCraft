@@ -22,6 +22,9 @@ import { AgentOperationFailure, PROVIDER_INSUFFICIENT_BALANCE_MESSAGE } from "./
 import { AgentPromptInputProjectionError } from "./prompt-input-projection.js";
 import { PythonInternalUnavailableError } from "./python-internal-client.js";
 
+// Match the generated AgentRunPolicy default and maximum input envelope.
+const DEFAULT_MAX_INPUT_BYTES = 4_194_304;
+
 interface ServerOptions {
   readonly internalToken: string;
   readonly mode: "real" | "fake";
@@ -138,7 +141,7 @@ const safeFailureMessages: Readonly<Record<string, string>> = {
 
 export function createAgentRuntimeServer(options: ServerOptions) {
   const adapter = options.adapter ?? new FakeAgentModelAdapter();
-  const maxRequestBytes = options.maxRequestBytes ?? 1_048_576;
+  const maxRequestBytes = options.maxRequestBytes ?? DEFAULT_MAX_INPUT_BYTES;
   const maxQueueBytes = options.maxQueueBytes ?? 262_144;
   const maxConcurrentRuns = options.maxConcurrentRuns ?? 2;
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
@@ -219,7 +222,7 @@ async function handleRun(
     request = validateAgentRunRequest(await readJson(incoming, maxRequestBytes));
   } catch (error) {
     const code =
-      error instanceof Error && error.message === "agent_context_registry_invalid"
+      error instanceof Error && ["agent_context_registry_invalid", "agent_run_budget_exceeded"].includes(error.message)
         ? error.message
         : "agent_protocol_mismatch";
     json(response, 422, { code });
@@ -252,7 +255,7 @@ async function handleRun(
     max_handoffs: 0 as const,
     timeout_seconds:
       request.policy?.timeout_seconds ?? operationDeadlineSeconds(request.operation),
-    max_input_bytes: request.policy?.max_input_bytes ?? 131_072,
+    max_input_bytes: request.policy?.max_input_bytes ?? DEFAULT_MAX_INPUT_BYTES,
     max_output_bytes: request.policy?.max_output_bytes ?? 262_144,
     max_event_bytes: request.policy?.max_event_bytes ?? 65_536,
   };
@@ -705,7 +708,7 @@ async function readJson(incoming: IncomingMessage, maximumBytes: number): Promis
   for await (const chunk of incoming) {
     const buffer = Buffer.from(chunk);
     bytes += buffer.byteLength;
-    if (bytes > maximumBytes) throw new Error("request too large");
+    if (bytes > maximumBytes) throw new Error("agent_run_budget_exceeded");
     chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf-8"));

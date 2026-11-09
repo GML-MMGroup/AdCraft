@@ -4280,7 +4280,7 @@
           "default": null
         },
         "user_input": {
-          "maxLength": 65536,
+          "maxLength": 4194304,
           "minLength": 1,
           "title": "User Input",
           "type": "string"
@@ -4346,7 +4346,7 @@
           "type": "integer"
         },
         "max_input_bytes": {
-          "default": 131072,
+          "default": 4194304,
           "maximum": 4194304,
           "minimum": 1,
           "title": "Max Input Bytes",

@@ -45,7 +45,9 @@ AgentEventType = Literal[
 ]
 
 _PROTOCOL_VERSION = "1"
-_MAX_CONTEXT_TEXT = 65_536
+AGENT_MAX_INPUT_BYTES = 4_194_304
+# The field guard counts characters; runtime admission bounds the entire UTF-8 envelope.
+_MAX_CONTEXT_TEXT = AGENT_MAX_INPUT_BYTES
 _MAX_COLLECTION_ITEMS = 128
 _MAX_SAFE_PAYLOAD_BYTES = 65_536
 _SENSITIVE_KEY_PARTS = ("api_key", "authorization", "credential", "secret", "token")
@@ -204,7 +206,7 @@ class AgentRunPolicy(_StrictModel):
     reasoning_mode: Literal["low", "deep"] | None = None
     enable_thinking: bool | None = None
     thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
-    max_input_bytes: int = Field(default=131_072, ge=1, le=4_194_304)
+    max_input_bytes: int = Field(default=AGENT_MAX_INPUT_BYTES, ge=1, le=AGENT_MAX_INPUT_BYTES)
     max_output_bytes: int = Field(default=262_144, ge=1, le=4_194_304)
     max_event_bytes: int = Field(default=65_536, ge=1, le=1_048_576)
 
