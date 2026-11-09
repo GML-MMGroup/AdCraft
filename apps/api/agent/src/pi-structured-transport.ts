@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import OpenAI from "openai";
+import { getGlobalDispatcher } from "undici";
 
 import {
   chatCompletionChunkFailure,
@@ -598,26 +599,37 @@ export async function executeOpenAICompletion(
     readonly presentationAnswerKey?: string | null;
   },
 ): Promise<StructuredCompletionResponse> {
+  // Native fetch otherwise imposes its own 300-second headers timeout, even
+  // when the SDK's frozen attempt budget permits a longer model response.
+  const dispatcher = getGlobalDispatcher().compose((dispatch) => (request, handler) =>
+    dispatch({
+      ...request,
+      headersTimeout: options.timeoutMs,
+      bodyTimeout: options.timeoutMs,
+    }, handler),
+  );
   const client = new OpenAI({
     apiKey: options.apiKey,
     baseURL: options.baseUrl,
     maxRetries: 0,
     timeout: options.timeoutMs,
+    fetchOptions: { dispatcher },
   });
-  if (!request.stream) {
-    return await client.chat.completions.create(
-      request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
-      { signal: options.signal },
-    );
-  }
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort(options.signal.reason);
   options.signal.addEventListener("abort", abortFromCaller, { once: true });
+  if (options.signal.aborted) abortFromCaller();
   const timer = setTimeout(
     () => controller.abort(new DOMException("Agent provider request timed out.", "TimeoutError")),
     options.timeoutMs,
   );
   try {
+    if (!request.stream) {
+      return await client.chat.completions.create(
+        request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+        { signal: controller.signal },
+      );
+    }
     const stream = await client.chat.completions.create(
       request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
       { signal: controller.signal },
@@ -636,6 +648,9 @@ export async function executeOpenAICompletion(
         ? { answerKey: options.presentationAnswerKey }
         : {}),
     });
+  } catch (error) {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    throw error;
   } finally {
     // Aggregation can stop on its own idle timeout while the HTTP iterator is pending.
     controller.abort();

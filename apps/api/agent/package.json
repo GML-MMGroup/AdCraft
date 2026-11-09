@@ -10,6 +10,7 @@
     "postinstall": "patch-package",
     "start": "tsx src/main.ts",
     "build": "tsc",
+    "diagnose:provider-conformance": "tsx scripts/diagnose-provider-conformance.ts",
     "generate:capabilities": "tsx scripts/generate-agent-capabilities.ts",
     "generate:skills": "tsx scripts/generate-skill-manifest.ts",
     "generate:manifest": "npm run generate:capabilities && tsx scripts/generate-runtime-manifest.ts",
@@ -23,7 +24,8 @@
     "@earendil-works/pi-ai": "0.81.1",
     "@earendil-works/pi-coding-agent": "0.81.1",
     "ajv": "^8.17.1",
-    "openai": "6.26.0"
+    "openai": "6.26.0",
+    "undici": "6.27.0"
   },
   "devDependencies": {
     "@types/node": "22.15.30",
