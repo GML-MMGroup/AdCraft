@@ -387,6 +387,7 @@ All orchestrated by AI agents, fully editable on an infinite canvas.
 
 - **Startup guide** — See [Getting Started](./docs/getting-started.md) for detailed startup instructions.
 - **Deployment options** — Follow [native deployment without Docker](./docs/deployment-without-docker.md) or [Docker deployment](./docs/deployment-with-docker.md).
+- **Local maintenance** — See [backup, upgrade and recovery](./docs/local-maintenance.md).
 
 ### 📦 Download the Resource Pack
 

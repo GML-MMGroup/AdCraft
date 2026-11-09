@@ -12,6 +12,7 @@ import {
 } from "../api/providerRegistry.ts";
 import { PageHeader } from "../components/Layout";
 import { ModelDefaultsPanel } from "./api-space/ModelDefaultsPanel.tsx";
+import { LocalActivityPanel } from "./api-space/LocalActivityPanel.tsx";
 import { ProviderCredentialCard } from "./api-space/ProviderCredentialCard.tsx";
 import { providerRegistryErrorMessage, type ApiSpaceNotice } from "./api-space/providerRegistryMessages.ts";
 import "./api-space.css";
@@ -139,6 +140,7 @@ export function ApiSpacePage() {
         notice={defaultsNotice}
         onSave={saveDefaults}
       />
+      <LocalActivityPanel />
     </section>
   );
 }

@@ -183,7 +183,7 @@ export function MediaPromptWorkbench({
         </p>
       ) : null}
       {combinationIssue ? (
-        <p className="agent-node-workbench__field-error" role="alert">{combinationIssue.message}</p>
+        <p className="agent-node-workbench__field-error" role="alert">{t("This combination of model parameters is not supported.")}</p>
       ) : null}
 
       {node.node_type !== "image" && canConfigureProvider && bodyDescriptors.length ? (

@@ -1,4 +1,5 @@
 import type { BrandTreatmentEdit, BrandTreatmentStepResultV1 } from "../features/agent-canvas/brand/brandDecisions";
+import type { LocalRuntimeStatisticsV1 } from "./localRuntimeStatistics.ts";
 import type {
   AgentCanvasChatMessageRequestV2,
   AgentCanvasChatTurnRetryRequestV2,
@@ -1403,6 +1404,10 @@ export const v2Api = {
       {},
       normalizeCanvasRuntimeSnapshotV2,
     );
+  },
+
+  localRuntimeStatistics(signal?: AbortSignal): Promise<LocalRuntimeStatisticsV1> {
+    return requestV2("/local-runtime/statistics?days=7", { signal });
   },
 
   agentCanvasEvents(

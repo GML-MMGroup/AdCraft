@@ -383,6 +383,7 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 
 - **启动指南** — 具体启动步骤请查看 [中文启动指南](./docs/getting-started_zh.md)。
 - **部署方式** — 可参考 [不使用 Docker 的本地部署教程](./docs/deployment-without-docker_zh.md) 或 [Docker 部署教程](./docs/deployment-with-docker_zh.md)。
+- **本地维护** — 参见[备份、升级与恢复说明](./docs/local-maintenance_zh.md)。
 
 ### 📦 下载资源包
 

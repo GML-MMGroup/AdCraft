@@ -2,6 +2,13 @@
   display: grid;
   gap: 18px;
 }
+.api-space-local-activity { padding: 18px 20px; }
+.api-space-local-activity__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.api-space-local-activity__heading h2 { margin: 0; font-size: 16px; }
+.api-space-local-activity__table { overflow-x: auto; }
+.api-space-local-activity table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.api-space-local-activity th, .api-space-local-activity td { padding: 10px 12px; border-bottom: 1px solid var(--stroke); text-align: left; vertical-align: top; }
+.api-space-local-activity th { white-space: nowrap; }
 .api-space-provider-surface {
   min-width: 0;
   overflow: clip;
