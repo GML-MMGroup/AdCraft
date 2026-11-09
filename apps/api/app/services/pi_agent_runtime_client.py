@@ -181,21 +181,26 @@ class PiAgentRuntimeClient:
         except httpx.HTTPStatusError as error:
             if terminal_count == 1 and terminal is not None:
                 return PiAgentRunOutcome(terminal_event=terminal, last_seq=last_seq)
+            response_code = _safe_runtime_response_code(error.response, body=runtime_error_body)
+            details = _runtime_unavailable_details(
+                request,
+                response_received=runtime_response_received,
+                stream_accepted=runtime_stream_accepted,
+                last_event_seq=last_seq,
+                http_status=error.response.status_code,
+                response_code=response_code,
+            )
+            if error.response.status_code == 422 and response_code == "agent_run_budget_exceeded":
+                raise PiAgentRuntimeError(
+                    response_code,
+                    "Agent request exceeds the configured input or execution budget.",
+                    details={**details, "retryable": False, "terminal_code": response_code},
+                ) from error
             raise PiAgentRuntimeError(
                 "agent_runtime_unavailable",
                 "Agent runtime is unavailable.",
                 retryable=True,
-                details=_runtime_unavailable_details(
-                    request,
-                    response_received=runtime_response_received,
-                    stream_accepted=runtime_stream_accepted,
-                    last_event_seq=last_seq,
-                    http_status=error.response.status_code,
-                    response_code=_safe_runtime_response_code(
-                        error.response,
-                        body=runtime_error_body,
-                    ),
-                ),
+                details=details,
             ) from error
         except (httpx.HTTPError, OSError) as error:
             if terminal_count == 1 and terminal is not None:
