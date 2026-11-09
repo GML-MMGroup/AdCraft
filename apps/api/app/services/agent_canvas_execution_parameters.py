@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2
@@ -307,7 +308,11 @@ class AgentCanvasExecutionParameterResolver:
 
 
 def _positive_integer_duration(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or (isinstance(value, float) and not math.isfinite(value))
+    ):
         raise _error(
             "model_parameter_unsupported",
             "BGM duration_seconds must be a positive integer.",
