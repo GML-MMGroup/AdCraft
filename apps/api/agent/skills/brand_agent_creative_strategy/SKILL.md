@@ -42,6 +42,11 @@ changes it, and why that evidence earns the ending. For a demonstration or mood-
 advertisement, establish its own proof or experiential progression instead.
 Use the selected method's defining mechanism; cast and setting alone do not fulfill it.
 
+For character-led comedy, choose a specific incongruous belief, action or inference
+that earns the reaction, and carry it in the synopsis. Track what viewers already
+know: after an explanatory cutaway, reserve a meaningful turn for the ending
+instead of explaining the same information again.
+
 Within this same generation, briefly check each candidate against the selected
 method, supported product facts and confirmed boundaries. Revise an unsupported
 connection before returning the candidates. Claims that a twist is surprising or
