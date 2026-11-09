@@ -11,6 +11,7 @@ from sqlalchemy import func, select, update
 
 from app.persistence.models import BrandDecisionLogRow, BrandFormGenerationLeaseRow
 from app.persistence.errors import V2PersistenceError
+from app.persistence.brand_continuation_repository import BrandContinuationRepository
 from app.schemas.brand_professional_mode import BrandOptionCardV1, TreatmentStepResultV1
 from app.schemas.brand_treatment_generation import treatment_output_model
 from app.services.brand_guided_interaction_bridge import BrandGuidedInteractionBridge
@@ -95,6 +96,14 @@ class BrandTreatmentExpansionService:
             )
             self.repository.resolve_card_in_transaction(connection, brand_id, card_id)
             self.repository.save_journey_in_transaction(connection, brand_id, journey)
+            workflow_id = snapshot.workflow_id
+            if workflow_id:
+                BrandContinuationRepository.enqueue_in_transaction(
+                    connection,
+                    brand_id=brand_id,
+                    workflow_id=workflow_id,
+                    revision=journey.stage_revision,
+                )
             frozen = state.context.read_in_transaction(connection, brand_id)
             self.service._append_log(
                 connection,
@@ -233,8 +242,10 @@ class BrandTreatmentExpansionService:
                     },
                     now=now,
                 )
-                self.repository.save_journey_in_transaction(
-                    connection, brand_id, advance_treatment_substep(journey)
+                next_journey = advance_treatment_substep(journey)
+                self.repository.save_journey_in_transaction(connection, brand_id, next_journey)
+                BrandContinuationRepository.checkpoint_in_transaction(
+                    connection, brand_id, journey.stage_revision, next_journey.stage_revision
                 )
             self.service._finish_presentation(
                 stream,

@@ -833,7 +833,11 @@ class BrandGuidedInteractionBridge:
         )
 
     def close_current_interaction(
-        self, workflow_id: str, *, status: Literal["submitted", "superseded"] = "submitted"
+        self,
+        workflow_id: str,
+        *,
+        status: Literal["submitted", "superseded"] = "submitted",
+        interaction_id: str | None = None,
     ) -> None:
         """Close the open interaction and awaiting for one workflow."""
 
@@ -844,12 +848,22 @@ class BrandGuidedInteractionBridge:
                 .where(
                     AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
                     AgentCanvasGuidedInteractionRow.status == "open",
+                    *(
+                        [AgentCanvasGuidedInteractionRow.interaction_id == interaction_id]
+                        if interaction_id
+                        else []
+                    ),
                 )
                 .values(status=status, updated_at=now_iso)
             )
             connection.execute(
                 AgentCanvasGuidanceAwaitingRow.__table__.delete().where(
-                    AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                    AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                    *(
+                        [AgentCanvasGuidanceAwaitingRow.interaction_id == interaction_id]
+                        if interaction_id
+                        else []
+                    ),
                 )
             )
 

@@ -19,6 +19,7 @@ from app.persistence.models import (
 )
 from app.schemas.brand_professional_mode import (
     BrandDecisionPanelV1,
+    BrandContinuationRequestV1,
     BrandFormV1,
     BrandHypothesisActionRequestV1,
     BrandJourneyStateV1,
@@ -38,6 +39,8 @@ from app.services.brand_guided_interaction_bridge import (
     BrandGuidedInteractionBridge,
 )
 from app.services.brand_treatment_edit import edit_treatment_step
+from app.services.brand_continuation import BrandContinuationWorker
+from app.persistence.brand_continuation_repository import BrandContinuationRepository
 from app.services.brand_question_state import BrandQuestionState
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.services.v2_structured_generation_runtime import StructuredGenerationRuntimeError
@@ -104,6 +107,8 @@ def _map_brand_runtime_error(error: StructuredGenerationRuntimeError) -> HTTPExc
         "agent_provider_transport_failed",
         "agent_runtime_unavailable",
         "structured_generation_unavailable",
+        "agent_structured_output_invalid",
+        "structured_generation_schema_failed",
     }
     return HTTPException(
         status_code=503 if retryable else 422,
@@ -176,6 +181,40 @@ def post_skill_selection(
 def post_next_question(
     workflow_id: str,
     database: V2Database = Depends(_brand_database),
+    request: BrandContinuationRequestV1 | None = None,
+) -> BrandOptionCardV1 | BrandFormV1 | Response:
+    # Reject unadmitted requests before publishing durable background work.
+    try:
+        _brand_id_for_workflow(database, workflow_id)
+    except V2PersistenceError:
+        _raise_not_found()
+    if not _has_guided_production_turn(database, workflow_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "brand_guided_production_required",
+                "message": "Brand Professional questions require a guided production request.",
+            },
+        )
+    try:
+        return BrandContinuationWorker(
+            database,
+            publish=lambda identity: _prepare_next_question(
+                identity, database, admission_checked=True
+            ),
+        ).run_workflow(
+            workflow_id, retry_failed=bool(request and request.retry_failed), join_running=True
+        )
+    except V2PersistenceError as error:
+        if error.code == "brand_form_generation_in_progress":
+            return Response(
+                status_code=204, headers={"Retry-After": "2", "X-Brand-Continuation": "running"}
+            )
+        raise _map_brand_error(error) from error
+
+
+def _prepare_next_question(
+    workflow_id: str, database: V2Database, *, admission_checked: bool = False
 ) -> BrandOptionCardV1 | BrandFormV1 | Response:
     try:
         brand_id = _brand_id_for_workflow(database, workflow_id)
@@ -185,7 +224,7 @@ def post_next_question(
     journey = service._repository.get_journey(brand_id)
     if journey is None or journey.stage in {"production"}:
         _raise_not_found()
-    if not _has_guided_production_turn(database, workflow_id):
+    if not admission_checked and not _has_guided_production_turn(database, workflow_id):
         raise HTTPException(
             status_code=409,
             detail={
@@ -528,6 +567,10 @@ def get_brand_decisions(
     if not _has_guided_production_turn(database, workflow_id):
         open_card = None
         open_form = None
+    continuation = BrandContinuationRepository(database).current(brand_id, journey.stage_revision)
+    # Delivery status is an operational projection, never a creative-context mutation.
+    if continuation and continuation["status"] == "failed":
+        journey = journey.model_copy(update={"stage_status": "ready"})
     return BrandDecisionPanelV1(
         project_id=project_id or "",
         workflow_id=workflow_id,
@@ -542,6 +585,17 @@ def get_brand_decisions(
         adspec=adspec,
         skill_stack=skill_stack,
         early_skills_confirmed=early_skills_confirmed,
+        continuation=(
+            {
+                "status": continuation["status"],
+                "attempt_count": continuation["attempt_count"],
+                "error_code": continuation["error_code"],
+                "retryable": continuation["status"] == "failed"
+                and continuation["error_code"] != "brand_context_stale",
+            }
+            if continuation
+            else None
+        ),
         treatment_steps=steps,
         treatment_locked=treatment_locked,
         brand_profile=document.brand_profile,

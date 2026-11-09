@@ -1044,6 +1044,9 @@ class AgentCanvasGuidedInteractionRepository:
                     created_at=datetime.now(timezone.utc).isoformat(),
                 )
             )
+            from app.persistence.brand_continuation_repository import BrandContinuationRepository
+
+            BrandContinuationRepository.enqueue_for_workflow_in_transaction(connection, workflow_id)
 
     def ensure_media_resume_delivery(
         self,

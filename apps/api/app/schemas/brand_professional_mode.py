@@ -427,10 +427,22 @@ class BrandTreatmentDocumentV1(_BrandModel):
     review: BrandTreatmentReviewV1 | None = None
 
 
+class BrandContinuationRequestV1(_BrandModel):
+    retry_failed: bool = Field(default=False, strict=True)
+
+
+class BrandContinuationProgressV1(_BrandModel):
+    status: Literal["queued", "running", "failed"]
+    attempt_count: int = Field(ge=0)
+    error_code: str | None = None
+    retryable: bool = False
+
+
 class BrandDecisionPanelV1(_BrandModel):
     """Read model behind the frontend decision panel."""
 
     early_skills_confirmed: bool = False
+    continuation: BrandContinuationProgressV1 | None = None
 
     project_id: str
     workflow_id: str

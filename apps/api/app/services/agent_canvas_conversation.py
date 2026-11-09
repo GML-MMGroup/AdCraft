@@ -1898,7 +1898,7 @@ class AgentConversationService:
                 and intent.mode in {"ordinary_conversation", "guided_production"}
                 and intent.requirement_patch is None
                 and not intent.explicit_elements
-                and intent.requested_capability is None
+                and (intent.requested_capability is None or intent.mode == "guided_production")
                 and not mentioned_node_ids
                 and not mentioned_asset_ids
             ):
@@ -2002,16 +2002,10 @@ class AgentConversationService:
                         journey=brand_journey,
                     ),
                 )
-                # The generic guided session is intentionally kept at its
-                # intake stage while Brand Professional Mode owns its own
-                # authoritative journey.  After a Brand form is submitted,
-                # that generic session still exists but has no open
-                # interaction.  Resume the Brand journey in that state too;
-                # otherwise a subsequent "continue" only repeats the gate
-                # message and never publishes the next form/card.
-                if self._brand_interaction_resumer is not None and (
-                    existing_session is None or existing_session.interaction is None
-                ):
+                # Brand owns this gate. A generic or obsolete interaction cannot
+                # suppress its durable continuation; the Brand resumer reuses a
+                # current card and joins existing work without selecting for the user.
+                if self._brand_interaction_resumer is not None:
                     try:
                         self._brand_interaction_resumer(
                             turn.workflow_id,
@@ -2558,6 +2552,12 @@ class AgentConversationService:
         workflow_id: str,
         journey: BrandJourneyStateV1,
     ) -> str:
+        if journey.stage == "treatment" and journey.stage_status == "working":
+            if response_locale.lower().startswith("zh"):
+                return (
+                    "正在接续当前创意步骤，保留你已选择的方案；若该步骤仍在执行，会复用现有任务。"
+                )
+            return "Resuming the current creative step with your selected direction preserved. Any running work will be reused."
         if journey.stage == "treatment":
             project_id = self._brand_decisions.project_id_for_workflow(workflow_id)
             brand_id = (

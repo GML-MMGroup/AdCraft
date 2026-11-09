@@ -69,7 +69,9 @@ class BrandGuidedInteractionSubmitter:
                     result,
                 )
             else:
-                self._bridge.close_current_interaction(workflow_id)
+                self._bridge.close_current_interaction(
+                    workflow_id, interaction_id=interaction.interaction_id
+                )
             revision = self._session_revision(workflow_id) or 1
             return GuidedInteractionAcceptedV1(
                 workflow_id=workflow_id,
@@ -187,7 +189,9 @@ class BrandGuidedInteractionSubmitter:
                 value_text=value_text,
                 provenance="user_confirmed",
             )
-        self._bridge.close_current_interaction(workflow_id)
+        self._bridge.close_current_interaction(
+            workflow_id, interaction_id=interaction.interaction_id
+        )
         submission_identity = submission_id
         revision = self._session_revision(workflow_id) or 1
         accepted = GuidedInteractionAcceptedV1(
