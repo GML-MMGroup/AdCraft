@@ -40,6 +40,8 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
     "materialization": _OperationBudget(480, 270, 180, 30, 4_096, 3_072),
     "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
+# Selected details need room for both reasoning and the complete JSON response.
+_BRAND_TREATMENT_DETAIL_BUDGET = _OperationBudget(480, 270, 180, 30, 8_192, 3_072)
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
 _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
 # New directions use a compact schema. Retain the compatible routing budget;
@@ -214,6 +216,9 @@ class AgentOperationPolicyRegistryV2:
             if operation == "brand_slot_form"
             else _BRAND_HYPOTHESIS_BUDGET
             if operation == "brand_hypothesis"
+            else _BRAND_TREATMENT_DETAIL_BUDGET
+            if operation == "brand_treatment_step"
+            and contract_id == "CreativeTreatmentDetailOutputV1"
             else _BRAND_SLOT_BUDGET
             if operation == "brand_slot_question"
             else self._budgets[policy_class]

@@ -22,6 +22,24 @@ from app.schemas.brand_treatment_detail import (
 )
 
 
+class CharacterProductionRequirementsV1(BrandProductionRequirementsV1):
+    """Character authoring cannot acquire scene or prop authority."""
+
+    scene_presence: Literal["unspecified"] = "unspecified"
+    scenes: tuple[()] = ()
+    scene_sources: tuple[()] = ()
+    prop_presence: Literal["unspecified"] = "unspecified"
+    prop_sources: tuple[()] = ()
+
+
+class SceneProductionRequirementsV1(BrandProductionRequirementsV1):
+    """Scene authoring preserves the confirmed character roster."""
+
+    character_count: None = None
+    characters: tuple[()] = ()
+    character_sources: tuple[()] = ()
+
+
 class SelectedTreatmentStepV1(CreativeTreatmentStepOutputV1):
     options: tuple[TreatmentCandidateV1, ...] = Field(min_length=1, max_length=1)
 
@@ -57,9 +75,16 @@ def treatment_output_model(
             ),
         ),
         **(
-            {"production_requirements": (BrandProductionRequirementsV1, ...)}
+            {
+                "production_requirements": (
+                    CharacterProductionRequirementsV1
+                    if step_key == "character"
+                    else SceneProductionRequirementsV1,
+                    ...,
+                )
+            }
             if step_key in {"character", "scene"}
-            else {}
+            else {"production_requirements": (None, Field(default=None, exclude=True))}
         ),
     )
     candidate_model = create_model(

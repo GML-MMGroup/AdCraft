@@ -1221,7 +1221,7 @@ function repairPayload(
     input.request.contract_name === "CompactTurnIntentDecisionV3" &&
     typeof currentUserInput === "string";
   const isTreatment = input.request.operation === "brand_treatment_step" &&
-    input.request.contract_name === "CreativeTreatmentOutputV1";
+    ["CreativeTreatmentOutputV1", "CreativeTreatmentDetailOutputV1"].includes(input.request.contract_name ?? "");
   const isRoleBrief = input.request.operation === "author_role_brief" &&
     input.request.contract_name === "RoleCreativeBriefV2";
   const isBrandTreatmentReview = input.request.operation === "brand_treatment_review" &&
