@@ -1670,6 +1670,26 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(request).not.toHaveProperty("model_id");
   });
 
+  it("explains unsupported parameter combinations before allowing a video request", () => {
+    const node = withDescriptorVideoModel({ ...makeNode("video"), parameters: { duration_seconds: 10, resolution: "1080p" } });
+    const props = renderWorkbench(node, {
+      providerModels: [{
+        ...descriptorVideoModel,
+        parameter_descriptors: [
+          ...descriptorVideoModel.parameter_descriptors!,
+          { name: "resolution", value_type: "enum", required: false, allowed_values: ["720p", "1080p"], minimum: null, maximum: null, default: null },
+        ],
+        parameter_legal_combinations: [
+          { duration_seconds: 10, resolution: "720p" },
+          { duration_seconds: 5, resolution: "1080p" },
+        ],
+      }],
+    });
+    expect(screen.getByText("This combination of model parameters is not supported.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
   it("opens the shared assets browser from the media workbench", () => {
     const props = renderWorkbench(makeNode("video"));
 
@@ -1887,6 +1907,21 @@ describe("AgentCanvasInlineWorkbench", () => {
   });
 });
 
+
+it("rebases a local parameter edit over a background status update", async () => {
+  const node = { ...makeNode("video"), parameters: { duration_seconds: 8 } };
+  const refreshed = { ...node, revision: 2, status: "ready" as const, output_asset_id: "new-output" };
+  const patchNode = vi.fn(async (_id, patch, options) => { options.onSaved({ ...refreshed, ...patch, revision: 3 }); });
+  const onRun = vi.fn();
+  const { result, rerender } = renderHook(({ current }) => useNodeWorkbenchDraft({
+    workflow: makeWorkflow(current), node: current, patchNode, onRun, onSaveImageToLibrary: vi.fn(),
+  }), { initialProps: { current: node } });
+  act(() => result.current.setParameters({ duration_seconds: 9 }));
+  rerender({ current: refreshed });
+  await act(async () => { await result.current.run(); });
+  expect(patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({ parameters: { duration_seconds: 9 } }), expect.objectContaining({ expectedNodeRevision: 2 }));
+  expect(onRun).toHaveBeenCalledWith(expect.objectContaining({ revision: 3, parameters: { duration_seconds: 9 }, output_asset_id: "new-output" }));
+});
 
 it("retains the draft revision when a concurrent same-node update arrives", async () => {
   const node = { ...makeNode("video"), parameters: { duration_seconds: 8 } };

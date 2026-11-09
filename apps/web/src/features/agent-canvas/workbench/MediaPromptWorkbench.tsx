@@ -116,9 +116,10 @@ export function MediaPromptWorkbench({
     ? parameterDescriptors.filter((descriptor) => !VIDEO_TOOLBAR_PARAMETERS.includes(descriptor.name) && descriptor !== audioDescriptor)
     : parameterDescriptors;
   const parameterIssues = selectedModel && selectedModel.parameter_schema_id
-    ? validateModelParameters(parameterDescriptors, draft.parameters)
+    ? validateModelParameters(parameterDescriptors, draft.parameters, selectedModel.parameter_legal_combinations)
     : [];
   const parametersInvalid = node.node_type !== "image" && parameterIssues.length > 0;
+  const combinationIssue = parameterIssues.find((issue) => issue.code === "unsupported_combination");
   const audioIssue = audioDescriptor ? parameterIssues.find((issue) => issue.name === "generate_audio") : undefined;
   const publishing = runtime?.phase === "publishing";
   const executionError = mediaExecutionError(node, runtime);
@@ -180,6 +181,9 @@ export function MediaPromptWorkbench({
         <p className="agent-node-workbench__field-error">
           {t("Generate audio")}: {audioIssue.message}
         </p>
+      ) : null}
+      {combinationIssue ? (
+        <p className="agent-node-workbench__field-error" role="alert">{combinationIssue.message}</p>
       ) : null}
 
       {node.node_type !== "image" && canConfigureProvider && bodyDescriptors.length ? (

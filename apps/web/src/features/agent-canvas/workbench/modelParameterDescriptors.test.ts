@@ -17,6 +17,24 @@ function descriptor(overrides: Partial<ModelParameterDescriptorV1>): ModelParame
 }
 
 describe("validateModelParameters", () => {
+  it("rejects individually valid values when their combination is unsupported", () => {
+    const descriptors = [
+      descriptor({ name: "resolution", value_type: "enum", allowed_values: ["720p", "1080p"] }),
+      descriptor({ name: "duration_seconds", minimum: 5, maximum: 15 }),
+    ];
+    const combinations = [
+      { resolution: "720p", duration_seconds: 15 },
+      { resolution: "1080p", duration_seconds: 5 },
+    ];
+    expect(validateModelParameters(descriptors, {
+      resolution: "1080p", duration_seconds: 15,
+    }, combinations)).toHaveLength(2);
+    expect(validateModelParameters(descriptors, {
+      resolution: "1080p", duration_seconds: 5,
+    }, combinations)).toEqual([]);
+    expect(validateModelParameters(descriptors, { resolution: "1080p" }, combinations)).toEqual([]);
+  });
+
   it("accepts declared enum, boolean, integer, number, and string values", () => {
     const descriptors = [
       descriptor({ name: "resolution", value_type: "enum", allowed_values: ["720p", "1080p"] }),
