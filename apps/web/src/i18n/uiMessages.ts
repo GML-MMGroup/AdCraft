@@ -21,6 +21,8 @@ export const uiMessages = {
   "{seconds}s ({count} samples)": "{seconds} 秒（{count} 个样本）",
   "Provider costs are not reported.": "供应商未提供费用数据。",
   "This combination of model parameters is not supported.": "当前模型不支持这组参数组合。",
+  "Global Run skipped nodes with model or parameter issues: {nodes}.": "以下节点因模型配置或参数问题未启动，请检查：{nodes}。",
+  "Dismiss run notice": "关闭运行提示",
   "The canvas changed since this step, so it can't be undone.": "画布已被修改，无法撤销这一步",
   "Undo failed. Please try again.": "撤销失败，请稍后再试",
   "The Agent is writing this node's prompt; try again shortly.": "Agent 正在写这个节点的提示词，暂时无法撤销",

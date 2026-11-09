@@ -127,6 +127,26 @@ describe("useAgentCanvasRuntime", () => {
     vi.useRealTimers();
   });
 
+  it("reports model preflight skips without treating already-ready nodes as errors", async () => {
+    api.agentCanvasEvents.mockReset().mockResolvedValue({ workflow_id: "workflow-1", events: [], next_cursor: 42 });
+    api.runAgentCanvas.mockResolvedValueOnce({
+      skipped: [
+        { node_id: "video-2", reason: "model_parameter_incompatible" },
+        { node_id: "image-1", reason: "node_already_ready" },
+      ],
+    });
+    const callbacks = { applyWorkflow: vi.fn(), mergePublishedAsset: vi.fn(), mergeNode: vi.fn() };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    await result.current.actions.runAll();
+    await waitFor(() => expect(result.current.state.runAdmissionNotice).toBe(
+      "Global Run skipped nodes with model or parameter issues: video-2.",
+    ));
+    api.runAgentCanvas.mockResolvedValueOnce({ skipped: [] });
+    await result.current.actions.runAll();
+    await waitFor(() => expect(result.current.state.runAdmissionNotice).toBeNull());
+  });
+
   it("recovers an expired replay cursor from the canonical runtime snapshot", async () => {
     const callbacks = {
       applyWorkflow: vi.fn(),
