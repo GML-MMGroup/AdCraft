@@ -6,6 +6,8 @@ from __future__ import annotations
 _EXPLICIT_RETRYABLE_ERRORS = frozenset(
     {
         "agent_provider_timeout",
+        "agent_deadline_exceeded",
+        "agent_run_interrupted",
         "agent_provider_transport_failed",
         "agent_structured_output_invalid",
         "agent_runtime_unavailable",

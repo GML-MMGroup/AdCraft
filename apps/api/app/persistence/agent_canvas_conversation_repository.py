@@ -137,7 +137,10 @@ from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
-from app.services.agent_canvas_user_presentation import build_presentation_metadata
+from app.services.agent_canvas_user_presentation import (
+    build_presentation_metadata,
+    capability_failure_message,
+)
 from app.services.agent_canvas_retry_fingerprint import journey_fingerprint_from_rows
 from app.services.agent_canvas_production_journey import (
     CURRENT_GUIDED_JOURNEY_POLICY_REVISION,
@@ -6019,11 +6022,13 @@ def publish_capability_failure_in_transaction(
 
     if turn["turn_kind"] != "capability":
         return
+    response_locale = _guidance_response_locale(connection, str(turn["workflow_id"]))
     metadata = {
         "status": "failed",
         "error_code": code,
         "retryable": actionable_failure.retryable,
         "actionable_failure": actionable_failure.model_dump(mode="json"),
+        "response_locale": response_locale,
     }
     activities = connection.execute(
         select(AgentCanvasChatEntryRow).where(
@@ -6055,21 +6060,15 @@ def publish_capability_failure_in_transaction(
         is not None
     ):
         return
-    explanation = (
-        "Agent provider request timed out. The current creative step stopped."
-        if code in {"agent_provider_timeout", "agent_deadline_exceeded"}
-        else "The current creative step failed."
-    )
-    recovery = (
-        "Please retry this failed response to continue."
-        if actionable_failure.retry_scope == "turn" and actionable_failure.retryable
-        else "Please review the failure details before continuing."
-    )
     _publish_assistant_message_in_transaction(
         connection,
         events=events,
         turn=turn,
-        assistant_message=f"{explanation} {recovery}",
+        assistant_message=capability_failure_message(
+            code,
+            retryable=actionable_failure.retry_scope == "turn" and actionable_failure.retryable,
+            response_locale=response_locale,
+        ),
         now=now,
         entry_id=entry_id,
         metadata=metadata,

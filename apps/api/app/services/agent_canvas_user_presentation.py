@@ -34,6 +34,36 @@ _MESSAGE_ARGS_ADAPTER = TypeAdapter(dict[str, JsonValue])
 _TRUSTED_STORED_KEY_PREFIXES = ("planning:", "receipt:")
 
 
+def capability_failure_message(code: str, *, retryable: bool, response_locale: str) -> str:
+    """Explain a failed creative step using the stored product response locale."""
+
+    if _safe_locale(response_locale).lower().startswith("zh"):
+        explanation = {
+            "agent_provider_timeout": "模型响应超时，本次创意步骤已停止。",
+            "agent_deadline_exceeded": "本次创意步骤已超时，任务已停止。",
+            "agent_run_interrupted": "本次创意步骤执行中断，未保存完整结果。",
+        }.get(code, "当前创意步骤未完成。")
+        recovery = (
+            "请重试当前步骤继续，无需重新生成已完成的素材。"
+            if retryable
+            else "请查看错误详情后继续。"
+        )
+        return f"{explanation}已完成的素材和已确认的内容均已保留。{recovery}"
+    explanation = {
+        "agent_provider_timeout": "The model response timed out.",
+        "agent_deadline_exceeded": "This creative step exceeded its time limit.",
+        "agent_run_interrupted": (
+            "This creative step was interrupted before a complete result was saved."
+        ),
+    }.get(code, "The current creative step failed.")
+    recovery = (
+        "Retry this step to continue."
+        if retryable
+        else "Please review the failure details before continuing."
+    )
+    return f"{explanation} Completed materials and confirmed choices are preserved. {recovery}"
+
+
 class AgentCanvasTimelinePresentation:
     """Project one raw timeline page into stable user-facing items."""
 

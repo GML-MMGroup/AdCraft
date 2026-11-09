@@ -266,8 +266,13 @@ async function handleRun(
   const budget = new RunBudget(policy, effectiveDeadline);
   try {
     budget.observeInput(Buffer.byteLength(JSON.stringify(request)));
-  } catch {
-    json(response, 422, { code: "agent_run_budget_exceeded" });
+  } catch (error) {
+    const code = error instanceof RunBudgetFailure ? error.code : "agent_run_budget_exceeded";
+    json(response, 422, {
+      code,
+      message: safeFailureMessages[code],
+      retryable: code === "agent_deadline_exceeded",
+    });
     return;
   }
   response.writeHead(200, {

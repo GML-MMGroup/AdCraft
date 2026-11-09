@@ -190,11 +190,18 @@ class PiAgentRuntimeClient:
                 http_status=error.response.status_code,
                 response_code=response_code,
             )
-            if error.response.status_code == 422 and response_code == "agent_run_budget_exceeded":
+            if error.response.status_code == 422 and response_code in {
+                "agent_run_budget_exceeded",
+                "agent_deadline_exceeded",
+            }:
+                expired = response_code == "agent_deadline_exceeded"
                 raise PiAgentRuntimeError(
                     response_code,
-                    "Agent request exceeds the configured input or execution budget.",
-                    details={**details, "retryable": False, "terminal_code": response_code},
+                    "Agent run deadline exceeded. Retry the current step with a fresh attempt."
+                    if expired
+                    else "Agent request exceeds the configured input or execution budget.",
+                    retryable=expired,
+                    details={**details, "retryable": expired, "terminal_code": response_code},
                 ) from error
             raise PiAgentRuntimeError(
                 "agent_runtime_unavailable",

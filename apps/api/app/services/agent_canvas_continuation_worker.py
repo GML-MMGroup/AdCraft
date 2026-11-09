@@ -372,12 +372,18 @@ def _structured_failure(error: Exception) -> tuple[str, bool, bool]:
     if isinstance(error, AgentStructuredContractRegistryError):
         return error.code, False, False
     if isinstance(error, PiAgentRuntimeError):
-        return error.code, error.retryable and error.code != "agent_deadline_exceeded", False
+        return (
+            error.code,
+            error.retryable
+            and error.code not in {"agent_deadline_exceeded", "agent_run_interrupted"},
+            False,
+        )
     if isinstance(error, V2PersistenceError):
         retryable = error.details.get("retryable", False)
         return (
             error.code,
-            bool(retryable) and error.code != "agent_deadline_exceeded",
+            bool(retryable)
+            and error.code not in {"agent_deadline_exceeded", "agent_run_interrupted"},
             bool(error.details.get("proposal_retryable", False)),
         )
     return "continuation_dispatch_failed", True, False
