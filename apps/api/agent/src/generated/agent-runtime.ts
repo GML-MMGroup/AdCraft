@@ -18,7 +18,9 @@ export type BrandProductionContextV1 = { readonly "projection_version"?: "brand_
 
 export type TreatmentSectionV1 = { readonly "key": "action_sequence" | "ambience" | "appearance" | "boundaries" | "color_and_light" | "effects" | "ending" | "identity" | "materials" | "middle" | "music_entry" | "opening" | "people_camera" | "performance" | "product_role" | "product_shots" | "progression" | "prohibited_shots" | "resolution" | "setup" | "spaces" | "wardrobe"; readonly "title": string; readonly "text": string };
 
-export type TreatmentDetailV1 = { readonly "sections": ReadonlyArray<TreatmentSectionV1>; readonly "production_requirements"?: BrandProductionRequirementsV1 | null };
+export type TreatmentMusicRequirementV1 = { readonly "presence": "exclude" | "include" | "unspecified"; readonly "source_quote": string };
+
+export type TreatmentDetailV1 = { readonly "sections": ReadonlyArray<TreatmentSectionV1>; readonly "production_requirements"?: BrandProductionRequirementsV1 | null; readonly "music_requirement"?: TreatmentMusicRequirementV1 | null };
 
 export type TreatmentCandidateV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail": TreatmentDetailV1; readonly "authoring_mode"?: "detailed" | "summary" };
 
@@ -502,7 +504,7 @@ export type JourneyEvidenceV2 = { readonly "evidence_id": string; readonly "evid
 
 export type GuidedProductionJourneyV2 = { readonly "policy_version"?: "fixed_ad_production_v2"; readonly "journey_policy_id"?: "proposal_submit_auto_result_v1" | null; readonly "journey_policy_revision"?: number | null; readonly "planning_wave_id"?: string | null; readonly "stage"?: "bgm" | "character" | "completed" | "editing" | "intake" | "narrative_direction" | "product" | "props" | "scene" | "storyboard_grids" | "storyboard_plan" | "style_lock" | "videos" | "world_view"; readonly "stage_status"?: "blocked_external" | "completed" | "failed" | "ready" | "waiting_user" | "working"; readonly "stage_revision"?: number; readonly "decisions"?: ReadonlyArray<JourneyElementDecisionV2>; readonly "active_occurrence_id"?: string | null; readonly "active_action"?: JourneyActionProjectionV2 | null; readonly "suspended_action"?: JourneyActionProjectionV2 | null; readonly "transition_evidence"?: ReadonlyArray<JourneyTransitionEvidenceV2> };
 
-export type JourneyPolicyContextV2 = { readonly "journey": GuidedProductionJourneyV2; readonly "clarification_required"?: boolean; readonly "included_character_occurrence_ids"?: ReadonlyArray<string> | null };
+export type JourneyPolicyContextV2 = { readonly "journey": GuidedProductionJourneyV2; readonly "clarification_required"?: boolean; readonly "bgm_presence"?: "exclude" | "include" | "unspecified"; readonly "included_character_occurrence_ids"?: ReadonlyArray<string> | null };
 
 export type JourneyPolicyResultV2 = { readonly "action": "advance_stage" | "complete" | "invoke_capability" | "invoke_internal_checkpoint" | "materialize_selected_option" | "prepare_editing" | "wait_for_user"; readonly "expected_stage_revision": number; readonly "next_stage"?: "bgm" | "character" | "completed" | "editing" | "intake" | "narrative_direction" | "product" | "props" | "scene" | "storyboard_grids" | "storyboard_plan" | "style_lock" | "videos" | "world_view" | null; readonly "capability_id"?: "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting" | null; readonly "occurrence_id"?: string | null; readonly "character_phase"?: "main" | "turnaround" | null; readonly "requires_model_call"?: boolean };
 

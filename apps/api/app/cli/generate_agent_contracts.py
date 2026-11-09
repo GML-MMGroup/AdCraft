@@ -67,6 +67,7 @@ CONTRACT_MODELS = (
     brand_production_context.BrandProductionStepV1,
     brand_production_context.BrandProductionContextV1,
     brand_treatment_detail.TreatmentSectionV1,
+    brand_treatment_detail.TreatmentMusicRequirementV1,
     brand_treatment_detail.TreatmentDetailV1,
     brand_professional_mode.TreatmentCandidateV1,
     brand_professional_mode.TreatmentSummaryCandidateV1,

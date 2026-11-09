@@ -18,6 +18,7 @@ from app.schemas.brand_professional_mode import (
 from app.schemas.brand_treatment_detail import (
     TREATMENT_SECTION_KEYS,
     TreatmentDetailV1,
+    TreatmentMusicRequirementV1,
     TreatmentSectionV1,
 )
 
@@ -85,6 +86,11 @@ def treatment_output_model(
             }
             if step_key in {"character", "scene"}
             else {"production_requirements": (None, Field(default=None, exclude=True))}
+        ),
+        **(
+            {"music_requirement": (TreatmentMusicRequirementV1, ...)}
+            if step_key == "sound"
+            else {"music_requirement": (None, Field(default=None, exclude=True))}
         ),
     )
     candidate_model = create_model(

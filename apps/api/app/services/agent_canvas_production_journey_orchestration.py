@@ -384,7 +384,7 @@ class GuidedProductionJourneyService:
     ) -> JourneyPolicyContextV2:
         revision = self._requirements.get_current(session.workflow_id)
         authority = character_occurrence_authority_for_authoring(revision)
-        return _context(
+        context = _context(
             session,
             clarification_required=clarification_required,
             included_character_occurrence_ids=(
@@ -393,6 +393,20 @@ class GuidedProductionJourneyService:
                 else None
             ),
         )
+        controls = {item.control: item.value for item in revision.ledger.hard_controls}
+        bgm_presence = (
+            "exclude"
+            if controls.get("audio_mode") == "none"
+            else next(
+                (
+                    item.presence
+                    for item in revision.ledger.element_presence
+                    if item.element_kind == "audio"
+                ),
+                "unspecified",
+            )
+        )
+        return context.model_copy(update={"bgm_presence": bgm_presence})
 
     def sync_character_occurrences(
         self,

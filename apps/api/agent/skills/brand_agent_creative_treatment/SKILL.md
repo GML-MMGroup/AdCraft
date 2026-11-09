@@ -94,6 +94,9 @@ The following choice-authoring rules apply to `brand_treatment_step` only.
     hold time consistent with the campaign duration.
   - sound: ambience, effects, music_entry, progression. Specify environmental
     sounds, emphasized effects, the action that cues music and later changes.
+    Set detail.music_requirement.presence to include if music occurs anywhere,
+    exclude only for a wholly music-free film, otherwise unspecified. source_quote
+    must quote music_entry exactly. This decision does not disable speech or effects.
 - All titles and creative text must use response_locale. Keep section keys in
   canonical English. Say explicitly when an element is intentionally absent.
 - Preserve all confirmed choices and user restrictions. Do not invent research

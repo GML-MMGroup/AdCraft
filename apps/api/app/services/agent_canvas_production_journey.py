@@ -327,6 +327,12 @@ class GuidedProductionJourneyPolicyService:
         if journey.active_action is not None or journey.suspended_action is not None:
             return _result(journey, "wait_for_user")
         if (
+            journey.stage == "bgm"
+            and isinstance(context, JourneyPolicyContextV2)
+            and context.bgm_presence == "exclude"
+        ):
+            return _result(journey, "advance_stage", next_stage=descriptor.successor)
+        if (
             journey.stage == "character"
             and isinstance(context, JourneyPolicyContextV2)
             and context.included_character_occurrence_ids is None
@@ -551,6 +557,13 @@ class GuidedProductionJourneyPolicyService:
         journey: GuidedProductionJourneyV2,
         evidence: JourneyEvidenceV2,
     ) -> tuple[JourneyElementDecisionV2, ...]:
+        if evidence.evidence_kind == "bgm_excluded" and evidence.occurrence_id is None:
+            return tuple(
+                item.model_copy(update={"outcome": "exclude"})
+                if item.element_kind == "audio"
+                else item
+                for item in journey.decisions
+            )
         if evidence.occurrence_id is None:
             return journey.decisions
         outcome = (

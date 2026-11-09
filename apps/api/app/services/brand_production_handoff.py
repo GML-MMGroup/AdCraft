@@ -108,6 +108,20 @@ def reviewed_inventory_patch(
                 source_quote=inventory.prop_sources[0].quote,
             )
         )
+    for step in document.treatment_steps:
+        detail = step.structured_detail
+        if step.step_key != "sound" or detail is None or detail.music_requirement is None:
+            continue
+        detail.validate_step("sound")
+        music = detail.music_requirement
+        if music.presence != "unspecified":
+            elements.append(
+                RequirementElementPresencePatchV1(
+                    element_kind="audio",
+                    presence=music.presence,
+                    source_quote=music.source_quote,
+                )
+            )
     return RequirementPatchV1(
         controls_to_set=tuple(controls), character_occurrences_to_set=occurrences
     ), tuple(elements)
@@ -512,6 +526,18 @@ class BrandProductionHandoffService:
         product_count = controls.get("product_count", 1)
         source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
         inventory_patch, inventory_elements = reviewed_inventory_patch(document)
+        audio_element = next(
+            (item for item in inventory_elements if item.element_kind == "audio"),
+            RequirementElementPresencePatchV1(
+                element_kind="audio",
+                presence="exclude" if audio_mode == "none" else "include",
+                source_quote=f"audio {audio_mode}",
+            ),
+        )
+        if audio_mode == "none":
+            audio_element = RequirementElementPresencePatchV1(
+                element_kind="audio", presence="exclude", source_quote="audio none"
+            )
         source += "\n" + "\n".join(
             section.text
             for step in document.treatment_steps
@@ -566,12 +592,8 @@ class BrandProductionHandoffService:
                 RequirementElementPresencePatchV1(
                     element_kind="video", presence="include", source_quote="video"
                 ),
-                RequirementElementPresencePatchV1(
-                    element_kind="audio",
-                    presence="exclude" if audio_mode == "none" else "include",
-                    source_quote=f"audio {audio_mode}",
-                ),
-                *inventory_elements,
+                audio_element,
+                *(item for item in inventory_elements if item.element_kind != "audio"),
             ),
         )
 

@@ -59,12 +59,24 @@ class TreatmentSectionV1(BaseModel):
         return value
 
 
+class TreatmentMusicRequirementV1(BaseModel):
+    """Music intent copied from the selected sound text, independent of speech."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    presence: Literal["include", "exclude", "unspecified"]
+    source_quote: str = Field(min_length=1, max_length=400)
+
+
 class TreatmentDetailV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     sections: tuple[TreatmentSectionV1, ...] = Field(min_length=2, max_length=4)
     # Omit absent metadata so historical document digests remain stable.
     production_requirements: BrandProductionRequirementsV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    music_requirement: TreatmentMusicRequirementV1 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 
@@ -78,6 +90,17 @@ class TreatmentDetailV1(BaseModel):
         required = dict(TREATMENT_SECTION_KEYS).get(step_key)
         if required is None or {section.key for section in self.sections} != set(required):
             raise ValueError(f"Treatment {step_key} requires sections: {required}.")
+        music = self.music_requirement
+        if music is not None:
+            music_text = next(
+                (section.text for section in self.sections if section.key == "music_entry"), ""
+            )
+            if (
+                step_key != "sound"
+                or not music.source_quote.strip()
+                or music.source_quote not in music_text
+            ):
+                raise ValueError("Music intent must quote this sound step's music_entry exactly.")
         inventory = self.production_requirements
         if inventory is None:
             return

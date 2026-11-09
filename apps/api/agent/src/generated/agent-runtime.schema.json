@@ -21787,6 +21787,16 @@
     "JourneyPolicyContextV2": {
       "additionalProperties": false,
       "properties": {
+        "bgm_presence": {
+          "default": "unspecified",
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Bgm Presence",
+          "type": "string"
+        },
         "clarification_required": {
           "default": false,
           "title": "Clarification Required",
@@ -35597,6 +35607,17 @@
     "TreatmentDetailV1": {
       "additionalProperties": false,
       "properties": {
+        "music_requirement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TreatmentMusicRequirementV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "production_requirements": {
           "anyOf": [
             {
@@ -35622,6 +35643,33 @@
         "sections"
       ],
       "title": "TreatmentDetailV1",
+      "type": "object"
+    },
+    "TreatmentMusicRequirementV1": {
+      "additionalProperties": false,
+      "description": "Music intent copied from the selected sound text, independent of speech.",
+      "properties": {
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "presence",
+        "source_quote"
+      ],
+      "title": "TreatmentMusicRequirementV1",
       "type": "object"
     },
     "TreatmentSectionV1": {
