@@ -625,9 +625,20 @@ def _semantic_projections(
             for name, expected in protected.items():
                 actual = getattr(brief, name)
                 if actual not in {"", "unspecified"} and actual != expected:
-                    raise _error(
-                        "character_turnaround_identity_conflict",
-                        "Turnaround identity differs from the bound Character Main authority.",
+                    logger.warning(
+                        "%s",
+                        json.dumps(
+                            {
+                                "event": "role_prompt_soft_violation",
+                                "call_site": "compiler",
+                                "role_variant": context.role_variant,
+                                "violation_category": "character_identity_difference",
+                                "field_path": name,
+                                "node_id": context.node_id,
+                                "workflow_id": context.workflow_id,
+                            },
+                            sort_keys=True,
+                        ),
                     )
             return projection, None, None
         return None, None, None

@@ -1091,7 +1091,7 @@ class AgentCanvasWorkflowRepository:
                             intent="invalidate"
                             if current.generation_prompt and not node.generation_prompt
                             else "author"
-                            if node.prompt_preparation.status == "ready"
+                            if node.prompt_preparation.status in {"ready", "failed"}
                             and (
                                 node.generation_prompt != current.generation_prompt
                                 or node.prompt_presentation != current.prompt_presentation
