@@ -2406,3 +2406,30 @@ describe("brand Skill sending outside the modal", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
+
+it.each(["request", "persisted"])("offers a Brand retry after %s continuation failure without resubmitting a choice", (source) => {
+  const base = mockChatResult();
+  const retry = vi.fn();
+  const chat = {
+    ...base,
+    state: { ...base.state, brandNextQuestionIssue: source === "request" ? "Could not load the next step." : null },
+    actions: { ...base.actions, retryBrandNextQuestion: retry },
+  };
+  panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+  const decisions = normalizeBrandDecisionPanelV1({
+    project_id: roleMotionWorkflow.project_id, workflow_id: roleMotionWorkflow.workflow_id,
+    mode: "brand", brand_name: "Brand",
+    journey: { stage: "treatment", stage_revision: 15, stage_status: "ready" },
+    continuation: source === "persisted" ? { status: "failed", attempt_count: 1, retryable: true, error_code: "agent_structured_output_invalid" } : null,
+  });
+  const view = render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
+    brandMode brandStage="treatment" brandDecisions={decisions} />);
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(retry).toHaveBeenCalledOnce();
+  expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
+  view.rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()}
+    brandMode brandStage="treatment" brandDecisions={{ ...decisions, open_card: {
+      card_id: "next-card", stage: "treatment", stage_revision: 16, question: "Choose camera", options: [],
+    } }} />);
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+});

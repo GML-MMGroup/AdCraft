@@ -848,6 +848,7 @@ export function useAgentCanvasChat({
   const triggerBrandNextQuestion = useCallback((
     currentStage: BrandStageV2 | null,
     submittedInteractionId: string | null = null,
+    retryFailed = false,
   ) => {
     if (
       !brandMode
@@ -864,7 +865,10 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     setBrandNextQuestionPending(true);
     setBrandNextQuestionIssue(null);
-    const request = agentCanvasApi.brandNextQuestion(workflowId)
+    const submission = retryFailed
+      ? agentCanvasApi.brandNextQuestion(workflowId, { retryFailed: true })
+      : agentCanvasApi.brandNextQuestion(workflowId);
+    const request = submission
       .then(async () => {
         if (workflowGeneration === workflowGenerationRef.current) await refresh();
         if (workflowGeneration === workflowGenerationRef.current) await onBrandDecisionsRefresh?.();
@@ -2108,6 +2112,7 @@ export function useAgentCanvasChat({
       brandCardRecovery: brandRecovery.state,
       brandCardRecoveryBusy: brandRecoveryBusy,
       brandNextQuestionIssue,
+      brandNextQuestionPending,
       brandCardLocked: brandRecovery.locked,
       notice,
       proposalIssues,
@@ -2124,7 +2129,7 @@ export function useAgentCanvasChat({
       actOnDecisionBundle,
       submitGuidedInteraction,
       refreshBrandCard: brandRecovery.refresh,
-      retryBrandNextQuestion: () => triggerBrandNextQuestion(brandStage),
+      retryBrandNextQuestion: (failedContinuation = false) => triggerBrandNextQuestion(brandStage, failedContinuation ? openBrandInteractionId : null, true),
       retryCapabilityActivity,
       retryProposalMaterialization,
       retryTurn: (turn: AgentCanvasChatTurnV2) => retryTurn(turn.turn_id, turnActionableFailure(turn)),

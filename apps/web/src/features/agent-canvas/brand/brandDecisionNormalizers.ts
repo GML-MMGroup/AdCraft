@@ -122,6 +122,20 @@ function decisionAction(
   );
 }
 
+function readContinuation(value: unknown): BrandDecisionPanelV1["continuation"] {
+  if (value == null) return null;
+  const item = record(value, "brandDecisions.continuation");
+  if (item.status !== "queued" && item.status !== "running" && item.status !== "failed") {
+    fail("brandDecisions.continuation.status", "expected delivery status");
+  }
+  return {
+    status: item.status,
+    attempt_count: int(item.attempt_count, "brandDecisions.continuation.attempt_count"),
+    error_code: optionalStr(item.error_code, "brandDecisions.continuation.error_code"),
+    retryable: item.retryable === true,
+  };
+}
+
 export function normalizeBrandDecisionPanelV1(value: unknown): BrandDecisionPanelV1 {
   const root = record(value, "brandDecisions");
   const journey = record(root.journey, "brandDecisions.journey");
@@ -218,6 +232,7 @@ export function normalizeBrandDecisionPanelV1(value: unknown): BrandDecisionPane
     } satisfies BrandDecisionPanelV1["treatment_steps"][number];
   });
   return {
+    ...(root.continuation !== undefined ? { continuation: readContinuation(root.continuation) } : {}),
     project_id: nonEmptyStr(root.project_id, "brandDecisions.project_id"),
     workflow_id: nonEmptyStr(root.workflow_id, "brandDecisions.workflow_id"),
     mode: root.mode === "brand" ? "brand" : "creation",

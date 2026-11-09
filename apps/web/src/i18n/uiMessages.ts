@@ -17,6 +17,8 @@ export const uiMessages = {
   "Cover unavailable": "封面不可用",
   "Open {name}": "打开{name}",
   "Retry": "重试",
+  "The current Brand step could not finish": "当前品牌创意步骤未能完成",
+  "Your selected direction is saved. Retry to continue from the unfinished step.": "已选择的方案已保存。点击重试，将从未完成的步骤继续。",
   "Scene generation was blocked by a prompt check": "场景生成被提示词校验拦截",
   "The system may have mistaken a rule excluding narrative action for a request to add it. The scene image could not be generated.": "系统可能将“禁止叙事动作”的限制说明误判为叙事内容，导致场景图未能生成。",
   "The scene prompt did not pass the environment-only check, so this scene image could not be generated.": "场景提示词未通过纯环境内容检查，这张场景图未能生成。",

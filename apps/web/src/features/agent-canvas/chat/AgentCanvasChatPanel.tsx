@@ -1189,6 +1189,24 @@ export function AgentCanvasChatPanel({
         ) : null}
       </div>
 
+      {brandMode && brandStage !== "production" && !brandTreatmentReady
+        && !brandDecisions?.open_card && !chat.state.brandCardRecovery
+        && (chat.state.brandNextQuestionIssue || (brandDecisions?.continuation?.status === "failed"
+          && brandDecisions.continuation.retryable)) ? (
+        <section className="agent-chat__recovery is-interaction" role="alert">
+          <div className="agent-chat__recovery-copy">
+            <strong>{t("The current Brand step could not finish")}</strong>
+            <p>{t("Your selected direction is saved. Retry to continue from the unfinished step.")}</p>
+          </div>
+          <div className="agent-chat__recovery-actions">
+            <button type="button" disabled={chat.state.brandNextQuestionPending || chat.state.sending}
+              onClick={() => void chat.actions.retryBrandNextQuestion(true)}>
+              {chat.state.brandNextQuestionPending ? t("Refreshing...") : t("Retry")}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {chat.state.brandCardRecovery ? <BrandCardRecoveryNotice
         state={chat.state.brandCardRecovery} busy={chat.state.brandCardRecoveryBusy}
         onRefresh={() => { setSelectedConceptOptionId(null); setDraft(""); void chat.actions.refreshBrandCard(); }}

@@ -684,10 +684,10 @@ export const v2Api = {
     );
   },
 
-  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"] | Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }>> {
+  brandNextQuestion(workflowId: string, options?: { retryFailed: boolean }): Promise<BrandDecisionPanelV1["open_card"] | Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }>> {
     return requestV2(
       `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
-      { method: "POST" },
+      { method: "POST", ...(options?.retryFailed ? { body: JSON.stringify({ retry_failed: true }) } : {}) },
       (payload) => payload === null ? null
         : typeof payload === "object" && payload !== null && "content_kind" in payload && payload.content_kind === "brand_form"
           ? normalizeGuidedBrandFormV1(payload)
