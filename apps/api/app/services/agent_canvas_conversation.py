@@ -62,6 +62,7 @@ from app.schemas.agent_canvas_conversation import (
     ProposalActionRequestV2,
 )
 from app.schemas.agent_canvas_capabilities import (
+    ConversationQueryV1,
     AgentCapabilitiesOrdinaryIntentV1,
     AgentIdentityOrdinaryIntentV1,
     CAPABILITY_RESULT_CONTRACTS,
@@ -208,6 +209,7 @@ from app.services.agent_product_information_reply import (
     AgentProductInformationReplyRenderer,
 )
 from app.services.conversation_query_documents import ConversationQueryDocumentResolver
+from app.services.conversation_project_summary import ConversationProjectSummaryBuilder
 from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -2969,6 +2971,40 @@ class AgentConversationService:
                 "turn_intent_contract_invalid",
                 "Ordinary conversation intent subtype is not supported.",
                 stage="workflow_conversation",
+            )
+        if isinstance(route, (FreeformReplyOrdinaryIntentV1, DocumentExplanationOrdinaryIntentV1)):
+            # A recap can arrive on the freeform route. Read project authority here,
+            # rather than treating the classifier's draft prose as project evidence.
+            if isinstance(route, FreeformReplyOrdinaryIntentV1):
+                reference = next(
+                    (
+                        item
+                        for item in workflow_context.documents
+                        if item.document_kind == "storyboard_production_plan"
+                    ),
+                    None,
+                )
+                if reference is not None:
+                    document_excerpt = self._conversation_documents.resolve(
+                        workflow_context,
+                        ConversationQueryV1(
+                            query_kind="document_explanation",
+                            document_kind="storyboard_production_plan",
+                        ),
+                    )
+            context = WorkflowConversationAgentContext.model_validate(
+                context.model_dump()
+                | {
+                    "conversation_summary": ConversationProjectSummaryBuilder(
+                        self._workflows,
+                        self._conversations,
+                    ).build(turn.workflow_id),
+                    "recent_messages": tuple(
+                        InteractionMessageSummary.model_validate(item)
+                        for item in self._conversations.consultation_messages(turn.turn_id)
+                    ),
+                    "document_excerpt": document_excerpt,
+                }
             )
         reply = self._gateway.answer_workflow_conversation(
             context,
