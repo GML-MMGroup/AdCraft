@@ -11,11 +11,13 @@ export function InlineParameterSelect({
   options,
   disabled,
   onChange,
+  unsetLabel,
 }: {
   label: string;
   value: string;
   options: readonly string[];
   disabled: boolean;
+  unsetLabel?: string;
   onChange: (value: string | undefined) => void;
 }) {
   const t = useTranslation("en-US");
@@ -25,8 +27,9 @@ export function InlineParameterSelect({
     const ratio = resolutionAspectRatio(option);
     return ratio ? t("{value} ({ratio})", { value: option, ratio }) : option;
   };
+  const emptyLabel = unsetLabel ?? t("Not set");
   const unsupported = Boolean(value) && !options.includes(value);
-  const selectedLabel = unsupported ? t("{value} (unsupported)", { value }) : value ? optionLabel(value) : t("Not set");
+  const selectedLabel = unsupported ? t("{value} (unsupported)", { value }) : value ? optionLabel(value) : emptyLabel;
   const select = (next: string | undefined) => {
     if (disabled) return;
     onChange(next);
@@ -66,7 +69,7 @@ export function InlineParameterSelect({
           style={menuStyle}
         >
           <button type="button" role="option" aria-selected={!value} disabled={disabled} onClick={() => select(undefined)}>
-            <strong>{t("Not set")}</strong>
+            <strong>{emptyLabel}</strong>
           </button>
           {unsupported ? (
             <button type="button" role="option" aria-selected disabled>
