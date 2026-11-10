@@ -16,6 +16,7 @@ from app.schemas.agent_operation_recovery import (
     AgentOperationPolicyV2,
 )
 from app.schemas.agent_runtime import AgentName, AgentRunPolicy, AgentRunRequest
+from app.schemas.brand_production_context import BrandProductionContextV1
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
 from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
@@ -143,6 +144,30 @@ _LONG_FORM_OPERATIONS = {
     "storyboard_detail",
     "plan_storyboard_sequence_outline",
 }
+_BRAND_AUTHORING_OPERATIONS = {
+    "brand_slot_form",
+    "brand_slot_question",
+    "brand_skill_recommendation",
+    "brand_treatment_step",
+    "brand_treatment_review",
+    "brand_full_script",
+}
+
+
+def _uses_brand_authoring_policy(
+    operation: str, context: BaseModel | None, *, story_summary: bool
+) -> bool:
+    # Creative directions and story summaries intentionally retain their existing policy.
+    if operation == "brand_hypothesis" or story_summary:
+        return False
+    if operation in _BRAND_AUTHORING_OPERATIONS:
+        return True
+    if operation in _ROUTING_OPERATIONS:
+        return False
+    if isinstance(context, CapabilityInvocationContextV2):
+        brand = context.capability_context.get("brand_decisions")
+        return isinstance(brand, dict) and brand.get("projection_version") == "brand_role_v1"
+    return isinstance(getattr(context, "brand_decisions", None), BrandProductionContextV1)
 
 
 class AgentOperationPolicyError(ValueError):
@@ -272,9 +297,14 @@ class AgentOperationPolicyRegistryV2:
             and isinstance(context, CapabilityInvocationContextV2)
             and context.capability_context.get("journey_stage") == "narrative_direction"
         )
+        brand_authoring = _uses_brand_authoring_policy(
+            operation, context, story_summary=story_summary
+        )
         return AgentOperationPolicyV2(
             policy_id=(
-                "agent.guided_storyboard_plan.v1"
+                "agent.brand_authoring.v1"
+                if brand_authoring
+                else "agent.guided_storyboard_plan.v1"
                 if storyboard_plan
                 else "agent.guided_style_lock.v1"
                 if style_lock
@@ -316,7 +346,7 @@ class AgentOperationPolicyRegistryV2:
             primary_timeout_seconds=budget.primary_timeout_seconds,
             recovery_timeout_seconds=budget.recovery_timeout_seconds,
             persistence_reserve_seconds=budget.persistence_reserve_seconds,
-            max_output_tokens=budget.max_output_tokens,
+            max_output_tokens=8_192 if brand_authoring else budget.max_output_tokens,
             reasoning_mode="deep" if enable_thinking else "low",
             enable_thinking=enable_thinking,
             thinking_budget_tokens=budget.thinking_budget_tokens if enable_thinking else None,
