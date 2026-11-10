@@ -15,6 +15,7 @@ from app.services.video_agent_operation_registry import (
 
 # Only explicitly selected model/policy pairs opt in; older frozen policies retain defaults.
 _ARK_REASONING_EFFORT_OVERRIDES: Mapping[tuple[str, str], Literal["high"]] = {
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.brand_hypothesis.v2"): "high",
     ("volcengine_ark:glm-5-3-flash-260828", "agent.brand_authoring.v1"): "high",
     ("volcengine_ark:glm-5-3-flash-260828", "agent.character_options.v1"): "high",
     ("volcengine_ark:glm-5-3-flash-260828", "agent.prop_recommendation.v3"): "high",
