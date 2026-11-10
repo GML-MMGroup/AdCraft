@@ -51,6 +51,8 @@ _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(360, 300, 40, 20, 4_096, 2_048)
 # Role briefs include structured production details and a complete editable prompt.
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
 _ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
+_CHARACTER_OPTIONS_BUDGET = _OperationBudget(360, 190, 140, 30, 8_192, 2_048)
+_CHARACTER_OPTIONS_OPERATIONS = {"propose_character_options", "revise_character_options"}
 _STORYBOARD_SEGMENT_BUDGET = _OperationBudget(570, 270, 270, 30, 4_096, None)
 _SCRIPT_AUTHORING_OPERATIONS = {
     "propose_script_options",
@@ -219,6 +221,8 @@ class AgentOperationPolicyRegistryV2:
         budget = (
             _ROLE_BRIEF_BUDGET
             if operation == "author_role_brief"
+            else _CHARACTER_OPTIONS_BUDGET
+            if operation in _CHARACTER_OPTIONS_OPERATIONS
             else _STORYBOARD_SEGMENT_BUDGET
             if operation == "materialize_storyboard_segment"
             else _BRAND_FORM_BUDGET
@@ -290,6 +294,8 @@ class AgentOperationPolicyRegistryV2:
                 if operation == "brand_skill_recommendation"
                 else "agent.bgm_options.v1"
                 if operation in {"propose_bgm_options", "revise_bgm_options"}
+                else "agent.character_options.v1"
+                if operation in _CHARACTER_OPTIONS_OPERATIONS
                 else "agent.prop_recommendation.v3"
                 if operation == "propose_prop_options"
                 else "agent.product_prop_options.v1"

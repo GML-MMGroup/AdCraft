@@ -257,10 +257,8 @@ export class PiStructuredTransportRouter {
           validationAttempts,
         });
       }
-    } else if (isJsonObjectTransport(policy.structured_transport)) {
-      validation = malformedJsonValidation();
     } else {
-      validation = missingStructuredResultValidation();
+      validation = missingOutputValidation(primary.response, policy.structured_transport);
     }
     validationAttempts.push(validationAttemptAudit(validation, 1, "initial"));
     if (validation.result?.repair_allowed === false) {
@@ -325,7 +323,7 @@ export class PiStructuredTransportRouter {
     );
     value = repairContent(repair.response);
     if (value === undefined) {
-      const malformedRepair = malformedJsonValidation(false);
+      const malformedRepair = missingOutputValidation(repair.response, "non_streaming_json_object", false);
       validationAttempts.push(
         validationAttemptAudit(malformedRepair, 2, "structured_repair"),
       );
@@ -1187,7 +1185,15 @@ function primaryValue(
     : primaryToolArguments(response);
 }
 
-function malformedJsonValidation(repairAllowed = true): StructuredValidationResult {
+function missingOutputValidation(
+  response: StructuredCompletionResponse,
+  transport: string,
+  repairAllowed = true,
+): StructuredValidationResult {
+  const truncated = (response.transport_metadata?.finish_reason ?? response.choices?.[0]?.finish_reason) === "length";
+  if (!truncated && !isJsonObjectTransport(transport)) {
+    return missingStructuredResultValidation();
+  }
   return {
     status: "failed",
     error_code: "agent_structured_output_invalid",
@@ -1197,8 +1203,10 @@ function malformedJsonValidation(repairAllowed = true): StructuredValidationResu
       violations: [
         {
           path: "$",
-          code: "json_parse_failed",
-          message: "Return exactly one valid JSON object.",
+          code: truncated ? "output_token_limit_exceeded" : "json_parse_failed",
+          message: truncated
+            ? "The provider reached its output token limit before returning a complete result. Return one complete JSON object for the original task within the output budget."
+            : "Return exactly one valid JSON object.",
         },
       ],
     },
