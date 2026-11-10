@@ -210,7 +210,6 @@ from app.services.agent_product_information_reply import (
 )
 from app.services.conversation_query_documents import ConversationQueryDocumentResolver
 from app.services.conversation_project_summary import ConversationProjectSummaryBuilder
-from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -1557,7 +1556,6 @@ class AgentConversationService:
                 conversations=conversations,
             ),
         )
-        self._workflow_status_reply = WorkflowStatusReplyRenderer()
         self._product_information_reply = AgentProductInformationReplyRenderer()
 
     def submit_message(
@@ -2873,20 +2871,17 @@ class AgentConversationService:
                 stage="workflow_conversation",
             )
         route = ordinary_intent.root
+        if workflow_context.response_locale != intent.response_locale:
+            workflow_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
         context, state_reference = self._conversation_answer_context(
             turn,
             response_locale=intent.response_locale,
             workflow_context=workflow_context,
         )
-        if isinstance(route, (AgentIdentityOrdinaryIntentV1, AgentCapabilitiesOrdinaryIntentV1)):
-            return WorkflowConversationReply(
-                message=self._product_information_reply.render(
-                    route.intent_kind,
-                    response_locale=intent.response_locale,
-                ),
-                answer_kind="general",
-                state_reference=state_reference,
-            )
         if isinstance(route, WorkflowStatusOrdinaryIntentV1):
             current_context = self._workflow_context.project(
                 turn.workflow_id,
@@ -2899,13 +2894,13 @@ class AgentConversationService:
                     response_locale=intent.response_locale,
                     workflow_context=current_context,
                 )
-            else:
-                current_context = workflow_context
-            del context
-            return WorkflowConversationReply(
-                message=self._workflow_status_reply.render(current_context),
-                answer_kind="progress",
-                state_reference=state_reference,
+            workflow_context = current_context
+            context = context.model_copy(
+                update={
+                    "workflow_summary": context.workflow_summary
+                    + " Node readiness and Editing setup do not certify review or export. "
+                    "This snapshot does not include an export receipt."
+                }
             )
         document_excerpt = None
         supporting_document_excerpts = ()
@@ -2922,10 +2917,6 @@ class AgentConversationService:
                 | {
                     "response_locale": intent.response_locale,
                     "style_skill_consultation": consultation,
-                    "recent_messages": tuple(
-                        InteractionMessageSummary.model_validate(item)
-                        for item in self._conversations.consultation_messages(turn.turn_id)
-                    ),
                 }
             )
         if isinstance(route, DocumentExplanationOrdinaryIntentV1):
@@ -2957,6 +2948,9 @@ class AgentConversationService:
             route,
             (
                 FreeformReplyOrdinaryIntentV1,
+                AgentIdentityOrdinaryIntentV1,
+                AgentCapabilitiesOrdinaryIntentV1,
+                WorkflowStatusOrdinaryIntentV1,
                 DocumentExplanationOrdinaryIntentV1,
                 StyleSkillConsultationOrdinaryIntentV1,
             ),
@@ -2966,7 +2960,14 @@ class AgentConversationService:
                 "Ordinary conversation intent subtype is not supported.",
                 stage="workflow_conversation",
             )
-        if isinstance(route, (FreeformReplyOrdinaryIntentV1, DocumentExplanationOrdinaryIntentV1)):
+        conversation_focus = (
+            isinstance(route, FreeformReplyOrdinaryIntentV1)
+            and route.context_focus == "conversation"
+        )
+        if (
+            isinstance(route, (FreeformReplyOrdinaryIntentV1, DocumentExplanationOrdinaryIntentV1))
+            and not conversation_focus
+        ):
             content_explanation = isinstance(route, DocumentExplanationOrdinaryIntentV1)
             # A recap can arrive on the freeform route. Read project authority here,
             # rather than treating the classifier's draft prose as project evidence.
@@ -2994,12 +2995,6 @@ class AgentConversationService:
                         self._workflows,
                         self._conversations,
                     ).build(turn.workflow_id, include_execution_state=not content_explanation),
-                    "recent_messages": tuple(
-                        InteractionMessageSummary.model_validate(item)
-                        for item in self._conversations.consultation_messages(
-                            turn.turn_id, include_progress=not content_explanation
-                        )
-                    ),
                     "document_excerpt": document_excerpt,
                     "supporting_document_excerpts": supporting_document_excerpts,
                 }
@@ -3017,6 +3012,35 @@ class AgentConversationService:
                         "next_action": None,
                     }
                 )
+        if conversation_focus or isinstance(
+            route, (AgentIdentityOrdinaryIntentV1, AgentCapabilitiesOrdinaryIntentV1)
+        ):
+            context = context.model_copy(
+                update={
+                    "workflow_summary": "",
+                    "workflow_context": None,
+                    "journey_stage": None,
+                    "journey_status": None,
+                    "awaiting_action": None,
+                    "next_action": None,
+                }
+            )
+        context = WorkflowConversationAgentContext.model_validate(
+            context.model_dump()
+            | {
+                "agent_identity_and_capabilities": "\n".join(
+                    self._product_information_reply.render(kind, response_locale="en-US")
+                    for kind in ("agent_identity", "agent_capabilities")
+                ),
+                "recent_messages": tuple(
+                    InteractionMessageSummary.model_validate(item)
+                    for item in self._conversations.consultation_messages(
+                        turn.turn_id,
+                        include_progress=not isinstance(route, DocumentExplanationOrdinaryIntentV1),
+                    )
+                ),
+            }
+        )
         reply = self._gateway.answer_workflow_conversation(
             context,
             turn_id=turn.turn_id,
@@ -3061,25 +3085,20 @@ class AgentConversationService:
                 )
         if reply.answer_kind != "progress":
             return reply.model_copy(update={"state_reference": state_reference})
-        if state_reference is None:
-            return WorkflowConversationReply(
-                message=(
-                    "Current guided progress is unavailable. Refresh the workflow before "
-                    "choosing a next action."
-                ),
-                answer_kind="progress",
-                state_reference=None,
-            )
+        current_context = self._workflow_context.project(
+            turn.workflow_id,
+            conversation_id=turn.conversation_id,
+            response_locale=intent.response_locale,
+        )
         _, current_reference = self._conversation_answer_context(
             turn,
             response_locale=intent.response_locale,
-            workflow_context=self._workflow_context.project(
-                turn.workflow_id,
-                conversation_id=turn.conversation_id,
-                response_locale=intent.response_locale,
-            ),
+            workflow_context=current_context,
         )
-        if current_reference != state_reference:
+        if (
+            current_context.projection_digest != workflow_context.projection_digest
+            or current_reference != state_reference
+        ):
             return WorkflowConversationReply(
                 message=(
                     "Workflow state changed while this answer was prepared. Refresh the "

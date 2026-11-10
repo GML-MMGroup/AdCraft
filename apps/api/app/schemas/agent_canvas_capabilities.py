@@ -372,6 +372,13 @@ class StyleSkillConsultationOrdinaryIntentV1(_CapabilityModel):
 class FreeformReplyOrdinaryIntentV1(_CapabilityModel):
     intent_kind: Literal["freeform_reply"]
     assistant_message: str = Field(min_length=1, max_length=2_000)
+    context_focus: Literal["conversation", "project"] = Field(
+        default="conversation",
+        description=(
+            "Use conversation for recalling or explaining prior messages and general chat; "
+            "use project when answering requires current advertisement records."
+        ),
+    )
 
 
 class AgentIdentityOrdinaryIntentV1(_CapabilityModel):

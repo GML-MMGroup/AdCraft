@@ -369,6 +369,7 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     conversation_summary: str = Field(default="", max_length=16_384)
+    agent_identity_and_capabilities: str = Field(default="", max_length=4_096)
     recent_messages: tuple[InteractionMessageSummary, ...] = Field(
         default=(),
         max_length=32,

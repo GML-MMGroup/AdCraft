@@ -16836,6 +16836,16 @@
           "title": "Assistant Message",
           "type": "string"
         },
+        "context_focus": {
+          "default": "conversation",
+          "description": "Use conversation for recalling or explaining prior messages and general chat; use project when answering requires current advertisement records.",
+          "enum": [
+            "conversation",
+            "project"
+          ],
+          "title": "Context Focus",
+          "type": "string"
+        },
         "intent_kind": {
           "const": "freeform_reply",
           "title": "Intent Kind",
@@ -38949,6 +38959,12 @@
     "WorkflowConversationAgentContext": {
       "additionalProperties": false,
       "properties": {
+        "agent_identity_and_capabilities": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Agent Identity And Capabilities",
+          "type": "string"
+        },
         "awaiting_action": {
           "anyOf": [
             {
