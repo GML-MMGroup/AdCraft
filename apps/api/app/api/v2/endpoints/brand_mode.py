@@ -222,7 +222,13 @@ def _prepare_next_question(
         _raise_not_found()
     service = _brand_runtime(database)
     journey = service._repository.get_journey(brand_id)
-    if journey is None or journey.stage in {"production"}:
+    if journey is not None and journey.stage == "production":
+        from app.services.brand_script_route import BrandScriptRouteService
+
+        with database.engine.connect() as connection:
+            if BrandScriptRouteService.full_script_selected(connection, brand_id):
+                return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if journey is None or journey.stage == "production":
         _raise_not_found()
     if not admission_checked and not _has_guided_production_turn(database, workflow_id):
         raise HTTPException(
@@ -294,6 +300,10 @@ def _prepare_next_question(
             except Exception:
                 bridge.release_form_generation(claim)
                 raise
+        from app.services.brand_full_script import BrandFullScriptService
+
+        if BrandFullScriptService(service).complete(brand_id):
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
         service.complete_pending_treatment(brand_id)
         journey = service._repository.get_journey(brand_id)
         if service.prepare_treatment_confirmation(brand_id):
@@ -308,6 +318,7 @@ def _prepare_next_question(
         card_claim = None
         if card is None and journey.stage in {
             "hypothesis",
+            "creative-route",
             "adspec",
             "skill-stack",
             "skill-stack-early",
@@ -353,7 +364,11 @@ def _prepare_next_question(
                         )
         if card is None:
             try:
-                if journey.stage == "hypothesis":
+                if journey.stage == "creative-route":
+                    from app.services.brand_script_route import BrandScriptRouteService
+
+                    card = BrandScriptRouteService(database).question(brand_id, locale)
+                elif journey.stage == "hypothesis":
                     card = service.run_hypothesis_question(brand_id)
                 elif journey.stage == "treatment":
                     service.run_treatment_step(brand_id)
@@ -543,6 +558,7 @@ def get_brand_decisions(
         adspec = repository.get_adspec_in_transaction(connection, brand_id)
         skill_stack = repository.get_skill_stack_in_transaction(connection, brand_id)
         steps = repository.get_treatment_steps_in_transaction(connection, brand_id)
+        script_route_enabled = repository.script_route_enabled_in_transaction(connection, brand_id)
         early_skills_confirmed = repository.early_skills_confirmed_in_transaction(
             connection, brand_id
         )
@@ -584,6 +600,7 @@ def get_brand_decisions(
         selected_hypothesis_id=selected,
         adspec=adspec,
         skill_stack=skill_stack,
+        script_route_enabled=script_route_enabled,
         early_skills_confirmed=early_skills_confirmed,
         continuation=(
             {

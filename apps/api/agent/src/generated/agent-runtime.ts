@@ -2,6 +2,8 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
+export type BrandScreenplayV1 = { readonly "title": string; readonly "screenplay": string; readonly "production_requirements": BrandProductionRequirementsV1; readonly "music_requirement": TreatmentMusicRequirementV1 };
+
 export type CreativeMethodSummaryV1 = { readonly "skill_id": string; readonly "title": string; readonly "summary": string };
 
 export type CreativeMethodContextV1 = { readonly "skill_id": string; readonly "version": string; readonly "title": string; readonly "core_principle": string; readonly "story_structure": string; readonly "hook_methods": string; readonly "product_role": string; readonly "common_mistakes": string; readonly "consumer_psychology"?: string | null; readonly "cross_category_examples"?: string | null; readonly "suitable_categories_and_goals"?: string | null; readonly "why_it_works"?: string | null; readonly "how_to_execute"?: string | null };
@@ -14,7 +16,7 @@ export type WorldSettingProposalAuthoringResultV1 = { readonly "options": Readon
 
 export type BrandProductionStepV1 = { readonly "step_key": "camera" | "character" | "editing" | "hook" | "scene" | "sound" | "story" | "visual"; readonly "selected_label": string; readonly "sections"?: ReadonlyArray<TreatmentSectionV1>; readonly "legacy_detail"?: string | null };
 
-export type BrandProductionContextV1 = { readonly "projection_version"?: "brand_role_v1"; readonly "source_content_digest": string; readonly "role": "bgm" | "character" | "general" | "product" | "scene" | "script" | "storyboard" | "video"; readonly "brand_profile": BrandBriefSummaryV1; readonly "campaign_brief": BrandBriefSummaryV1; readonly "selected_hypothesis"?: CreativeHypothesisCandidateV1 | null; readonly "adspec"?: AdSpecStateV1 | null; readonly "skill_stack"?: SkillStackV1 | null; readonly "treatment_steps"?: ReadonlyArray<BrandProductionStepV1>; readonly "omitted_sections"?: ReadonlyArray<string>; readonly "authorized_asset_references"?: ReadonlyArray<BrandAssetReferenceV1>; readonly "complete": boolean; readonly "missing_sections"?: ReadonlyArray<string>; readonly "execution_limitations"?: ReadonlyArray<string>; readonly "review"?: BrandTreatmentReviewV1 | null };
+export type BrandProductionContextV1 = { readonly "projection_version"?: "brand_role_v1"; readonly "full_script"?: BrandScreenplayV1 | null; readonly "source_content_digest": string; readonly "role": "bgm" | "character" | "general" | "product" | "scene" | "script" | "storyboard" | "video"; readonly "brand_profile": BrandBriefSummaryV1; readonly "campaign_brief": BrandBriefSummaryV1; readonly "selected_hypothesis"?: CreativeHypothesisCandidateV1 | null; readonly "adspec"?: AdSpecStateV1 | null; readonly "skill_stack"?: SkillStackV1 | null; readonly "treatment_steps"?: ReadonlyArray<BrandProductionStepV1>; readonly "omitted_sections"?: ReadonlyArray<string>; readonly "authorized_asset_references"?: ReadonlyArray<BrandAssetReferenceV1>; readonly "complete": boolean; readonly "missing_sections"?: ReadonlyArray<string>; readonly "execution_limitations"?: ReadonlyArray<string>; readonly "review"?: BrandTreatmentReviewV1 | null };
 
 export type TreatmentSectionV1 = { readonly "key": "action_sequence" | "ambience" | "appearance" | "boundaries" | "color_and_light" | "effects" | "ending" | "identity" | "materials" | "middle" | "music_entry" | "opening" | "people_camera" | "performance" | "product_role" | "product_shots" | "progression" | "prohibited_shots" | "resolution" | "setup" | "spaces" | "wardrobe"; readonly "title": string; readonly "text": string };
 
@@ -40,7 +42,7 @@ export type BrandBriefSummaryV1 = { readonly "values"?: ReadonlyArray<BrandSlotV
 
 export type BrandAssetReferenceV1 = { readonly "binding_id": string; readonly "workflow_id": string; readonly "target_node_id": string; readonly "asset_id": string; readonly "version_id": string; readonly "display_name": string; readonly "input_role": string };
 
-export type BrandTreatmentDocumentV1 = { readonly "schema_version"?: "2"; readonly "brand_profile": BrandBriefSummaryV1; readonly "campaign_brief": BrandBriefSummaryV1; readonly "selected_hypothesis"?: CreativeHypothesisCandidateV1 | null; readonly "adspec"?: AdSpecStateV1 | null; readonly "skill_stack"?: SkillStackV1 | null; readonly "treatment_steps"?: ReadonlyArray<TreatmentStepResultV1>; readonly "product_presentation"?: ReadonlyArray<TreatmentSectionV1>; readonly "authorized_asset_references"?: ReadonlyArray<BrandAssetReferenceV1>; readonly "complete"?: boolean; readonly "missing_sections"?: ReadonlyArray<string>; readonly "content_digest"?: string; readonly "execution_limitations"?: ReadonlyArray<string>; readonly "review"?: BrandTreatmentReviewV1 | null };
+export type BrandTreatmentDocumentV1 = { readonly "schema_version"?: "2"; readonly "full_script"?: BrandScreenplayV1 | null; readonly "brand_profile": BrandBriefSummaryV1; readonly "campaign_brief": BrandBriefSummaryV1; readonly "selected_hypothesis"?: CreativeHypothesisCandidateV1 | null; readonly "adspec"?: AdSpecStateV1 | null; readonly "skill_stack"?: SkillStackV1 | null; readonly "treatment_steps"?: ReadonlyArray<TreatmentStepResultV1>; readonly "product_presentation"?: ReadonlyArray<TreatmentSectionV1>; readonly "authorized_asset_references"?: ReadonlyArray<BrandAssetReferenceV1>; readonly "complete"?: boolean; readonly "missing_sections"?: ReadonlyArray<string>; readonly "content_digest"?: string; readonly "execution_limitations"?: ReadonlyArray<string>; readonly "review"?: BrandTreatmentReviewV1 | null };
 
 export type AdSpecItemV1 = { readonly "item_key": string; readonly "item_text": string; readonly "state"?: "locked" | "open" | "variable" };
 
@@ -58,13 +60,13 @@ export type WorkflowModelCallReceiptV1 = { readonly "call_id": string; readonly 
 
 export type BrandSkillRecommendationV1 = { readonly "skill_id": string; readonly "version": string; readonly "reason": string };
 
-export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };
+export type BrandSlotValueV1 = { readonly "slot_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "creative-route" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "value": string; readonly "kind"?: "assumption" | "constraint" | "fact" | "preference"; readonly "provenance": "agent_recommended" | "user_confirmed"; readonly "confirmed_at"?: string | null };
 
 export type BrandSlotEvidenceV1 = { readonly "stage": "brand-memory" | "campaign"; readonly "slot_id": string; readonly "source_id": string; readonly "source_quote": string };
 
 export type BrandShortOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null; readonly "detail"?: TreatmentDetailV1 | null; readonly "authoring_mode"?: "detailed" | "summary" };
 
-export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
+export type BrandOptionCardV1 = { readonly "card_id": string; readonly "stage": "adspec" | "brand-memory" | "campaign" | "creative-route" | "hypothesis" | "production" | "skill-stack" | "skill-stack-early" | "treatment"; readonly "stage_revision": number; readonly "target_slot_id"?: string | null; readonly "question": string; readonly "options": ReadonlyArray<BrandShortOptionV1> };
 
 export type BrandFormOptionV1 = { readonly "option_id": string; readonly "label": string; readonly "why"?: string | null };
 
@@ -194,7 +196,7 @@ export type GuidedProductSourceQuestionV1 = { readonly "content_kind"?: "product
 
 export type GuidedReferenceSourceQuestionV1 = { readonly "content_kind"?: "reference_source"; readonly "reference_kind": "character_main" | "scene_main"; readonly "target_node_id": string; readonly "target_node_revision": number; readonly "occurrence_id"?: string | null; readonly "question": string; readonly "use_reference_label": string; readonly "skip_reference_label": string; readonly "expected_guidance_revision": number };
 
-export type GuidedConceptChoiceV2 = { readonly "content_kind"?: "concept_choice"; readonly "proposal_id"?: string | null; readonly "stage": "bgm" | "character" | "completed" | "editing" | "intake" | "narrative_direction" | "product" | "props" | "scene" | "storyboard_grids" | "storyboard_plan" | "style_lock" | "videos" | "world_view"; readonly "stage_revision": number; readonly "action_id": string; readonly "occurrence_id"?: string | null; readonly "occurrence_index"?: number | null; readonly "occurrence_count"?: number | null; readonly "character_phase"?: "main" | null; readonly "capability_id": string; readonly "options": ReadonlyArray<GuidedChoiceOptionV1>; readonly "allow_custom"?: true; readonly "allow_exclusion": boolean };
+export type GuidedConceptChoiceV2 = { readonly "content_kind"?: "concept_choice"; readonly "proposal_id"?: string | null; readonly "stage": "bgm" | "character" | "completed" | "editing" | "intake" | "narrative_direction" | "product" | "props" | "scene" | "storyboard_grids" | "storyboard_plan" | "style_lock" | "videos" | "world_view"; readonly "stage_revision": number; readonly "action_id": string; readonly "occurrence_id"?: string | null; readonly "occurrence_index"?: number | null; readonly "occurrence_count"?: number | null; readonly "character_phase"?: "main" | null; readonly "capability_id": string; readonly "options": ReadonlyArray<GuidedChoiceOptionV1>; readonly "allow_custom"?: boolean; readonly "allow_exclusion": boolean };
 
 export type GuidedMediaReviewV1 = { readonly "content_kind"?: "media_review"; readonly "node_id": string; readonly "node_revision": number; readonly "asset_id": string; readonly "asset_version_id": string; readonly "summary": string };
 

@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.brand_screenplay import BrandScreenplayV1
 from app.schemas.brand_treatment_detail import TreatmentDetailV1, TreatmentSectionV1
 from app.schemas.brand_treatment_inventory import (
     BrandTreatmentSubstep as BrandTreatmentSubstep,
@@ -22,6 +23,7 @@ BrandStage = Literal[
     "skill-stack-early",
     "hypothesis",
     "adspec",
+    "creative-route",
     "skill-stack",
     "treatment",
     "production",
@@ -73,14 +75,22 @@ class BrandOptionCardV1(_BrandModel):
     # stays 3..3. Only persisted hypothesis/Treatment cards grow (to 12) when
     # the user asks for more options through the "Other" input.
     options: tuple[BrandShortOptionV1, ...] = Field(
-        min_length=3,
+        min_length=2,
         max_length=12,
         json_schema_extra={"maxItems": 3},
     )
 
     @model_validator(mode="after")
     def validate_option_count(self) -> "BrandOptionCardV1":
-        if self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3:
+        if self.stage == "creative-route":
+            if tuple(option.option_id for option in self.options) != ("guided", "full-script"):
+                raise ValueError(
+                    "Creative route requires the ordered guided and full-script choices."
+                )
+            return self
+        if len(self.options) < 3 or (
+            self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3
+        ):
             raise ValueError(
                 "Brand slot, AdSpec, and Skill stack cards require exactly three options."
             )
@@ -412,6 +422,9 @@ class BrandTreatmentReviewV1(BrandTreatmentReviewOutputV1):
 
 class BrandTreatmentDocumentV1(_BrandModel):
     schema_version: Literal["2"] = "2"
+    full_script: BrandScreenplayV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     brand_profile: BrandBriefSummaryV1
     campaign_brief: BrandBriefSummaryV1
     selected_hypothesis: CreativeHypothesisCandidateV1 | None = None
@@ -441,6 +454,7 @@ class BrandContinuationProgressV1(_BrandModel):
 class BrandDecisionPanelV1(_BrandModel):
     """Read model behind the frontend decision panel."""
 
+    script_route_enabled: bool = False
     early_skills_confirmed: bool = False
     continuation: BrandContinuationProgressV1 | None = None
 

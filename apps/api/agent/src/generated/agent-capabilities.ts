@@ -10,6 +10,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
         "author_role_brief",
         "bgm_expert_brief",
         "bgm_prompt",
+        "brand_full_script",
         "brand_hypothesis",
         "brand_skill_recommendation",
         "brand_slot_form",

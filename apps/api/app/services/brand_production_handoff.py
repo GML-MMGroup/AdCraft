@@ -108,6 +108,16 @@ def reviewed_inventory_patch(
                 source_quote=inventory.prop_sources[0].quote,
             )
         )
+    if document.full_script is not None:
+        music = document.full_script.music_requirement
+        if music.presence != "unspecified":
+            elements.append(
+                RequirementElementPresencePatchV1(
+                    element_kind="audio",
+                    presence=music.presence,
+                    source_quote=music.source_quote,
+                )
+            )
     for step in document.treatment_steps:
         detail = step.structured_detail
         if step.step_key != "sound" or detail is None or detail.music_requirement is None:
@@ -131,6 +141,8 @@ def confirmed_production_inventory(
     document: BrandTreatmentDocumentV1,
 ) -> BrandProductionRequirementsV1:
     """Combine scoped authoring metadata, with matched historical assessment compatibility."""
+    if document.full_script is not None:
+        return document.full_script.production_requirements
     inventory = (
         document.review.production_requirements
         if document.review
@@ -544,6 +556,8 @@ class BrandProductionHandoffService:
             if step.structured_detail
             for section in step.structured_detail.sections
         )
+        if document.full_script is not None:
+            source += "\n" + document.full_script.render()
         controls_to_set = [
             AudioModeControlPatchV1(value=audio_mode, source_quote=f"audio {audio_mode}"),
             ProductCountControlPatchV1(

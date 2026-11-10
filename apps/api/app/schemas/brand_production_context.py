@@ -13,6 +13,7 @@ from app.schemas.brand_professional_mode import (
     CreativeHypothesisCandidateV1,
     SkillStackV1,
 )
+from app.schemas.brand_screenplay import BrandScreenplayV1
 from app.schemas.brand_treatment_detail import TreatmentSectionV1
 
 BrandProductionRoleV1 = Literal[
@@ -33,6 +34,9 @@ class BrandProductionContextV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     projection_version: Literal["brand_role_v1"] = "brand_role_v1"
+    full_script: BrandScreenplayV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     source_content_digest: str
     role: BrandProductionRoleV1
     brand_profile: BrandBriefSummaryV1

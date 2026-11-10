@@ -49,6 +49,7 @@ from app.schemas import workflow_v2_prompt_contracts
 from app.schemas import v2_agent_conversations
 from app.schemas import v2_quick_media
 from app.schemas import style_skill_consultation
+from app.schemas import brand_screenplay
 from app.schemas import brand_professional_mode
 from app.schemas import brand_treatment_detail
 from app.schemas import brand_treatment_generation
@@ -59,6 +60,7 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    brand_screenplay.BrandScreenplayV1,
     creative_method_context.CreativeMethodSummaryV1,
     creative_method_context.CreativeMethodContextV1,
     agent_canvas_conversation.ConceptOptionRecordV2,

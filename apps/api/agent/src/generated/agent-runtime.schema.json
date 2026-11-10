@@ -7961,7 +7961,7 @@
             "$ref": "#/$defs/BrandShortOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 2,
           "title": "Options",
           "type": "array"
         },
@@ -7976,6 +7976,7 @@
             "adspec",
             "brand-memory",
             "campaign",
+            "creative-route",
             "hypothesis",
             "production",
             "skill-stack",
@@ -8053,6 +8054,17 @@
           },
           "title": "Execution Limitations",
           "type": "array"
+        },
+        "full_script": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandScreenplayV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "missing_sections": {
           "default": [],
@@ -8356,6 +8368,37 @@
         "reason"
       ],
       "title": "BrandQuestionImpactV1",
+      "type": "object"
+    },
+    "BrandScreenplayV1": {
+      "additionalProperties": false,
+      "properties": {
+        "music_requirement": {
+          "$ref": "#/$defs/TreatmentMusicRequirementV1"
+        },
+        "production_requirements": {
+          "$ref": "#/$defs/BrandProductionRequirementsV1"
+        },
+        "screenplay": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "title": "Screenplay",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "music_requirement",
+        "production_requirements",
+        "screenplay",
+        "title"
+      ],
+      "title": "BrandScreenplayV1",
       "type": "object"
     },
     "BrandSelectedCreativeMethodV1": {
@@ -8721,6 +8764,7 @@
             "adspec",
             "brand-memory",
             "campaign",
+            "creative-route",
             "hypothesis",
             "production",
             "skill-stack",
@@ -8879,6 +8923,17 @@
           },
           "title": "Execution Limitations",
           "type": "array"
+        },
+        "full_script": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandScreenplayV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "missing_sections": {
           "default": [],
@@ -18031,7 +18086,6 @@
           "type": "string"
         },
         "allow_custom": {
-          "const": true,
           "default": true,
           "title": "Allow Custom",
           "type": "boolean"
@@ -18112,7 +18166,7 @@
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
           "maxItems": 12,
-          "minItems": 3,
+          "minItems": 2,
           "title": "Options",
           "type": "array"
         },
@@ -40360,6 +40414,7 @@
     "BrandStrategyOutputV1",
     "CreativeStrategyOutputV1",
     "CreativeTreatmentOutputV1",
+    "BrandScreenplayV1",
     "BrandTreatmentReviewOutputV1",
     "GuidedScriptCheckpointDraftV1",
     "BrandSkillRecommendationsV1",
@@ -40876,6 +40931,18 @@
       "max_skill_context_bytes": 8192,
       "operation": "brand_treatment_review",
       "result_contract_name": "BrandTreatmentReviewOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_full_script",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_full_script",
+      "result_contract_name": "BrandScreenplayV1",
       "style_projection_role": null,
       "validation_profile": null
     },

@@ -16,6 +16,11 @@
       "skill_id": "brand_agent_creative_treatment"
     },
     {
+      "path": "brand_agent_full_script/SKILL.md",
+      "sha256": "2242d8bda02ba3ff638177402e73d8f21f6aab27c8f75c646477bd187f0e0c64",
+      "skill_id": "brand_agent_full_script"
+    },
+    {
       "path": "video_agent_bgm_direction/SKILL.md",
       "sha256": "5b1ae747703f8e2215b737ee0afc9c8bfc89b0845c7e3ac7b2958399e4017e2b",
       "skill_id": "video_agent_bgm_direction"

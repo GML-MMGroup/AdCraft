@@ -126,6 +126,7 @@ _MATERIALIZATION_OPERATIONS = {
     "materialize_quick_media",
 }
 _LONG_FORM_OPERATIONS = {
+    "brand_full_script",
     "author_guided_script_checkpoint",
     "execute_canvas_script",
     "script_edit_normalization",

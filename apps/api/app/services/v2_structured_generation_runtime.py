@@ -638,7 +638,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         workflow_id=workflow_id,
         # Treatment uses the lossless user_input projection. Do not send the same
         # growing confirmed context twice inside the bounded runtime envelope.
-        input_payload={} if operation == "brand_treatment_step" else payload,
+        input_payload={} if operation in {"brand_treatment_step", "brand_full_script"} else payload,
         contract_schema=spec.output_model.model_json_schema(),
     )
     validate_video_agent_operation_context(operation, context)

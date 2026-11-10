@@ -1608,6 +1608,10 @@ class BrandCapabilityInvocationService:
                 next_journey = next_journey.model_copy(
                     update={"stage": "treatment", "treatment_substep": "hook"}
                 )
+            if self._repository.script_route_enabled_in_transaction(connection, brand_id):
+                next_journey = next_journey.model_copy(
+                    update={"stage": "creative-route", "treatment_substep": None}
+                )
             self._repository.save_journey_in_transaction(connection, brand_id, next_journey)
 
     def _project_adspec_items(self, brand_id: str) -> tuple[AdSpecItemV1, ...]:

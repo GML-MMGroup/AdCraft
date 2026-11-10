@@ -91,6 +91,7 @@ class AgentCanvasProjectService:
             BrandDecisionRepository(self._projects.database).ensure_brand(
                 project_id=workflow.project_id,
                 name=request.name,
+                script_route_enabled=True,
             )
         active_workflow = self.get_workflow(workflow.workflow_id)
         return ProjectCreateResponseV2.model_validate(

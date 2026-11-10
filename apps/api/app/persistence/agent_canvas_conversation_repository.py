@@ -356,6 +356,42 @@ class AgentCanvasConversationRepository:
             )
         return True
 
+    def publish_brand_screenplay_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        content: str,
+        digest: str,
+    ) -> None:
+        """Publish the persisted screenplay once before production admission."""
+        now = _now()
+        entry_id = f"msg_brand_script_{workflow_id}_{digest}"
+        if (
+            connection.execute(
+                select(AgentCanvasChatEntryRow.entry_id).where(
+                    AgentCanvasChatEntryRow.entry_id == entry_id,
+                )
+            ).first()
+            is not None
+        ):
+            return
+        conversation_id = _ensure_conversation(connection, workflow_id, now)
+        _publish_assistant_message_in_transaction(
+            connection,
+            events=self._events,
+            turn={
+                "turn_id": f"brand_script_{digest}",
+                "workflow_id": workflow_id,
+                "conversation_id": conversation_id,
+            },
+            assistant_message=content,
+            now=now,
+            entry_id=entry_id,
+            metadata={"content_kind": "brand_screenplay", "content_digest": digest},
+            publication_key=f"brand-screenplay:{workflow_id}:{digest}",
+        )
+
     def record_brand_interaction_publication_failure(
         self,
         workflow_id: str,

@@ -135,6 +135,7 @@ metadata.set("brand_slot_question", { context_contract_name: "AgentRunContext", 
 metadata.set("brand_slot_form", { context_contract_name: "AgentRunContext", result_contract_name: "BrandStrategyOutputV1", required_skill: "brand_agent_brand_strategy" });
 metadata.set("brand_hypothesis", { context_contract_name: "AgentRunContext", result_contract_name: "CreativeStrategyOutputV1", required_skill: "brand_agent_creative_strategy" });
 metadata.set("brand_skill_recommendation", { context_contract_name: "AgentRunContext", result_contract_name: "BrandSkillRecommendationsV1", required_skill: "brand_agent_creative_strategy" });
+metadata.set("brand_full_script", { context_contract_name: "AgentRunContext", result_contract_name: "BrandScreenplayV1", required_skill: "brand_agent_full_script" });
 metadata.set("brand_treatment_step", { context_contract_name: "AgentRunContext", result_contract_name: "CreativeTreatmentOutputV1", required_skill: "brand_agent_creative_treatment" });
 metadata.set("brand_treatment_review", { context_contract_name: "AgentRunContext", result_contract_name: "BrandTreatmentReviewOutputV1", required_skill: "brand_agent_creative_treatment" });
 metadata.set("script_writer", creativeMetadata(

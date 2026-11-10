@@ -61,6 +61,7 @@
         "brand_slot_form",
         "brand_hypothesis",
         "brand_skill_recommendation",
+        "brand_full_script",
         "brand_treatment_step",
         "brand_treatment_review"
       ],

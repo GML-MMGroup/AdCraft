@@ -51,6 +51,7 @@ _ROLE_STEPS = {
 _SHARED_SECTIONS = frozenset({"boundaries", "prohibited_shots", "product_role", "product_shots"})
 _COMMON_FIELDS = frozenset(
     {
+        "full_script",
         "brand_profile",
         "campaign_brief",
         "selected_hypothesis",

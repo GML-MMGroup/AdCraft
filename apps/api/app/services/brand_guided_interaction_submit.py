@@ -91,7 +91,19 @@ class BrandGuidedInteractionSubmitter:
         custom_text = request.custom_text or ""
         action_id = content.action_id
 
-        if "skill-stack" in content.capability_id:
+        if content.capability_id == "brand_creative-route":
+            if request.action != "select" or custom_text:
+                raise V2PersistenceError(
+                    "guided_interaction_action_not_allowed", "Choose one creative route."
+                )
+            from app.services.brand_script_route import BrandScriptRouteService
+
+            BrandScriptRouteService(self._brand_service._database).select(
+                brand_id,
+                card_id=action_id,
+                option_id=option_id,
+            )
+        elif "skill-stack" in content.capability_id:
             if custom_text or request.action not in {"select", "delegate"}:
                 raise V2PersistenceError(
                     "brand_skill_selection_required",
