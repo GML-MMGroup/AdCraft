@@ -43,6 +43,7 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
     publish_expert_activity_terminal_in_transaction,
 )
 from app.persistence.agent_canvas_guided_interaction_repository import (
+    _is_duration_questionnaire,
     _awaiting_for_workflow,
     current_guided_interaction_row,
     project_guided_interaction,
@@ -752,10 +753,17 @@ class AgentCanvasConversationRepository:
                 "journey_evidence_invalid",
                 "Clarification transition identity is invalid.",
             )
-        if journey.stage not in {"intake", "character"} or journey.stage_status != "waiting_user":
+        duration_clarification = (
+            questionnaire is not None
+            and _is_duration_questionnaire(questionnaire)
+            and checkpoint_id == f"duration:{turn_id}"
+        )
+        if (
+            journey.stage not in {"intake", "character"} and not duration_clarification
+        ) or journey.stage_status != "waiting_user":
             raise _error(
                 "journey_transition_invalid",
-                "Clarification completion requires a waiting intake or Character journey.",
+                "Clarification requires intake, Character, or a typed duration wait.",
             )
         now = _now()
         journey_payload = journey.model_dump(mode="json")
@@ -829,6 +837,7 @@ class AgentCanvasConversationRepository:
                         current=current_journey,
                         target=journey,
                         turn_id=turn_id,
+                        duration_clarification=duration_clarification,
                     )
                     next_revision = expected_session_revision + 1
                     updated = connection.execute(
@@ -5772,8 +5781,20 @@ def _validate_clarification_target(
     current: GuidedProductionJourneyV2,
     target: GuidedProductionJourneyV2,
     turn_id: str,
+    duration_clarification: bool = False,
 ) -> None:
-    if current.stage in {"intake", "character"} and current.stage_status == "waiting_user":
+    if duration_clarification and (
+        target.stage != current.stage
+        or current.active_action is not None
+        or current.suspended_action is not None
+        or target.active_action is not None
+        or target.suspended_action is not None
+    ):
+        raise _error(
+            "journey_transition_invalid", "Duration clarification must retain an idle stage."
+        )
+    eligible = current.stage in {"intake", "character"} or duration_clarification
+    if eligible and current.stage_status == "waiting_user":
         expected = current.model_copy(update={"stage_status": "waiting_user"})
         if target != expected:
             raise _error(
@@ -5781,7 +5802,7 @@ def _validate_clarification_target(
                 "Repeated clarification may only retain the current waiting journey.",
             )
         return
-    if current.stage in {"intake", "character"}:
+    if eligible:
         evidence = target.transition_evidence[-1] if target.transition_evidence else None
         expected_evidence_kind = (
             "creative_goal_validated" if current.stage == "intake" else "clarification_completed"

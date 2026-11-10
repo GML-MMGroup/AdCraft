@@ -8437,6 +8437,29 @@
       "title": "BrandQuestionImpactV1",
       "type": "object"
     },
+    "BrandScreenplayTimingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "total_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Total Duration Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_quote",
+        "total_duration_seconds"
+      ],
+      "title": "BrandScreenplayTimingV1",
+      "type": "object"
+    },
     "BrandScreenplayV1": {
       "additionalProperties": false,
       "properties": {
@@ -8451,6 +8474,17 @@
           "minLength": 1,
           "title": "Screenplay",
           "type": "string"
+        },
+        "timing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandScreenplayTimingV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "title": {
           "maxLength": 160,

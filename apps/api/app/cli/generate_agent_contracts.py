@@ -61,6 +61,7 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    brand_screenplay.BrandScreenplayTimingV1,
     brand_screenplay.BrandScreenplayV1,
     creative_method_context.CreativeMethodSummaryV1,
     creative_method_context.CreativeMethodContextV1,

@@ -38,6 +38,13 @@ The screenplay is human-readable creative authority, not provider prompts.
 
 # Production metadata
 
+Return timing.total_duration_seconds as one concrete numeric duration in seconds,
+and timing.source_quote as the exact duration declaration in the screenplay.
+Honor a fixed brief duration; when the brief allows a range, choose one duration
+within it that fits the finished story. The declaration, final act endpoint and
+typed duration must agree. This is the authoritative duration for all subsequent
+story planning, storyboard sequences and video production.
+
 In the same result, copy the screenplay's full cast and locations into
 production_requirements. Count distinct identities once across shots. Resolve
 character_count and scene_presence, including explicit absence for a film with
@@ -60,7 +67,7 @@ quotes from the screenplay field. Make cast and location declarations explicit
 so they can support counts and presence. Set music_requirement independently
 of dialogue and effects, quoting the screenplay's music direction exactly.
 
-Return exactly BrandScreenplayV1. Completion means the visible script contains
+Return exactly BrandScreenplayGenerationV1. Completion means the visible script contains
 the full story, timed actions, all dialogue, sound cues and ending, and its typed
 cast, locations and music agree with that text. Python persists and displays the
 script and advances the journey; this operation performs no workflow actions.

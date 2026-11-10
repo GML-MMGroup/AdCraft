@@ -2,7 +2,9 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
-export type BrandScreenplayV1 = { readonly "title": string; readonly "screenplay": string; readonly "production_requirements": BrandProductionRequirementsV1; readonly "music_requirement": TreatmentMusicRequirementV1 };
+export type BrandScreenplayTimingV1 = { readonly "total_duration_seconds": number; readonly "source_quote": string };
+
+export type BrandScreenplayV1 = { readonly "title": string; readonly "screenplay": string; readonly "production_requirements": BrandProductionRequirementsV1; readonly "music_requirement": TreatmentMusicRequirementV1; readonly "timing"?: BrandScreenplayTimingV1 | null };
 
 export type CreativeMethodSummaryV1 = { readonly "skill_id": string; readonly "title": string; readonly "summary": string };
 

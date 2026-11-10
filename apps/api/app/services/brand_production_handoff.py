@@ -566,6 +566,10 @@ class BrandProductionHandoffService:
         aspect_text = slots["campaign_aspect_ratio"]
         controls = {control.control: control.value for control in current.ledger.hard_controls}
         extracted_duration = _extract_duration_seconds(duration_text)
+        timing = document.full_script.timing if document.full_script is not None else None
+        if timing is not None:
+            extracted_duration = timing.total_duration_seconds
+            duration_text = timing.source_quote
         extracted_aspect = _extract_aspect_ratio(aspect_text)
         audio_mode = controls.get("audio_mode", "bgm_only")
         product_count = controls.get("product_count", 1)
