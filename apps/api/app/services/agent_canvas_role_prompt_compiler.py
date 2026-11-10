@@ -795,6 +795,11 @@ def _render(
             "character in the selected visual style, matching the bound Main's rendering "
             "treatment, in front, side, and back "
             f"full-body views. {DEFAULT_REFERENCE_PRESENTATION} Preserve all distinguishing details. "
+            "Show the complete head-to-toe extent in every view, with the entire head, lower "
+            "body and feet fully inside the frame and clear margins (or the complete silhouette "
+            "and extremities for a nonhuman character). If the Main is cropped, do not reproduce "
+            "its crop: extend the view consistently with the confirmed proportions and wardrobe. "
+            "Film close-ups and dialogue poses do not define this reference sheet's crop. "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",
@@ -805,6 +810,10 @@ def _render(
         return (
             "Create exactly one full-body character reference in the selected visual style. "
             f"{DEFAULT_REFERENCE_PRESENTATION} "
+            "Show the complete head-to-toe extent, with the entire head, lower body and feet fully "
+            "inside the frame and clear margins (or the complete silhouette and extremities for "
+            "a nonhuman character). Film close-ups and dialogue poses do not define this "
+            "reference image's crop. "
             "Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
