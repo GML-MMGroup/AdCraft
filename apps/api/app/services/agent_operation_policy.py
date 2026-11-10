@@ -251,10 +251,17 @@ class AgentOperationPolicyRegistryV2:
             and isinstance(context, CapabilityInvocationContextV2)
             and context.capability_context.get("journey_stage") == "storyboard_plan"
         )
+        style_lock = (
+            operation == "author_guided_script_checkpoint"
+            and isinstance(context, CapabilityInvocationContextV2)
+            and context.capability_context.get("journey_stage") == "style_lock"
+        )
         return AgentOperationPolicyV2(
             policy_id=(
                 "agent.guided_storyboard_plan.v1"
                 if storyboard_plan
+                else "agent.guided_style_lock.v1"
+                if style_lock
                 else "agent.brand_hypothesis.v2"
                 if operation == "brand_hypothesis"
                 else "agent.brand_treatment_sound.v1"
