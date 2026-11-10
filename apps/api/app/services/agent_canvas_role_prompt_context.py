@@ -446,6 +446,21 @@ class RolePromptParameterResolver:
             ),
         )
         for name in recipe.parameter_names:
+            if "size" in recipe.parameter_names and name in {"size", "aspect_ratio"}:
+                # Image dimensions default to auto. Only a saved node selection
+                # sets output dimensions; campaign, style and shot ratios remain
+                # prompt context and must not silently replace the size control.
+                if name in context.node_parameters:
+                    resolved[name] = ResolvedNodeParameterV2(
+                        name=name,
+                        value=_validate_parameter(
+                            name, context.node_parameters[name], context.role_variant
+                        ),
+                        source_kind="node_parameter",
+                        source_id=context.node_id,
+                        source_revision=context.node_revision,
+                    )
+                continue
             if name == "video_representation_mode" and context.video_representation_mode:
                 source_kind = (
                     "explicit_user"
@@ -501,7 +516,11 @@ class RolePromptParameterResolver:
                     source_revision=source_revision,
                 )
                 break
-        if "size" in recipe.parameter_names and "aspect_ratio" in resolved:
+        if (
+            "size" in recipe.parameter_names
+            and "aspect_ratio" in resolved
+            and "size" not in resolved
+        ):
             resolved["size"] = _resolve_image_size(
                 resolved["aspect_ratio"],
                 model_capability or {},
@@ -841,6 +860,8 @@ def _validate_parameter(
             raise _parameter_error()
         return value.strip()
     if name == "size":
+        if value == "auto":
+            return value
         if not isinstance(value, str) or _SIZE.fullmatch(value) is None:
             raise _parameter_error()
         return value

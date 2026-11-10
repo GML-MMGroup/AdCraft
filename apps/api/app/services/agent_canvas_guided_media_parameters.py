@@ -32,12 +32,13 @@ class GuidedMediaParameterCompiler:
         structured_content: BaseModel,
         explicit_constraints: dict[str, object],
     ) -> GuidedMediaParameterCompilation:
-        if capability_id in {"scene_design", "storyboard_design"}:
-            return self._compile_guided_image(
-                creative_role=creative_role,
-                explicit_constraints=explicit_constraints,
-            )
-        if capability_id in {"product_design", "prop_design", "character_design"}:
+        if capability_id in {
+            "scene_design",
+            "storyboard_design",
+            "product_design",
+            "prop_design",
+            "character_design",
+        }:
             return self._compile_design_image(explicit_constraints)
         if capability_id == "video_direction":
             return self._compile_video(structured_content, explicit_constraints)
@@ -45,38 +46,13 @@ class GuidedMediaParameterCompiler:
             return self._compile_bgm(structured_content, explicit_constraints)
         return GuidedMediaParameterCompilation(parameters={}, parameter_provenance={})
 
-    def _compile_guided_image(
-        self,
-        *,
-        creative_role: str,
-        explicit_constraints: dict[str, object],
-    ) -> GuidedMediaParameterCompilation:
-        ratio = _constraint(explicit_constraints, "aspect_ratio") or "1:1"
-        if not isinstance(ratio, str) or ratio not in _IMAGE_SIZE_BY_RATIO:
-            ratio = "1:1"
-        origin = (
-            "user_explicit"
-            if _constraint(explicit_constraints, "aspect_ratio")
-            else ("guidance_default")
-        )
-        size = _IMAGE_SIZE_BY_RATIO[ratio]
-        return GuidedMediaParameterCompilation(
-            parameters={"aspect_ratio": ratio, "size": size},
-            parameter_provenance={
-                "aspect_ratio": _provenance(origin, ratio, ratio),
-                "size": _provenance(
-                    "guidance_default" if origin == "user_explicit" else origin,
-                    size,
-                    size,
-                ),
-            },
-        )
-
     def _compile_design_image(
         self,
         explicit_constraints: dict[str, object],
     ) -> GuidedMediaParameterCompilation:
-        scoped = explicit_constraints.get("design_asset_parameters")
+        scoped = explicit_constraints.get("design_asset_parameters") or explicit_constraints.get(
+            "required_image_parameters"
+        )
         scoped_constraints = scoped if isinstance(scoped, dict) else {}
         ratio = scoped_constraints.get("aspect_ratio")
         if isinstance(ratio, str) and ratio in _IMAGE_SIZE_BY_RATIO:
@@ -88,14 +64,8 @@ class GuidedMediaParameterCompiler:
                     "size": _provenance("guidance_default", size, size),
                 },
             )
-        size = _IMAGE_SIZE_BY_RATIO["1:1"]
-        return GuidedMediaParameterCompilation(
-            parameters={"aspect_ratio": "1:1", "size": size},
-            parameter_provenance={
-                "aspect_ratio": _provenance("role_default", "1:1", "1:1"),
-                "size": _provenance("role_default", size, size),
-            },
-        )
+        # Missing dimensions mean auto; campaign video ratios are not image controls.
+        return GuidedMediaParameterCompilation(parameters={}, parameter_provenance={})
 
     def _compile_video(
         self,
