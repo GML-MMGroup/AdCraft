@@ -52,6 +52,13 @@ _BRAND_HYPOTHESIS_BUDGET = _OperationBudget(360, 300, 40, 20, 4_096, 2_048)
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
 _ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
 _STORYBOARD_SEGMENT_BUDGET = _OperationBudget(570, 270, 270, 30, 4_096, None)
+_SCRIPT_AUTHORING_OPERATIONS = {
+    "propose_script_options",
+    "revise_script_options",
+    "execute_canvas_script",
+    "script_writer",
+    "script_edit_normalization",
+}
 _LOW_REASONING_OBJECT_OPTIONS = {
     "propose_product_options",
     "revise_product_options",
@@ -256,12 +263,21 @@ class AgentOperationPolicyRegistryV2:
             and isinstance(context, CapabilityInvocationContextV2)
             and context.capability_context.get("journey_stage") == "style_lock"
         )
+        narrative_direction = (
+            operation == "author_guided_script_checkpoint"
+            and isinstance(context, CapabilityInvocationContextV2)
+            and context.capability_context.get("journey_stage") == "narrative_direction"
+        )
         return AgentOperationPolicyV2(
             policy_id=(
                 "agent.guided_storyboard_plan.v1"
                 if storyboard_plan
                 else "agent.guided_style_lock.v1"
                 if style_lock
+                else "agent.guided_narrative_direction.v1"
+                if narrative_direction
+                else f"agent.{operation}.v1"
+                if operation in _SCRIPT_AUTHORING_OPERATIONS
                 else "agent.brand_hypothesis.v2"
                 if operation == "brand_hypothesis"
                 else "agent.brand_treatment_sound.v1"

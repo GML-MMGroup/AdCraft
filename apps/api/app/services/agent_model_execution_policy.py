@@ -18,6 +18,12 @@ _ARK_REASONING_EFFORT_OVERRIDES: Mapping[tuple[str, str], Literal["high"]] = {
     ("volcengine_ark:glm-5-3-flash-260828", "agent.prop_recommendation.v3"): "high",
     ("volcengine_ark:glm-5-3-flash-260828", "agent.guided_storyboard_plan.v1"): "high",
     ("volcengine_ark:glm-5-3-flash-260828", "agent.guided_style_lock.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.guided_narrative_direction.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.propose_script_options.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.revise_script_options.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.execute_canvas_script.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.script_writer.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.script_edit_normalization.v1"): "high",
 }
 
 
