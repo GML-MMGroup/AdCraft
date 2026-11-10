@@ -208,6 +208,7 @@ from app.services.agent_working_documents import AgentWorkingDocumentService
 from app.services.agent_product_information_reply import (
     AgentProductInformationReplyRenderer,
 )
+from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.services.conversation_query_documents import ConversationQueryDocumentResolver
 from app.services.conversation_project_summary import ConversationProjectSummaryBuilder
 from app.persistence.agent_canvas_requirement_repository import (
@@ -3071,7 +3072,7 @@ class AgentConversationService:
                     ),
                 }
             )
-        if document_excerpt is not None:
+        if document_excerpt is not None and reply.answer_kind != "progress":
             current_context = self._workflow_context.project(
                 turn.workflow_id,
                 conversation_id=turn.conversation_id,
@@ -3100,10 +3101,7 @@ class AgentConversationService:
             or current_reference != state_reference
         ):
             return WorkflowConversationReply(
-                message=(
-                    "Workflow state changed while this answer was prepared. Refresh the "
-                    "current guidance state before continuing."
-                ),
+                message=WorkflowStatusReplyRenderer().render(current_context),
                 answer_kind="progress",
                 state_reference=current_reference,
             )
