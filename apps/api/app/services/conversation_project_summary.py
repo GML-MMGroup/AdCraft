@@ -26,7 +26,7 @@ class ConversationProjectSummaryBuilder:
         self._brands = BrandDecisionRepository(workflows.database)
         self._brand_documents = BrandDecisionDocumentService(workflows.database)
 
-    def build(self, workflow_id: str) -> str:
+    def build(self, workflow_id: str, *, include_execution_state: bool = True) -> str:
         workflow = self._workflows.get_workflow(workflow_id)
         session = self._conversations.get_guidance_session_or_none(workflow_id)
         brand_id = self._brands.get_brand_id_by_project(workflow.project_id)
@@ -48,6 +48,12 @@ class ConversationProjectSummaryBuilder:
         for candidates, budget in ((_brand_facts(document), 6000), (_node_facts(workflow), 4800)):
             used = 0
             for fact in candidates:
+                if not include_execution_state and fact.get("kind") == "current_node":
+                    fact = {
+                        key: value
+                        for key, value in fact.items()
+                        if key not in {"status", "output_available"}
+                    }
                 size = len(_json(fact).encode("utf-8")) + 1
                 candidate = {**result, "facts": [*facts, fact], "omitted_facts": omitted}
                 if (

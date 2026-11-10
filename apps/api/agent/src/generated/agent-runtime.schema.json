@@ -39065,6 +39065,15 @@
           ],
           "default": null
         },
+        "supporting_document_excerpts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentDocumentContextExcerptV2"
+          },
+          "maxItems": 1,
+          "title": "Supporting Document Excerpts",
+          "type": "array"
+        },
         "user_input": {
           "maxLength": 65536,
           "minLength": 1,

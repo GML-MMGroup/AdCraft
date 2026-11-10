@@ -22,6 +22,22 @@ class ConversationQueryDocumentResolver:
         self._workflows = workflows
         self._working_documents = working_documents
 
+    def resolve_overviews(
+        self,
+        capsule: WorkflowStateCapsuleV1,
+        query: ConversationQueryV1,
+    ) -> tuple[AgentDocumentContextExcerptV2, ...]:
+        """Read available requested overviews, with the story as primary evidence."""
+        available = {item.document_kind for item in capsule.documents}
+        return tuple(
+            self.resolve(
+                capsule,
+                ConversationQueryV1(query_kind="document_explanation", document_kind=kind),
+            )
+            for kind in ("storyboard_production_plan", "anchor_registry")
+            if kind in query.requested_document_kinds and kind in available
+        )
+
     def resolve(
         self,
         capsule: WorkflowStateCapsuleV1,

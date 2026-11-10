@@ -5230,7 +5230,7 @@ class AgentCanvasConversationRepository:
             ) from error
 
     def consultation_messages(
-        self, source_turn_id: str, *, required: bool = True
+        self, source_turn_id: str, *, required: bool = True, include_progress: bool = True
     ) -> tuple[dict[str, object], ...]:
         """Read bounded visible history strictly before the source user message."""
         with self._database.engine.connect() as connection:
@@ -5276,6 +5276,12 @@ class AgentCanvasConversationRepository:
         messages: list[dict[str, object]] = []
         remaining_bytes = 16_384
         for row in rows:
+            if (
+                not include_progress
+                and row["speaker"] == "adcraft_video_agent"
+                and json.loads(str(row["metadata_json"])).get("answer_kind") == "progress"
+            ):
+                continue
             content = str(row["content"])[:4_096]
             if not content:
                 continue

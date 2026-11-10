@@ -383,6 +383,9 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
     source_revision: int | None = Field(default=None, ge=0)
     workflow_context: WorkflowStateCapsuleV1 | None = None
     document_excerpt: AgentDocumentContextExcerptV2 | None = None
+    supporting_document_excerpts: tuple[AgentDocumentContextExcerptV2, ...] = Field(
+        default=(), max_length=1
+    )
     style_skill_consultation: StyleSkillConsultationContextV1 | None = None
 
 

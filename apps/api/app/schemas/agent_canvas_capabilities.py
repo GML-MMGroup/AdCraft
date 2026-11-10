@@ -338,13 +338,15 @@ class ConversationQueryV1(_CapabilityModel):
                 "anchor_registry",
                 "storyboard_production_plan",
             ):
-                raise ValueError("Document selection requires the canonical two-document pair.")
+                raise ValueError("Combined explanation requires the canonical two-document pair.")
             if (
                 self.document_kind is not None
                 or self.sequence_id is not None
                 or self.anchor_aliases
             ):
-                raise ValueError("Document selection cannot carry a document selector.")
+                raise ValueError(
+                    "Combined explanation cannot carry an individual document selector."
+                )
             return self
         if self.document_kind is None:
             raise ValueError("Document explanation requires a document kind.")

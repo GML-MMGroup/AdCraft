@@ -2908,6 +2908,7 @@ class AgentConversationService:
                 state_reference=state_reference,
             )
         document_excerpt = None
+        supporting_document_excerpts = ()
         consultation = None
         if isinstance(route, StyleSkillConsultationOrdinaryIntentV1):
             consultation = StyleSkillConsultationResolver(
@@ -2936,23 +2937,16 @@ class AgentConversationService:
             if current_context.projection_digest != workflow_context.projection_digest:
                 workflow_context = current_context
             if route.requested_document_kinds:
-                _, state_reference = self._conversation_answer_context(
-                    turn,
-                    response_locale=intent.response_locale,
-                    workflow_context=workflow_context,
+                excerpts = self._conversation_documents.resolve_overviews(
+                    workflow_context, route.to_legacy_query()
                 )
-                return WorkflowConversationReply(
-                    message=self._workflow_status_reply.render_document_selection(
-                        workflow_context,
-                        route.requested_document_kinds,
-                    ),
-                    answer_kind="clarification",
-                    state_reference=state_reference,
+                document_excerpt = excerpts[0] if excerpts else None
+                supporting_document_excerpts = excerpts[1:]
+            else:
+                document_excerpt = self._conversation_documents.resolve(
+                    workflow_context,
+                    route.to_legacy_query(),
                 )
-            document_excerpt = self._conversation_documents.resolve(
-                workflow_context,
-                route.to_legacy_query(),
-            )
             context, state_reference = self._conversation_answer_context(
                 turn,
                 response_locale=intent.response_locale,
@@ -2973,6 +2967,7 @@ class AgentConversationService:
                 stage="workflow_conversation",
             )
         if isinstance(route, (FreeformReplyOrdinaryIntentV1, DocumentExplanationOrdinaryIntentV1)):
+            content_explanation = isinstance(route, DocumentExplanationOrdinaryIntentV1)
             # A recap can arrive on the freeform route. Read project authority here,
             # rather than treating the classifier's draft prose as project evidence.
             if isinstance(route, FreeformReplyOrdinaryIntentV1):
@@ -2998,14 +2993,30 @@ class AgentConversationService:
                     "conversation_summary": ConversationProjectSummaryBuilder(
                         self._workflows,
                         self._conversations,
-                    ).build(turn.workflow_id),
+                    ).build(turn.workflow_id, include_execution_state=not content_explanation),
                     "recent_messages": tuple(
                         InteractionMessageSummary.model_validate(item)
-                        for item in self._conversations.consultation_messages(turn.turn_id)
+                        for item in self._conversations.consultation_messages(
+                            turn.turn_id, include_progress=not content_explanation
+                        )
                     ),
                     "document_excerpt": document_excerpt,
+                    "supporting_document_excerpts": supporting_document_excerpts,
                 }
             )
+            if content_explanation:
+                # Keep runtime authority in state_reference for validation, not in
+                # the prose context for a question about the creative content.
+                context = context.model_copy(
+                    update={
+                        "workflow_summary": "",
+                        "workflow_context": None,
+                        "journey_stage": None,
+                        "journey_status": None,
+                        "awaiting_action": None,
+                        "next_action": None,
+                    }
+                )
         reply = self._gateway.answer_workflow_conversation(
             context,
             turn_id=turn.turn_id,
