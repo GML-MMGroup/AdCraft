@@ -31,6 +31,13 @@ class BrandProductionElementV1(BaseModel):
     sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
 
 
+class BrandProductionObjectV1(BrandProductionElementV1):
+    ownership: Literal["product", "supporting_prop", "set_dressing"]
+    requires_separate_reference: bool = Field(
+        description="Whether this supporting prop needs its own reusable design reference."
+    )
+
+
 class BrandProductionRequirementsV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +49,19 @@ class BrandProductionRequirementsV1(BaseModel):
     scene_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
     scenes: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
     scene_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
+    objects: tuple[BrandProductionObjectV1, ...] | None = Field(
+        default=None,
+        max_length=32,
+        exclude_if=lambda value: value is None,
+        description="Classified physical objects; null is historical unclassified metadata, [] declares no objects.",
+    )
+
+    def dedicated_props(self) -> tuple[BrandProductionObjectV1, ...]:
+        return tuple(
+            item
+            for item in self.objects or ()
+            if item.ownership == "supporting_prop" and item.requires_separate_reference
+        )
 
     @model_validator(mode="after")
     def grounded_inventory(self) -> "BrandProductionRequirementsV1":

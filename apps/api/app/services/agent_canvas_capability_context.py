@@ -33,7 +33,9 @@ from app.services.agent_canvas_requirement_projection import (
 from app.services.agent_canvas_requirements import character_occurrence_authority_for_authoring
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 from app.services.brand_production_handoff import BrandProductionHandoffService
+from app.services.brand_production_handoff import confirmed_production_inventory
 from app.services.brand_production_context import project_brand_production_context
+from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
 
 
 def build_capability_context_snapshot(
@@ -69,6 +71,13 @@ def build_capability_context_snapshot(
         ).model_dump(mode="json")
     elif capability_id == "world_setting":
         capability_context.update(creative_method_catalog_facts(conversations.database))
+    if capability_id == "prop_design":
+        capability_context["prop_scope"] = build_prop_scope(
+            workflow=workflow,
+            session=session,
+            conversations=conversations,
+            brand_document=brand_document,
+        )
     if capability_id == "script_authoring" and session.journey.stage in {
         "narrative_direction",
         "storyboard_plan",
@@ -159,6 +168,57 @@ def build_capability_context_snapshot(
         response_locale=session.response_locale,
         character_target=character_target,
     )
+
+
+def build_prop_scope(
+    *,
+    workflow: AgentCanvasWorkflowV2,
+    session: GuidedSessionStateV2,
+    conversations: AgentCanvasConversationRepository,
+    brand_document: BrandTreatmentDocumentV1 | None,
+) -> dict[str, object]:
+    """Freeze supporting objects and existing Product identities, never sibling prompts."""
+    inventory = confirmed_production_inventory(brand_document) if brand_document else None
+    classified = inventory is not None and inventory.objects is not None
+    selected_products = []
+    for topic in session.topics:
+        if topic.capability_id != "product_design" or not topic.source_proposal_id:
+            continue
+        proposal = conversations.get_private_proposal(topic.source_proposal_id)
+        if (
+            proposal.workflow_id != workflow.workflow_id
+            or proposal.capability_id != "product_design"
+        ):
+            continue
+        selected_id = (
+            proposal.latest_application.option_id
+            if proposal.latest_application
+            else proposal.materialization.option_id
+            if proposal.materialization and proposal.materialization.status == "completed"
+            else None
+        )
+        option = next((item for item in proposal.options if item.option_id == selected_id), None)
+        if option is not None:
+            selected_products.append(
+                {
+                    "proposal_id": topic.source_proposal_id,
+                    "option_id": option.option_id,
+                    "title": option.title,
+                    "public_summary": option.public_summary,
+                }
+            )
+    return {
+        "inventory_status": "classified" if classified else "legacy_unclassified",
+        "target_objects": [item.model_dump(mode="json") for item in inventory.dedicated_props()]
+        if classified
+        else [],
+        "excluded_product_designs": selected_products,
+        "existing_product_nodes": [
+            {"node_id": node.node_id, "title": node.title}
+            for node in workflow.nodes
+            if node.creative_role == "product"
+        ],
+    }
 
 
 def _validate_character_target(

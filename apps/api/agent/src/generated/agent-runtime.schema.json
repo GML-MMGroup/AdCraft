@@ -8105,6 +8105,7 @@
             "character",
             "general",
             "product",
+            "prop",
             "scene",
             "script",
             "storyboard",
@@ -8192,6 +8193,55 @@
       "title": "BrandProductionElementV1",
       "type": "object"
     },
+    "BrandProductionObjectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "ownership": {
+          "enum": [
+            "product",
+            "set_dressing",
+            "supporting_prop"
+          ],
+          "title": "Ownership",
+          "type": "string"
+        },
+        "requires_separate_reference": {
+          "description": "Whether this supporting prop needs its own reusable design reference.",
+          "title": "Requires Separate Reference",
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "ownership",
+        "requires_separate_reference",
+        "sources",
+        "summary"
+      ],
+      "title": "BrandProductionObjectV1",
+      "type": "object"
+    },
     "BrandProductionRequirementsV1": {
       "additionalProperties": false,
       "properties": {
@@ -8226,6 +8276,23 @@
           "maxItems": 32,
           "title": "Characters",
           "type": "array"
+        },
+        "objects": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/BrandProductionObjectV1"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classified physical objects; null is historical unclassified metadata, [] declares no objects.",
+          "title": "Objects"
         },
         "prop_presence": {
           "default": "unspecified",
@@ -10079,6 +10146,11 @@
         },
         "reference_plan": {
           "$ref": "#/$defs/CapabilityReferencePlanV1"
+        },
+        "replace_source_options": {
+          "default": false,
+          "title": "Replace Source Options",
+          "type": "boolean"
         },
         "requirement_digest": {
           "pattern": "^[a-f0-9]{64}$",

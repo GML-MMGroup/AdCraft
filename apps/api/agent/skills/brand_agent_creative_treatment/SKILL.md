@@ -112,22 +112,22 @@ The following choice-authoring rules apply to `brand_treatment_step` only.
 
 # Production Inventory in Selected Details
 
-When authoring complete character or scene details (including a custom detailed
-choice), include `detail.production_requirements` in the same response. Summary
-choices and other steps omit this field. This is a structured copy of the selected
-content for production, not an additional assessment or decision.
+Complete character/scene details, including custom choices, include
+`detail.production_requirements`: structured selected content, not a new decision.
+Summary choices and other steps omit it.
 
-- Character: list every distinct confirmed identity in `characters`, with
-  `character_count` equal to the roster length and `character_sources` citing the
-  complete cast. Count identities once across outfits, poses and shots. Explicitly
-  character-free content uses zero with absence evidence. If the cast remains
-  undetermined, use null rather than guessing. Leave scene and prop fields unspecified.
-- Scene: list the confirmed spaces in `scenes` with `scene_presence` and
-  `scene_sources`. Resolve `prop_presence` only when the selected scene explicitly
-  establishes it; the advertised product is not an extra prop by default. Leave
-  character fields unresolved; this step preserves the previously chosen cast.
+- Character: list each confirmed identity in `characters`; `character_count` equals
+  roster length and `character_sources` cites the full cast. Count once across
+  outfits, poses and shots. Use zero with absence evidence for character-free
+  content, null if undetermined. Leave scene and prop fields unspecified.
+- Scene: list confirmed `scenes`, `scene_presence` and `scene_sources`; leave
+  character fields unresolved. Classify `objects` (or []): product, supporting_prop,
+  set_dressing. Include identity, scene function and exact section evidence.
+  Product includes packaging, parts and narrative disguises. Only supporting
+  objects needing recurring identity, close-up interaction or explicit design get
+  requires_separate_reference=true and justify prop_presence=include; otherwise
+  exclude Prop. Ordinary furnishings stay in the scene.
 - Every element and resolved count/presence includes sources with this step_key,
   a section_key and an exact quote from the detail.sections authored in this response.
   Keep labels and summaries in response_locale and source quotes verbatim.
-- Keep the typed inventory and visible prose consistent. The final complete
-  Treatment is reviewed and confirmed by the user; there is no final LLM review.
+- Match inventory to visible prose. The user confirms the final Treatment; no LLM review.

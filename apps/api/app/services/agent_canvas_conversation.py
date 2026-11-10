@@ -3360,6 +3360,7 @@ class AgentConversationService:
             "capability_id": proposal.capability_id,
             "instruction": action.instruction,
             "source_option_ids": [option.option_id for option in source_options],
+            "replace_source_options": action.replace_options,
             "character_target": (
                 character_target.model_dump(mode="json") if character_target is not None else None
             ),
@@ -3391,17 +3392,37 @@ class AgentConversationService:
             goal_summary=objective,
             reference_plan=reference_plan,
         )
+        capability_context = (
+            {
+                "brand_decisions": project_brand_production_context(
+                    brand_document, role=proposal.capability_id
+                ).model_dump(mode="json")
+            }
+            if brand_document is not None
+            else {}
+        )
+        style_projection = {}
+        if proposal.capability_id == "prop_design":
+            snapshot = build_capability_context_snapshot(
+                workflow=self._workflows.get_workflow(proposal.workflow_id),
+                session=session,
+                conversations=self._conversations,
+                capability_id="prop_design",
+                objective=objective,
+                reference_plan=reference_plan,
+                requirement_revision=requirements,
+            )
+            projection = snapshot.requirement_projection
+            capability_context = snapshot.capability_context
+            style_projection = snapshot.style_projection
+            snapshot_payload["authoring_context_digest"] = snapshot.digest
+            snapshot_digest = hashlib.sha256(
+                json.dumps(snapshot_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            ).hexdigest()
         invocation = CapabilityInvocationContextV2(
             creative_method_catalog=method_facts.get("creative_method_catalog"),
-            capability_context=(
-                {
-                    "brand_decisions": project_brand_production_context(
-                        brand_document, role=proposal.capability_id
-                    ).model_dump(mode="json")
-                }
-                if brand_document is not None
-                else {}
-            ),
+            capability_context=capability_context,
+            style_projection=style_projection,
             context_kind="capability_operation",
             workflow_id=proposal.workflow_id,
             conversation_id=turn.conversation_id,
@@ -3475,7 +3496,9 @@ class AgentConversationService:
             source_turn_id=turn.turn_id,
             capability_turn_id=turn.turn_id,
             source_proposal_id=proposal.proposal_id,
-            capability_context=method_facts,
+            replace_source_options=action.replace_options,
+            capability_context={**method_facts, **capability_context},
+            style_projection=style_projection,
             session_id=session.session_id,
             expected_session_revision=action.expected_session_revision,
             capability_id=proposal.capability_id,

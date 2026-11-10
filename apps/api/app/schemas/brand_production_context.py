@@ -17,7 +17,7 @@ from app.schemas.brand_screenplay import BrandScreenplayV1
 from app.schemas.brand_treatment_detail import TreatmentSectionV1
 
 BrandProductionRoleV1 = Literal[
-    "general", "script", "product", "character", "scene", "storyboard", "video", "bgm"
+    "general", "script", "product", "prop", "character", "scene", "storyboard", "video", "bgm"
 ]
 
 

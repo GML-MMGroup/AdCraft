@@ -12,12 +12,12 @@
     },
     {
       "path": "brand_agent_creative_treatment/SKILL.md",
-      "sha256": "9514148085e0021b10346a3b9596616932b116468bdf7e6518899735494ab9de",
+      "sha256": "a47757be270b3fbe742f32c1ff199d3a0edbe2bca6227ee68b649dacd569730b",
       "skill_id": "brand_agent_creative_treatment"
     },
     {
       "path": "brand_agent_full_script/SKILL.md",
-      "sha256": "2242d8bda02ba3ff638177402e73d8f21f6aab27c8f75c646477bd187f0e0c64",
+      "sha256": "43b2b7941354982468e145f4331b597036edceb43ebfdf1da143aa98ac43a928",
       "skill_id": "brand_agent_full_script"
     },
     {
@@ -37,7 +37,7 @@
     },
     {
       "path": "video_agent_prop_design/SKILL.md",
-      "sha256": "f56b14fe41a4d77d47a59e0cf021125895a8e22ed725becc1a5f57c00d441688",
+      "sha256": "bad89071026fcb9dda9c032d5765f80393a48a62ab7c245c323308ba8414579c",
       "skill_id": "video_agent_prop_design"
     },
     {

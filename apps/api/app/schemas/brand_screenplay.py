@@ -2,7 +2,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.brand_treatment_inventory import BrandProductionRequirementsV1
+from app.schemas.brand_treatment_inventory import (
+    BrandProductionRequirementsV1,
+    BrandProductionObjectV1,
+)
 from app.schemas.brand_treatment_detail import TreatmentMusicRequirementV1
 
 
@@ -27,7 +30,7 @@ class BrandScreenplayV1(BaseModel):
             *inventory.prop_sources,
             *(
                 source
-                for item in (*inventory.characters, *inventory.scenes)
+                for item in (*inventory.characters, *inventory.scenes, *(inventory.objects or ()))
                 for source in item.sources
             ),
         )
@@ -45,3 +48,13 @@ class BrandScreenplayV1(BaseModel):
 
     def render(self) -> str:
         return f"# {self.title}\n\n{self.screenplay}"
+
+
+class ScreenplayProductionRequirementsV1(BrandProductionRequirementsV1):
+    objects: tuple[BrandProductionObjectV1, ...] = Field(max_length=32)
+
+
+class BrandScreenplayGenerationV1(BrandScreenplayV1):
+    """New authoring requires object classification; stored screenplays remain readable."""
+
+    production_requirements: ScreenplayProductionRequirementsV1

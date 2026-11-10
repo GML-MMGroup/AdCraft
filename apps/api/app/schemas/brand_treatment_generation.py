@@ -21,6 +21,7 @@ from app.schemas.brand_treatment_detail import (
     TreatmentMusicRequirementV1,
     TreatmentSectionV1,
 )
+from app.schemas.brand_treatment_inventory import BrandProductionObjectV1
 
 
 class CharacterProductionRequirementsV1(BrandProductionRequirementsV1):
@@ -31,6 +32,7 @@ class CharacterProductionRequirementsV1(BrandProductionRequirementsV1):
     scene_sources: tuple[()] = ()
     prop_presence: Literal["unspecified"] = "unspecified"
     prop_sources: tuple[()] = ()
+    objects: None = Field(default=None, exclude=True)
 
 
 class SceneProductionRequirementsV1(BrandProductionRequirementsV1):
@@ -39,6 +41,7 @@ class SceneProductionRequirementsV1(BrandProductionRequirementsV1):
     character_count: None = None
     characters: tuple[()] = ()
     character_sources: tuple[()] = ()
+    objects: tuple[BrandProductionObjectV1, ...] = Field(max_length=32)
 
 
 class SelectedTreatmentStepV1(CreativeTreatmentStepOutputV1):

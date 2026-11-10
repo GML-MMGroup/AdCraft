@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from app.persistence.agent_canvas_conversation_repository import AgentCanvasConversationRepository
 from app.persistence.event_repository import EventRepository
 from app.schemas.brand_professional_mode import BrandDecisionLogEntryV1, BrandTreatmentDocumentV1
-from app.schemas.brand_screenplay import BrandScreenplayV1
+from app.schemas.brand_screenplay import BrandScreenplayV1, BrandScreenplayGenerationV1
 from app.services.brand_decision_document import BrandDecisionDocumentService
 from app.services.brand_question_context import BrandQuestionContextService
 from app.services.brand_question_state import BrandQuestionState
@@ -51,7 +51,7 @@ class BrandFullScriptService:
             stage_name="brand_full_script",
             operation="brand_full_script",
             contract_name="BrandScreenplayV1",
-            output_model=BrandScreenplayV1,
+            output_model=BrandScreenplayGenerationV1,
             model_id=self.service._settings.llm_creative_model,
             system_prompt="Author the complete delegated Brand screenplay using the current operation Skill.",
             input_payload={

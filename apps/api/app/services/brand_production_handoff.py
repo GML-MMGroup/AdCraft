@@ -142,7 +142,7 @@ def confirmed_production_inventory(
 ) -> BrandProductionRequirementsV1:
     """Combine scoped authoring metadata, with matched historical assessment compatibility."""
     if document.full_script is not None:
-        return document.full_script.production_requirements
+        return _resolve_prop_inventory(document.full_script.production_requirements)
     inventory = (
         document.review.production_requirements
         if document.review
@@ -150,7 +150,14 @@ def confirmed_production_inventory(
     )
     fields_by_step = {
         "character": ("character_count", "characters", "character_sources"),
-        "scene": ("scene_presence", "scenes", "scene_sources", "prop_presence", "prop_sources"),
+        "scene": (
+            "scene_presence",
+            "scenes",
+            "scene_sources",
+            "prop_presence",
+            "prop_sources",
+            "objects",
+        ),
     }
     for step in document.treatment_steps:
         detail = step.structured_detail
@@ -161,7 +168,33 @@ def confirmed_production_inventory(
         inventory = inventory.model_copy(
             update={key: getattr(authored, key) for key in fields_by_step[step.step_key]}
         )
-    return inventory
+    return _resolve_prop_inventory(inventory)
+
+
+def _resolve_prop_inventory(
+    inventory: BrandProductionRequirementsV1,
+) -> BrandProductionRequirementsV1:
+    """Classified ownership outranks the legacy presence flag without rewriting the document."""
+    if inventory.objects is None:
+        return inventory
+    props = inventory.dedicated_props()
+    sources = tuple(source for item in props for source in item.sources)[:4]
+    if not sources:
+        sources = (
+            inventory.prop_sources
+            or tuple(source for item in inventory.objects for source in item.sources)[:4]
+            or inventory.scene_sources
+            or inventory.character_sources
+        )
+    # Unresolved historical fragments without evidence retain their original decision.
+    if not sources:
+        return inventory
+    return inventory.model_copy(
+        update={
+            "prop_presence": "include" if props else "exclude",
+            "prop_sources": sources,
+        }
+    )
 
 
 class BrandProductionHandoffService:

@@ -44,6 +44,17 @@ character_count and scene_presence, including explicit absence for a film with
 no characters or locations. Summaries describe each identity or space for later
 prompt authoring. Treat the advertised product separately from optional props.
 
+Classify physical objects in production_requirements.objects. For each, name its
+identity and scene function, quote its screenplay evidence, and assign ownership:
+product, supporting_prop, or set_dressing. The advertised item stays product even
+when handled by a character, disguised in the story, or revealed at the ending;
+its packaging and functional components do not become a second Prop design.
+requires_separate_reference is true only for a supporting object whose recurring
+appearance, close-up interaction or explicit user requirement warrants its own
+reference. Ordinary furnishings belong to the scene. Resolve prop_presence from
+those independently designed supporting objects; a product reveal alone is not
+evidence for including Props. Use [] when there are no physical objects.
+
 All inventory sources use step_key="story", section_key="screenplay", with exact
 quotes from the screenplay field. Make cast and location declarations explicit
 so they can support counts and presence. Set music_requirement independently

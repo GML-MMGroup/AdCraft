@@ -53,6 +53,7 @@ from app.schemas import brand_screenplay
 from app.schemas import brand_professional_mode
 from app.schemas import brand_treatment_detail
 from app.schemas import brand_treatment_generation
+from app.schemas import brand_treatment_inventory
 from app.schemas import brand_production_context
 from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
 from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
@@ -109,6 +110,7 @@ CONTRACT_MODELS = (
     brand_professional_mode.CreativeTreatmentOutputV1,
     brand_professional_mode.BrandTreatmentSourceV1,
     brand_professional_mode.BrandProductionElementV1,
+    brand_treatment_inventory.BrandProductionObjectV1,
     brand_professional_mode.BrandProductionRequirementsV1,
     brand_professional_mode.BrandTreatmentFindingV1,
     brand_professional_mode.BrandTreatmentReviewOutputV1,

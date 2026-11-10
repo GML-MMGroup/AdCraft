@@ -112,6 +112,7 @@ class TreatmentDetailV1(BaseModel):
             or inventory.scene_sources
             or inventory.prop_presence != "unspecified"
             or inventory.prop_sources
+            or inventory.objects is not None
         ):
             raise ValueError("Character details cannot define scene or prop authority.")
         if step_key == "scene" and (
@@ -126,7 +127,11 @@ class TreatmentDetailV1(BaseModel):
             *inventory.prop_sources,
             *(
                 source
-                for element in (*inventory.characters, *inventory.scenes)
+                for element in (
+                    *inventory.characters,
+                    *inventory.scenes,
+                    *(inventory.objects or ()),
+                )
                 for source in element.sources
             ),
         )
