@@ -779,7 +779,9 @@ class RealMediaProvider:
             method="POST",
         )
         try:
-            with urllib_request.urlopen(request, timeout=120) as response:
+            with urllib_request.urlopen(
+                request, timeout=self._settings.image_generation_timeout_seconds
+            ) as response:
                 response_body = response.read().decode("utf-8")
         except urllib_error.HTTPError as exc:
             raise _media_api_error(
