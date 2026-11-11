@@ -133,6 +133,7 @@ class Settings:
     image_generation_endpoint: str | None = None
     image_generation_model: str = "doubao-seedream-5-0-pro-260628"
     image_generation_size: str = "2048x2048"
+    image_generation_timeout_seconds: int = 600
     video_generation_api_key: str | None = None
     video_generation_endpoint: str | None = None
     video_generation_model: str = "doubao-seedance-2-0-fast-260128"
@@ -205,6 +206,8 @@ class Settings:
     media_data_dir: Path = Path("data")
 
     def __post_init__(self) -> None:
+        if self.image_generation_timeout_seconds <= 0:
+            raise ValueError("IMAGE_GENERATION_TIMEOUT_SECONDS must be positive")
         if self.seedance_25_storyboard_reference_max_dimension not in {320, 512, 768, 1024}:
             raise ValueError(
                 "SEEDANCE_25_STORYBOARD_REFERENCE_MAX_DIMENSION must be one of 320, 512, 768, 1024"
@@ -329,6 +332,10 @@ class Settings:
             image_generation_size=os.getenv(
                 "IMAGE_GENERATION_SIZE",
                 cls.image_generation_size,
+            ),
+            image_generation_timeout_seconds=_read_int(
+                "IMAGE_GENERATION_TIMEOUT_SECONDS",
+                cls.image_generation_timeout_seconds,
             ),
             video_generation_api_key=os.getenv("VIDEO_GENERATION_API_KEY") or None,
             video_generation_endpoint=os.getenv("VIDEO_GENERATION_ENDPOINT") or None,
