@@ -363,6 +363,7 @@ class OpenRouterImageTransport:
     ) -> None:
         self._api_key = (settings.openrouter_api_key or "").strip()
         self._base_url = settings.openrouter_image_base_url.rstrip("/")
+        self._timeout_seconds = settings.image_generation_timeout_seconds
         self._http = http_transport or UrllibProviderHttpTransport()
 
     def submit(self, payload: Mapping[str, object]) -> Mapping[str, object]:
@@ -377,7 +378,7 @@ class OpenRouterImageTransport:
                 "Content-Type": "application/json",
             },
             payload=dict(payload),
-            timeout_seconds=120.0,
+            timeout_seconds=self._timeout_seconds,
             max_response_bytes=28_000_000,
         )
         if response.status_code < 200 or response.status_code >= 300:
@@ -615,8 +616,6 @@ class OpenRouterImageAdapter(ProviderNativeAdapter):
 
 
 _TEAMOROUTER_BASE_URL = "https://api.teamorouter.com/v1"
-# GPT Image 2 can take minutes; TeamoRouter recommends a 300 s client timeout.
-_TEAMOROUTER_TIMEOUT_SECONDS = 300.0
 _TEAMOROUTER_MAX_RESPONSE_BYTES = 64_000_000
 # The OpenAI edits endpoint treats input images as the canvas to modify, while
 # Canvas bindings are references (as with Seedream). Live checks (2026-10-20)
@@ -732,6 +731,7 @@ class TeamoRouterImageTransport:
     ) -> None:
         self._api_key = (settings.teamorouter_api_key or "").strip()
         self._base_url = settings.teamorouter_base_url.rstrip("/")
+        self._timeout_seconds = settings.image_generation_timeout_seconds
         # Only TeamoRouter traffic uses this proxy; other providers stay direct.
         self._proxy_url = (settings.teamorouter_proxy_url or "").strip() or None
         self._http = http_transport or UrllibRawHttpPostTransport(proxy_url=self._proxy_url)
@@ -761,7 +761,7 @@ class TeamoRouterImageTransport:
             url=url,
             headers=headers,
             body=body,
-            timeout_seconds=_TEAMOROUTER_TIMEOUT_SECONDS,
+            timeout_seconds=self._timeout_seconds,
             max_response_bytes=_TEAMOROUTER_MAX_RESPONSE_BYTES,
         )
         if response.status_code < 200 or response.status_code >= 300:
