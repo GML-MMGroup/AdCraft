@@ -36,6 +36,7 @@ from app.services.local_runtime_statistics import LocalRuntimeStatisticsService
 from app.services.project_permanent_deletion import ProjectPermanentDeletionService
 from app.schemas.local_runtime_statistics import LocalRuntimeStatisticsV1
 
+from app.api.v2.asset_reads import get_agent_canvas_asset_reads
 from app.api.v2.etag import (
     V2PreconditionError,
     parse_project_if_match,
@@ -3022,13 +3023,13 @@ def list_my_assets(
 def get_asset_rendition(
     asset_id: str,
     request: Request,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    assets: Annotated[AgentCanvasAssetService, Depends(get_agent_canvas_asset_reads)],
     version_id: Annotated[str, Query(alias="v", min_length=1, max_length=160)],
     size: Annotated[int | None, Query(ge=320, le=640, multiple_of=320)] = None,
 ) -> Response:
     kind = request.url.path.rsplit("/", 1)[-1]
     try:
-        rendition = runtime.assets.open_rendition(
+        rendition = assets.open_rendition(
             asset_id,
             version_id,
             kind=kind,
@@ -3048,13 +3049,13 @@ def get_asset_rendition(
 def get_asset_content(
     asset_id: str,
     response: Response,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    assets: Annotated[AgentCanvasAssetService, Depends(get_agent_canvas_asset_reads)],
     version_id: Annotated[str | None, Query(alias="v", min_length=1, max_length=160)] = None,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
     download: Annotated[bool, Query()] = False,
 ) -> Response:
     try:
-        content = runtime.assets.open_content(
+        content = assets.open_content(
             asset_id,
             version_id=version_id,
             range_header=range_header,
