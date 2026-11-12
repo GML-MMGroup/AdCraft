@@ -8,6 +8,7 @@ export interface PromptInputProjectionDefinition {
   readonly contextContractName: string;
   readonly projectionId: string;
   readonly renderMode: PromptInputRenderMode;
+  readonly sourceLabel?: (context: Readonly<Record<string, unknown>>) => string;
   readonly project: (
     context: Readonly<Record<string, unknown>>,
   ) => string | undefined;
@@ -59,6 +60,7 @@ const definitions = Object.freeze([
       `${contextContractName}-user-input-v1`,
       primaryPlusTypedContext,
       topLevelString("user_input"),
+      "User request",
     ),
   ),
   definition(
@@ -72,6 +74,8 @@ const definitions = Object.freeze([
     "role-prompt-current-request-v2",
     primaryPlusTypedContext,
     firstTopLevelString("user_prompt", "selected_direction"),
+    (context) => typeof context.user_prompt === "string" && context.user_prompt.trim()
+      ? "User request" : "Upstream creative direction",
   ),
   ...["NextActionContextV1", "CapabilityInvocationContextV2"].map(
     (contextContractName) =>
@@ -186,12 +190,14 @@ function definition(
   projectionId: string,
   renderMode: PromptInputRenderMode,
   project: PromptInputProjectionDefinition["project"],
+  sourceLabel: string | NonNullable<PromptInputProjectionDefinition["sourceLabel"]> = "Operation context",
 ): PromptInputProjectionDefinition {
   return Object.freeze({
     contextContractName,
     projectionId,
     renderMode,
     project,
+    sourceLabel: typeof sourceLabel === "string" ? () => sourceLabel : sourceLabel,
   });
 }
 

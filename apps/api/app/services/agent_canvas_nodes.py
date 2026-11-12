@@ -33,6 +33,7 @@ from app.services.agent_canvas_prompt_projection_lag import (
     projection_consistency,
 )
 from app.services.model_selection import ModelSelectionService
+from app.services.agent_canvas_video_subtitles import with_managed_video_subtitles
 
 
 class AgentCanvasNodeService:
@@ -199,15 +200,42 @@ class AgentCanvasNodeService:
                 )
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
+        creative_prompt_edited = "generation_prompt" in changes
+        subtitle_prompt_changed = False
+        if (
+            current.node_type == "video"
+            and current.execution_mode != "source_only"
+            and (
+                "generation_prompt" in changes
+                or (
+                    "parameters" in changes
+                    and changes["parameters"].get("generate_subtitles", True)
+                    != current.parameters.get("generate_subtitles", True)
+                )
+            )
+        ):
+            video_prompt = changes.get("generation_prompt", current.generation_prompt)
+            if isinstance(video_prompt, str) and video_prompt.strip():
+                parameters = changes.get("parameters", current.parameters)
+                subtitle_prompt = with_managed_video_subtitles(video_prompt, parameters)
+                subtitle_prompt_changed = subtitle_prompt != video_prompt
+                changes["generation_prompt"] = subtitle_prompt
+        prompt_source = (
+            current.prompt_presentation.source
+            if subtitle_prompt_changed
+            and not creative_prompt_edited
+            and current.prompt_presentation is not None
+            else "user_edited"
+        )
         if "generation_prompt" in changes:
-            normalized_prompt = normalize_manual_generation_prompt(request.generation_prompt)
+            normalized_prompt = normalize_manual_generation_prompt(changes["generation_prompt"])
             changes["generation_prompt"] = (
                 "" if normalized_prompt is None and source_only_product else normalized_prompt
             )
             changes["prompt_presentation"] = (
                 _editable_prompt_projection(
                     normalized_prompt,
-                    source="user_edited",
+                    source=prompt_source,
                     revision=current.revision + 1,
                     prior=current.prompt_presentation,
                 )
@@ -232,7 +260,7 @@ class AgentCanvasNodeService:
                 )
                 changes["prompt_presentation"] = _editable_prompt_projection(
                     normalized_visible_prompt,
-                    source="user_edited",
+                    source=prompt_source,
                     revision=current.revision + 1,
                     prior=current.prompt_presentation,
                 )

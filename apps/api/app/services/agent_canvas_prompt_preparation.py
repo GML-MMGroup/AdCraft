@@ -68,6 +68,8 @@ from app.services.agent_canvas_derivative_prompt_reuse import (
     derivative_prompt_authority_digest,
     derivative_prompt_reuse_proof,
 )
+from app.persistence.agent_canvas_conversation_repository import AgentCanvasConversationRepository
+from app.persistence.event_repository import EventRepository
 
 
 RoleBriefAuthor = Callable[..., RoleCreativeBriefV2]
@@ -100,7 +102,11 @@ class NodePromptPreparationService:
         self._role_brief_author = role_brief_author
         self._asset_resolver = asset_resolver
         self._presentation_publisher = presentation_publisher
-        self._projector = RolePromptContextProjector()
+        self._projector = RolePromptContextProjector(
+            style_snapshot_loader=lambda snapshot_id: AgentCanvasConversationRepository(
+                workflows.database, EventRepository(workflows.database)
+            ).get_creative_direction_snapshot(snapshot_id)
+        )
         self._recipes = recipe_registry or RolePromptRecipeRegistry()
         self._locked_element_guard = locked_element_guard
         self._parameter_resolver = RolePromptParameterResolver()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_video_subtitles import with_managed_video_subtitles
+
 from app.services.agent_canvas_image_presentation import (
     DEFAULT_REFERENCE_PRESENTATION,
     DEFAULT_IMAGE_OVERLAYS,
@@ -464,6 +466,8 @@ class AgentCanvasRolePromptCompiler:
             prompt = saved_prompt
             brief_digest = presentation.brief_digest
             compaction_decisions = ()
+        if context.role_variant in {"video_segment", "free_video"} and preserved_node is None:
+            prompt = with_managed_video_subtitles(prompt, context.node_parameters)
         context_payload = context.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
