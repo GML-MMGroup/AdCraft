@@ -12,7 +12,7 @@
     },
     {
       "path": "brand_agent_creative_treatment/SKILL.md",
-      "sha256": "a47757be270b3fbe742f32c1ff199d3a0edbe2bca6227ee68b649dacd569730b",
+      "sha256": "6d4e31ba62e87fcbf2cfeba89d9373b1f9ce83810e34eced8d3c16269f92b7e7",
       "skill_id": "brand_agent_creative_treatment"
     },
     {
@@ -27,7 +27,7 @@
     },
     {
       "path": "video_agent_character_design/SKILL.md",
-      "sha256": "ee2f6db9bd8bb69d0a7b2447de79cd7ce67eb78a939e8b85270ffb9ec7933299",
+      "sha256": "1614f49a1ff16ac6fad495e3967ae5b14b60f452d5d6a2a08db0e73c2686988f",
       "skill_id": "video_agent_character_design"
     },
     {

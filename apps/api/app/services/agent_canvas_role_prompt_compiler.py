@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from app.services.agent_canvas_video_subtitles import with_managed_video_subtitles
+from app.services.agent_canvas_character_reference_prompt_policy import (
+    CHARACTER_IDENTITY_SCOPE,
+    CHARACTER_TURNAROUND_FRAMING,
+)
 
 from app.services.agent_canvas_image_presentation import (
     DEFAULT_REFERENCE_PRESENTATION,
@@ -804,6 +808,7 @@ def _render(
             "and extremities for a nonhuman character). If the Main is cropped, do not reproduce "
             "its crop: extend the view consistently with the confirmed proportions and wardrobe. "
             "Film close-ups and dialogue poses do not define this reference sheet's crop. "
+            f"{CHARACTER_TURNAROUND_FRAMING} {CHARACTER_IDENTITY_SCOPE} "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",

@@ -79,8 +79,9 @@ The following choice-authoring rules apply to `brand_treatment_step` only.
     and how this actual product participates; do not substitute another product.
   - story: setup, progression, resolution, product_role. Tell the whole short
     story including its ending and the product's causal role.
-  - character: identity, appearance, performance. Describe believable appearance
-    and acting changes. Never invent an existing character asset ID.
+  - character: identity, appearance, performance. Put stable physical facts in
+    appearance and story actions in performance, not reference posing. Never invent
+    an existing character asset ID.
   - scene: spaces, boundaries. Describe each space and explicit exclusions.
   - visual: color_and_light, materials, wardrobe. Describe changes across the
     story, surfaces and clothing rather than only naming a style.

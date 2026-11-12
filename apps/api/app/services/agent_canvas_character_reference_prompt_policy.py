@@ -29,6 +29,22 @@ CHARACTER_MAIN_PROMPT = (
     + " Preserve distinctive facial or surface features, "
     "hair where present, wardrobe, body proportions, silhouette, materials and color palette."
 )
+CHARACTER_IDENTITY_SCOPE = (
+    "Identity facts below do not prescribe the reference pose. Preserve physical identity, "
+    "anatomy, proportions, wardrobe and distinguishing details; story actions describe "
+    "film performance, not a required pose or camera crop for this reference."
+)
+CHARACTER_TURNAROUND_FRAMING = (
+    "Unless a different crop is explicitly authored for this reference, fit the complete "
+    "figure inside each view: scale each complete figure down uniformly when needed, "
+    "leaving space above the head and below the feet. Keep the same figure scale and "
+    "ground line across all three views. Do not enlarge the face by cutting off the legs "
+    "or compressing body proportions. Include the complete silhouette and extremities "
+    "for nonhuman characters. Use a neutral reference stance compatible with the "
+    "character's anatomy, mobility aids and confirmed physical state. Story actions in "
+    "inherited identity descriptions are context; do not reuse a film pose unless "
+    "explicitly requested for this reference."
+)
 CHARACTER_TURNAROUND_PROMPT = (
     "Use the bound Character Main image as the sole identity master. Render one turnaround "
     "sheet with exactly three full-body figures arranged left-to-right as "
@@ -37,14 +53,17 @@ CHARACTER_TURNAROUND_PROMPT = (
     + " All three views show the same character with identical "
     "features, hair where present, wardrobe, proportions, silhouette, materials, palette, "
     "and the same selected rendering treatment as the bound Main. "
-    "Preserve original costume printing and authored accessories. " + DEFAULT_IMAGE_OVERLAYS
+    "Preserve original costume printing and authored accessories. "
+    + CHARACTER_TURNAROUND_FRAMING
+    + " "
+    + DEFAULT_IMAGE_OVERLAYS
 )
 
 
 class CharacterReferencePromptPolicy:
     """Compile image layout constraints without overriding the selected medium."""
 
-    policy_id = "adcraft.agent_canvas.character_reference.v3"
+    policy_id = "adcraft.agent_canvas.character_reference.v4"
 
     def compile(
         self,
