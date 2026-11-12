@@ -1456,17 +1456,37 @@ function withRetryReasoning(
 function repairReasoningPayload(
   policy: AgentCredentialSnapshot["execution_policy"],
 ): {
-  readonly thinking?: { readonly type: "disabled" };
+  readonly thinking?: { readonly type: "enabled" | "disabled" };
   readonly enable_thinking?: boolean;
-  readonly reasoning_effort?: "minimal";
+  readonly reasoning_effort?: "minimal" | "high";
 } {
   if (policy.reasoning_control === "ark_thinking") {
+    if (policy.model_ref === "volcengine_ark:glm-5-3-flash-260828") {
+      return { thinking: { type: "enabled" }, reasoning_effort: "high" };
+    }
     return { thinking: { type: "disabled" } };
   }
   if (policy.reasoning_control === "reasoning_effort") {
     return { reasoning_effort: "minimal" };
   }
   return { enable_thinking: false };
+}
+
+function reasoningAuditForAttempt(
+  policy: AgentCredentialSnapshot["execution_policy"],
+  stage: ModelAttemptStage,
+): Pick<AgentTransportAttemptMetadataV1,
+  "reasoning_mode" | "reasoning_effort" | "enable_thinking" | "thinking_budget_tokens"
+> {
+  const glm53Repair = stage === "structured_repair" &&
+    policy.reasoning_control === "ark_thinking" &&
+    policy.model_ref === "volcengine_ark:glm-5-3-flash-260828";
+  return {
+    reasoning_mode: glm53Repair ? "deep" as const : policy.reasoning_mode,
+    reasoning_effort: glm53Repair ? "high" as const : policy.reasoning_effort ?? null,
+    enable_thinking: glm53Repair || policy.enable_thinking,
+    thinking_budget_tokens: policy.thinking_budget_tokens ?? null,
+  };
 }
 
 function isJsonObjectTransport(transport: string): boolean {
@@ -1565,12 +1585,10 @@ function auditForAttempt(
     structured_transport: input.credential.execution_policy.structured_transport,
     thinking_format: input.credential.execution_policy.thinking_format,
     reasoning_control: input.credential.execution_policy.reasoning_control,
-    reasoning_mode: input.credential.execution_policy.reasoning_mode,
-    reasoning_effort:
-      input.credential.execution_policy.reasoning_effort ?? null,
-    enable_thinking: input.credential.execution_policy.enable_thinking,
-    thinking_budget_tokens:
-      input.credential.execution_policy.thinking_budget_tokens ?? null,
+    ...reasoningAuditForAttempt(
+      input.credential.execution_policy,
+      attempt.attemptStage ?? "initial",
+    ),
     deadline_seconds: input.credential.execution_policy.deadline_seconds,
     max_output_tokens: input.credential.execution_policy.max_output_tokens,
     operation_policy_id: input.request.policy?.operation_policy_id ?? "agent.unknown.v1",
@@ -1855,12 +1873,7 @@ function failureMetadata(
     structured_transport: input.credential.execution_policy.structured_transport,
     thinking_format: input.credential.execution_policy.thinking_format,
     reasoning_control: input.credential.execution_policy.reasoning_control,
-    reasoning_mode: input.credential.execution_policy.reasoning_mode,
-    reasoning_effort:
-      input.credential.execution_policy.reasoning_effort ?? null,
-    enable_thinking: input.credential.execution_policy.enable_thinking,
-    thinking_budget_tokens:
-      input.credential.execution_policy.thinking_budget_tokens ?? null,
+    ...reasoningAuditForAttempt(input.credential.execution_policy, stage),
     deadline_seconds: input.credential.execution_policy.deadline_seconds,
     max_output_tokens: input.credential.execution_policy.max_output_tokens,
     operation_policy_id: input.request.policy?.operation_policy_id ?? "agent.unknown.v1",
