@@ -104,6 +104,19 @@ class ProjectRow(Base):
     deleted_at: Mapped[str | None] = mapped_column(Text)
 
 
+class ProjectDeletionReceiptRow(Base):
+    """Deletion tombstone and recoverable cleanup intent; never references deleted rows."""
+
+    __tablename__ = "project_deletion_receipts"
+
+    project_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    cleanup_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class BrandRow(Base):
     """One brand memory envelope, one-to-one with a project in phase 1."""
 
