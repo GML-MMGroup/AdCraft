@@ -29,6 +29,39 @@ _ARK_REASONING_EFFORT_OVERRIDES: Mapping[tuple[str, str], Literal["high"]] = {
     ("volcengine_ark:glm-5-3-flash-260828", "agent.script_edit_normalization.v1"): "high",
 }
 
+# These independent entrypoints share generic policy IDs with unrelated stages.
+# Select their effort by operation without changing the shared policy or budgets.
+_GLM53_HIGH_OPERATION_OVERRIDES: frozenset[str] = frozenset(
+    {
+        "propose_world_setting_options",
+        "revise_world_setting_options",
+        "propose_video_options",
+        "revise_video_options",
+        "plan_storyboard_sequence_outline",
+        "propose_storyboard_options",
+        "revise_storyboard_options",
+        "execute_canvas_text",
+        "free_image",
+        "free_video",
+        "free_audio",
+        "materialize_quick_media",
+        "product_expert_brief",
+        "character_expert_brief",
+        "scene_expert_brief",
+        "bgm_expert_brief",
+        "product_prompt",
+        "character_prompt",
+        "scene_prompt",
+        "storyboard_prompt",
+        "shot_video_prompt",
+        "bgm_prompt",
+        "storyboard_detail",
+        "revise_character_asset",
+        "revise_scene_asset",
+        "author_decision_bundle",
+    }
+)
+
 
 class AgentModelExecutionPolicyError(ValueError):
     """A selected model cannot satisfy one registered Agent operation."""
@@ -128,6 +161,11 @@ def resolve_agent_model_execution_policy(
         reasoning_effort = _ARK_REASONING_EFFORT_OVERRIDES.get(
             (model_ref, operation_policy.policy_id)
         )
+        if (
+            model_ref == "volcengine_ark:glm-5-3-flash-260828"
+            and operation_policy.operation in _GLM53_HIGH_OPERATION_OVERRIDES
+        ):
+            reasoning_effort = "high"
     if (
         model_ref == "volcengine_ark:glm-5-3-flash-260828"
         and reasoning_control == "ark_thinking"
