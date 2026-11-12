@@ -33,6 +33,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app.services.agent_runtime_recovery import require_agent_runtime_ready
 from app.services.agent_canvas_run_preflight import AgentCanvasRunPreflight
 from app.services.local_runtime_statistics import LocalRuntimeStatisticsService
+from app.services.project_permanent_deletion import ProjectPermanentDeletionService
 from app.schemas.local_runtime_statistics import LocalRuntimeStatisticsV1
 
 from app.api.v2.etag import (
@@ -2066,6 +2067,7 @@ def create_agent_canvas_runtime(
             asset_service,
             conversation_repository,
             style_activation,
+            deletion=ProjectPermanentDeletionService(database, settings.media_data_dir),
         ),
         workflows=workflow_repository,
         requirements=requirement_service,
@@ -2253,6 +2255,21 @@ def trash_project(
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = project_etag(project_id, project.project_version)
+
+
+@router.delete("/projects/{project_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+def permanently_delete_project(
+    project_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> None:
+    try:
+        runtime.projects.permanently_delete_project(
+            project_id,
+            expected_version=_expected_project_version(if_match, project_id),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
 
 
 @router.post("/projects/{project_id}/restore", response_model=ProjectV2)
@@ -4414,6 +4431,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "brand_handoff_conflict": 409,
         "project_not_found": 404,
         "project_not_trashed": 409,
+        "project_deletion_busy": 409,
+        "project_permanently_deleted": 410,
         "project_state_conflict": 412,
         "project_cursor_invalid": 422,
         "project_page_invalid": 422,

@@ -161,6 +161,10 @@ def _lifespan(
                     settings, brand_poll_stop, settings_provider=settings_provider
                 )
             )
+            deletion_poll_stop = asyncio.Event()
+            deletion_poll_task = asyncio.create_task(
+                _poll_project_deletion_cleanup(settings, deletion_poll_stop)
+            )
             guided_media_resume_poll_stop = asyncio.Event()
             guided_media_resume_poll_task = asyncio.create_task(
                 _poll_agent_canvas_guided_media_resumes(
@@ -177,14 +181,38 @@ def _lifespan(
                 continuation_poll_stop.set()
                 guided_media_resume_poll_stop.set()
                 brand_poll_stop.set()
+                deletion_poll_stop.set()
                 await provider_poll_task
                 await continuation_poll_task
                 await guided_media_resume_poll_task
                 await brand_poll_task
+                await deletion_poll_task
         finally:
             coordinator.shutdown()
 
     return lifespan
+
+
+async def _poll_project_deletion_cleanup(settings: Settings, stop: asyncio.Event) -> None:
+    """Retry durable deletion cleanup after restart or transient filesystem errors."""
+    from app.services.project_permanent_deletion import ProjectPermanentDeletionService
+
+    def recover() -> None:
+        database = create_v2_database(settings.media_data_dir)
+        try:
+            ProjectPermanentDeletionService(database, settings.media_data_dir).recover_pending()
+        finally:
+            database.dispose()
+
+    while not stop.is_set():
+        try:
+            await asyncio.to_thread(recover)
+        except Exception:
+            logger.exception("Project deletion cleanup recovery failed.")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=30)
+        except asyncio.TimeoutError:
+            continue
 
 
 async def _poll_brand_continuations(

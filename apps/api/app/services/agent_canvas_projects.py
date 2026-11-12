@@ -32,6 +32,7 @@ from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.schemas.agent_canvas_conversation import VideoSkillRunCreateRequestV2
 from app.schemas.v2_asset_library import AssetVersionMetadataV2
 from app.services.agent_canvas_style_activation import StyleSkillActivationService
+from app.services.project_permanent_deletion import ProjectPermanentDeletionService
 
 
 class AgentCanvasProjectService:
@@ -44,12 +45,14 @@ class AgentCanvasProjectService:
         assets: AgentCanvasAssetService,
         conversations: AgentCanvasConversationRepository,
         style_activation: StyleSkillActivationService,
+        deletion: ProjectPermanentDeletionService | None = None,
     ) -> None:
         self._projects = projects
         self._workflows = workflows
         self._assets = assets
         self._conversations = conversations
         self._style_activation = style_activation
+        self._deletion = deletion
 
     def create(
         self,
@@ -188,6 +191,11 @@ class AgentCanvasProjectService:
         self._projects.get_catalog(project_id)
         self._projects.restore(project_id, expected_version=expected_version)
         return self._detail(self._projects.get_catalog(project_id))
+
+    def permanently_delete_project(self, project_id: str, *, expected_version: int) -> None:
+        if self._deletion is None:
+            raise RuntimeError("Project deletion service is not configured.")
+        self._deletion.delete(project_id, expected_version=expected_version)
 
     def _summary(
         self,
