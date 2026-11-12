@@ -128,6 +128,16 @@ def resolve_agent_model_execution_policy(
         reasoning_effort = _ARK_REASONING_EFFORT_OVERRIDES.get(
             (model_ref, operation_policy.policy_id)
         )
+    if (
+        model_ref == "volcengine_ark:glm-5-3-flash-260828"
+        and reasoning_control == "ark_thinking"
+        and not enable_thinking
+    ):
+        # GLM 5.3 cannot disable thinking. Use a declared effort instead of an
+        # unsupported toggle, including installation-level disabled defaults.
+        enable_thinking = True
+        reasoning_mode = "deep"
+        reasoning_effort = "high"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,
