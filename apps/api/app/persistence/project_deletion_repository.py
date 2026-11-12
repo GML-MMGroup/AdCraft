@@ -91,7 +91,13 @@ class ProjectDeletionRepository:
                     )
                 predicates = _owned_predicates(connection, project_id, workflow_ids)
                 _require_idle(connection, predicates)
-                candidates = _owned_assets(connection, workflow_ids)
+                # A retained asset may outlive its original Project. Include
+                # prior deletion authority when its last consumer disappears.
+                deleted_workflows = set(_deleted_workflow_owners(connection)) | set(workflow_ids)
+                candidates = _owned_assets(connection, tuple(deleted_workflows))
+                # Failed publication can leave verified bytes without a registered
+                # AssetVersion. Preserve their durable cleanup identity first.
+                unpublished_keys = _owned_object_keys(connection, predicates)
                 # Snapshot keys before deletion: child queries must not depend on a
                 # parent that has already been removed. Deferred FKs handle cycles.
                 plan = [
@@ -111,29 +117,9 @@ class ProjectDeletionRepository:
                 _delete_idempotency_payloads(connection, project_id, workflow_ids)
                 retained = referenced_asset_ids(connection, candidates)
                 removable = candidates - retained
-                versions = (
-                    list(
-                        connection.execute(
-                            select(AssetVersionRow.__table__).where(
-                                AssetVersionRow.asset_id.in_(removable)
-                            )
-                        ).mappings()
-                    )
-                    if removable
-                    else []
-                )
-                storage_keys = {str(row["storage_key"]) for row in versions}
-                for row in versions:
-                    metadata = json.loads(row["metadata_json"])
-                    for key in ("preview_storage_key", "poster_storage_key"):
-                        value = metadata.get(key)
-                        if isinstance(value, str):
-                            storage_keys.add(value)
-                for batch in _batches(sorted(removable)):
-                    connection.execute(
-                        delete(AssetVersionRow).where(AssetVersionRow.asset_id.in_(batch))
-                    )
-                    connection.execute(delete(AssetRow).where(AssetRow.asset_id.in_(batch)))
+                objects = _asset_objects(connection, removable)
+                storage_keys = {key for keys in objects.values() for key in keys} | unpublished_keys
+                _remove_assets(connection, removable)
                 manifest = ProjectDeletionManifestV1(
                     project_id=project_id,
                     workflow_ids=workflow_ids,
@@ -163,24 +149,152 @@ class ProjectDeletionRepository:
                 connection.rollback()
                 raise
 
-    def pending(self, limit: int = 20) -> tuple[ProjectDeletionManifestV1, ...]:
+    def reclaim_unreferenced_assets(self) -> None:
+        """Reclaim only assets backed by prior permanent-deletion authority."""
+        with self.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                owners = _deleted_workflow_owners(connection)
+                if not owners:
+                    connection.commit()
+                    return
+                candidates = _owned_assets(connection, tuple(owners))
+                removable = candidates - referenced_asset_ids(connection, candidates)
+                if not removable:
+                    connection.commit()
+                    return
+                objects = _asset_objects(connection, removable)
+                groups: dict[str, set[str]] = {}
+                # Each logical asset is charged to one existing deletion receipt,
+                # even if its versions originated in several deleted workflows.
+                asset_owners: dict[str, str] = {}
+                for batch in _batches(sorted(removable)):
+                    for asset_id, workflow_id in connection.execute(
+                        select(
+                            AssetVersionRow.asset_id,
+                            AssetVersionRow.source_workflow_id,
+                        ).where(AssetVersionRow.asset_id.in_(batch))
+                    ):
+                        project_id = owners[workflow_id]
+                        asset_owners[asset_id] = min(
+                            asset_owners.get(asset_id, project_id), project_id
+                        )
+                for asset_id, project_id in asset_owners.items():
+                    groups.setdefault(project_id, set()).add(asset_id)
+                connection.exec_driver_sql("PRAGMA defer_foreign_keys=ON")
+                _remove_assets(connection, removable)
+                for project_id, assets in groups.items():
+                    manifest = ProjectDeletionManifestV1.model_validate_json(
+                        connection.execute(
+                            select(_RECEIPTS.c.manifest_json).where(
+                                _RECEIPTS.c.project_id == project_id
+                            )
+                        ).scalar_one()
+                    )
+                    keys = {key for asset in assets for key in objects[asset]}
+                    expanded = manifest.model_copy(
+                        update={
+                            "asset_ids": tuple(sorted(set(manifest.asset_ids) | assets)),
+                            "storage_keys": tuple(sorted(set(manifest.storage_keys) | keys)),
+                        }
+                    )
+                    connection.execute(
+                        update(_RECEIPTS)
+                        .where(_RECEIPTS.c.project_id == project_id)
+                        .values(
+                            manifest_json=expanded.model_dump_json(),
+                            cleanup_completed=False,
+                        )
+                    )
+                connection.commit()
+            except SQLAlchemyError as error:
+                connection.rollback()
+                raise _error(
+                    "project_reclamation_failed", "Unused project media could not be reclaimed."
+                ) from error
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def cleanup_candidates(self, limit: int = 20) -> tuple[ProjectDeletionManifestV1, ...]:
+        """Fairly revisit receipts, including historical completed cleanups."""
         with self.database.engine.connect() as connection:
             return tuple(
                 ProjectDeletionManifestV1.model_validate_json(value)
                 for value in connection.execute(
                     select(_RECEIPTS.c.manifest_json)
-                    .where(_RECEIPTS.c.cleanup_completed.is_(False))
+                    .order_by(_RECEIPTS.c.updated_at, _RECEIPTS.c.project_id)
                     .limit(limit)
                 ).scalars()
             )
 
-    def complete(self, project_id: str) -> None:
+    def record_cleanup(self, manifest: ProjectDeletionManifestV1, *, completed: bool) -> bool:
         with self.database.engine.begin() as connection:
-            connection.execute(
+            result = connection.execute(
                 update(_RECEIPTS)
-                .where(_RECEIPTS.c.project_id == project_id)
-                .values(cleanup_completed=True, updated_at=datetime.now(timezone.utc).isoformat())
+                .where(
+                    _RECEIPTS.c.project_id == manifest.project_id,
+                    _RECEIPTS.c.manifest_json == manifest.model_dump_json(),
+                )
+                .values(
+                    cleanup_completed=completed, updated_at=datetime.now(timezone.utc).isoformat()
+                )
             )
+            return result.rowcount == 1
+
+
+def _deleted_workflow_owners(connection: Connection) -> dict[str, str]:
+    workflows = func.json_each(_RECEIPTS.c.manifest_json, "$.workflow_ids").table_valued(
+        "value",
+        joins_implicitly=True,
+    )
+    return dict(
+        connection.execute(
+            select(workflows.c.value, _RECEIPTS.c.project_id).select_from(_RECEIPTS, workflows)
+        ).all()
+    )
+
+
+def _asset_objects(connection: Connection, assets: set[str]) -> dict[str, set[str]]:
+    objects: dict[str, set[str]] = {asset: set() for asset in assets}
+    for batch in _batches(sorted(assets)):
+        for asset_id, key, metadata_json in connection.execute(
+            select(
+                AssetVersionRow.asset_id,
+                AssetVersionRow.storage_key,
+                AssetVersionRow.metadata_json,
+            ).where(AssetVersionRow.asset_id.in_(batch))
+        ):
+            objects[asset_id].add(key)
+            metadata = json.loads(metadata_json)
+            for field in ("preview_storage_key", "poster_storage_key"):
+                value = metadata.get(field)
+                if isinstance(value, str):
+                    objects[asset_id].add(value)
+    return objects
+
+
+def _owned_object_keys(
+    connection: Connection, predicates: dict[Table, ColumnElement[bool]]
+) -> set[str]:
+    keys: set[str] = set()
+    for table, predicate in predicates.items():
+        for column in table.c:
+            if column.name.endswith("storage_key"):
+                keys.update(
+                    value
+                    for value in connection.execute(
+                        select(column).where(predicate, column.is_not(None))
+                    ).scalars()
+                    if value.startswith("assets/objects/sha256/")
+                )
+    return keys
+
+
+def _remove_assets(connection: Connection, assets: set[str]) -> None:
+    for batch in _batches(sorted(assets)):
+        connection.execute(delete(AssetVersionRow).where(AssetVersionRow.asset_id.in_(batch)))
+        connection.execute(delete(AssetRow).where(AssetRow.asset_id.in_(batch)))
 
 
 def _owned_predicates(

@@ -29,34 +29,64 @@ class ProjectPermanentDeletionService:
         self.cleanup(manifest)
 
     def recover_pending(self) -> None:
-        for manifest in self._repository.pending():
+        self._repository.reclaim_unreferenced_assets()
+        for manifest in self._repository.cleanup_candidates():
             self.cleanup(manifest)
 
     def cleanup(self, manifest: ProjectDeletionManifestV1) -> bool:
-        try:
-            for key in manifest.storage_keys:
+        completed = True
+        for key in manifest.storage_keys:
+            try:
                 if not key.startswith("assets/objects/sha256/"):
                     raise ValueError("Deletion manifest contains an unsupported object location.")
+                path = self._storage.resolve_local_path(key)
+                if path != self._root / key or path.is_symlink():
+                    raise ValueError("Deletion cleanup does not follow symbolic links.")
+                if not path.exists():
+                    continue
                 # Recheck content-addressed sharing immediately before unlinking.
                 # A different logical Asset may own the same object bytes.
                 with self._repository.database.engine.connect() as connection:
                     connection.exec_driver_sql("BEGIN IMMEDIATE")
                     if not storage_key_is_referenced(connection, key):
-                        path = self._storage.resolve_local_path(key)
-                        if path != self._root / key or path.is_symlink():
-                            raise ValueError("Deletion cleanup does not follow symbolic links.")
                         path.unlink(missing_ok=True)
+                    else:
+                        completed = False
                     connection.commit()
-            for workflow_id in manifest.workflow_ids:
-                self._remove_directory("workflows", workflow_id)
-                self._remove_directory("runs", workflow_id)
-            for asset_id in manifest.asset_ids:
-                self._remove_directory("renditions", asset_id)
-            self._repository.complete(manifest.project_id)
-            return True
+            except Exception:
+                completed = False
+                logger.exception(
+                    "Project object cleanup remains pending: project_id=%s, key=%s",
+                    manifest.project_id,
+                    key,
+                )
+        directories = (
+            *(
+                (category, workflow)
+                for workflow in manifest.workflow_ids
+                for category in ("workflows", "runs")
+            ),
+            *(("renditions", asset) for asset in manifest.asset_ids),
+        )
+        for category, identity in directories:
+            try:
+                self._remove_directory(category, identity)
+            except Exception:
+                completed = False
+                logger.exception(
+                    "Project directory cleanup remains pending: project_id=%s, category=%s",
+                    manifest.project_id,
+                    category,
+                )
+        try:
+            # A recovery worker may have added newly unreferenced assets while
+            # this pass ran. Never acknowledge work absent from this snapshot.
+            recorded = self._repository.record_cleanup(manifest, completed=completed)
+            return completed and recorded
         except Exception:
             logger.exception(
-                "Project deletion cleanup remains pending: project_id=%s", manifest.project_id
+                "Project cleanup acknowledgement remains pending: project_id=%s",
+                manifest.project_id,
             )
             return False
 
