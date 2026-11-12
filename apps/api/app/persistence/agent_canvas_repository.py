@@ -42,6 +42,7 @@ from app.persistence.models import (
     AssetVersionRow,
 )
 from app.persistence.project_repository import ProjectRepository
+from app.persistence.project_deletion_repository import require_asset_not_purged
 from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.agent_canvas import (
     AgentCanvasDocumentRecordV2,
@@ -403,6 +404,8 @@ class AgentCanvasWorkflowRepository:
                     current_revision = _require_workflow_revision(
                         connection, node.workflow_id, expected_revision
                     )
+                    if node.output_asset_id is not None:
+                        require_asset_not_purged(connection, node.output_asset_id)
                     connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
                     self._prompt_dispatch.ensure_for_node_in_transaction(
                         connection, node, now=node.updated_at
@@ -2389,6 +2392,8 @@ class AgentCanvasWorkflowRepository:
                 binding.workflow_id,
                 binding.source.node_id,
             )
+        else:
+            require_asset_not_purged(connection, binding.source.asset_id)
         connection.execute(insert(AgentCanvasBindingRow).values(**_binding_values(binding)))
         _normalize_target_binding_order(
             connection,

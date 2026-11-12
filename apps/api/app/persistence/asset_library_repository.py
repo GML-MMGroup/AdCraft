@@ -13,6 +13,10 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
+from app.persistence.project_deletion_repository import (
+    require_asset_not_purged,
+    require_workflow_not_purged,
+)
 from app.persistence.models import (
     AssetBindingRow,
     AssetCatalogRow,
@@ -705,6 +709,8 @@ class V2AssetLibraryRepository:
         asset: AssetRecordCreate,
         version: AssetVersionCreate,
     ) -> AssetVersionMetadataV2:
+        require_asset_not_purged(connection, asset.asset_id)
+        require_workflow_not_purged(connection, version.source_workflow_id)
         existing_asset = connection.execute(
             select(AssetRow.asset_id).where(AssetRow.asset_id == asset.asset_id)
         ).scalar_one_or_none()

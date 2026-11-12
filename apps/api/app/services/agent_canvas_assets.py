@@ -13,6 +13,10 @@ from uuid import uuid4
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
+from app.persistence.project_deletion_repository import (
+    require_asset_not_purged,
+    require_workflow_not_purged,
+)
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_runtime import (
     GeneratedAssetProvenanceV2,
@@ -119,8 +123,8 @@ class AgentCanvasAssetService:
         staging = self._data_dir / "v2" / "staging" / f"{uuid4().hex}.{extension}.upload"
         staging.parent.mkdir(parents=True, exist_ok=True)
         staging.write_bytes(content)
-        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
-        version = self._assets.create_asset_version(
+        storage_key = self._storage.content_storage_key(checksum, extension)
+        version = self._publish_asset_version(
             AssetRecordCreate(
                 asset_id=asset_id,
                 media_type=media_type,
@@ -142,6 +146,8 @@ class AgentCanvasAssetService:
                     "source_semantic_role": source_semantic_role,
                 },
             ),
+            staging=staging,
+            extension=extension,
         )
         self._notify_version_published(version)
         return self._asset_summary(version)
@@ -302,7 +308,7 @@ class AgentCanvasAssetService:
             size_bytes=len(content),
             require_native_audio=require_native_audio,
         )
-        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        storage_key = self._storage.content_storage_key(checksum, extension)
         workflow = self._workflows.get_workflow(workflow_id)
         provenance = {
             **dict(publication_metadata or {}),
@@ -339,7 +345,7 @@ class AgentCanvasAssetService:
                 "generated_asset_provenance": generated_provenance.model_dump(mode="json"),
             }
         )
-        version = self._assets.create_asset_version(
+        version = self._publish_asset_version(
             AssetRecordCreate(
                 asset_id=asset_id,
                 media_type=mime_type.split("/", 1)[0],
@@ -370,9 +376,30 @@ class AgentCanvasAssetService:
                     **provenance,
                 },
             ),
+            staging=staging,
+            extension=extension,
         )
         self._notify_version_published(version)
         return self._asset_summary(version)
+
+    def _publish_asset_version(
+        self,
+        asset: AssetRecordCreate,
+        version: AssetVersionCreate,
+        *,
+        staging: Path,
+        extension: str,
+    ) -> AssetVersionMetadataV2:
+        # File publication and metadata registration share the deletion writer
+        # lock. Otherwise cleanup could unlink reused bytes between these steps.
+        with self._assets.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            require_asset_not_purged(connection, asset.asset_id)
+            require_workflow_not_purged(connection, version.source_workflow_id)
+            self._storage.publish_verified_file(staging, version.sha256, extension)
+            registered = self._assets.create_asset_version(asset, version, connection=connection)
+            connection.commit()
+            return registered
 
     def _notify_version_published(self, version: AssetVersionMetadataV2) -> None:
         if self._on_version_published is None:
@@ -835,7 +862,11 @@ class AgentCanvasAssetService:
         workflow_id = version.source_workflow_id
         project_id = None
         if workflow_id is not None:
-            project_id = self._workflows.get_workflow(workflow_id).project_id
+            try:
+                project_id = self._workflows.get_workflow(workflow_id).project_id
+            except V2PersistenceError as error:
+                if error.code != "workflow_not_found":
+                    raise
         return _asset_summary(
             version,
             project_id=project_id,
