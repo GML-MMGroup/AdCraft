@@ -1,0 +1,53 @@
+{
+  "skill_id": "accident-bullet-time-commercial",
+  "version": "1.0.0",
+  "display_name": "Accident Bullet-Time Commercial",
+  "description": "Visible impact, abrupt near-frozen time, moving macro product portraits, and a return to gravity turn an everyday mishap into a continuous commercial showcase.",
+  "content_locale": "en-US",
+  "category": "commercial-craft",
+  "tags": [
+    "accidental release",
+    "bullet time",
+    "speed ramp",
+    "product macro",
+    "parallax",
+    "material detail"
+  ],
+  "supported_use_cases": [
+    "accessory launches",
+    "food and beverage films",
+    "handheld product showcases",
+    "short product commercials"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Reference-derived contact, suspended eyewear detail and the same event resolved on the ground. Source branding is illustrative only.",
+    "media_url": "/api/v2/video-skills/accident-bullet-time-commercial/preview?v=1.0.0"
+  },
+  "display_order": 90,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "d85ff901c65215e4c28297da839751cfe5dd0a0421afce5e830bca6be2cc55b4",
+    "previews/preview.webp": "75f2f37d47cc0f923607c51c01c3e769c7b7e7de1b925b82f28df1ecb1b7c354",
+    "references/bgm.md": "fb0b656d46dbd1990311cc6ee0780b7dbac1b497dacda5b5df218aadd0fcd117",
+    "references/character.md": "2e7f8fc61a5bf84688ee036a1c96114a7e7dfa84e09315eaa708e157efc3b91e",
+    "references/product.md": "ddacba58b6e1a3ee8b470a4c49d6f6b3ac71af07587dd2728660b2b5be31e2fc",
+    "references/prop.md": "94a42dd70bf984f79eb7d9e5a157882a1512cbfb91ece613821424ec7c95d3db",
+    "references/scene.md": "94b65aad8d3e5034e3961d96c13cc2ba53a670aeab04d6294ee127cacd7388e2",
+    "references/script.md": "034bc84d63b24bbc7c7d047106128477331edc54a183623f4f604253d2b3559a",
+    "references/source-analysis.md": "83be7204f02b232877be4e7b675d9c9b72adbcec05b851ae18291543055542ec",
+    "references/storyboard.md": "1ef5bc001a121b779fbefa7f1fbecaea5f1ae6b434232618a7e3edc84d5c0288",
+    "references/video.md": "7ae55672ad8eea98d5a23800d9febb2f12d837cf834b2cc8f066b3a70529a8c5"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

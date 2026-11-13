@@ -34,6 +34,10 @@ const chineseSkillCopy: Record<string, { title: string; summary: string }> = {
     "title": "日光粉彩产品幻想",
     "summary": "以通透粉彩、细腻材质、明亮日光与流畅空间运动营造轻盈的商业幻想，最后落到精致的产品主视觉。"
   },
+  "accident-bullet-time-commercial": {
+    "title": "意外升格·子弹时间",
+    "summary": "用可见碰撞触发骤然升格，让物体近乎悬停、镜头绕行展示真实产品细节，最后恢复重力，接回同一次意外的落地与反应。"
+  },
   "golden-macro-patisserie": {
     "title": "暖金微距烘焙质感",
     "summary": "用暖琥珀色微距画面、酥脆层次、柔软奶油、深色果实点缀与选择性对焦，呈现高端食品及材质广告中的细腻触感。"
@@ -201,6 +205,10 @@ const chineseSkillCopy: Record<string, { title: string; summary: string }> = {
   "absence-reveal": {
     "title": "缺席揭示",
     "summary": "先展示产品缺席时的生活、流程或场景，让观众感受到缺口，再用产品的出现证明它的价值。"
+  },
+  "accident-to-product-showcase": {
+    "title": "意外瞬间变产品秀",
+    "summary": "把日常碰撞造成的脱手瞬间展开为产品展示：先交代人物与物品，再由意外引出空中细节巡礼，最后回到落地结果，完成有因有果的广告短片。"
   },
   "abstract-form-language": {
     "title": "抽象形态表达",

@@ -1,0 +1,16 @@
+# A single space with useful depth and a visible landing plane
+
+Design one coherent location that can support approach, contact, foreground
+inspection and the final consequence. Establish the movement corridor, crossing
+path, contact area, background landmarks and receiving surface. Use at least a
+foreground, subject plane and background so a camera slide produces parallax.
+
+Choose lighting that reveals the actual hero material: a broad source for
+readable labels, a restrained edge highlight for glass or metal, and consistent
+shadows on the ground. Keep the horizon, architecture and light direction stable
+between views. Allow space for the hero to rise into view and descend toward the
+same surface. A tabletop or interior can replace the reference street.
+
+The scene reference remains an environment design in its required format.
+Keep it an empty location with clear depth, stable architecture and usable
+receiving surfaces; reserve event choreography for the narrative stages.

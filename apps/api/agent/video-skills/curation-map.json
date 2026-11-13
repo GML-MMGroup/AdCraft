@@ -202,6 +202,27 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "accident-bullet-time-commercial",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "contact-triggered speed ramp",
+        "parallax-led product inspection",
+        "Return to gravity"
+      ],
+      "merged_duplicates": [
+        "Merged the accident, suspended inspection and landing grammar across four supplied videos, including two tutorials."
+      ],
+      "removed_runtime_constraints": [
+        "Kept the tutorial provider interface, fixed source runtime and resolution settings out of runtime requirements.",
+        "Adapted short internal shot intervals to the accepted AdCraft generation windows rather than requiring one node per shot."
+      ],
+      "naming_adaptation": "Used a neutral treatment name centered on an accident and bullet-time product photography.",
+      "commercial_adaptation": "Locked reference-backed product identity, causal release and frozen component states; ordered camera traversal gives one sharp hero per inspection before a visible consequence.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "sources": [
