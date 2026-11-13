@@ -81,13 +81,13 @@ export function addProductSourceItem(
   current: readonly ProductSourceDraftItem[],
   item: ProductSourceDraftItem,
   inputKind: ProductSourceInputKind,
-  maxAssetCount: number,
+  maxAssetCount: number | null,
 ): ProductSourceDraftItem[] {
   if (inputKind === "main") return [item];
   if (current.some((candidate) => candidate.key === item.key)) {
     throw new ProductSourceSelectionError("duplicate", "This Product source is already selected.");
   }
-  if (current.length >= maxAssetCount) {
+  if (maxAssetCount !== null && current.length >= maxAssetCount) {
     throw new ProductSourceSelectionError(
       "max_count",
       `You can select at most ${maxAssetCount} Product source${maxAssetCount === 1 ? "" : "s"}.`,
@@ -120,9 +120,10 @@ export function validateProductSourceDraft(
   current: readonly ProductSourceDraftItem[],
   inputKind: ProductSourceInputKind,
   minAssetCount: number,
-  maxAssetCount: number,
+  maxAssetCount: number | null,
 ): string | null {
-  if (current.length >= minAssetCount && current.length <= maxAssetCount) return null;
+  if (current.length >= minAssetCount && (maxAssetCount === null || current.length <= maxAssetCount)) return null;
+  if (maxAssetCount === null) return "Select at least one image.";
   if (inputKind === "main") return `Select exactly ${minAssetCount} Product source.`;
   return `Select ${minAssetCount}-${maxAssetCount} Product sources.`;
 }

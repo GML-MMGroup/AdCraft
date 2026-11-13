@@ -17,7 +17,8 @@ export interface ProductSourceAssetPickerProps {
   items: AgentAssetBrowserItem[];
   selected: ProductSourceDraftItem[];
   inputKind: "main" | "multiview";
-  maxAssetCount: number;
+  maxAssetCount: number | null;
+  genericSource?: boolean;
   loading: boolean;
   error: string | null;
   busy: boolean;
@@ -40,6 +41,7 @@ export function ProductSourceAssetPicker({
   selected,
   inputKind,
   maxAssetCount,
+  genericSource = false,
   loading,
   error,
   busy,
@@ -60,7 +62,7 @@ export function ProductSourceAssetPicker({
   }, [items, search]);
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.currentTarget.files ?? []).slice(0, maxAssetCount);
+    const files = Array.from(event.currentTarget.files ?? []).slice(0, maxAssetCount ?? undefined);
     event.currentTarget.value = "";
     if (files.length) onSelectFiles(files);
   };
@@ -73,13 +75,13 @@ export function ProductSourceAssetPicker({
           type="search"
           value={search}
           placeholder={t("Search images")}
-          aria-label={t("Search Product source images")}
+          aria-label={t(genericSource ? "Search source images" : "Search Product source images")}
           disabled={busy}
           onChange={(event) => setSearch(event.currentTarget.value)}
         />
       </div>
 
-      <div className="agent-chat__product-source-assets" aria-label={t("Project Product source images")}>
+      <div className="agent-chat__product-source-assets" aria-label={t(genericSource ? "Project source images" : "Project Product source images")}>
         {loading ? <p role="status">{t("Loading Project Assets")}</p> : null}
         {!loading && error ? (
           <div className="agent-chat__product-source-assets-state" role="alert">
@@ -118,9 +120,9 @@ export function ProductSourceAssetPicker({
 
       <label className="agent-chat__product-source-upload">
         <UploadIcon aria-hidden="true" />
-        <span>{t(inputKind === "main" ? "Upload Product source" : "Upload Product sources")}</span>
+        <span>{t(genericSource ? "Upload images" : inputKind === "main" ? "Upload Product source" : "Upload Product sources")}</span>
         <input
-          aria-label={t(inputKind === "main" ? "Upload Product source" : "Upload Product sources")}
+          aria-label={t(genericSource ? "Upload images" : inputKind === "main" ? "Upload Product source" : "Upload Product sources")}
           type="file"
           accept="image/*"
           multiple={inputKind === "multiview"}
@@ -130,7 +132,7 @@ export function ProductSourceAssetPicker({
       </label>
 
       {selected.length ? (
-        <ol className="agent-chat__product-source-selected" aria-label={t("Selected Product source order")}>
+        <ol className="agent-chat__product-source-selected" aria-label={t(genericSource ? "Selected image order" : "Selected Product source order")}>
           {selected.map((item, index) => (
             <li key={item.key}>
               <span className="agent-chat__product-source-selected-order">{index + 1}</span>

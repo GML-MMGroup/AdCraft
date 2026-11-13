@@ -82,6 +82,44 @@ describe("ProductSourceDecisionDock", () => {
     window.localStorage.removeItem("adcraft.locale");
   });
 
+  it.each(["character", "scene"] as const)("submits %s images directly with occurrence identity and no Main upload", async (role) => {
+    assets.items = Array.from({ length: 9 }, (_, index) => projectImage(`asset-${index}`, `v-${index}`, `View ${index}`));
+    const submit = vi.fn().mockResolvedValue(true);
+    const source: GuidedInteractionV1 = {
+      ...interaction, title: `${role === "character" ? "Character" : "Scene"} image source`,
+      content: { content_kind: "product_source", source_role: role,
+        occurrence_id: role === "character" ? "character-2" : null, source_label: role === "character" ? "Nurse" : null,
+        input_kind: "multiview", min_asset_count: 1, max_asset_count: null,
+        question_id: `${role}_multiview_source`, prompt: "Provide one or more existing images, or ask the Agent to design this asset.", expected_guidance_revision: 11 },
+    };
+    render(<ProductSourceDecisionDock interaction={source} pending={false} issue={null} onSubmit={submit} />);
+    expect(screen.getByText("One image is used as-is; multiple images are combined in the selected order.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Select View 0" }));
+    expect((screen.getByRole("button", { name: "Use selected images" }) as HTMLButtonElement).disabled).toBe(false);
+    for (let index = 1; index < 9; index++) fireEvent.click(screen.getByRole("button", { name: `Select View ${index}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Move View 8 up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected images" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    const action = submit.mock.calls[0][0].action;
+    expect(action.source_role).toBe(role);
+    expect(action.occurrence_id).toBe(role === "character" ? "character-2" : null);
+    expect(action.input_kind).toBe("multiview");
+    expect(action.asset_versions).toHaveLength(9);
+    expect(action.asset_versions[7].asset_id).toBe("asset-8");
+    expect(assets.uploadFilesWithReceipts).not.toHaveBeenCalled();
+  });
+
+  it("can select Agent design for a Scene without supplying any image", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    render(<ProductSourceDecisionDock interaction={{ ...interaction, title: "Scene image source", content: {
+      content_kind: "product_source", source_role: "scene", occurrence_id: null, input_kind: "multiview",
+      question_id: "scene_multiview_source", prompt: "Choose a source.", expected_guidance_revision: 11, min_asset_count: 1, max_asset_count: null,
+    } }} pending={false} issue={null} onSubmit={submit} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Agent design and generation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Let the Agent design" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ source_role: "scene", choice: "generate", asset_versions: [] }) })));
+  });
+
   it("switches the entire main-image panel live without losing the selected image", async () => {
     assets.items = [projectImage("asset-front", "version-front", "Front.png")];
     const submit = vi.fn().mockResolvedValue(true);

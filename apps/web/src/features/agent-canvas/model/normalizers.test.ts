@@ -1587,6 +1587,23 @@ describe("Agent Canvas normalizers", () => {
     expect(session.awaiting?.kind).toBe("product_source");
   });
 
+  it.each(["character", "scene"])("normalizes an early %s source choice with no count cap", (role) => {
+    const payload = productSourceGuidanceSessionPayload();
+    const source = { ...payload, journey: { ...payload.journey, stage: role, active_action: null }, awaiting: { ...payload.awaiting, stage: role }, interaction: { ...payload.interaction, content: {
+      ...payload.interaction.content, source_role: role, occurrence_id: role === "character" ? "character-2" : null,
+      source_label: role === "character" ? "Nurse" : null, input_kind: "multiview", min_asset_count: 1, max_asset_count: null,
+    } } };
+    expect(normalizeGuidedSessionStateV2(source).interaction?.content).toMatchObject({ source_role: role, input_kind: "multiview", min_asset_count: 1, max_asset_count: null });
+  });
+
+  it.each([["character", null], ["scene", "character-1"]])("rejects mismatched %s source occurrence scope", (role, occurrenceId) => {
+    const payload = productSourceGuidanceSessionPayload();
+    expect(() => normalizeGuidedSessionStateV2({ ...payload, interaction: { ...payload.interaction, content: {
+      ...payload.interaction.content, source_role: role, occurrence_id: occurrenceId,
+      input_kind: "multiview", min_asset_count: 1, max_asset_count: null,
+    } } })).toThrow("invalid asset source scope");
+  });
+
   it("rejects Product source cardinality and unknown content fields", () => {
     const wrongCount = productSourceGuidanceSessionPayload();
     wrongCount.interaction.content.min_asset_count = 2;

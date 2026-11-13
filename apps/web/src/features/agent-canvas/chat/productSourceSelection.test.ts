@@ -130,3 +130,13 @@ describe("productSourceSelection", () => {
     );
   });
 });
+
+it("accepts one or any larger number of existing asset images without a count cap", () => {
+  let selected: ReturnType<typeof addProductSourceItem> = [];
+  for (let index = 0; index < 33; index++) {
+    selected = addProductSourceItem(selected, createLocalFileDraftItem(localFile(`${index}.png`), `key-${index}`, ""), "multiview", null);
+    expect(validateProductSourceDraft(selected, "multiview", 1, null)).toBeNull();
+  }
+  expect(selected).toHaveLength(33);
+  expect(validateProductSourceDraft([], "multiview", 1, null)).not.toBeNull();
+});

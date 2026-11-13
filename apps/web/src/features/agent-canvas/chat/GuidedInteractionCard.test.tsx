@@ -355,6 +355,18 @@ describe("GuidedInteractionCard", () => {
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
+  it("clears the previous character images when the next occurrence opens", () => {
+    const character = { ...productSourceInteraction, content: { ...productSourceInteraction.content,
+      content_kind: "product_source" as const, source_role: "character" as const,
+      occurrence_id: "character-1", input_kind: "multiview" as const, min_asset_count: 1, max_asset_count: null,
+    } };
+    const { rerender } = render(<GuidedInteractionCard interaction={character} pending={false} issue={null} onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    expect(screen.getByText("Existing Front", { selector: ".agent-chat__product-source-selected-name" })).toBeTruthy();
+    rerender(<GuidedInteractionCard interaction={{ ...character, interaction_id: "character-source-2", content: { ...character.content, occurrence_id: "character-2" } }} pending={false} issue={null} onSubmit={vi.fn()} />);
+    expect(screen.queryByText("Existing Front", { selector: ".agent-chat__product-source-selected-name" })).toBeNull();
+  });
+
   it("preserves a Product draft when stale authority replaces the interaction revision", () => {
     const { rerender } = render(
       <GuidedInteractionCard
