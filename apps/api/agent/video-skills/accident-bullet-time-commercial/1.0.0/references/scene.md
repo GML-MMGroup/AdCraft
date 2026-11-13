@@ -3,7 +3,9 @@
 Design one coherent location that can support approach, contact, foreground
 inspection and the final consequence. Establish the movement corridor, crossing
 path, contact area, background landmarks and receiving surface. Use at least a
-foreground, subject plane and background so a camera slide produces parallax.
+foreground, subject plane and background so camera travel produces parallax.
+Reserve a coherent front volume for three successive close viewpoints and an
+open return path to a front medium view, with the same visible ground below.
 
 Choose lighting that reveals the actual hero material: a broad source for
 readable labels, a restrained edge highlight for glass or metal, and consistent

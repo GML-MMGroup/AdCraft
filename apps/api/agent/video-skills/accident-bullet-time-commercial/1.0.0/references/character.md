@@ -5,9 +5,12 @@ all references. Use the existing Main and full-body multi-view contracts.
 References establish anatomy, proportion and usable clothing construction;
 they do not need to enact the accident or contain flying products.
 
-Make intended carrying relationships unambiguous: which hand is free, where a
+Establish carrying relationships for the three distinct belongings: which hand
+holds each item, which item is worn, where a
 bag strap rests, which side wears an accessory, and how fingers can release a
-held item. Keep a phone's screen and grip functionally oriented. Preserve separate
+held item. Use available hands and real attachment points; three items do not
+mean three hands. Release follows contact, never an unexplained accessory jump.
+Keep a phone's screen and grip functionally oriented. Preserve separate
 identities for the protagonist and passerby. Do not add a duplicated body during
 an over-shoulder view or a product close-up.
 

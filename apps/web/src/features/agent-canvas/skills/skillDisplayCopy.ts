@@ -36,7 +36,7 @@ const chineseSkillCopy: Record<string, { title: string; summary: string }> = {
   },
   "accident-bullet-time-commercial": {
     "title": "意外升格·子弹时间",
-    "summary": "用可见碰撞触发骤然升格，让物体近乎悬停、镜头绕行展示真实产品细节，最后恢复重力，接回同一次意外的落地与反应。"
+    "summary": "固定复刻低位上摇、碰撞、多件随身物品同时冻结、镜头依次穿行特写、拉回人物再恢复落地的运镜；可替换角色、产品、道具和场景。"
   },
   "golden-macro-patisserie": {
     "title": "暖金微距烘焙质感",
@@ -208,7 +208,7 @@ const chineseSkillCopy: Record<string, { title: string; summary: string }> = {
   },
   "accident-to-product-showcase": {
     "title": "意外瞬间变产品秀",
-    "summary": "把日常碰撞造成的脱手瞬间展开为产品展示：先交代人物与物品，再由意外引出空中细节巡礼，最后回到落地结果，完成有因有果的广告短片。"
+    "summary": "即使只有一个主推产品，也搭配两件随身道具：意外脱手后同时冻结，镜头逐件展示并重点突出产品，再拉回人物、恢复下落与反应。"
   },
   "abstract-form-language": {
     "title": "抽象形态表达",

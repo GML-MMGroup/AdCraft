@@ -8,12 +8,14 @@ needed by the selected action; omit unreferenced mechanisms.
 
 Use neutral, uncluttered product references with complete geometry and enough
 surface detail for close views. Do not bake the collision, floating debris,
-multiple copies or a street scene into a product reference. Separate products
-need separate identities; several views of one product depict one physical item.
+multiple copies or a street scene into a product reference. The advertised
+product keeps its own identity; the two supporting belongings belong to prop
+design. Several views of this product still depict one physical item, not the
+three distinct subjects required by the final camera tour.
 
 Record the approved physical state: open or closed, attached or detached,
 filled or empty, orientation of label and functional face. A sealed bottle must
 retain its seal and dry exterior throughout the sequence.
 An attached cap, strap or hinge stays connected unless a visible, supported action
-releases it. Food layers keep their actual order and shape during slow rotation.
+releases it. Food layers keep their actual order and shape across camera viewpoints.
 Choose detail views the references can support rather than inventing a back view.

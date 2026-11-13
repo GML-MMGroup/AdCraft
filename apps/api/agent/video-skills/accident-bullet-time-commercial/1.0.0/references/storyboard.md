@@ -1,41 +1,46 @@
-# Show the exact motion phase in every panel
+# Sample the fixed three-item camera route
 
-Respect the accepted four- or nine-panel layout. Panels sample useful states;
-they are not compulsory cuts or equal time slots. For each state specify the
-visible subject, hand/strap contact, airborne position and orientation, camera
-position, focus and background landmark. Map relative depth and screen side
-before the inspection so every close view belongs to the same suspended space.
-Static images cannot depict speed by
-writing 'slow motion'; show separation from support, suspended drops, sharp
-material detail, consistent background pose and successive camera viewpoints.
+Start from the approved inventory A, B and C: one primary advertised product
+and two distinct supporting belongings, unless the approved product set already
+supplies those physical items. Identify each item's reference, initial support,
+frozen depth/screen side and landing area. A view of another surface of A is
+still A; it cannot replace the B or C visit. All items exist together after
+release even when only one is sharp or inside a close framing.
 
-For a nine-panel standalone sequence, a useful adaptable ordering is:
-1 ordinary use and support; 2 approach revealing character and inventory;
-3 actual shoulder/obstacle contact; 4 grip opening and release;
-5 first airborne hero view; 6 closer surface or second approved hero;
-7 exit detail with the downward destination established;
-8 resumed fall and first landing contact; 9 settled objects and reaction.
-Use fewer story events when needed. Repeated views can be different samples of
-one continuous inspection. Hold the post-release pose, component state and
-droplets across frozen-time cells; change camera viewpoint, not product state.
-Never invent extra objects or actions to fill cells.
-For a four-panel whole-film segment use: supported item, visible cause/release,
-one suspended hero detail, and resolved landing/reaction. A four-panel segment
-inside a longer film samples only its assigned phase, not all four phases again.
+For a nine-panel whole-film board, sample these states in order:
+1 footwear-level approach with carried/worn items established;
+2 raised front view with the passerby's visible contact and support release;
+3 front medium view of the wearer and all three items frozen in space;
+4 camera advances to A for its distinct material close-up;
+5 camera travels to B for its distinct material close-up;
+6 camera travels to C for its distinct material close-up;
+7 camera has pulled back to the front three-quarter medium view, still frozen;
+8 resumed fall and actual ground contact in the same location;
+9 settled inventory and the wearer's readable front-facing reaction.
+The panels are sampled states of continuous motion, not nine hard cuts or equal
+time slots. Establish contact before release in panel 2's action description.
+
+For four panels covering one phase of a longer film, sample only that phase
+and preserve the full film's three-item visits in the script. If a whole film
+is constrained to four panels, use setup, contact/release, the frozen three-item
+layout and landing/reaction; the Video prompt must still visit A, B and C.
+Do not reduce the inventory or make every segment repeat the whole accident.
 
 Adaptable image-prompt example:
-'Create the supplied ordered grid in the selected visual medium. The same
-reference-backed wearer and amber-lens glasses remain in one sunlit walkway.
-The glasses begin on the nose. A passerby's outer shoulder contacts the wearer;
-the head recoils and the glasses slip only afterward. Sample the same rigid
-frame suspended just in front of the face, then a closer view toward its real
-hinge with shifted background overlap. End on the same glasses on the visible
-pavement and the wearer looking down. Preserve frame count, lens tint, hinge
-and wearer identity. One physical pair of glasses appears in each moment;
-repetition across grid cells represents time, not extra copies in the scene.'
+'Create the supplied ordered grid. One wearer carries an open cup and a loose
+shoulder bag and wears the reference-backed amber-lens glasses. Begin low at
+the footwear and rise to the front. A passerby's shoulder visibly brushes the
+wearer; the torso recoils, grip opens, glasses slip and strap loses support.
+Freeze the glasses ahead of the face, cup near one hand and bag below the other
+shoulder. Sample a camera route from front medium view through a separate
+close-up of the glasses hinge, the cup rim and the bag seam, then back to the
+same front medium view. Keep all three objects' positions, angles, openings
+and droplets fixed during those views. Finish with the same objects landing
+on the visible pavement and the owner looking down. Preserve each identity;
+one instance per moment, with repetition across cells representing time.'
 
-Substitute the current brief and reference-supported product. Keep composition
-free of arrows, panel labels, invented branding, dialogue subtitles and tutorial
-UI. Approved product print remains part of its surface. Shared narrative_goal
-states the cause, timing and handoff; image-lettering rules stay in the image
-prompt and must not switch off Video subtitles.
+Replace identities and setting, not the route. Preserve the selected medium,
+required grid and product print. Keep arrows, panel lettering, dialogue and
+tutorial UI out of the image; image lettering rules do not disable Video
+subtitles. Put visit order, camera movement and handoff into narrative_goal
+and the downstream Video prompt, not only the grid's appearance description.

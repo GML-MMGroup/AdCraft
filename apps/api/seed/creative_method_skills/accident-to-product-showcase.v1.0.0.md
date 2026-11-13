@@ -4,148 +4,136 @@ version: 1.0.0
 skill_kind: creative_method
 title: Accident-to-Product Showcase
 core_principle: >
-  Turn one clearly caused everyday mishap into a suspended product showcase:
-  normal activity, visible contact and release, an expanded instant exploring
-  the same airborne product, then resumed gravity and a reaction. The accident
-  creates the display opportunity; the product remains the commercial subject.
+  An everyday collision freezes several carried belongings together. Recreate
+  the reference sequence: footwear-to-face tracking, visible impact and release,
+  a moving-camera close-up tour of each distinct item, a pullback to the wearer,
+  then resumed gravity and reaction. Even one advertised product needs supporting
+  belongings; identities and setting can change, but the multi-item tour cannot.
 consumer_psychology: >
-  An interrupted ordinary action creates immediate anticipation. Stretching
-  the instant before landing redirects that attention toward desirable product
-  details, and the return to the consequence rewards the unresolved suspense.
+  An interrupted ordinary action creates anticipation. Delaying the consequence
+  lets the camera discover desirable details among familiar belongings, making
+  the main product stand out before the falling objects complete the suspense.
 story_structure: >
-  Establish the person and held or worn items at normal speed; show one contact
-  that changes their support; enter near-frozen time after release; visit one
-  hero item at a time; resume the interrupted fall and show its consequence.
+  Establish the wearer and three carried or worn items at normal speed; show
+  passing shoulder contact and individual release; freeze them together; push
+  into separate close views of A, B and C; pull back to the front medium view;
+  restore time, show the same items landing and the wearer's reaction.
 hook_methods: >
-  Begin with a legible everyday motion, often a low tracking view of walking
-  that rises to reveal the person and products. Introduce a crossing path or
-  obstacle before contact so the interruption is understandable without dialogue.
+  Track backward from footwear height and rise to reveal the wearer and all
+  belongings. Establish the passing route before the shoulder brush so the
+  cause is readable and the frozen objects were already present in ordinary life.
 product_role: >
-  The actual supplied product becomes the focal object inside the accident.
-  Its real surfaces, openings, construction and accessories determine what the
-  camera can reveal. Other objects support the event without stealing hero time.
+  One supplied product remains the commercial hero among three distinct items.
+  Add two context-appropriate supporting belongings in the story and prop-design
+  flow; they are neutral story props, not additional brands or product variants.
+  The advertised product receives the most detailed or longest camera visit.
 suitable_categories_and_goals: >
-  Fashion accessories, eyewear, drinks, food, cosmetics and handheld electronics;
-  short launches and material-led product films with a clear physical product.
+  Accidental bullet-time, frozen-space product tours, street collision adverts,
+  accessories, drinks, food, cosmetics and handheld electronics, including briefs
+  that name only one advertised product and leave supporting belongings open.
 unsuitable_cases: >
-  Abstract services without a visible object, briefs requiring an uninterrupted
-  practical demonstration, or products for which the proposed fall overwhelms
-  desirability. A staged landing is a story ending, not proof of drop resistance.
+  Briefs that explicitly forbid supporting belongings, require a single-object
+  studio film or an uninterrupted practical demonstration. Explain such a
+  conflict rather than silently changing this method. A fall is not durability proof.
 common_mistakes: >
-  Product flight before contact, magical release from a closed grip, duplicating
-  products for multiple angles, new accessories appearing during close-ups,
-  all objects moving at normal speed, an entire film uniformly slowed down,
-  a static poster instead of camera travel, unrelated studio inserts, and no
-  return to the original incident after the beautiful product views.
+  Reducing a single-product campaign to one airborne object, replacing distinct
+  belongings with three views of the same product, contactless flight, unseen
+  props appearing at freeze time, independently spawning each item, rotating
+  products instead of moving the camera, disconnected inserts, omitting the
+  front-medium pullback, or never returning to the same landing and reaction.
 cross_category_examples: >
-  Sunglasses: a pedestrian brushes the wearer's shoulder; the glasses visibly slide from the nose, drift near the face, and reveal lens tint and hinge before landing beside the surprised owner.
-  Takeaway meal: a stumble releases a carried burger and drink; the suspended interval explores sesame, layers and amber droplets before the same items resume their fall. Food shown on the ground is not eaten.
-  Skincare bottle: a sleeve catches the edge of a vanity tray; one capped bottle leaves its support, turns slowly to reveal its actual label and glass, then lands on a visible towel. No sealed bottle leaks or opens by itself.
+  Sunglasses: a wearer carries a neutral cup and loose shoulder bag; a passing shoulder brush releases all three, the camera visits the glasses hinge, cup rim and bag seam, pulls back and lets the same belongings land.
+  Takeaway meal: a wearer carries a burger, fries and drink; passing contact releases the three established items, the frozen tour reveals sesame, fries and the cup in order before returning to the wearer and the landing. Fallen food is not eaten.
+  Skincare bottle: a wearer carries the advertised capped bottle and a neutral phone while wearing loose sunglasses; contact releases the established items, the camera visits the glasses, bottle and phone, spending most time on the bottle, then pulls back before the fall. The cap stays closed.
 ---
 
 # Accident-to-Product Showcase
 
 ## Why It Works
 
-The audience expects a mundane collision to finish immediately. Delaying that
-consequence makes room for a luxurious inspection of what would otherwise be
-an instant. The contrast between clumsy ordinary life and immaculate product
-detail supplies the joke and the attention. A final continuation closes the
-same event; a disconnected packshot does not supply that closure.
+The mishap creates a shared frozen space containing several familiar belongings.
+The camera's successive discoveries turn it into a product showcase, with one
+advertised object receiving the strongest emphasis. The awaited landing closes
+the same incident. One-object macro photography removes the defining traversal.
 
-This method owns the cause, reveal order and payoff. The companion Accident
-Bullet-Time Commercial style supplies speed ramps, parallax, focus and material
-light. Preserve an explicitly selected animation or other medium.
+This method fixes narrative sequence and inventory logic. Its companion Accident
+Bullet-Time Commercial style fixes camera choreography. Casting, wardrobe,
+product, supporting belongings, location and an explicitly selected animation
+medium can change while that structure remains recognizable.
 
 ## How To Execute
 
-### Lock the subject inventory before inventing motion
+### Establish three distinct belongings even for a single-product brief
 
-Use the approved identity reference, each product's own reference and the
-location reference or confirmed environment design. Name the
-person, wardrobe, carried and worn objects, product colors and structures,
-starting hand or attachment, and the one primary advertised item. Multiple
-views are the same item, not additional copies. Keep an unknown back surface
-out of hero view rather than inventing it. Use a single product if the brief
-provides only one; a cup, bag, phone, dog and street are not mandatory extras.
+Use the advertised product plus two plausible, unbranded supporting belongings.
+An approved product set may supply several slots with real separate items.
+Select the supporting items during story planning and carry them through the
+normal prop-design/reference flow. Do not request more advertised products or
+wait for the user to name routine props before writing a proposal. Present the
+chosen inventory in the story; explicit user constraints still govern it.
 
-### Make the release causal
+Assign A, B and C to different physical items, with one main advertised item.
+For each, specify its reference or approved design, actual appearance, initial
+hand or attachment, support loss, frozen position and landing area. Use viable
+hand counts and clothing supports. Keep references for the wearer and location
+consistent. Multiple product views do not create multiple inventory slots.
 
-Write the approach direction, exact contact point, body response, loss of grip
-or support, and initial object trajectory in that order. For a shoulder brush,
-show the passing person's outer shoulder touching the protagonist, the torso
-reacting, then the hand opening. For a stumble, show the shoe or support catching
-before release. The contact should be readable for at least a brief beat.
-Account separately for an item worn on the face, carried in a hand, or suspended
-from a strap. A restrained bump must not produce an unexplained violent launch.
-The passerby continues away rather than repeatedly colliding or grabbing.
+### Preserve the reference sequence and camera route
 
-### Expand one incident into a product inspection
+1. Normal-speed backward tracking starts at footwear and rises to a front view
+   of the wearer, all three items and the passing route.
+2. A passerby's outer shoulder visibly brushes the wearer. Show torso recoil,
+   hands opening or loose support slipping, then each item's release. The
+   passerby continues away; a slight brush never becomes a violent launch.
+3. All three items freeze together in front of the wearer. Lock positions,
+   orientations, openings, liquid shape and droplets along with the reaction.
+4. From the front medium view, push into that space and travel successively
+   to A, B and C. Each gets its own close-up, readable surface detail and a
+   small lateral/partial arc movement with changing background overlap. Keep
+   a continuous traveling-camera impression. Objects remain still and singular;
+   offscreen or defocused belongings still exist in the same shared space.
+5. Pull back to the same front three-quarter medium view before time resumes.
+6. Restore ordinary time, follow those trajectories to ground contact and
+   settling, then reveal the wearer's front-facing startled expression.
 
-Preserve normal movement before the trigger. After release, stretch a small
-physical instant into the dominant showcase interval. Default to frozen object
-positions, orientations, component states and droplets while the camera travels;
-use tiny drift only for an explicitly chosen extreme-slow treatment. The protagonist remains
-part of the same spatial event. Give each close-up one sharp hero and one
-observable detail. Map the objects relative to the protagonist before moving
-the camera. Other inventory remains in that space, possibly outside the frame.
-Sequential hero focus is not sequential object creation or a separate accident.
-For one SKU, visit two or three surfaces of that same physical object; for an
-approved set, establish every object before the accident and visit them in order.
+These stages and separate visits are mandatory for this method. Substituting
+roles, objects or location does not permit a different camera grammar. Let the
+main product receive more time or richer detail, but keep each supporting-item
+visit. For the three-slot tour, avoid unrelated studio inserts and three angles
+of only the main product. A sealed vessel keeps its seal unless its real
+mechanism and the approved action support an explicit opening before freeze.
 
-### Return to the interrupted consequence
+### Allocate the approved time without discarding the tour
 
-Resume gravity along the established trajectories. Show the same landing plane,
-contact, appropriate settling or spill, and a readable human response. A catch
-or soft landing is a possible approved variation; the reference-faithful default
-is a visible landing, not an unrelated end card. Preserve the resulting state.
-Any unsupported durability or leakproof claim stays out of the story. Product
-beauty does not require copying source brands, casting or clothing.
+If no total is confirmed, propose reference-like pacing, commonly ten to
+fifteen seconds. Preserve approved totals and provider capabilities. Short
+internal shots share valid generation windows; do not make each detail a
+separate unsupported short video node. Continuations inherit the precise camera
+and object state and execute their phase, without another collision or landing.
 
-### Put timing and continuity into the visible prompts
+For an approved ten-second whole film: 0-2 normal low-to-front tracking;
+2-2.5 contact/release; 2.5-4.5 camera visit to advertised item A; 4.5-5.9 visit
+B; 5.9-7.3 visit C; 7.3-8 pull back while still frozen; 8-10 resumed fall,
+landing and reaction. Swap object identities and setting, not these beats.
 
-Allocate the approved total across setup, contact, suspended inspection and
-resolution. Spend roughly half or more of a typical short film on the product
-inspection, reducing the number of heroes when time is tight. Every shot states
-its subject, action phase, camera start/path/end, focus and outgoing object state.
-Short internal shots can share one valid generation segment. Preserve the
-project's 4-second four-panel rule and longer nine-panel allocations; do not
-create a separate unsupported 2- or 3-second generation for every detail shot.
-For a multi-segment film, trigger the accident once and carry the suspended or
-falling state into the next segment rather than restarting the story.
+For an approved fifteen-second film: 0-3 tracking; 3-5 contact/release/freeze;
+5-7.5 visit A; 7.5-9.25 visit B; 9.25-11 visit C; 11-12 front-medium pullback;
+12-13.5 fall and landing; 13.5-15 reaction. Reassign the longest visit to the
+actual advertised item if it occupies another slot.
 
-Adaptable ten-second example, only when that duration is approved:
-0-2.3: a person walks toward a retreating low camera; it rises to establish the
-face, sunglasses, hand-held drink and shoulder bag from their references.
-2.3-2.7: a passerby's outer shoulder makes visible contact; the wearer reacts,
-the hand opens, the glasses slip and the bag strap leaves its support.
-2.7-4.5: glasses freeze in front of the face; the camera advances
-past the lens rim toward the hinge, changing parallax while the frame stays rigid.
-4.5-6.2: focus transfers to the established cup; its rim and a few released drops
-stay fixed in space. Keep its actual lid condition and liquid behavior.
-6.2-7.8: a lateral camera move reveals the same bag's grain, seam and hardware.
-7.8-10: speed returns, those objects finish falling onto the established surface,
-then settle while the person reacts. Keep each inventory item singular.
-Replace the objects and cause with the current brief; never copy this inventory
-into a single-product campaign. If several objects cannot plausibly detach from
-one incident, release fewer objects rather than inventing extra impacts.
+A four-second segment may cover a phase of the full sequence. If the entire
+film has a very short fixed budget, preserve all visits, disclose the rushed
+pacing and propose more time; still display the best-effort written prompt.
+Do not silently lengthen it or fall back to one object. Keep existing panel
+counts and per-node duration contracts.
 
-For an approved fifteen-second frozen-space variant: 0-3 normal tracking from
-footwear to face; 3-5 visible contact, release and freeze; 5-7 first hero, 7-9
-second hero, 9-11 third hero; 11-13 camera returns to the protagonist and time
-resumes; 13-15 landing and front-facing reaction. Use actual references and map
-the three objects once. If a container opens, establish the supported opening
-at the trigger and preserve it during the frozen tour; otherwise keep it closed.
-Reuse verified assets for timing or camera-only revisions. Update the affected
-script and prompt together so old rotation or opening instructions cannot
-contradict the revised freeze state.
+### Carry the fixed sequence into production prompts
 
-A four-second whole-film variant uses one hero: establish it in use, show one
-small support failure, spend the middle interval inspecting one airborne detail,
-and finish the same fall. Avoid compressing a three-product tour into that slot.
-
-Before returning, review the planned film silently: is contact visible before
-release, is the time change unmistakable, can the viewer recognize the supplied
-product, does camera travel reveal new depth, and does the incident finish?
-Rewrite missing links in the prompt. Preserve text authoring and display; this
-review is not an extra paid visual check or a new backend rejection gate.
+The script, storyboard narrative goal and Video prompt must name A, B and C,
+their visit order, contact before release, simultaneous freeze, camera route,
+front-medium pullback and resulting landing. Each item retains its geometry
+and state across views. Timing/camera-only revisions reuse approved assets and
+replace stale single-object, spinning or opening instructions in affected text.
+Review these links before returning; this is prompt guidance, not a paid visual
+check or a new backend rejection gate. Preserve approved speech, subtitle
+settings and actual product facts.

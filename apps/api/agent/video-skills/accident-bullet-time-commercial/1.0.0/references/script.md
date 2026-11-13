@@ -1,25 +1,38 @@
-# An ordinary mishap becomes a product showcase
+# One advertised product, several belongings, one accident
 
-Plan one cause and its delayed consequence. Establish the advertised item in
-ordinary use, introduce the crossing path or unstable support, show contact and
-release, expand that instant into ordered product observations, then finish the
-same event. Put the collision body part, grip change, airborne direction and
-landing destination into the approved action, not only into a later camera note.
+Build a three-slot inventory: the advertised product and two distinct supporting
+belongings that fit the wearer and location. A supplied product set can fill
+multiple slots with its real separate items. Choose plausible unbranded props
+when the brief names only one product; publish those choices in the story and
+normal prop-design flow. The three slots are different physical items, not
+three copies or surfaces of the advertised product. Keep the primary product
+commercially dominant. Use references for its actual features and assign each
+supporting prop its own stable identity.
 
-Use minimal speech unless the brief requires it. The product inspection should
-read without an explanatory voiceover. A natural surprised response at the end
-can supply the payoff; keep injury or melodrama from replacing the product story.
-Keep approved words and claims intact. A dropped item is not a durability test.
+Preserve this sequence: footwear-level tracking rises to the wearer and all
+items; visible passing shoulder contact; recoil and release; all items freeze
+together; camera visits A then B then C in separate close views; camera returns
+to a front medium view; normal time resumes, items land and the wearer reacts.
+For each item state its original hand or attachment, release mechanism, frozen
+position and landing destination. Establish every item before the collision.
+Use one worn item plus two hand/shoulder-supported items when appropriate;
+account for the actual number of hands and credible support changes.
 
-Allocate time by visible action and preserve the confirmed total. A useful
-proportion is about a quarter for ordinary setup and contact, about half for the
-suspended product inspection, and the remainder for resumed motion and response.
-Treat that as an allocation aid, not a compulsory runtime or equal-shot formula.
-Group short shots inside legal generation segments. Carry an exact incoming and
-outgoing state across segment boundaries. Place the trigger once in the whole
-film; a continuation can begin with an already airborne object.
+Keep camera direction, speed contrast, tour order and final reconnection from
+the references even when casting, props, product or location change. Only vary
+the concrete materials, identities and justified physical details. If a supplied
+constraint prevents the multi-item incident, state the conflict rather than
+quietly turning this into a single-object beauty film.
 
-For a single product, design complementary views of that same item. For a set,
-establish all items before release and give each its own useful detail. A
-four-second standalone film uses one hero and one detail, while a longer film
-can afford the shoes-to-face opening and several product portraits.
+When no total is confirmed, propose enough time for the reference pacing, often
+ten to fifteen seconds. Keep confirmed totals intact. Allocate roughly a quarter
+to approach/contact, over half to the three-item tour and the rest to return,
+fall and reaction; give the advertised item the longest visit. Short internal
+shots share legal generation windows. Each continuation executes only its
+allocated phase with an explicit incoming/outgoing state. A four-second segment
+must not erase the other belongings from the whole film.
+
+Keep approved speech and claims intact; brief speech may accompany the opening.
+Neither a drop nor an intact landing proves durability. Review that A, B and C
+each receive a distinct visit, then return the written story without an extra
+visual-model check or a new authoring rejection gate.

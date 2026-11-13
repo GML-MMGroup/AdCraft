@@ -84,11 +84,25 @@ aspect ratio, resolution, brands, exact street, speech and subtitle-off settings
 are demo-specific rather than Skill policy. Source captions and visible prompt
 text were inspected; no claim is made about transcribed audio.
 
-## Transfer boundary
+## Transfer boundary and user-confirmed correction
 
-The five-stage cause/time/product/consequence mechanism and moving-camera
-product inspection are essential. Gender, pink or brown wardrobe, brand marks,
-dog, street, item count, provider and source runtime are optional source facts.
-The method and style are independent selectable packages; selecting both gives
-the strongest reference-faithful combination. A four-second window cannot carry
-three full product portraits at the same pace as the ten-second references.
+The user explicitly requires reproduction of the multi-item camera choreography,
+not a loose bullet-time theme. Even a campaign with one advertised product must
+establish supporting belongings and give each its own sequential camera visit.
+The default three slots match the references. Casting, wardrobe, product and
+prop categories, location and an explicit visual medium are replaceable.
+
+The mandatory route is low footwear tracking rising to the wearer; visible
+passing contact and release; simultaneous shared freeze; front-medium push into
+A, then B, then C with material close views and parallax; pullback to the front
+medium; resumed fall, landing and a readable reaction. Individual source cuts
+must not become disconnected studio inserts or a justification to lose this
+traversing-camera impression.
+
+This correction supersedes the initial single-product/single-object fallback,
+optional footwear opening, interchangeable camera routes, and the four-second
+single-bottle whole-film example. Four-second nodes may still cover a phase of
+a longer sequence. Confirmed whole-film timing stays authoritative; a tight
+budget must be acknowledged without silently dropping visits or blocking text.
+The teaching interfaces, source brands, exact wardrobe and provider settings
+remain provenance rather than platform policy.
