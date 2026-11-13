@@ -17,6 +17,24 @@ class _GuidedProductModel(BaseModel):
 class GuidedProductAssetVersionRefV1(_GuidedProductModel):
     asset_id: str = Field(min_length=1, max_length=160)
     version_id: str = Field(min_length=1, max_length=160)
+    source_scope: Literal["project", "mine", "recommended"] = Field(
+        default="project", exclude_if=lambda value: value == "project"
+    )
+    entity_id: str | None = Field(
+        default=None, min_length=1, max_length=160, exclude_if=lambda value: value is None
+    )
+    member_id: str | None = Field(
+        default=None, min_length=1, max_length=160, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def validate_catalog_identity(self) -> "GuidedProductAssetVersionRefV1":
+        if self.source_scope == "project":
+            if self.entity_id is not None or self.member_id is not None:
+                raise ValueError("Project images cannot carry catalog identity.")
+        elif self.entity_id is None or self.member_id is None:
+            raise ValueError("Library images require exact entity and member identities.")
+        return self
 
 
 class GuidedSourceScopeV1(_GuidedProductModel):

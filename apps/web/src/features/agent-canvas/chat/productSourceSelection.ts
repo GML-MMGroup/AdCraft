@@ -2,6 +2,12 @@ import type { GuidedProductAssetVersionRefV1 } from "../../../types-v2.ts";
 
 export type ProductSourceInputKind = "main" | "multiview";
 
+export interface SourceLibraryIdentity {
+  source_scope: "mine" | "recommended";
+  entity_id: string;
+  member_id: string;
+}
+
 export interface ProductSourceAssetVersionDraftItem {
   kind: "asset_version";
   key: string;
@@ -10,6 +16,7 @@ export interface ProductSourceAssetVersionDraftItem {
   displayName: string;
   previewUrl: string | null;
   pendingHandoffId: string | null;
+  catalog?: SourceLibraryIdentity;
 }
 
 export interface ProductSourceLocalFileDraftItem {
@@ -53,6 +60,7 @@ export function createAssetVersionDraftItem(input: {
   displayName: string;
   previewUrl: string | null;
   pendingHandoffId?: string | null;
+  catalog?: SourceLibraryIdentity;
 }): ProductSourceAssetVersionDraftItem {
   return {
     kind: "asset_version",
@@ -139,7 +147,7 @@ export function resolveProductSourceAssetVersions(
   const assetVersions = current.map((item) => {
     if (item.kind === "asset_version") {
       if (item.pendingHandoffId) pendingHandoffIds.add(item.pendingHandoffId);
-      return { asset_id: item.assetId, version_id: item.versionId };
+      return { asset_id: item.assetId, version_id: item.versionId, ...item.catalog };
     }
     const uploaded = uploadedByDraftKey.get(item.key);
     if (!uploaded) {

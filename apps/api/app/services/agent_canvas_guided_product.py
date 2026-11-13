@@ -17,6 +17,8 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.services.agent_canvas_requirements import character_occurrences_for_authoring
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_guided_reference_validation import require_source_catalog_member
+from app.schemas.v2_asset_library import AssetVersionMetadataV2
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasGuidanceSessionRow
 from app.schemas.agent_canvas import CanvasNodeV2, CanvasPositionV2
@@ -229,7 +231,7 @@ class GuidedProductInputCommitService:
             )
 
         versions = tuple(
-            self._resolve_input_version(workflow_id, reference.asset_id, reference.version_id)
+            self._resolve_input_version(workflow_id, reference, source_role=request.source_role)
             for reference in request.asset_versions
         )
         operation_id = f"op_{digest[:32]}"
@@ -327,6 +329,17 @@ class GuidedProductInputCommitService:
                     }
                 ),
             )
+            if any(ref.source_scope != "project" for ref in request.asset_versions):
+                node = node.model_copy(
+                    update={
+                        "metadata": {
+                            **node.metadata,
+                            "source_asset_versions": [
+                                ref.model_dump(mode="json") for ref in request.asset_versions
+                            ],
+                        }
+                    }
+                )
             if request.source_role == "character":
                 requirement = AgentCanvasRequirementRepository(
                     self._workflows.database
@@ -410,7 +423,10 @@ class GuidedProductInputCommitService:
         except V2PersistenceError:
             return
 
-    def _resolve_input_version(self, workflow_id: str, asset_id: str, version_id: str):
+    def _resolve_input_version(
+        self, workflow_id: str, reference: GuidedProductAssetVersionRefV1, *, source_role: str
+    ) -> AssetVersionMetadataV2:
+        asset_id, version_id = reference.asset_id, reference.version_id
         version = self._asset_repository.find_version(asset_id=asset_id, version_id=version_id)
         if version is None:
             raise V2PersistenceError(
@@ -418,12 +434,15 @@ class GuidedProductInputCommitService:
                 "Product AssetVersion was not found.",
                 stage="guided_product_service",
             )
-        if version.source_workflow_id != workflow_id:
+        if reference.source_scope == "project" and version.source_workflow_id != workflow_id:
             raise V2PersistenceError(
                 "guided_product_asset_foreign_workflow",
                 "Product AssetVersion does not belong to this Workflow.",
                 stage="guided_product_service",
             )
+        if reference.source_scope != "project":
+            with self._workflows.database.engine.connect() as connection:
+                require_source_catalog_member(connection, reference, source_role=source_role)
         try:
             self._assets.resolve_asset_version_path(asset_id, version_id)
         except V2PersistenceError as error:

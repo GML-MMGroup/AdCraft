@@ -6,6 +6,12 @@ import json
 from collections.abc import Mapping
 
 from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.engine import Connection
+
+from app.persistence.errors import V2PersistenceError
+from app.persistence.models import AssetEntityRow, AssetEntityMemberRow
+from app.schemas.agent_canvas_guided_product import GuidedProductAssetVersionRefV1
 
 from app.schemas.agent_canvas_guided_interactions import GuidedReferenceKindV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
@@ -46,3 +52,35 @@ def reference_target_is_current(
         and metadata.get("occurrence_id") == occurrence_id
         and metadata.get("character_phase") in {None, "main"}
     )
+
+
+def require_source_catalog_member(
+    connection: Connection,
+    reference: GuidedProductAssetVersionRefV1,
+    *,
+    source_role: str,
+) -> None:
+    """Check exact catalog membership both before compilation and at publication."""
+    semantic_type = {
+        "character": "character_three_view",
+        "scene": "scene_multi_view_grid",
+    }.get(source_role)
+    member = connection.execute(
+        select(AssetEntityMemberRow.member_id)
+        .join(AssetEntityRow, AssetEntityRow.entity_id == AssetEntityMemberRow.entity_id)
+        .where(
+            AssetEntityRow.entity_id == reference.entity_id,
+            AssetEntityRow.status == "active",
+            AssetEntityRow.scope == ("user" if reference.source_scope == "mine" else "recommended"),
+            AssetEntityMemberRow.member_id == reference.member_id,
+            AssetEntityMemberRow.asset_id == reference.asset_id,
+            AssetEntityMemberRow.version_id == reference.version_id,
+            AssetEntityMemberRow.semantic_type == semantic_type,
+        )
+    ).scalar_one_or_none()
+    if semantic_type is None or member is None:
+        raise V2PersistenceError(
+            "reference_candidate_not_found",
+            "The selected library image is unavailable or its identity has changed. Select it again.",
+            stage="guided_source_validation",
+        )

@@ -6,6 +6,7 @@ import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
+  GuidedReferenceCandidateV2,
 } from "../../../types-v2.ts";
 import { useAgentCanvasAssets } from "../assets/useAgentCanvasAssets.ts";
 import { DecisionDockFrame } from "./DecisionDockFrame.tsx";
@@ -20,6 +21,7 @@ import {
   resolveProductSourceAssetVersions,
   validateProductSourceDraft,
   type ProductSourceDraftItem,
+  type SourceLibraryIdentity,
 } from "./productSourceSelection.ts";
 import type { AgentAssetBrowserItem } from "../assets/assetSelection.ts";
 import type { ProductMainHandoff } from "./productSourceHandoff.ts";
@@ -219,6 +221,17 @@ export function ProductSourceDecisionDock({
     updateSelected(() => addProductSourceItem(selected, draft, content.input_kind, content.max_asset_count));
   };
 
+  const selectLibraryAsset = (candidate: GuidedReferenceCandidateV2, catalog: SourceLibraryIdentity) => {
+    const draft = createAssetVersionDraftItem({
+      assetId: candidate.asset_id,
+      versionId: candidate.asset_version_id,
+      displayName: candidate.display_name,
+      previewUrl: candidate.preview_url,
+      catalog,
+    });
+    updateSelected(() => addProductSourceItem(selected, draft, content.input_kind, content.max_asset_count));
+  };
+
   const selectFiles = (files: File[]) => {
     onClearProductMainHandoff?.();
     updateSelected(() => files.reduce((next, file) => {
@@ -275,6 +288,11 @@ export function ProductSourceDecisionDock({
         {choice === "upload" ? (
           <ProductSourceAssetPicker
             genericSource={genericSource}
+            sourceLibrary={genericSource ? {
+              workflowId: interaction.workflow_id,
+              sourceRole,
+              onSelect: selectLibraryAsset,
+            } : undefined}
             items={assets.items}
             selected={selected}
             inputKind={content.input_kind}

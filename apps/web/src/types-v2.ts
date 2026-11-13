@@ -3633,6 +3633,9 @@ export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
 export interface GuidedProductAssetVersionRefV1 {
   asset_id: string;
   version_id: string;
+  source_scope?: GuidedReferenceCandidateScopeV2;
+  entity_id?: string;
+  member_id?: string;
 }
 
 export interface GuidedProductSourceActionV1 {

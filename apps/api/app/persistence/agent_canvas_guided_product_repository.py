@@ -27,6 +27,7 @@ from app.persistence.agent_canvas_conversation_repository import (
     _creative_memory_values,
 )
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_guided_reference_validation import require_source_catalog_member
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasBindingRow,
@@ -601,12 +602,19 @@ class AgentCanvasGuidedProductRepository:
                     )
                     if request.source_role != "product":
                         for reference in request.asset_versions:
+                            if reference.source_scope != "project":
+                                require_source_catalog_member(
+                                    connection, reference, source_role=request.source_role
+                                )
                             version = connection.execute(
                                 select(AssetVersionRow.version_id).where(
                                     AssetVersionRow.asset_id == reference.asset_id,
                                     AssetVersionRow.version_id == reference.version_id,
-                                    AssetVersionRow.source_workflow_id == node.workflow_id,
+                                    (AssetVersionRow.source_workflow_id == node.workflow_id)
+                                    if reference.source_scope == "project"
+                                    else True,
                                     AssetVersionRow.status == "ready",
+                                    AssetVersionRow.mime_type.like("image/%"),
                                 )
                             ).scalar_one_or_none()
                             if version is None:

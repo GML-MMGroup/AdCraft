@@ -1,3 +1,4 @@
+import { SourceImageLibraryPicker, type SourceImageLibraryOptions } from "./SourceImageLibraryPicker.tsx";
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
 import { productSourceCopy } from "./productSourceCopy.ts";
@@ -19,6 +20,7 @@ export interface ProductSourceAssetPickerProps {
   inputKind: "main" | "multiview";
   maxAssetCount: number | null;
   genericSource?: boolean;
+  sourceLibrary?: SourceImageLibraryOptions;
   loading: boolean;
   error: string | null;
   busy: boolean;
@@ -42,6 +44,7 @@ export function ProductSourceAssetPicker({
   inputKind,
   maxAssetCount,
   genericSource = false,
+  sourceLibrary,
   loading,
   error,
   busy,
@@ -67,8 +70,7 @@ export function ProductSourceAssetPicker({
     if (files.length) onSelectFiles(files);
   };
 
-  return (
-    <div className="agent-chat__product-source-picker">
+  const projectContent = <>
       <div className="agent-chat__product-source-picker-header">
         <span>{t("Project Assets")}</span>
         <input
@@ -117,6 +119,14 @@ export function ProductSourceAssetPicker({
           );
         }) : null}
       </div>
+
+  </>;
+
+  return (
+    <div className="agent-chat__product-source-picker">
+      {sourceLibrary ? (
+        <SourceImageLibraryPicker {...sourceLibrary} selected={selected} busy={busy} projectContent={projectContent} />
+      ) : projectContent}
 
       <label className="agent-chat__product-source-upload">
         <UploadIcon aria-hidden="true" />
