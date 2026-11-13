@@ -8,7 +8,7 @@ StoryboardPanelCount = Literal[4, 9]
 
 def storyboard_panel_count(duration_seconds: float | None) -> StoryboardPanelCount:
     """Select the layout for new authoring; unspecified timing retains nine panels."""
-    return 4 if duration_seconds is not None and 0 < duration_seconds < 5 else 9
+    return 4 if duration_seconds == 4 else 9
 
 
 def storyboard_grid_size(panel_count: int) -> Literal[2, 3]:

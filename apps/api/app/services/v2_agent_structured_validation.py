@@ -811,10 +811,11 @@ def _storyboard_sequence_window_violations(
                 StructuredViolation(
                     code="storyboard_sequence_timing_mismatch",
                     message=(
-                        "Use ordered, contiguous positive windows within the 15-second cap "
+                        "Use ordered, contiguous whole-second windows from 4 to 15 seconds "
                         "that cover the confirmed total and honor any explicit count. "
-                        "Narrative allocations of whole-second totals require whole-second "
-                        "generation durations."
+                        "Four-panel segments last exactly 4 seconds; segments of 5 seconds "
+                        "or longer use nine panels. Reallocate adjacent beats within the "
+                        "confirmed total instead of relying on later trimming."
                     ),
                     field_path="segments",
                 )

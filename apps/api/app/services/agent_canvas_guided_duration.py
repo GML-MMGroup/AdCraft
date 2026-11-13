@@ -266,7 +266,7 @@ def is_derived_brand_sequence_count(control: RequirementControlV1) -> bool:
 def _duration_error() -> V2PersistenceError:
     return _error(
         "guided_duration_value_invalid",
-        "Custom duration must be a valid numeric seconds value.",
+        "Custom duration must be a whole number of seconds, at least 4, within the supported total duration.",
     )
 
 
