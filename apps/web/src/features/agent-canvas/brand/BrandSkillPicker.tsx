@@ -2,7 +2,11 @@ import { useUiLocale } from "../../../i18n/locale";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
-import { AgentCanvasStyleSelector } from "../chat/AgentCanvasStyleSelector.tsx";
+import { CloseIcon } from "../../../icons.tsx";
+import type { VideoSkillCatalogResponseV2 } from "../../../types-v2.ts";
+import { loadVideoSkillCatalog } from "../skills/loadVideoSkillCatalog.ts";
+import { BrandSkillGallery, type BrandStyleSelection } from "./BrandSkillGallery.tsx";
+import "../chat/agent-canvas-chat.css";
 import type { BrandCreativeMethod, BrandDecisionPanelV1, BrandSkillIdentity } from "./brandDecisions.ts";
 import "./brand-skill-picker.css";
 
@@ -15,28 +19,29 @@ function selectionFrom(panel: BrandDecisionPanelV1) {
   };
 }
 
-export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpen, onClose, onUpdated, onConversationRefresh }: {
+export function BrandSkillPicker({ decisions, responseLocale, open = true, onClose, onUpdated, onConfirmed, onConversationRefresh }: {
   decisions: BrandDecisionPanelV1;
   responseLocale: string;
   open?: boolean;
-  onOpen?: () => void;
   onClose: () => void;
   onUpdated: (panel: BrandDecisionPanelV1) => void;
+  onConfirmed?: (panel: BrandDecisionPanelV1) => void;
   onConversationRefresh: () => Promise<void> | void;
 }) {
-  const zh = useUiLocale(responseLocale).startsWith("zh");
+  const locale = useUiLocale(responseLocale);
+  const zh = locale.startsWith("zh");
   const [panel, setPanel] = useState(decisions);
   const [catalog, setCatalog] = useState<BrandCreativeMethod[] | null>(null);
+  const [styleCatalog, setStyleCatalog] = useState<VideoSkillCatalogResponseV2 | null>(null);
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "error">("loading");
   const catalogRequest = useRef(0);
   const [methods, setMethods] = useState(() => selectionFrom(decisions).methods);
-  const [style, setStyle] = useState<{ skill_id: string; version: string | null; title: string } | null>(() => selectionFrom(decisions).style);
+  const [style, setStyle] = useState<BrandStyleSelection | null>(() => selectionFrom(decisions).style);
   const [pendingAction, setPendingAction] = useState<"save" | "confirm" | "generate" | "refresh" | "catalog" | null>(null);
   const pending = pendingAction !== null;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [noticeDismissed, setNoticeDismissed] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [continuation, setContinuation] = useState<"generate" | "refresh" | null>(null);
   const inFlight = useRef(false);
@@ -44,6 +49,8 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const confirmedRef = useRef(onConfirmed);
+  confirmedRef.current = onConfirmed;
 
   useEffect(() => {
     mounted.current = true;
@@ -57,7 +64,6 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
     document.body.style.overflow = "hidden";
     dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
     const onKey = (event: KeyboardEvent) => {
-      // The existing style picker can sit above this dialog.
       if (Array.from(document.querySelectorAll('[role="dialog"]')).at(-1) !== dialogRef.current) return;
       if (event.key === "Escape") closeRef.current();
       if (event.key !== "Tab") return;
@@ -79,9 +85,10 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
     const request = ++catalogRequest.current;
     setCatalogStatus("loading");
     try {
-      const response = await agentCanvasApi.brandCreativeMethodSkills();
+      const [response, styles] = await Promise.all([agentCanvasApi.brandCreativeMethodSkills(), loadVideoSkillCatalog()]);
       if (mounted.current && request === catalogRequest.current) {
         setCatalog(response.items);
+        setStyleCatalog(styles);
         setCatalogStatus("ready");
       }
     } catch {
@@ -116,7 +123,10 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
     const selection = selectionFrom(decisions);
     setMethods(selection.methods);
     setStyle(selection.style);
-    if (!sent) setNotice(zh ? "选择已更新，请检查最新组合。" : "The selection changed. Review the latest combination.");
+    if (!sent && ["skill-stack", "skill-stack-early"].includes(panel.journey.stage)
+      && decisions.journey.stage === panel.journey.stage) {
+      setNotice(zh ? "选择已更新，请检查最新组合。" : "The selection changed. Review the latest combination.");
+    }
   }, [decisions, panel.journey.stage, panel.journey.stage_revision, panel.open_card, sent, zh]);
 
   async function refreshPanel() {
@@ -142,17 +152,20 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
     if (mounted.current) setContinuation(null);
   }
 
-  const editable = panel.journey.stage === "skill-stack" && panel.open_card?.stage === "skill-stack"
+  const editable = ["skill-stack", "skill-stack-early"].includes(panel.journey.stage) && panel.open_card?.stage === panel.journey.stage
     && panel.open_card.stage_revision === panel.journey.stage_revision;
-  const waitingForRecommendations = panel.journey.stage === "skill-stack" && (!editable || !panel.skill_stack);
-  const catalogReady = catalogStatus === "ready" && Boolean(catalog?.length);
+  const waitingForRecommendations = ["skill-stack", "skill-stack-early"].includes(panel.journey.stage) && (!editable || !panel.skill_stack);
+  const catalogReady = catalogStatus === "ready" && Boolean(catalog?.length && styleCatalog?.items.length);
   const choicesReady = catalogReady && !waitingForRecommendations;
   const catalogProblem = catalogStatus === "error"
-    ? (zh ? "Skills 加载失败，请重试。" : "Skills could not be loaded. Retry.")
+    ? (zh ? "技能加载失败，请重试。" : "Skills could not be loaded. Retry.")
     : catalogStatus === "ready" && !catalog?.length
       ? (zh ? "暂无可选创意方法，请重新加载。" : "No creative methods are available. Reload to try again.")
-      : null;
+      : catalogStatus === "ready" && !styleCatalog?.items.length
+        ? (zh ? "暂无可选视听风格，请重新加载。" : "No audiovisual styles are available. Reload to try again.")
+        : null;
   const valid = Boolean(choicesReady && catalog && methods.length > 0 && methods.length <= 7 && style?.version
+    && styleCatalog?.items.some((entry) => entry.skill_id === style.skill_id && entry.version === style.version)
     && methods.every((method) => catalog.some((entry) => entry.skill_id === method.skill_id && entry.version === method.version)));
 
   async function submit(confirm: boolean) {
@@ -162,7 +175,6 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
     setError(null);
     setSent(confirm);
     setNotice(confirm ? (zh ? "方案已发送" : "Proposal sent") : null);
-    setNoticeDismissed(false);
     let committed = false;
     try {
       const next = await agentCanvasApi.brandSelectSkills(panel.workflow_id, {
@@ -175,7 +187,11 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
       committed = true;
       if (mounted.current) replacePanel(next);
       if (confirm) {
-        if (mounted.current) setContinuation("generate");
+        if (mounted.current) {
+          setContinuation("generate");
+          // Confirmation is durable now; the next question can finish in the background.
+          confirmedRef.current?.(next);
+        }
         await continueJourney();
       } else if (mounted.current) {
         setNotice(zh ? "已保存，尚未激活或进入下一阶段。" : "Saved. No style activated or stage advanced.");
@@ -184,7 +200,6 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
       }
     } catch (failure) {
       if (!mounted.current) return;
-      setNoticeDismissed(false);
       if (!committed) {
         setSent(false);
         setNotice(null);
@@ -192,7 +207,7 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
       if (!committed && isV2ApiError(failure) && failure.status === 409) {
         try {
           const latest = await refreshPanel();
-          if (mounted.current && confirm && latest?.journey.stage === "treatment") {
+          if (mounted.current && confirm && (latest?.journey.stage === "treatment" || latest?.journey.stage === "hypothesis")) {
             setContinuation(latest.open_card ? "refresh" : "generate");
           }
         } catch { /* Keep submissions blocked until refresh succeeds. */ }
@@ -232,7 +247,7 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
   function toggleMethod(method: BrandSkillIdentity) {
     setMethods((current) => current.some((item) => item.skill_id === method.skill_id && item.version === method.version)
       ? current.filter((item) => item.skill_id !== method.skill_id)
-      : [...current.filter((item) => item.skill_id !== method.skill_id), { skill_id: method.skill_id, version: method.version }]);
+      : current.length < 7 ? [...current.filter((item) => item.skill_id !== method.skill_id), { skill_id: method.skill_id, version: method.version }] : current);
   }
 
   const progressMessage = pendingAction === "generate"
@@ -245,63 +260,37 @@ export function BrandSkillPicker({ decisions, responseLocale, open = true, onOpe
   const confirmLabel = sent ? (zh ? "方案已发送" : "Proposal sent") : (zh ? "保存并发送" : "Save and send");
   const statusMessage = sent ? (zh ? "方案已发送" : "Proposal sent") : pending ? progressMessage : notice;
 
-  if (!open) {
-    if (noticeDismissed || (!statusMessage && !error)) return null;
-    return createPortal(
-      <aside className="brand-skill-picker-notice" aria-label={zh ? "Skills 方案状态" : "Skills proposal status"}>
-        <p role={error ? "alert" : "status"}>{error ?? statusMessage}</p>
-        {pending ? <p>{zh ? "正在后台处理，你可以继续浏览其他内容。" : "Processing in the background. You can keep browsing."}</p> : null}
-        <div>
-          {onOpen ? <button type="button" onClick={onOpen}>{zh ? "查看方案" : "View proposal"}</button> : null}
-          {!pending && (continuation || needsRefresh) ? <button type="button" onClick={() => void retry()}>{zh ? "重试" : "Retry"}</button> : null}
-          <button type="button" onClick={() => setNoticeDismissed(true)}>{zh ? "收起提示" : "Dismiss notice"}</button>
-        </div>
-      </aside>, document.body,
-    );
-  }
+  if (!open) return null;
 
   return createPortal(
-    <div className="brand-skill-picker-overlay">
-      <section ref={dialogRef} className="brand-skill-picker" role="dialog" aria-modal="true" aria-label={zh ? "选择品牌 Skills" : "Choose brand Skills"}>
-        <header><h2>{zh ? "选择品牌 Skills" : "Choose brand Skills"}</h2><button type="button" onClick={onClose}>{pending || sent ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button></header>
-        <p>{zh ? "创意方法可多选，视听风格只选一个。确认后进入创意方案。" : "Choose one or more creative methods and one audiovisual style. Confirm to enter Treatment."}</p>
-        {error ? <p role="alert">{error}</p> : null}
-        {statusMessage && !error && (choicesReady || sent) ? <p role="status">{statusMessage}</p> : null}
-        {sent && pending ? <p>{zh ? "正在后台处理，你可以关闭面板，也可以留在这里查看。" : "Processing in the background. You can close this panel or stay here."}</p> : null}
-        {catalogProblem ? <p role="alert">{catalogProblem}</p> : null}
-        {!pending && (catalogProblem || needsRefresh || continuation) ? <button type="button" onClick={() => void retry()}>{continuation === "generate" ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
-        {!catalogProblem && !choicesReady && !sent ? <p role="status" aria-live="polite">{catalogStatus === "loading"
-          ? (zh ? "正在加载 Skills，请稍候…" : "Loading Skills. Please wait…")
-          : (zh ? "正在准备推荐组合，请稍候…" : "Preparing recommendations. Please wait…")}</p> : null}
-        {!editable && !waitingForRecommendations && !continuation ? <p>{zh ? "当前阶段不可修改 Skills。" : "Skills cannot be edited at the current stage."}</p> : null}
-        {choicesReady ? <>
-        <fieldset disabled={pending || sent || !editable || needsRefresh}>
-          <legend>{zh ? "创意方法（多选）" : "Creative methods (multiple)"}</legend>
-          {catalog?.map((method) => {
-            const entry = panel.skill_stack?.entries.find((item) => item.skill_kind === "creative_method" && item.skill_id === method.skill_id && item.version === method.version);
-            return <label key={`${method.skill_id}@${method.version}`} className="brand-skill-picker__choice">
-              <input type="checkbox" checked={methods.some((item) => item.skill_id === method.skill_id && item.version === method.version)} onChange={() => toggleMethod(method)} />
-              <span><strong>{method.title}</strong><small>{method.summary}</small>{entry?.reason ? <small className="brand-skill-picker__reason">{entry.reason}</small> : null}</span>
-            </label>;
-          })}
-        </fieldset>
-        <fieldset disabled={pending || sent || !editable || needsRefresh}>
-          <legend>{zh ? "视听风格（单选）" : "Audiovisual style (one)"}</legend>
-          {panel.skill_stack?.entries.filter((entry) => entry.skill_kind === "audiovisual_style").map((entry) => (
-            <label key={`${entry.skill_id}@${entry.version}`} className="brand-skill-picker__choice">
-              <input type="radio" name="brand-style" disabled={!entry.version} checked={style?.skill_id === entry.skill_id && style.version === entry.version} onChange={() => setStyle(entry)} />
-              <span><strong>{entry.title}</strong>{entry.reason ? <small className="brand-skill-picker__reason">{entry.reason}</small> : null}</span>
-            </label>
-          ))}
-          <p>{zh ? "当前选择：" : "Current selection: "}{style?.title ?? (zh ? "请从目录选择" : "Choose from the catalog")}</p>
-          <AgentCanvasStyleSelector workflowId={panel.workflow_id} activeStyle={null} onWorkflowRefresh={() => {}}
-            responseLocale={responseLocale} triggerLabel={zh ? "选择视听风格" : "Choose audiovisual style"}
-            draftSelection={{ selected: style?.version ? { skill_id: style.skill_id, version: style.version } : null, onSelect: setStyle }} />
-        </fieldset>
-        <footer>
-          <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pendingAction === "save" ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
-          <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{confirmLabel}</button>
-        </footer>
+    <div className="agent-chat__style-overlay brand-skill-picker-overlay">
+      <button type="button" className="agent-chat__style-backdrop" tabIndex={-1} aria-label={zh ? "收起技能组合" : "Dismiss Skill combination"} onClick={onClose} />
+      <section ref={dialogRef} className="agent-chat__style-menu brand-skill-picker" role="dialog" aria-modal="true" aria-label={zh ? "选择品牌技能" : "Choose brand Skills"}>
+        <header className="agent-chat__style-menu-header">
+          <h2>{zh ? "技能组合" : "Skill combination"}</h2>
+          <button type="button" onClick={onClose} aria-label={pending || sent ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}><CloseIcon /></button>
+        </header>
+        <div className="brand-skill-picker__feedback">
+          {error ? <p role="alert">{error}</p> : null}
+          {statusMessage && !error && (choicesReady || sent) ? <p role="status">{statusMessage}</p> : null}
+          {sent && pending ? <p>{zh ? "正在后台处理，你可以关闭面板，也可以留在这里查看。" : "Processing in the background. You can close this panel or stay here."}</p> : null}
+          {catalogProblem ? <p role="alert">{catalogProblem}</p> : null}
+          {!pending && (catalogProblem || needsRefresh || continuation) ? <button type="button" onClick={() => void retry()}>{continuation === "generate" ? (zh ? "重试下一步" : "Retry next step") : (zh ? "重新加载" : "Reload")}</button> : null}
+          {!catalogProblem && !choicesReady && !sent ? <p role="status" aria-live="polite">{catalogStatus === "loading"
+            ? (zh ? "正在加载技能，请稍候…" : "Loading Skills. Please wait…")
+            : (zh ? "正在准备推荐组合，请稍候…" : "Preparing recommendations. Please wait…")}</p> : null}
+          {!editable && !waitingForRecommendations && !continuation ? <p>{zh ? "当前阶段不可修改技能。" : "Skills cannot be edited at the current stage."}</p> : null}
+        </div>
+        {choicesReady && catalog && styleCatalog ? <>
+          <BrandSkillGallery catalog={catalog} styleCatalog={styleCatalog} panel={panel} methods={methods} style={style}
+            disabled={pending || sent || !editable || needsRefresh} locale={locale} onToggleMethod={toggleMethod} onSelectStyle={setStyle} />
+          <footer className="brand-skill-picker__footer">
+            <p>{zh ? `已选 ${style ? 1 : 0} 个视听风格 · ${methods.length} 个创意风格` : `${style ? 1 : 0} audiovisual · ${methods.length} creative Skills selected`}</p>
+            <div>
+              <button type="button" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(false)}>{pendingAction === "save" ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存" : "Save")}</button>
+              <button type="button" className="brand-skill-picker__confirm" disabled={pending || sent || !editable || !valid || needsRefresh} onClick={() => void submit(true)}>{confirmLabel}</button>
+            </div>
+          </footer>
         </> : null}
       </section>
     </div>, document.body,

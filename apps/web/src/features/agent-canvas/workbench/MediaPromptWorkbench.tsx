@@ -1,13 +1,15 @@
+import { NodeWorkbenchFieldError } from "./NodeWorkbenchFeedback.tsx";
 import { SendIcon } from "../../../icons.tsx";
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2, NodeRuntimeV2 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
-import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
+import { PromptEditor } from "./PromptEditor.tsx";
 import { ImageResolutionControls } from "./ImageResolutionControls.tsx";
 import { staleImageResolutionParameters } from "./imageResolutionCapabilities.ts";
 import { ModelParameterControls } from "./ModelParameterControls.tsx";
 import { VideoAudioToggle } from "./VideoAudioToggle.tsx";
 import { VideoSubtitleToggle } from "./VideoSubtitleToggle.tsx";
+import { mediaExecutionError } from "./mediaExecutionError.ts";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import { NodeAssetActions } from "./NodeAssetActions.tsx";
 import { validateModelParameters } from "./modelParameterDescriptors.ts";
@@ -19,38 +21,9 @@ import {
 } from "../chat/actionableFailure.ts";
 import { useEffect, type RefObject } from "react";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { nodeRunActivity } from "../model/nodeRunActivity.ts";
 
 const VIDEO_TOOLBAR_PARAMETERS = ["duration_seconds", "resolution", "aspect_ratio"];
-
-function mediaExecutionError(node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) {
-  const attempt = node.latest_attempt;
-  if (runtime) {
-    // New queued work can retain the node's old timestamp and error. Hide that
-    // inherited failure until the independent projections align.
-    const inheritedError = !runtime.error || (
-      runtime.error.code === attempt?.error?.code
-      && runtime.error.message === attempt?.error?.message
-    );
-    if (attempt?.status === "failed"
-      && runtime.execution_id
-      && runtime.execution_id !== attempt.execution_id
-      && runtime.phase
-      && inheritedError) return null;
-    // Runtime and Workflow refresh independently. A newer attempt can already
-    // be running while the other projection still contains the previous error.
-    const newerNode = Date.parse(node.updated_at) > Date.parse(runtime.updated_at);
-    const newerAttempt = attempt
-      && Date.parse(attempt.updated_at) > Date.parse(runtime.updated_at);
-    if (!newerNode && !newerAttempt) {
-      if (runtime.visible_status === "working") return null;
-      if (runtime.error) return runtime.error;
-      if (!attempt || attempt.execution_id !== runtime.execution_id) return null;
-    }
-  }
-  // Failed regenerations can retain a Ready node and its previous output.
-  if (attempt) return attempt.status === "failed" ? attempt.error : null;
-  return node.status === "failed" ? node.error : null;
-}
 
 export function MediaPromptWorkbench({
   node,
@@ -121,7 +94,7 @@ export function MediaPromptWorkbench({
   const parametersInvalid = node.node_type !== "image" && parameterIssues.length > 0;
   const audioIssue = audioDescriptor ? parameterIssues.find((issue) => issue.name === "generate_audio") : undefined;
   const publishing = runtime?.phase === "publishing";
-  const executionError = mediaExecutionError(node, runtime);
+  const executionError = draft.running ? null : mediaExecutionError(node, runtime);
   const retryingExecution = canRetryNodeExecution(node);
   const regenerating = node.status === "failed"
     && failureUserAction(nodeActionableFailure(node)) === "regenerate";
@@ -139,8 +112,8 @@ export function MediaPromptWorkbench({
       <CanvasModelPicker
         appearance={node.node_type !== "audio" ? "monochrome" : "default"}
         showOptionDetails={node.node_type === "audio"}
-        showStatusDetails={node.node_type !== "image"}
-        defaultModelRef={node.node_type !== "audio" ? defaultModelRef : undefined}
+        showStatusDetails={node.node_type === "audio"}
+        defaultModelRef={defaultModelRef}
         models={models}
         loading={modelsLoading}
         error={modelsError}
@@ -157,7 +130,7 @@ export function MediaPromptWorkbench({
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
-        <FourLinePromptEditor
+        <PromptEditor
           ariaLabel={t("Generation prompt")}
           value={draft.prompt}
           disabled={draft.pending}
@@ -171,15 +144,13 @@ export function MediaPromptWorkbench({
 
       {node.node_type === "image" ? (
         draft.error || draft.promptSaveStatus === "conflict" || executionError ? (
-          <div className="agent-node-workbench__image-feedback">
-            <NodeWorkbenchError draft={draft} executionError={executionError} />
-          </div>
+          <NodeWorkbenchError draft={draft} executionError={executionError} />
         ) : null
       ) : <NodeWorkbenchError draft={draft} executionError={executionError} />}
       {audioIssue ? (
-        <p className="agent-node-workbench__field-error">
+        <NodeWorkbenchFieldError>
           {t("Generate audio")}: {audioIssue.message}
-        </p>
+        </NodeWorkbenchFieldError>
       ) : null}
 
       {node.node_type !== "image" && canConfigureProvider && bodyDescriptors.length ? (
@@ -241,7 +212,7 @@ export function MediaPromptWorkbench({
                 ? t("Regenerate {type} node", { type: node.node_type })
                 : t("Run {type} node", { type: node.node_type })}
             title={retryingExecution ? t("Retry node") : node.status === "ready" || regenerating ? t("Regenerate node") : t("Run node")}
-            disabled={draft.pending || publishing || !draft.prompt.trim() || node.status === "working" || parametersInvalid}
+            disabled={draft.pending || publishing || !draft.prompt.trim() || nodeRunActivity(node) !== null || parametersInvalid}
             onClick={() => void draft.run()}
           >
             <SendIcon />

@@ -1,5 +1,4 @@
 import { useId } from "react";
-import ambientMusicIcon from "./arcticons--ambient-music-mod.svg";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export function VideoAudioToggle({
@@ -26,11 +25,13 @@ export function VideoAudioToggle({
           if (!disabled) onChange(!checked);
         }}
       >
-        <span
-          className="agent-node-workbench__audio-icon"
-          aria-hidden="true"
-          style={{ maskImage: `url("${ambientMusicIcon}")`, WebkitMaskImage: `url("${ambientMusicIcon}")` }}
-        />
+        <svg className="agent-node-workbench__audio-icon" width="20" height="20" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+          {checked
+            ? <path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" />
+            : <path d="m16 9 5 6m0-6-5 6" />}
+        </svg>
       </button>
       <span id={tooltipId} role="tooltip" className="agent-node-workbench__audio-tooltip">
         {disabledReason ?? (checked ? t("关闭视频音频生成") : t("开启视频音频生成"))}

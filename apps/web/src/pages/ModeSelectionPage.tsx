@@ -39,10 +39,6 @@ export function ModeSelectionPage() {
     }
   }
 
-  const statusLabel = selectedMode
-    ? (selectedMode === "creation" ? labels.openingPersonal : labels.openingBrand)
-    : labels.status;
-
   return (
     <main
       className={`mode-selection${launch?.revealing ? ` is-selecting is-selecting-${selectedMode}${launch.keyboard ? " is-keyboard-launch" : ""}` : ""}`}
@@ -50,17 +46,15 @@ export function ModeSelectionPage() {
       aria-busy={selectedMode !== null}
       onTransitionEnd={event => { if (event.target === event.currentTarget && event.propertyName === "opacity") launch?.finish(); }}
     >
-      <header className="mode-selection-header">
-        <span className="mode-selection-header__brand">ADCRAFT <span>/ NEW PROJECT</span></span>
-        <span className="mode-selection-header__status" role="status"><i aria-hidden="true" /> {statusLabel}</span>
-      </header>
+      <span className="sr-only" role="status">
+        {selectedMode ? (selectedMode === "creation" ? labels.openingPersonal : labels.openingBrand) : null}
+      </span>
 
       <section className="mode-choice-stage" aria-label={labels.stageLabel}>
         <div className="stage-surface" aria-hidden="true" />
         <div className="mode-choice-assembly">
           <ModeChoicePanel
             id="creation"
-            eyebrow={labels.personalEyebrow}
             title={labels.personalTitle}
             description={labels.personalDescription}
             onChoose={chooseMode}
@@ -68,7 +62,6 @@ export function ModeSelectionPage() {
           />
           <ModeChoicePanel
             id="brand"
-            eyebrow={labels.brandEyebrow}
             title={labels.brandTitle}
             description={labels.brandDescription}
             onChoose={chooseMode}

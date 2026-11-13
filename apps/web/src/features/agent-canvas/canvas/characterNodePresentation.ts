@@ -4,25 +4,30 @@ export type CharacterNodePhase = "main" | "turnaround";
 
 export interface CharacterNodePresentation {
   occurrenceId: string | null;
-  phase: CharacterNodePhase;
-  phaseLabel: "Character Main" | "Character Turnaround";
+  phase: CharacterNodePhase | null;
+  phaseLabel: "Character" | "Character Main" | "Character Turnaround";
 }
 
-function phaseFromRoleVariant(value: string | null): CharacterNodePhase | null {
-  if (value === "character_main" || value === "main") return "main";
+function phaseFromRoleVariant(value: unknown): CharacterNodePhase | null {
+  if (value === "character_main" || value === "main" || value === "identity_master") return "main";
   if (value === "character_turnaround" || value === "turnaround") return "turnaround";
   return null;
 }
 
 export function projectCharacterNodePresentation(
-  node: Pick<CanvasNodeV2, "creative_role" | "prompt_preparation">,
+  node: Pick<CanvasNodeV2, "creative_role" | "prompt_preparation" | "metadata" | "structured_content">,
 ): CharacterNodePresentation | null {
+  if (node.creative_role !== "character") return null;
   const preparation = node.prompt_preparation;
-  const phase = preparation?.character_phase ?? phaseFromRoleVariant(preparation?.role_variant ?? null);
-  if (!phase) return null;
+  const phase = phaseFromRoleVariant(node.metadata.character_phase)
+    ?? phaseFromRoleVariant(node.structured_content.character_asset_kind)
+    ?? preparation?.character_phase
+    ?? phaseFromRoleVariant(preparation?.role_variant);
+  const occurrenceId = [node.metadata.occurrence_id, node.structured_content.occurrence_id, preparation?.occurrence_id]
+    .find((value): value is string => typeof value === "string" && value.length > 0) ?? null;
   return {
-    occurrenceId: preparation?.occurrence_id ?? null,
+    occurrenceId,
     phase,
-    phaseLabel: phase === "main" ? "Character Main" : "Character Turnaround",
+    phaseLabel: phase === "main" ? "Character Main" : phase === "turnaround" ? "Character Turnaround" : "Character",
   };
 }

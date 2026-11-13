@@ -1,3 +1,4 @@
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -59,6 +60,31 @@ afterEach(() => {
 });
 
 describe("AgentCanvasStyleSelector", () => {
+  it("follows the interface locale and switches loaded catalog copy without changing identity", async () => {
+    const load = vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+    function LanguageControls() {
+      const { setLocale } = useLocale();
+      return <><button onClick={() => setLocale("zh-CN")}>中文界面</button><button onClick={() => setLocale("en-US")}>English UI</button></>;
+    }
+    window.localStorage.removeItem("adcraft.locale");
+    render(<LocaleProvider initialLocale="en-US"><LanguageControls /><AgentCanvasStyleSelector
+      workflowId="workflow-1" activeStyle={activeStyle} onWorkflowRefresh={vi.fn()} responseLocale="en-US"
+    /></LocaleProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
+    await screen.findByText("Platform Default");
+    fireEvent.click(screen.getByRole("button", { name: "中文界面" }));
+    expect(screen.getByRole("tab", { name: "商业广告" })).toBeTruthy();
+    expect(screen.getByText("平台默认风格")).toBeTruthy();
+    expect(screen.getByText("采用均衡、清晰的商业影像表达，适配常规广告需求。")).toBeTruthy();
+    expect(screen.queryByText("Platform Default")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "English UI" }));
+    expect(screen.getByText("Platform Default")).toBeTruthy();
+    expect(screen.getByText("Balanced commercial video direction.")).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(catalog.items[1].title).toBe("Platform Default");
+    window.localStorage.removeItem("adcraft.locale");
+  });
+
   it("reuses the picker for a draft without activating a style Run", async () => {
     vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
     const activate = vi.spyOn(agentCanvasApi, "createAgentCanvasVideoSkillRun");
@@ -66,7 +92,7 @@ describe("AgentCanvasStyleSelector", () => {
     render(<AgentCanvasStyleSelector workflowId="workflow-1" activeStyle={null} onWorkflowRefresh={vi.fn()}
       draftSelection={{ selected: null, onSelect }} responseLocale="zh-CN" triggerLabel="选择视听风格" />);
     fireEvent.click(screen.getByRole("button", { name: "选择视听风格" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Platform Default/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /平台默认风格/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ skill_id: "platform-default", version: "1.0.0" }));
     expect(activate).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -157,7 +183,7 @@ describe("AgentCanvasStyleSelector", () => {
     expect(dialog.parentElement).toBe(overlay);
   });
 
-  it("uses the Agent Documents monochrome shell and a mobile-safe card layout", () => {
+  it("uses the neutral panel shell and a mobile-safe card layout", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const panelRule = css.match(/\.agent-chat__style-menu\s*\{([\s\S]*?)\n\}/m)?.[1];
@@ -165,9 +191,9 @@ describe("AgentCanvasStyleSelector", () => {
     const closeRule = css.match(/\.agent-chat__style-menu-header button\s*\{([\s\S]*?)\n\}/m)?.[1];
     const categoryButtonRule = css.match(/\.agent-chat__style-categories button\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(css).toContain("--style-panel: #181818;");
-    expect(css).toContain("--style-header: #1c1c1c;");
-    expect(css).toContain("--style-surface: #222222;");
+    expect(css).toContain("--style-panel: var(--surface-card);");
+    expect(css).toContain("--style-header: var(--nav-bg);");
+    expect(css).toContain("--style-surface: var(--surface-raised);");
     expect(panelRule).toContain("background: var(--style-panel)");
     expect(panelRule).toContain("width: min(880px, calc(100vw - 48px))");
     expect(panelRule).toContain("max-height: min(860px, calc(100dvh - 48px))");

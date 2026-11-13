@@ -191,7 +191,7 @@ for (const dpr of [1, 2]) {
       await expect.poll(() => poster.evaluate((img) =>
         (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0)).toBe(true);
       const frame = page.getByTestId("agent-role-animation-frame");
-      await expect(frame).toHaveCSS("width", "32px");
+      await expect(frame).toHaveCSS("width", "48px");
       const fidelity = await compareBitmapToOriginal(page, POSTER, dpr);
       expect(fidelity.meanChannelDifference).toBeLessThanOrEqual(9);
       expect(fidelity.changedPixelRatio).toBeLessThanOrEqual(0.13);

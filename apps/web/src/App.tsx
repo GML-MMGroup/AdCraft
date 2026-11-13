@@ -76,7 +76,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <LocaleProvider initialLocale="en-US">
+    <LocaleProvider>
       <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>

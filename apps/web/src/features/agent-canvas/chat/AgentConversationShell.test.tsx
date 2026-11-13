@@ -22,6 +22,7 @@ vi.mock("./useComposerContext.ts", () => ({
 }));
 
 import { AgentCanvasChatPanel } from "./AgentCanvasChatPanel.tsx";
+import { normalizeBrandDecisionPanelV1 } from "../brand/brandDecisionNormalizers.ts";
 
 function message(id: string, text: string): ChatMessageV2 {
   return {
@@ -238,9 +239,55 @@ describe("Agent Conversation Shell v2", () => {
     const followUp = screen.getByText("The next step is ready.");
 
     expect(Boolean(answer.compareDocumentPosition(followUp) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(screen.getByRole("article", { name: "Agent question" })).toBeTruthy();
-    expect(screen.getByText("How long should the ad be?")).toBeTruthy();
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
+    const details = answer.querySelector("details")!;
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain("How long should the ad be?");
     expect(screen.getByText("30 seconds")).toBeTruthy();
+  });
+
+  it.each([true, false])("shows one skill receipt when early confirmation is %s", (earlyConfirmed) => {
+    fixture.chat.state.guidedAnswerBubbles = ["skill-stack-early", "hypothesis", "adspec", "skill-stack"]
+      .map((stage, index) => ({
+        bubble_id: `answer-${stage}`,
+        interaction_id: `interaction_workflow_brand_${stage}_${index + 1}_choice`,
+        question_id: stage,
+        label: `Choose ${stage}`,
+        value: `Selected ${stage}`,
+        sequence: index + 3,
+      }));
+    const decisions = normalizeBrandDecisionPanelV1({
+      project_id: "project-1", workflow_id: workflow.workflow_id, mode: "brand", brand_name: "Brand",
+      journey: { stage: "treatment", stage_revision: 5, stage_status: "waiting_user" },
+      early_skills_confirmed: earlyConfirmed,
+      skill_stack: { entries: [
+        { skill_kind: "creative_method", skill_id: "ritual", title: "Private Ritual", selected: true },
+        { skill_kind: "audiovisual_style", skill_id: "tvc", title: "Product TVC", selected: true },
+      ] },
+    });
+    // Keep the submitted answers while the decisions read model is still loading.
+    const view = renderPanel();
+    expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(4);
+
+    const confirmedPanel = <AgentCanvasChatPanel workflow={workflow} chatRevision={1}
+      chatEvents={[]} onFocusNode={vi.fn()} brandDecisions={decisions} />;
+    view.rerender(confirmedPanel);
+    const expectSingleSkillReceipt = () => {
+      const receipt = screen.getByRole("article", { name: "Your selections" });
+      expect(receipt.querySelector("summary strong")?.textContent).toBe("Skill Stack");
+      expect(receipt.textContent).toContain("Private Ritual");
+      expect(receipt.textContent).toContain("Product TVC");
+      expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(2);
+      expect(screen.queryByText("Selected skill-stack-early")).toBeNull();
+      expect(screen.queryByText("Selected skill-stack")).toBeNull();
+      expect(screen.getByText("Selected hypothesis")).toBeTruthy();
+      expect(screen.getByText("Selected adspec")).toBeTruthy();
+    };
+    expectSingleSkillReceipt();
+    // The same restored history must remain deduplicated on a fresh mount.
+    view.unmount();
+    render(confirmedPanel);
+    expectSingleSkillReceipt();
   });
 
   it("places a failed message Turn directly after its source user message", () => {
@@ -422,7 +469,7 @@ describe("Agent Conversation Shell v2", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit answers" })).toBeTruthy());
   });
 
-  it("preserves draft and context on failure, then clears only after acceptance", async () => {
+  it("clears a sent draft immediately, restores it on failure and consumes context only after acceptance", async () => {
     let finish!: (accepted: boolean) => void;
     fixture.chat.actions.submit.mockImplementation(() => new Promise<boolean>((resolve) => {
       finish = resolve;
@@ -432,21 +479,21 @@ describe("Agent Conversation Shell v2", () => {
     fireEvent.change(textarea, { target: { value: "Use these references." } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
-    expect(textarea.value).toBe("Use these references.");
+    expect(textarea.value).toBe("");
     expect(fixture.context.actions.clearMessageContext).not.toHaveBeenCalled();
     finish(false);
-    await waitFor(() => expect(fixture.chat.actions.submit).toHaveBeenCalledOnce());
-    expect(textarea.value).toBe("Use these references.");
+    await waitFor(() => expect(textarea.value).toBe("Use these references."));
+    expect(fixture.chat.actions.submit).toHaveBeenCalledOnce();
     expect(screen.queryByText("Skill · Quiet Product Film")).toBeNull();
     expect(screen.queryByRole("region", { name: "Message context" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     finish(true);
-    await waitFor(() => expect(textarea.value).toBe(""));
-    expect(fixture.context.actions.consumeSubmittedContext).toHaveBeenCalledWith({
+    await waitFor(() => expect(fixture.context.actions.consumeSubmittedContext).toHaveBeenCalledWith({
       nodeIds: ["node-1"],
       assetIds: ["asset-1"],
-    });
+    }));
+    expect(textarea.value).toBe("");
   });
 
   it("passes the active Skill title as display-only metadata when sending", async () => {
@@ -543,8 +590,8 @@ describe("Agent Conversation Shell v2", () => {
   it("renders one Agent identity per run and keeps context out of composer chips", () => {
     renderPanel();
 
-    expect(screen.getAllByText("AdCraft Video Agent")).toHaveLength(2);
-    expect(document.querySelectorAll(".agent-chat__message-identity")).toHaveLength(1);
+    expect(screen.getAllByText("AdCraft Video Agent")).toHaveLength(1);
+    expect(screen.getAllByRole("img", { name: "AdCraft" })).toHaveLength(1);
     expect(document.querySelector(".agent-chat__mentions")).toBeNull();
     expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Upload context images" })).toBeTruthy();

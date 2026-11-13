@@ -1,4 +1,7 @@
 import { useId, useState } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { useUiLocale } from "../../../i18n/locale.tsx";
+import { guidedInteractionCopy } from "./guidedInteractionCopy.ts";
 
 import type {
   GuidedInteractionSubmitRequestV1,
@@ -29,6 +32,9 @@ export function QuestionnaireDecisionDock({
   issue,
   onSubmit,
 }: QuestionnaireDecisionDockProps) {
+  const t = useTranslation();
+  const locale = useUiLocale();
+  const copy = (text: string) => guidedInteractionCopy(text, t);
   const questions = interaction.content.content_kind === "questionnaire"
     ? interaction.content.questions
     : null;
@@ -91,8 +97,8 @@ export function QuestionnaireDecisionDock({
       context={isProductionDurationQuestionnaire ? undefined : interaction.context}
       pending={pending}
       issue={issue}
-      footerSummary={`${answeredCount} of ${questions.length} answered`}
-      submitLabel="Submit answers"
+      footerSummary={t("{count} of {total} answered", { count: answeredCount, total: questions.length })}
+      submitLabel={t("Submit answers")}
       submitDisabled={!canSubmit}
       onSubmit={submit}
     >
@@ -107,7 +113,7 @@ export function QuestionnaireDecisionDock({
 
           return (
             <fieldset key={question.question_id} disabled={pending}>
-              <legend className={compactDurationCopy ? "sr-only" : undefined}>{question.prompt}</legend>
+              <legend className={compactDurationCopy ? "sr-only" : undefined}>{copy(question.prompt)}</legend>
               <div className="agent-chat__decision-dock-question-options">
                 {question.options.map((option) => (
                   <label key={option.option_id}>
@@ -123,10 +129,10 @@ export function QuestionnaireDecisionDock({
                     />
                     <span>
                       <strong>
-                        {option.title}
-                        {option.recommended ? <em>Recommended</em> : null}
+                        {copy(option.title)}
+                        {option.recommended ? <em>{locale.startsWith("zh") ? t("Recommended direction") : "Recommended"}</em> : null}
                       </strong>
-                      {compactDurationCopy ? null : <small>{option.summary}</small>}
+                      {compactDurationCopy ? null : <small>{copy(option.summary)}</small>}
                     </span>
                   </label>
                 ))}
@@ -134,16 +140,16 @@ export function QuestionnaireDecisionDock({
 
               {question.allow_custom ? (
                 <label className="agent-chat__decision-dock-question-custom">
-                  <span>{isDuration ? "Custom duration in seconds" : "Custom answer"}</span>
+                  <span>{t(isDuration ? "Custom duration in seconds" : "Custom answer")}</span>
                   <input
-                    aria-label={isDuration ? "Custom duration in seconds" : `Custom answer for ${question.prompt}`}
+                    aria-label={isDuration ? t("Custom duration in seconds") : t("Custom answer for {prompt}", { prompt: copy(question.prompt) })}
                     aria-invalid={fieldIssue ? "true" : undefined}
                     aria-describedby={fieldIssue ? errorId : undefined}
                     type={isDuration ? "number" : "text"}
                     disabled={pending}
                     inputMode={isDuration ? "numeric" : undefined}
                     value={answer?.kind === "custom" ? answer.value ?? "" : ""}
-                    placeholder={isDuration ? "Duration in seconds" : "Type your answer"}
+                    placeholder={t(isDuration ? "Duration in seconds" : "Type your answer")}
                     onChange={(event) => setAnswers((current) => ({
                       ...current,
                       [question.question_id]: { kind: "custom", value: event.target.value },
@@ -151,7 +157,7 @@ export function QuestionnaireDecisionDock({
                   />
                   {fieldIssue ? (
                     <small id={errorId} className="agent-chat__decision-dock-field-error">
-                      {fieldIssue.summary}
+                      {copy(fieldIssue.summary)}
                     </small>
                   ) : null}
                 </label>
@@ -168,7 +174,7 @@ export function QuestionnaireDecisionDock({
                     [question.question_id]: { kind: "skip" },
                   }))}
                 >
-                  Skip {question.prompt}
+                  {t("Skip {prompt}", { prompt: copy(question.prompt) })}
                 </button>
               ) : null}
             </fieldset>

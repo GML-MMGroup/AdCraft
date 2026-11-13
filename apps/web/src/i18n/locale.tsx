@@ -2,16 +2,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 export type AppLocale = "zh-CN" | "en-US";
 const STORAGE_KEY = "adcraft.locale";
-export const localeChangedEventName = "adcraft:workflow-locale-changed";
 
-function readLocale(fallback: AppLocale = "zh-CN"): AppLocale {
-  if (typeof window === "undefined") return fallback;
+function readLocale(initialLocale?: AppLocale): AppLocale {
+  if (typeof window === "undefined") return initialLocale ?? "en-US";
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored === "en-US" || stored === "zh-CN" ? stored : fallback;
+    if (stored === "en-US" || stored === "zh-CN") return stored;
   } catch {
-    return fallback;
+    // Browser preferences still work when storage is unavailable.
   }
+  if (initialLocale) return initialLocale;
+  for (const language of [...window.navigator.languages, window.navigator.language]) {
+    if (/^zh(?:-|$)/i.test(language)) return "zh-CN";
+    if (/^en(?:-|$)/i.test(language)) return "en-US";
+  }
+  return "en-US";
 }
 
 export function isChineseLocale(locale: string | null | undefined): boolean {
@@ -31,7 +36,7 @@ const standaloneLocale: LocaleContextValue = {
   toggleLocale: () => undefined,
 };
 
-export function LocaleProvider({ children, initialLocale = "en-US" }: { children: ReactNode; initialLocale?: AppLocale }) {
+export function LocaleProvider({ children, initialLocale }: { children: ReactNode; initialLocale?: AppLocale }) {
   const [locale, setLocaleState] = useState<AppLocale>(() => readLocale(initialLocale));
   const localeRef = useRef(locale);
   const setLocale = useCallback((next: AppLocale) => {

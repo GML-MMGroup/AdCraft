@@ -29,6 +29,17 @@ function event(payload: Record<string, unknown>): CanvasRuntimeEventV2 {
 }
 
 describe("inputManifestAuditFromEvent", () => {
+  it("retains immutable media identity for matching a failed request to its reference thumbnail", () => {
+    const audit = inputManifestAuditFromEvent(event({
+      input_manifest_id: "manifest-1",
+      media_inputs: [{
+        binding_id: "binding-image", asset_id: "asset-image", asset_version_id: "version-1",
+        checksum: "a".repeat(64), media_type: "image", input_role: "image_reference", display_order: 0,
+      }],
+    }));
+    expect(audit?.media_inputs[0]).toMatchObject({ asset_version_id: "version-1", checksum: "a".repeat(64) });
+  });
+
   it("keeps only the sanitized ordered input audit returned by the backend", () => {
     const audit = inputManifestAuditFromEvent(event({
       input_manifest_id: "manifest-1",

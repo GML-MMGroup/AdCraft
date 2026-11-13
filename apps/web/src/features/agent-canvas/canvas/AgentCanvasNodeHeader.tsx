@@ -3,23 +3,24 @@ import type {
   CanvasNodeV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasNodeIcon } from "./AgentCanvasNodeIcon.tsx";
-import { projectCharacterNodePresentation } from "./characterNodePresentation.ts";
-import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { canvasNodeDisplayName } from "./canvasNodeDisplayName.ts";
 
 interface AgentCanvasNodeHeaderProps {
   node: CanvasNodeV2;
   status: CanvasNodeStatusV2;
   dimensions?: { width: number; height: number } | null;
+  activityLabel?: string;
 }
 
 export function AgentCanvasNodeHeader({
   node,
   status,
   dimensions,
+  activityLabel,
 }: AgentCanvasNodeHeaderProps) {
-  const roleName = creativeRoleDisplayName(node.creative_role);
-  const characterPresentation = projectCharacterNodePresentation(node);
-  const name = characterPresentation?.phaseLabel ?? roleName;
+  const t = useTranslation();
+  const name = canvasNodeDisplayName(node, t);
   const showDimensions = node.node_type === "image" || node.node_type === "video";
 
   return (
@@ -32,7 +33,9 @@ export function AgentCanvasNodeHeader({
         <AgentCanvasNodeIcon nodeType={node.node_type} />
       </span>
       <span className="agent-canvas-node__header-name">{name}</span>
-      {showDimensions && dimensions ? (
+      {activityLabel ? (
+        <span className="agent-canvas-node__header-run-state">{activityLabel}</span>
+      ) : showDimensions && dimensions ? (
         <span className="agent-canvas-node__header-dimensions">
           {dimensions.width} × {dimensions.height}
         </span>

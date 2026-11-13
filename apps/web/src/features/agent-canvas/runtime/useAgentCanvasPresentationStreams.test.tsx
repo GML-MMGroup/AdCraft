@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -70,7 +70,49 @@ describe("useAgentCanvasPresentationStreams", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
+  });
+
+  it("shares a two-connection limit between chat and node consumers and drains on completion", () => {
+    const first = renderHook(() => useAgentCanvasPresentationStreams("workflow-1", ["stream-1", "stream-2", "stream-3"]));
+    const second = renderHook(() => useAgentCanvasPresentationStreams("workflow-1", ["stream-4"]));
+    expect(EventSourceStub.instances).toHaveLength(2);
+    act(() => EventSourceStub.instances[0]!.emit("committed", event({ event_type: "committed", delta: null })));
+    expect(EventSourceStub.instances).toHaveLength(3);
+    expect(EventSourceStub.instances[2]!.url).toContain("/stream-3?");
+    second.unmount();
+    first.unmount();
+    expect(EventSourceStub.instances.every(source => source.closed)).toBe(true);
+    expect(EventSourceStub.instances.some(source => source.url.includes("/stream-4?"))).toBe(false);
+  });
+
+  it("releases a connection after a malformed event so queued output can start", () => {
+    renderHook(() => useAgentCanvasPresentationStreams("workflow-1", ["stream-1", "stream-2", "stream-3"]));
+    expect(EventSourceStub.instances).toHaveLength(2);
+    act(() => EventSourceStub.instances[0]!.emit("delta", event({ workflow_id: "wrong-workflow" })));
+    expect(EventSourceStub.instances[0]!.closed).toBe(true);
+    expect(EventSourceStub.instances).toHaveLength(3);
+  });
+
+  it("queues reconnects within the shared limit and ignores callbacks from a closed connection", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useAgentCanvasPresentationStreams("workflow-1", ["stream-1", "stream-2", "stream-3"]));
+    const first = EventSourceStub.instances[0]!;
+    act(() => {
+      first.emit("delta", event({ sequence_no: 3, delta: "Saved" }));
+      first.onerror?.();
+      first.onerror?.();
+      first.onopen?.();
+      first.emit("delta", event({ sequence_no: 4, delta: "Stale" }));
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(EventSourceStub.instances).toHaveLength(3);
+    expect(EventSourceStub.instances.filter(source => !source.closed)).toHaveLength(2);
+    expect(result.current["stream-1"]).toMatchObject({ status: "reconnecting", text: "Saved" });
+    act(() => EventSourceStub.instances[1]!.emit("committed", event({ stream_id: "stream-2", event_type: "committed", delta: null })));
+    expect(EventSourceStub.instances).toHaveLength(4);
+    expect(EventSourceStub.instances[3]!.url).toContain("/stream-1?after_seq=3");
   });
 
   it("does not reopen an ended stream when another stream joins", async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 import type {
   GuidedInteractionSubmitRequestV1,
@@ -28,6 +29,7 @@ export function MediaReviewDecisionDock({
   issue,
   onSubmit,
 }: MediaReviewDecisionDockProps) {
+  const t = useTranslation();
   const content = interaction.content.content_kind === "media_review" ? interaction.content : null;
   const modes = useMemo(() => availableModes(interaction), [interaction]);
   const moreId = useId();
@@ -76,14 +78,14 @@ export function MediaReviewDecisionDock({
       context={interaction.context}
       pending={pending}
       issue={issue}
-      footerSummary={footerSummary}
-      submitLabel={submitLabel}
+      footerSummary={t(footerSummary)}
+      submitLabel={t(submitLabel)}
       submitDisabled={submitDisabled}
       onSubmit={submit}
     >
       <p className="agent-chat__decision-dock-media-summary">{content.summary}</p>
 
-      <div className="agent-chat__decision-dock-secondary-actions" aria-label="Media review actions">
+      <div className="agent-chat__decision-dock-secondary-actions" aria-label={t("Media review actions")}>
         {modes.includes("retry") ? (
           <button
             type="button"
@@ -91,7 +93,7 @@ export function MediaReviewDecisionDock({
             aria-pressed={mode === "retry"}
             onClick={() => setMode("retry")}
           >
-            Choose Retry
+            {t("Choose Retry")}
           </button>
         ) : null}
         {modes.includes("replace") ? (
@@ -101,16 +103,16 @@ export function MediaReviewDecisionDock({
             aria-pressed={mode === "replace"}
             onClick={() => setMode("replace")}
           >
-            Choose Replace
+            {t("Choose Replace")}
           </button>
         ) : null}
       </div>
 
       {mode === "replace" ? (
         <label className="agent-chat__decision-dock-inline-input">
-          <span>Describe the replacement</span>
+          <span>{t("Describe the replacement")}</span>
           <textarea
-            aria-label="Describe the replacement"
+            aria-label={t("Describe the replacement")}
             value={instruction}
             disabled={pending}
             onChange={(event) => setInstruction(event.target.value)}
@@ -121,7 +123,7 @@ export function MediaReviewDecisionDock({
       {modes.includes("exclude") ? (
         <DecisionDockDisclosure
           id={moreId}
-          label="More"
+          label={t("More")}
           count={null}
           expanded={moreOpen}
           disabled={pending}
@@ -134,7 +136,7 @@ export function MediaReviewDecisionDock({
               aria-pressed={mode === "exclude"}
               onClick={() => setMode("exclude")}
             >
-              Exclude this media
+              {t("Exclude this media")}
             </button>
           </div>
         </DecisionDockDisclosure>
@@ -142,9 +144,9 @@ export function MediaReviewDecisionDock({
 
       {mode === "exclude" ? (
         <div className="agent-chat__decision-dock-confirmation">
-          <span>Confirm exclusion before continuing.</span>
+          <span>{t("Confirm exclusion before continuing.")}</span>
           <button type="button" disabled={pending} onClick={() => setMode(modes[0] ?? "accept")}>
-            Cancel
+            {t("Cancel")}
           </button>
         </div>
       ) : null}

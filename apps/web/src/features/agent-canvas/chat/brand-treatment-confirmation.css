@@ -15,9 +15,9 @@
   content: "";
   position: absolute;
   inset: -1px;
-  border: 1px solid rgb(231 211 171 / 75%);
+  border: 1px solid color-mix(in srgb, var(--brand) 75%, transparent);
   border-radius: inherit;
-  box-shadow: 0 0 12px rgb(220 190 132 / 20%), inset 0 0 8px rgb(231 211 171 / 7%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--brand) 20%, transparent), inset 0 0 8px color-mix(in srgb, var(--brand) 7%, transparent);
   pointer-events: none;
   opacity: 0;
   transition: opacity 180ms cubic-bezier(.23, 1, .32, 1);

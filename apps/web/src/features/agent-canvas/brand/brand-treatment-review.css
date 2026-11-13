@@ -1,10 +1,216 @@
-.brand-treatment-review { width: min(900px, 92vw); max-height: 86dvh; padding: 24px; border: 1px solid #444; border-radius: 12px; background: #151515; color: #eee; overflow: auto; }
-.brand-treatment-review::backdrop { background: rgb(0 0 0 / 65%); }
-.brand-treatment-review header { display: flex; align-items: center; justify-content: space-between; }
-.brand-treatment-review section, .brand-treatment-review article { border-top: 1px solid #383838; padding-block: 16px; }
-.brand-treatment-review p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
-.brand-treatment-review pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.brand-treatment-review label { display: block; margin-block: 12px; }
-.brand-treatment-review input:not([type="checkbox"]), .brand-treatment-review textarea { display: block; width: 100%; color: inherit; background: #222; border: 1px solid #555; padding: 8px; }
-.brand-treatment-review button { padding: 8px 12px; margin: 6px 8px 6px 0; }
-.brand-treatment-review [role="alert"] { color: #f2bda8; }
+@import "../../../styles/workflow-panels.css";
+
+.brand-treatment-review {
+  --review-font: var(--font-workflow-ui, "Manrope", "AdCraft Brand Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif);
+  --review-bg: var(--surface-card);
+  --review-surface: var(--surface-raised);
+  --review-line: var(--border-default);
+  --review-text: var(--text-primary);
+  --review-muted: var(--text-secondary);
+  --review-accent: var(--brand);
+  --review-complete: var(--text-primary);
+  box-sizing: border-box;
+  width: 1120px;
+  max-width: calc(100vw - 64px);
+  height: min(860px, calc(100dvh - 64px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 18px;
+  background: var(--review-bg);
+  color: var(--review-text);
+  box-shadow: 0 32px 100px #0008, 0 0 0 1px #ffffff04 inset;
+  font: 13px/1.65 var(--review-font);
+  color-scheme: dark;
+}
+.brand-treatment-review[open] { display: flex; flex-direction: column; }
+.brand-treatment-review::backdrop { background: var(--overlay); backdrop-filter: blur(5px); }
+.brand-treatment-review *, .brand-treatment-review *::before, .brand-treatment-review *::after { box-sizing: border-box; }
+.brand-treatment-review :where(h2, h3, h4, p, dl, dd) { margin: 0; }
+.brand-treatment-review :where(button, input, textarea) { font: inherit; }
+.brand-treatment-review button { cursor: pointer; color: inherit; }
+.brand-treatment-review button:disabled { cursor: not-allowed; opacity: .45; }
+.brand-treatment-review :where(button, input, textarea, summary):focus-visible { outline: 2px solid var(--review-accent); outline-offset: 3px; }
+.brand-treatment-review svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.brand-treatment-review :where(p, dd, h3, h4) { overflow-wrap: anywhere; }
+
+.treatment-review__header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 26px; border-bottom: 1px solid var(--review-line); background: var(--surface-card); }
+.treatment-review__identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.treatment-review__identity h2 { font: 600 19px/1.5 var(--review-font); letter-spacing: -.025em; }
+.treatment-review__identity p { margin-top: 3px; color: var(--review-muted); font-size: 11px; }
+.treatment-review__document-mark { display: grid; place-items: center; width: 42px; height: 46px; flex: 0 0 auto; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-selected); color: var(--text-primary); }
+.treatment-review__document-mark svg { width: 22px; height: 22px; }
+.treatment-review__header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.treatment-review__status { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; color: var(--text-primary); font-size: 11px; white-space: nowrap; }
+.treatment-review__status.is-complete { color: var(--review-complete); }
+.treatment-review__status svg { width: 14px; height: 14px; }
+.treatment-review__status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.treatment-review__icon-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--review-muted) !important; }
+.treatment-review__icon-button:hover:not(:disabled) { background: #ffffff08; border-color: var(--review-line); color: var(--review-text) !important; }
+
+.treatment-review__workspace { display: flex; min-height: 0; flex: 1 1 auto; }
+.treatment-review__navigation { flex: 0 0 226px; padding: 22px 12px 18px; overflow-y: auto; border-right: 1px solid var(--review-line); background: var(--nav-bg); scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+.treatment-review__nav-caption { padding: 0 12px 13px; color: var(--text-disabled); font-size: 10px; font-weight: 500; letter-spacing: .05em; }
+.treatment-review__nav-item { display: flex; width: 100%; align-items: center; gap: 10px; min-height: 39px; padding: 8px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; text-align: left; font-size: 12px !important; }
+.treatment-review__nav-item > span { min-width: 0; }
+.treatment-review__nav-item > svg { color: var(--text-secondary); }
+.treatment-review__nav-item:hover:not(:disabled) { background: #ffffff05; }
+.treatment-review__nav-item[aria-current] { background: var(--surface-selected); border-color: var(--brand); color: var(--text-primary); }
+.treatment-review__nav-group-label { display: flex; justify-content: space-between; gap: 8px; margin: 23px 12px 9px; color: var(--text-secondary); font-size: 10px; }
+.treatment-review__nav-group-label > span:last-child { font-variant-numeric: tabular-nums; font-size: 9px; color: var(--text-disabled); }
+.treatment-review__step-navigation { display: grid; gap: 2px; }
+.treatment-review__nav-step { min-height: 49px; gap: 12px; padding-block: 7px; }
+.treatment-review__step-number { color: var(--text-disabled); font-size: 10px; font-variant-numeric: tabular-nums; }
+.treatment-review__nav-step[aria-current] .treatment-review__step-number { color: var(--text-primary); }
+.treatment-review__nav-step strong { display: block; font-size: 11px; font-weight: 500; line-height: 1.6; }
+.treatment-review__nav-step small { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; color: var(--text-secondary); font-size: 10px; line-height: 1.55; }
+.treatment-review__nav-secondary { margin-top: 19px; padding-top: 12px; border-top: 1px solid var(--surface-raised); }
+.treatment-review__nav-secondary .treatment-review__nav-item { justify-content: space-between; color: var(--text-secondary); }
+.treatment-review__nav-secondary svg { width: 12px; height: 12px; }
+
+.treatment-review__content { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 30px 38px 40px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+.treatment-review__eyebrow { color: var(--text-secondary); font-size: 10px; font-weight: 500; letter-spacing: .04em; }
+.treatment-review__creative-summary { padding: 0 0 23px; }
+.treatment-review__creative-summary > h3 { margin: 7px 0 13px; font: 500 30px/1.4 var(--review-font); letter-spacing: -.04em; }
+.treatment-review__lead { max-width: 66ch; color: var(--text-secondary); font-size: 13px; line-height: 1.95; white-space: pre-wrap; }
+.treatment-review__selected-skills { display: flex; flex-wrap: wrap; column-gap: 30px; row-gap: 12px; padding: 17px 0 19px; border-block: 1px solid var(--review-line); }
+.treatment-review__selected-skills > span { display: grid; gap: 4px; }
+.treatment-review__selected-skills small { color: var(--text-secondary); font-size: 10px; }
+.treatment-review__selected-skills strong { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.treatment-review__direction-map { margin-top: 25px; }
+.treatment-review__section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.treatment-review__section-heading h3 { font-size: 13px; font-weight: 600; }
+.treatment-review__section-heading > span { color: var(--text-secondary); font-size: 10px; }
+.treatment-review__direction-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.treatment-review__direction { display: flex; align-items: center; gap: 13px; min-height: 75px; padding: 13px 15px; border: 1px solid var(--border-default); border-radius: 9px; background: var(--surface-card); text-align: left; transition: border-color 130ms, background-color 130ms; }
+.treatment-review__direction:hover { border-color: var(--brand); background: var(--surface-selected); }
+.treatment-review__direction-index { align-self: flex-start; padding-top: 3px; color: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.treatment-review__direction > span:nth-child(2) { min-width: 0; flex: 1; }
+.treatment-review__direction small { display: block; color: var(--text-secondary); font-size: 10px; line-height: 1.55; }
+.treatment-review__direction strong { display: block; margin-top: 4px; color: var(--text-primary); font-size: 12px; font-weight: 500; line-height: 1.65; overflow-wrap: anywhere; }
+.treatment-review__direction > svg { width: 13px; height: 13px; color: var(--text-disabled); }
+
+.treatment-review__chapter-line { display: flex; gap: 15px; align-items: center; color: var(--text-secondary); font-size: 11px; }
+.treatment-review__chapter-line > span:first-child { color: var(--text-disabled); font-size: 10px; font-variant-numeric: tabular-nums; }
+.treatment-review__step-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin: 11px 0 28px; padding-bottom: 24px; border-bottom: 1px solid var(--review-line); }
+.treatment-review__step-heading h3 { font: 500 25px/1.5 var(--review-font); letter-spacing: -.03em; }
+.treatment-review__step-heading button { flex: 0 0 auto; margin-top: 3px; }
+.treatment-review__step-copy .treatment-section + .treatment-section { margin-top: 27px; }
+.treatment-review__step-copy h4 { margin: 0 0 9px; font-size: 13px; font-weight: 600; line-height: 1.7; color: var(--text-primary); }
+.treatment-review__step-copy p { color: var(--text-secondary); font-size: 13px; line-height: 2; white-space: pre-wrap; }
+.treatment-review__step-copy > p { line-height: 2; white-space: pre-wrap; }
+.treatment-review__page-heading { padding-bottom: 25px; }
+.treatment-review__page-heading h3 { margin: 7px 0 9px; font-size: 24px; font-weight: 500; letter-spacing: -.035em; }
+.treatment-review__page-heading > p:last-child { color: var(--review-muted); font-size: 12px; }
+.treatment-review__brief-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px; }
+.treatment-review__brief > h3 { padding-bottom: 14px; border-bottom: 1px solid var(--review-line); color: var(--text-primary); font-size: 13px; font-weight: 600; }
+.treatment-review__brief-fields > div { padding: 13px 0; border-bottom: 1px solid var(--border-default); }
+.treatment-review__brief-fields dt { color: var(--text-secondary); font-size: 10px; }
+.treatment-review__brief-fields dd { margin-top: 4px; color: var(--text-primary); font-size: 13px; }
+.treatment-review__brief-fields dd small { display: block; margin-top: 3px; color: var(--text-disabled); font-size: 9px; line-height: 1.65; }
+.treatment-review__unresolved { margin-top: 17px !important; padding: 11px 13px; border-left: 2px solid var(--brand); background: var(--surface-selected); color: var(--text-secondary); font-size: 11px; }
+.treatment-review__document-section + .treatment-review__document-section { margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--review-line); }
+.treatment-review__document-section > h3 { margin: 0 0 15px; font-size: 15px; font-weight: 500; }
+.treatment-review__spec-groups { display: grid; gap: 15px; }
+.treatment-review__spec-group { padding: 16px 19px; border-radius: 9px; border: 1px solid var(--border-default); background: var(--surface-selected); }
+.treatment-review__spec-group.is-open { border-color: var(--border-strong); background: var(--surface-selected); }
+.treatment-review__spec-group.is-variable { border-color: var(--border-default); background: var(--surface-selected); }
+.treatment-review__spec-group h4 { display: flex; align-items: center; gap: 7px; color: var(--text-primary); font-size: 11px; font-weight: 500; }
+.treatment-review__spec-group.is-open h4 { color: var(--text-primary); }
+.treatment-review__spec-group.is-variable h4 { color: var(--text-primary); }
+.treatment-review__spec-group h4 > span { margin-left: auto; color: var(--text-secondary); font-size: 10px; }
+.treatment-review__spec-group h4 > svg { width: 13px; height: 13px; }
+.treatment-review__spec-group ul { display: grid; gap: 9px; padding-left: 15px; margin: 13px 0 0; color: var(--text-primary); font-size: 12px; line-height: 1.8; }
+.treatment-review__spec-group li::marker { color: var(--text-primary); }
+.treatment-review__skills-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.treatment-review__skill { min-width: 0; padding: 15px; border: 1px solid var(--review-line); border-radius: 9px; }
+.treatment-review__skill > div { display: flex; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 10px; }
+.treatment-review__skill h4 { margin: 8px 0; font-size: 13px; font-weight: 500; }
+.treatment-review__skill p { color: var(--text-secondary); font-size: 11px; line-height: 1.9; }
+.treatment-review__disclosure { margin-top: 15px; border-top: 1px solid var(--review-line); }
+.treatment-review__disclosure > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; list-style: none; padding: 13px 0; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.treatment-review__disclosure > summary::-webkit-details-marker { display: none; }
+.treatment-review__disclosure > summary > span { display: inline-flex; align-items: center; gap: 8px; }
+.treatment-review__disclosure > summary > svg { width: 13px; height: 13px; }
+.treatment-review__disclosure[open] > summary > svg { transform: rotate(180deg); }
+.treatment-review__rationale > div, .treatment-review__reference-details > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; padding: 10px 0; font-size: 12px; }
+.treatment-review__rationale dt, .treatment-review__reference-details dt { color: var(--text-secondary); }
+.treatment-review__reference-details dd { font-size: 11px; }
+.treatment-review__scope-note { margin-top: 25px; padding: 16px 18px; border-left: 2px solid var(--brand); border-radius: 0 8px 8px 0; background: var(--surface-selected); }
+.treatment-review__scope-note h3 { color: var(--text-primary); font-size: 12px; font-weight: 500; }
+.treatment-review__scope-note p { margin-top: 7px; color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
+.treatment-review__muted { color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
+
+.treatment-review__footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 25px; flex: 0 0 auto; border-top: 1px solid var(--review-line); background: var(--surface-card); }
+.treatment-review__footer > p { max-width: 45%; color: var(--text-secondary); font-size: 11px; line-height: 1.7; }
+.treatment-review__footer > div { display: flex; gap: 10px; align-items: center; }
+.treatment-review__secondary-button, .treatment-review__confirm { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 37px; padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 8px; background: transparent; color: var(--text-primary); font-size: 11px !important; white-space: nowrap; }
+.treatment-review__secondary-button:hover:not(:disabled) { border-color: var(--brand); background: #ffffff05; }
+.treatment-review__confirm { border-color: var(--review-accent); background: var(--surface-raised); color: var(--text-primary) !important; font-weight: 600 !important; padding-inline: 17px; }
+.treatment-review__confirm:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--brand-hover); }
+.treatment-review__confirm:disabled { background: var(--surface-raised); border-color: var(--border-strong); color: var(--text-disabled) !important; opacity: 1 !important; }
+.treatment-review__confirm > svg { width: 14px; height: 14px; }
+.treatment-review__editor { display: grid; gap: 19px; }
+.treatment-review__editor label { display: grid; gap: 8px; color: var(--text-secondary); font-size: 11px; }
+.treatment-review__editor input, .treatment-review__editor textarea { display: block; width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-input); color: var(--text-primary); font-size: 12px; line-height: 1.85; }
+.treatment-review__editor textarea { resize: vertical; min-height: 130px; }
+.treatment-review__editor fieldset { display: grid; gap: 14px; margin: 0; min-width: 0; padding: 18px; border: 1px solid var(--review-line); border-radius: 9px; }
+.treatment-review__editor legend { padding-inline: 7px; color: var(--text-primary); font-size: 12px; }
+.treatment-review__editor-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 3px; }
+.treatment-review__notice { margin-bottom: 20px; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-selected); color: var(--text-primary); font-size: 12px; line-height: 1.8; }
+.treatment-review__notice.is-error, .treatment-review__editor [role="alert"] { color: var(--error); border-color: var(--error); }
+.treatment-review__empty { display: grid; justify-items: center; gap: 18px; padding: 70px 20px; color: var(--review-muted); }
+.treatment-review__empty svg { width: 30px; height: 30px; }
+
+@media (max-width: 950px) {
+  .brand-treatment-review { max-width: calc(100vw - 32px); height: calc(100dvh - 32px); }
+  .treatment-review__navigation { flex-basis: 196px; }
+  .treatment-review__content { padding: 25px; }
+  .treatment-review__header { padding: 19px 22px; }
+  .treatment-review__status { margin-right: 3px; font-size: 10px; }
+  .treatment-review__document-mark { display: none; }
+  .treatment-review__identity h2 { font-size: 17px; }
+  .treatment-review__nav-step small { max-width: 128px; }
+  .treatment-review__brief-grid { gap: 22px; }
+}
+@media (max-width: 680px) {
+  .brand-treatment-review { max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: none; border-radius: 13px; }
+  .treatment-review__header { align-items: flex-start; gap: 10px; padding: 17px 16px; }
+  .treatment-review__identity h2 { font-size: 16px; }
+  .treatment-review__identity p { font-size: 10px; }
+  .treatment-review__header-actions { gap: 2px; }
+  .treatment-review__status { display: none; }
+  .treatment-review__icon-button { width: 27px; height: 29px; }
+  .treatment-review__workspace { flex-direction: column; }
+  .treatment-review__navigation { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--review-line); }
+  .treatment-review__nav-caption, .treatment-review__nav-group-label { display: none; }
+  .treatment-review__step-navigation, .treatment-review__nav-secondary { display: contents; }
+  .treatment-review__nav-item { flex: 0 0 auto; width: auto; min-height: 35px; padding: 7px 10px; gap: 6px; white-space: nowrap; }
+  .treatment-review__nav-step small, .treatment-review__nav-item > svg { display: none; }
+  .treatment-review__step-number { font-size: 9px; }
+  .treatment-review__nav-step strong { font-size: 11px; }
+  .treatment-review__content { padding: 23px 18px 28px; }
+  .treatment-review__creative-summary > h3 { font-size: 26px; }
+  .treatment-review__lead { font-size: 12px; }
+  .treatment-review__selected-skills { column-gap: 21px; padding-block: 14px; }
+  .treatment-review__selected-skills strong { font-size: 11px; }
+  .treatment-review__section-heading { flex-wrap: wrap; gap: 3px; }
+  .treatment-review__direction-grid { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .treatment-review__direction { min-height: 65px; padding-block: 10px; }
+  .treatment-review__footer { flex-direction: column; align-items: stretch; gap: 11px; padding: 13px 16px 16px; }
+  .treatment-review__footer > p { max-width: none; font-size: 10px; }
+  .treatment-review__footer > div { justify-content: flex-end; }
+  .treatment-review__footer .treatment-review__secondary-button { flex-shrink: 0; }
+  .treatment-review__footer .treatment-review__confirm { flex: 1; min-width: 0; white-space: normal; text-align: center; }
+  .treatment-review__step-heading { display: block; margin-bottom: 23px; }
+  .treatment-review__step-heading h3 { font-size: 22px; }
+  .treatment-review__step-heading button { margin-top: 13px; }
+  .treatment-review__step-copy p { font-size: 12px; }
+  .treatment-review__brief-grid, .treatment-review__skills-grid { grid-template-columns: minmax(0, 1fr); }
+  .treatment-review__reference-details > div { grid-template-columns: 70px minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-treatment-review * { scroll-behavior: auto !important; transition: none !important; }
+}

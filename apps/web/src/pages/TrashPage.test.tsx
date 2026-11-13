@@ -7,16 +7,18 @@ const mockState = vi.hoisted(() => ({
       project_id: "project-trash-1",
       workflow_id: "workflow-trash-1",
       name: "Archived campaign",
-      updated_at: "2026-08-18T00:00:00Z",
+      project_version: 2, updated_at: "2026-08-18T00:00:00Z",
     },
   ],
   restoreTrashedProject: vi.fn(async () => true),
+  permanentlyDeleteTrashedProject: vi.fn(async (_projectId: string, _projectVersion: number) => true),
 }));
 
 vi.mock("../AppContextValue", () => ({
   useApp: () => ({
     trashedProjects: mockState.trashedProjects,
     restoreTrashedProject: mockState.restoreTrashedProject,
+    permanentlyDeleteTrashedProject: mockState.permanentlyDeleteTrashedProject,
     projectCatalogError: null,
     projectCatalogRefreshing: false,
     refreshProjects: vi.fn(async () => true),
@@ -29,11 +31,13 @@ describe("TrashPage", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
+    mockState.permanentlyDeleteTrashedProject.mockResolvedValue(true);
     mockState.trashedProjects = [{
       project_id: "project-trash-1",
       workflow_id: "workflow-trash-1",
       name: "Archived campaign",
-      updated_at: "2026-08-18T00:00:00Z",
+      project_version: 2, updated_at: "2026-08-18T00:00:00Z",
     }];
   });
 
@@ -72,13 +76,13 @@ describe("TrashPage", () => {
         project_id: "project-trash-1",
         workflow_id: "workflow-trash-1",
         name: "Archived campaign",
-        updated_at: "2026-08-18T00:00:00Z",
+        project_version: 2, updated_at: "2026-08-18T00:00:00Z",
       },
       {
         project_id: "project-trash-2",
         workflow_id: "workflow-trash-2",
         name: "Old product film",
-        updated_at: "2026-08-17T00:00:00Z",
+        project_version: 2, updated_at: "2026-08-17T00:00:00Z",
       },
     ];
     render(<TrashPage />);
@@ -103,13 +107,13 @@ describe("TrashPage", () => {
         project_id: "project-trash-1",
         workflow_id: "workflow-trash-1",
         name: "Archived campaign",
-        updated_at: "2026-08-18T00:00:00Z",
+        project_version: 2, updated_at: "2026-08-18T00:00:00Z",
       },
       {
         project_id: "project-trash-2",
         workflow_id: "workflow-trash-2",
         name: "Old product film",
-        updated_at: "2026-08-17T00:00:00Z",
+        project_version: 2, updated_at: "2026-08-17T00:00:00Z",
       },
     ];
     render(<TrashPage />);
@@ -130,13 +134,13 @@ describe("TrashPage", () => {
         project_id: "project-trash-1",
         workflow_id: "workflow-trash-1",
         name: "Archived campaign",
-        updated_at: "2026-08-18T00:00:00Z",
+        project_version: 2, updated_at: "2026-08-18T00:00:00Z",
       },
       {
         project_id: "project-trash-2",
         workflow_id: "workflow-trash-2",
         name: "Old product film",
-        updated_at: "2026-08-17T00:00:00Z",
+        project_version: 2, updated_at: "2026-08-17T00:00:00Z",
       },
     ];
     mockState.restoreTrashedProject.mockImplementation(async (projectId) => {
@@ -164,5 +168,40 @@ describe("TrashPage", () => {
     expect(screen.getByRole("button", { name: "Select" })).toBeTruthy();
     expect(screen.queryByText("1 selected")).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "Select Archived campaign" })).toBeNull();
+  });
+
+  it("requires confirmation before permanently deleting a project", async () => {
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<TrashPage />);
+    const button = screen.getByRole("button", { name: "Delete permanently" });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+    expect(confirmation).toHaveBeenCalledWith(expect.stringContaining("Shared"));
+    expect(mockState.permanentlyDeleteTrashedProject).not.toHaveBeenCalled();
+    confirmation.mockReturnValue(true);
+    fireEvent.click(button);
+    await waitFor(() => expect(mockState.permanentlyDeleteTrashedProject).toHaveBeenCalledWith("project-trash-1", 2));
+  });
+
+  it("deletes only selected projects and retains failures for retry", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockState.permanentlyDeleteTrashedProject.mockRejectedValueOnce(new Error("Still running"));
+    render(<TrashPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Archived campaign" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Still running"));
+    expect(mockState.permanentlyDeleteTrashedProject).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("checkbox", { name: "Select Archived campaign" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("empty trash confirms the complete snapshot even when search filters the list", async () => {
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockState.trashedProjects.push({ project_id: "project-trash-2", workflow_id: "workflow-trash-2", name: "Second campaign", project_version: 2, updated_at: "2026-08-18T00:00:00Z" });
+    render(<TrashPage />);
+    fireEvent.change(screen.getByPlaceholderText("Search deleted items"), { target: { value: "Archived" } });
+    fireEvent.click(screen.getByRole("button", { name: "Empty trash" }));
+    expect(confirmation).toHaveBeenCalledWith(expect.stringContaining("2"));
+    await waitFor(() => expect(mockState.permanentlyDeleteTrashedProject).toHaveBeenCalledTimes(2));
   });
 });

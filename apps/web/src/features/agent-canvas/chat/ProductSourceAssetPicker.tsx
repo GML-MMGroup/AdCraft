@@ -1,4 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { productSourceCopy } from "./productSourceCopy.ts";
 
 import {
   ChevronDownIcon,
@@ -47,6 +49,7 @@ export function ProductSourceAssetPicker({
   onMove,
   onRemove,
 }: ProductSourceAssetPickerProps) {
+  const t = useTranslation("en-US");
   const [search, setSearch] = useState("");
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -65,27 +68,27 @@ export function ProductSourceAssetPicker({
   return (
     <div className="agent-chat__product-source-picker">
       <div className="agent-chat__product-source-picker-header">
-        <span>Project Assets</span>
+        <span>{t("Project Assets")}</span>
         <input
           type="search"
           value={search}
-          placeholder="Search images"
-          aria-label="Search Product source images"
+          placeholder={t("Search images")}
+          aria-label={t("Search Product source images")}
           disabled={busy}
           onChange={(event) => setSearch(event.currentTarget.value)}
         />
       </div>
 
-      <div className="agent-chat__product-source-assets" aria-label="Project Product source images">
-        {loading ? <p role="status">Loading Project Assets</p> : null}
+      <div className="agent-chat__product-source-assets" aria-label={t("Project Product source images")}>
+        {loading ? <p role="status">{t("Loading Project Assets")}</p> : null}
         {!loading && error ? (
           <div className="agent-chat__product-source-assets-state" role="alert">
-            <span>{error}</span>
-            <button type="button" disabled={busy} onClick={onRetry}>Retry</button>
+            <span>{productSourceCopy(error, t)}</span>
+            <button type="button" disabled={busy} onClick={onRetry}>{t("Retry")}</button>
           </div>
         ) : null}
         {!loading && !error && visibleItems.length === 0 ? (
-          <p>No Project images available</p>
+          <p>{t("No Project images available")}</p>
         ) : null}
         {!loading && !error ? visibleItems.map((item) => {
           const selectable = assetSelectable(item);
@@ -99,7 +102,7 @@ export function ProductSourceAssetPicker({
               key={item.id}
               type="button"
               className={`agent-chat__product-source-asset${selectedItem ? " is-selected" : ""}`}
-              aria-label={`Select ${item.displayName}`}
+              aria-label={t("Select {name}", { name: item.displayName })}
               aria-pressed={selectedItem}
               disabled={busy || !selectable}
               onClick={() => onSelectAsset(item)}
@@ -115,9 +118,9 @@ export function ProductSourceAssetPicker({
 
       <label className="agent-chat__product-source-upload">
         <UploadIcon aria-hidden="true" />
-        <span>{inputKind === "main" ? "Upload Product source" : "Upload Product sources"}</span>
+        <span>{t(inputKind === "main" ? "Upload Product source" : "Upload Product sources")}</span>
         <input
-          aria-label={inputKind === "main" ? "Upload Product source" : "Upload Product sources"}
+          aria-label={t(inputKind === "main" ? "Upload Product source" : "Upload Product sources")}
           type="file"
           accept="image/*"
           multiple={inputKind === "multiview"}
@@ -127,7 +130,7 @@ export function ProductSourceAssetPicker({
       </label>
 
       {selected.length ? (
-        <ol className="agent-chat__product-source-selected" aria-label="Selected Product source order">
+        <ol className="agent-chat__product-source-selected" aria-label={t("Selected Product source order")}>
           {selected.map((item, index) => (
             <li key={item.key}>
               <span className="agent-chat__product-source-selected-order">{index + 1}</span>
@@ -135,14 +138,14 @@ export function ProductSourceAssetPicker({
                 {item.previewUrl ? <StableMediaPreview src={item.previewUrl} alt="" /> : <ImageIcon aria-hidden="true" />}
               </span>
               <span className="agent-chat__product-source-selected-name" title={item.displayName}>
-                {item.displayName}
+                {item.kind === "local_file" && !item.file.name ? t("Uploaded Product source") : item.displayName}
               </span>
               {inputKind === "multiview" ? (
                 <span className="agent-chat__product-source-selected-actions">
                   <button
                     type="button"
-                    aria-label={`Move ${item.displayName} up`}
-                    title="Move up"
+                    aria-label={t("Move {name} up", { name: item.displayName })}
+                    title={t("Move up")}
                     disabled={busy || index === 0}
                     onClick={() => onMove(item.key, -1)}
                   >
@@ -150,8 +153,8 @@ export function ProductSourceAssetPicker({
                   </button>
                   <button
                     type="button"
-                    aria-label={`Move ${item.displayName} down`}
-                    title="Move down"
+                    aria-label={t("Move {name} down", { name: item.displayName })}
+                    title={t("Move down")}
                     disabled={busy || index === selected.length - 1}
                     onClick={() => onMove(item.key, 1)}
                   >
@@ -161,8 +164,8 @@ export function ProductSourceAssetPicker({
               ) : null}
               <button
                 type="button"
-                aria-label={`Remove ${item.displayName}`}
-                title="Remove"
+                aria-label={t("Remove {label}", { label: item.displayName })}
+                title={t("Remove")}
                 disabled={busy}
                 onClick={() => onRemove(item.key)}
               >

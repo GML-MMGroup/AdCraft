@@ -353,13 +353,15 @@ describe("useAudioWaveform", () => {
         name="Campaign BGM"
         onSetBgm={vi.fn()}
         playheadSeconds={4}
-        renderedWidth={8}
+        renderedWidth={720}
         trimEndSeconds={10}
         trimStartSeconds={2}
       />,
     );
 
-    expect(track.container.querySelectorAll(".audio-waveform-track__bar--played")).toHaveLength(4);
+    const bars = track.container.querySelectorAll(".audio-waveform-track__selection .audio-waveform-track__bar");
+    expect(bars.length).toBeGreaterThan(0);
+    expect(track.container.querySelectorAll(".audio-waveform-track__bar--played")).toHaveLength(Math.ceil(bars.length / 2));
     track.unmount();
   });
 

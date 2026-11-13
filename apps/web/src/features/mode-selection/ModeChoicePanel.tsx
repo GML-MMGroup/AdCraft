@@ -4,14 +4,12 @@ export type ModeId = "creation" | "brand";
 
 export function ModeChoicePanel({
   id,
-  eyebrow,
   title,
   description,
   onChoose,
   paused,
 }: {
   id: ModeId;
-  eyebrow: string;
   title: string;
   description: string;
   onChoose: (mode: ModeId, keyboard?: boolean) => void;
@@ -27,10 +25,6 @@ export function ModeChoicePanel({
       onClick={event => onChoose(id, event.detail === 0)}
     >
       <span className="mode-choice-panel__wash" aria-hidden="true" />
-      <span className="mode-choice-panel__topline">
-        <span className="mode-choice-panel__index">{id === "creation" ? "01" : "02"}</span>
-        <span className="mode-choice-panel__eyebrow">{eyebrow}</span>
-      </span>
       <span className="mode-choice-panel__body">
         <span className="mode-choice-panel__icon-wrap">
           <ParticleIconStudy shape={id === "creation" ? "butterfly" : "infinity"} paused={paused} hoverOnly accented className="mode-choice-particles" />

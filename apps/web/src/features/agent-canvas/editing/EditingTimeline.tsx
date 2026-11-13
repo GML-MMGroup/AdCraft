@@ -18,11 +18,19 @@ import {
   type TimelineSegment,
 } from "./editingTimelineMath.ts";
 import { VideoTimelineClip } from "./VideoTimelineClip.tsx";
+import { snapTimelineTime } from "./editingManualActions.ts";
+import { useEditingText } from "./editingMessages.ts";
 import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
 
 export interface EditingTimelineProps {
   inputs: EditingInputs;
   sequence?: PlayableEditingSequence;
+  zoom?: number;
+  fps?: number;
+  playing?: boolean;
+  snapping?: boolean;
+  showProperties?: boolean;
+  showInactive?: boolean;
   playheadSeconds: number;
   selectedReferenceId: string | null;
   exportRunning: boolean;
@@ -65,7 +73,6 @@ function inputLabel(input: EditingInputs["videos"][number], index: number): stri
 
 function inactiveStatus(input: EditingInputs["videos"][number]): string {
   if (!input.entry.enabled) return "Disabled";
-  if (input.node && input.node.status !== "ready") return `Source ${input.node.status}`;
   if (!input.asset) return "Asset unavailable";
   if (input.asset.status !== "ready") return `Asset ${input.asset.status}`;
   if (!input.asset.media_url) return "Media unavailable";
@@ -91,6 +98,7 @@ function TrackLabel({
         <button type="button" className="agent-editing-timeline__track-label-action" aria-label={`Select ${children}`} onClick={onSelect}>
           <span className="agent-editing-timeline__track-icon">{icon}</span>
           <strong>{children}</strong>
+          {details ? <small className="editing-audio-track-id" aria-hidden="true">A1</small> : null}
         </button>
       ) : (
         <>
@@ -98,7 +106,8 @@ function TrackLabel({
           <strong>{children}</strong>
         </>
       )}
-      {count === undefined ? null : <small>{count}</small>}
+      {count === undefined ? null : <small className="editing-track-count">{count}</small>}
+      {count === undefined ? null : <span className="editing-track-id" aria-hidden="true">V1</span>}
       {details}
     </div>
   );
@@ -119,7 +128,14 @@ export function EditingTimeline({
   playheadSeconds,
   selectedReferenceId,
   sequence,
+  zoom = 1,
+  fps = 30,
+  playing = false,
+  snapping = true,
+  showProperties = true,
+  showInactive = true,
 }: EditingTimelineProps) {
+  const t = useEditingText();
   const clipDragCancelRef = useRef<(() => void) | null>(null);
   const clipDragSessionRef = useRef<ClipDragSession | null>(null);
   const pixelsPerSecondRef = useRef(0);
@@ -167,6 +183,8 @@ export function EditingTimeline({
       const boundedStart = clampTimelineStart(unclampedStart, duration, sequenceDuration);
       const snapCandidates = [
         0,
+        playheadSeconds,
+        playheadSeconds - duration,
         ...current.otherSegments.flatMap((segment) => [
           segment.timelineStart - duration,
           segment.timelineEnd,
@@ -174,12 +192,9 @@ export function EditingTimeline({
         sequenceDuration - duration,
       ].map((candidate) => clampTimelineStart(candidate, duration, sequenceDuration));
       const snapThreshold = 8 / pixelsPerSecond;
-      const snappedStart = snapCandidates.reduce((closest, candidate) => (
-        Math.abs(candidate - boundedStart) <= snapThreshold
-          && Math.abs(candidate - boundedStart) < Math.abs(closest - boundedStart)
-          ? candidate
-          : closest
-      ), boundedStart);
+      const snappedStart = snapping && !pointerEvent.altKey
+        ? snapTimelineTime(boundedStart, snapCandidates, snapThreshold)
+        : boundedStart;
       const targetStart = roundTimeline(snappedStart);
       const targetSegment = {
         ...current.initialSegment,
@@ -248,6 +263,9 @@ export function EditingTimeline({
     <div className="agent-editing-timeline">
       <EditingTimelineViewport
         duration={sequenceDuration}
+        zoom={zoom}
+        fps={fps}
+        playing={playing}
         playheadSeconds={playheadSeconds}
         onPlayheadChange={onPlayheadChange}
       >
@@ -264,7 +282,7 @@ export function EditingTimeline({
                 <TrackLabel
                   icon={<img src="/imgs/node-icons/video.svg" alt="" aria-hidden="true" />}
                   count={activeSequence.videos.length}
-                >Video Track</TrackLabel>
+                >{t("Video Track")}</TrackLabel>
                 <div
                   className="agent-editing-timeline__lane"
                   style={{ width: viewport.contentWidth }}
@@ -279,8 +297,9 @@ export function EditingTimeline({
                     onPlayheadChange(clamp((event.clientX - rect.left) / viewport.pixelsPerSecond, 0, sequenceDuration));
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1));
-                    if (event.key === "ArrowRight") onPlayheadChange(Math.min(sequenceDuration, playheadSeconds + 1));
+                    if (["ArrowLeft", "ArrowRight"].includes(event.key)) event.preventDefault();
+                    if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1 / fps));
+                    if (event.key === "ArrowRight") onPlayheadChange(Math.min(sequenceDuration, playheadSeconds + 1 / fps));
                   }}
                 >
                   {activeSequence.videos.length === 0 ? (
@@ -328,7 +347,7 @@ export function EditingTimeline({
                       volume={inputs.bgm.entry.volume}
                     />
                   ) : null}
-                >Audio Track</TrackLabel>
+                >{t("Audio Track")}</TrackLabel>
                 <div className="agent-editing-timeline__lane agent-editing-timeline__lane--audio" style={{ width: viewport.contentWidth }}>
                   {inputs.bgm ? (
                     <AudioWaveformTrack
@@ -336,9 +355,13 @@ export function EditingTimeline({
                       disabled={exportRunning}
                       durationSeconds={inputs.bgm.asset?.duration_seconds ?? sequenceDuration}
                       name="BGM"
+                      displayName={inputs.bgm.asset?.display_name || inputs.bgm.node?.title || "BGM"}
+                      enabled={inputs.bgm.entry.enabled}
+                      selected={Boolean(selectedBgm)}
+                      onSelect={() => onSelectReference(inputs.bgm!.referenceId)}
                       onSetBgm={onSetBgm}
                       playheadSeconds={playheadSeconds}
-                      renderedWidth={Math.max(1, Math.min(512, Math.ceil(viewport.contentWidth / 3)))}
+                      renderedWidth={Math.max(1, viewport.contentWidth)}
                       timelineDuration={sequenceDuration}
                       trimEndSeconds={inputs.bgm.entry.trim_end_seconds}
                       trimStartSeconds={inputs.bgm.entry.trim_start_seconds}
@@ -351,7 +374,7 @@ export function EditingTimeline({
         }}
       </EditingTimelineViewport>
 
-      {activeSequence.inactiveVideos.length ? (
+      {showInactive && activeSequence.inactiveVideos.length ? (
         <section className="agent-editing-timeline__inactive" role="region" aria-label="Inactive sources">
           <header>
             <strong>Inactive sources</strong>
@@ -389,7 +412,7 @@ export function EditingTimeline({
         </section>
       ) : null}
 
-      {selectedVideo ? (
+      {showProperties && selectedVideo ? (
         <ClipPropertiesToolbar
           disabled={exportRunning}
           index={selectedVideoIndex}
@@ -398,7 +421,7 @@ export function EditingTimeline({
           onUpdate={(patch) => onUpdateVideo(selectedVideo.referenceId, patch)}
           total={inputs.videos.length}
         />
-      ) : selectedBgm ? null : (
+      ) : !showProperties || selectedBgm ? null : (
         <div className="agent-editing-timeline__no-selection">Select a clip or audio track to edit its settings.</div>
       )}
     </div>

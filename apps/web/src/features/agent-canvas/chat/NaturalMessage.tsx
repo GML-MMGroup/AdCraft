@@ -6,12 +6,16 @@ import {
   renderMarkdownAwareText,
 } from "../canvas/AgentCanvasMarkdown.tsx";
 import type { NaturalMessagePresentation } from "./naturalMessagePresentation.ts";
+import { AgentMessageAvatar } from "./AgentMessageAvatar.tsx";
+import { useTypewriterText, type TypewriterPlayback } from "./useTypewriterText.ts";
 
 export interface NaturalMessageProps {
   message: ChatMessageV2;
   presentation: NaturalMessagePresentation;
   related?: ReactNode;
   skillTitle?: string | null;
+  animate?: boolean;
+  playback?: TypewriterPlayback;
 }
 
 function displayTime(value: string): string {
@@ -23,7 +27,7 @@ function displayTime(value: string): string {
   }).format(date);
 }
 
-export function NaturalMessage({ message, presentation, related, skillTitle }: NaturalMessageProps) {
+export function NaturalMessage({ message, presentation, related, skillTitle, animate = false, playback }: NaturalMessageProps) {
   const isAgent = message.speaker === "adcraft_video_agent";
 
   return (
@@ -35,9 +39,7 @@ export function NaturalMessage({ message, presentation, related, skillTitle }: N
       ].join(" ")}
       aria-label={isAgent ? "Agent message" : "Your message"}
     >
-      {presentation.showAgentIdentity ? (
-        <strong className="agent-chat__message-identity">AdCraft Video Agent</strong>
-      ) : null}
+      {isAgent && presentation.showAgentIdentity ? <AgentMessageAvatar /> : null}
       <div
         className={[
           "agent-chat__message-body",
@@ -50,9 +52,7 @@ export function NaturalMessage({ message, presentation, related, skillTitle }: N
             <span>{skillTitle}</span>
           </div>
         ) : null}
-        {isLikelyMarkdown(message.text)
-          ? <div className="agent-chat__markdown">{renderMarkdownAwareText(message.text)}</div>
-          : <p>{message.text}</p>}
+        <MessageText text={message.text} animate={isAgent && animate} playback={playback} />
       </div>
       {related}
       <footer className="agent-chat__message-meta">
@@ -61,5 +61,21 @@ export function NaturalMessage({ message, presentation, related, skillTitle }: N
         </time>
       </footer>
     </article>
+  );
+}
+
+// Keep animation frames inside the text subtree, away from the canvas and chat history.
+function MessageText({ text, animate, playback }: {
+  text: string;
+  animate: boolean;
+  playback?: TypewriterPlayback;
+}) {
+  const shown = useTypewriterText(text, { animate, playback });
+  return (
+    <div className="agent-chat__message-text" aria-busy={shown !== text} data-typing={shown !== text}>
+      {isLikelyMarkdown(text)
+        ? <div className="agent-chat__markdown">{renderMarkdownAwareText(shown)}</div>
+        : <p>{shown}</p>}
+    </div>
   );
 }

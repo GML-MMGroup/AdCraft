@@ -6,7 +6,7 @@ import type {
   CanvasRuntimeModelResolutionV2,
 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
-import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
+import { PromptEditor } from "./PromptEditor.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import {
@@ -25,6 +25,7 @@ export function ScriptWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
+  defaultModelRef,
   promptEditorRef,
   preparingPrompt = false,
 }: {
@@ -35,6 +36,7 @@ export function ScriptWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
+  defaultModelRef?: string | null;
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
   preparingPrompt?: boolean;
 }) {
@@ -49,7 +51,7 @@ export function ScriptWorkbench({
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer agent-node-workbench__composer--script">
-        <FourLinePromptEditor
+        <PromptEditor
           ariaLabel={canRun ? t("Script prompt") : t("Script content")}
           value={canRun ? draft.prompt : draft.textContent}
           preparing={canRun && preparingPrompt}
@@ -73,6 +75,7 @@ export function ScriptWorkbench({
             aria-label={t("Script generation options")}
           >
             <CanvasModelPicker
+              defaultModelRef={defaultModelRef}
               models={models}
               loading={modelsLoading}
               error={modelsError}

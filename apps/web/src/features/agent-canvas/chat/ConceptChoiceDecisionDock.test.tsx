@@ -85,24 +85,31 @@ describe("ConceptChoiceDecisionDock", () => {
     expect(screen.queryByText("Choose an option above, or describe your own direction below.")).toBeNull();
     expect(screen.queryByRole("button", { name: "References" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Submit/i })).toBeNull();
+    expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("zh-CN")).toBeNull();
   });
 
-  it("reports option selection without submitting", () => {
+  it("requires an explicit confirmation after selecting an option", () => {
     const onSelectOption = vi.fn();
-    render(
+    const onConfirmOption = vi.fn();
+    const view = render(
       <ConceptChoiceDecisionDock
         interaction={interaction}
         pending={false}
         issue={null}
         selectedOptionId={null}
         onSelectOption={onSelectOption}
+        onConfirmOption={onConfirmOption}
       />,
     );
 
     fireEvent.click(screen.getByRole("radio", { name: /Warm/i }));
     expect(onSelectOption).toHaveBeenCalledWith("option-a");
+    expect(onConfirmOption).not.toHaveBeenCalled();
+    view.rerender(<ConceptChoiceDecisionDock interaction={interaction} pending={false} issue={null}
+      selectedOptionId="option-a" onSelectOption={onSelectOption} onConfirmOption={onConfirmOption} />);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm direction" }));
+    expect(onConfirmOption).toHaveBeenCalledOnce();
   });
 
   it("renders the controlled selected state", () => {
@@ -132,6 +139,7 @@ describe("ConceptChoiceDecisionDock", () => {
     );
 
     expect(screen.getAllByRole("radio").every((control) => (control as HTMLButtonElement).disabled)).toBe(true);
+    expect((screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole("alert").textContent).toContain("Try again.");
   });
 
@@ -171,9 +179,10 @@ describe("ConceptChoiceDecisionDock", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: /Other \(custom\)/i }));
     const textarea = screen.getByRole("textbox");
+    expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(textarea, { target: { value: "  再来几个方案  " } });
-    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm direction" }));
     await waitFor(() => expect(onSubmitCustom).toHaveBeenCalledWith("再来几个方案"));
   });
 
@@ -192,7 +201,7 @@ describe("ConceptChoiceDecisionDock", () => {
     );
     fireEvent.click(screen.getByRole("radio", { name: /其他（自定义）/ }));
     expect(screen.getByPlaceholderText("写下你的想法，或输入「再来几个方案」")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "提交" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "确认方向" })).toBeTruthy();
   });
 
   it("tags appended options until a choice is made and resets on a new revision", () => {

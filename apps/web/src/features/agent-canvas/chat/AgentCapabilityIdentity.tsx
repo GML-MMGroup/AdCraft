@@ -3,6 +3,8 @@ import { AgentCapabilityIcon } from "./AgentCapabilityIcon.tsx";
 import type { AgentRoleMotionState } from "./agent-role-animation/types.ts";
 import { roleVisualMode, useAgentRoleVisual } from "./agent-role-animation/useAgentRoleVisual.ts";
 import { retryRoleVisual } from "./agent-role-animation/agentRoleVisualResource.ts";
+import { useUiLocale } from "../../../i18n/locale.tsx";
+import { capabilityDisplayName } from "./capabilityDisplayName.ts";
 
 const AGENT_CAPABILITY_ROLE_CLASSES: Record<AgentCapabilityIdV2, string> = {
   world_setting: "is-role-world-setting",
@@ -20,14 +22,18 @@ const AGENT_CAPABILITY_ROLE_CLASSES: Record<AgentCapabilityIdV2, string> = {
 export function AgentCapabilityIdentity({
   capabilityId,
   displayName,
+  label,
   detail,
   motionState,
 }: {
   capabilityId: AgentCapabilityIdV2;
   displayName: string;
+  label?: string;
   detail?: string | null;
   motionState?: AgentRoleMotionState;
 }) {
+  const locale = useUiLocale();
+  const name = label ?? capabilityDisplayName(capabilityId, displayName, locale);
   const state = motionState ?? "idle";
   const visual = useAgentRoleVisual(capabilityId, state);
   const pending = visual.status === "pending";
@@ -36,7 +42,7 @@ export function AgentCapabilityIdentity({
       data-role-identity-state={visual.status}>
       <AgentCapabilityIcon capabilityId={capabilityId} motionState={motionState} />
       <div className="agent-chat__capability-identity-copy" style={pending ? { visibility: "hidden" } : undefined} aria-hidden={pending || undefined}>
-        <strong>{displayName}</strong>
+        <strong>{name}</strong>
         {detail ? <span>{detail}</span> : null}
       </div>
       {pending ? <span className="agent-chat__identity-skeleton" aria-hidden="true" /> : null}

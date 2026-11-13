@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { TextLoader } from "generative-loaders";
+import { useUiLocale } from "../../../i18n/locale.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import type { UiMessageKey } from "../../../i18n/uiMessages.ts";
 
 import type {
   AgentCanvasChatTurnV2,
@@ -12,8 +14,15 @@ import {
   failureUserAction,
 } from "./actionableFailure.ts";
 import { resolveAgentRoleMotionState } from "./agent-role-animation/resolveAgentRoleMotionState.ts";
+import { capabilityDisplayName } from "./capabilityDisplayName.ts";
 
-function recoveryStageLabel(stage: string | null | undefined): string | null {
+const SCRIPT_COMPLETION_MESSAGES: Record<string, UiMessageKey> = {
+  narrative_direction: "Narrative design completed",
+  style_lock: "Style setting completed",
+  storyboard_plan: "Storyboard planning completed",
+};
+
+function recoveryStageLabel(stage: string | null | undefined): UiMessageKey | null {
   if (stage === "waiting" || stage === "waiting_provider_response" || stage === "provider_waiting") {
     return "Waiting";
   }
@@ -29,10 +38,13 @@ function activityStageLabel(
   activity: ChatCapabilityActivityV2,
   turn: AgentCanvasChatTurnV2 | null | undefined,
   retrying: boolean,
-): string {
+): UiMessageKey {
   if (retrying) return "Retrying";
+  if (activity.status === "completed") return "Completed";
+  if (activity.status === "failed") return "Failed";
+  if (activity.status === "superseded") return "Superseded";
   return recoveryStageLabel(turn?.operation_stage)
-    ?? activity.status.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase());
+    ?? "Working";
 }
 
 function activityAriaLabel(capabilityName: string, stage: string): string {
@@ -49,25 +61,27 @@ function normalizedStatusText(value: string): string {
     .toLocaleLowerCase();
 }
 
-function isRedundantCompletionText(
+function isRedundantActivityText(
   activity: ChatCapabilityActivityV2,
   body: string | null,
+  displayName: string,
 ): boolean {
-  if (activity.status !== "completed" || !body?.trim()) return false;
+  if (!body?.trim() || !["working", "completed"].includes(activity.status)) return false;
   const normalizedBody = normalizedStatusText(body);
-  const displayName = activity.capability_display_name.trim();
-  const shortDisplayName = displayName.replace(
-    /\s+(designer|artist|director|writer|author)$/i,
-    "",
-  ).trim();
-  const names = new Set([displayName, shortDisplayName].map(normalizedStatusText));
-  return [...names].some((name) => [
-    `${name} 已完成`,
-    `${name} finished`,
-    `${name} completed`,
-    `${name} is complete`,
-    `${name} complete`,
-  ].includes(normalizedBody));
+  const names = [activity.capability_display_name.trim(), displayName.trim()].flatMap(name => [
+    name,
+    capabilityDisplayName(activity.capability_id, name, "en-US"),
+    capabilityDisplayName(activity.capability_id, name, "zh-CN"),
+  ]);
+  const aliases = new Set(names.flatMap(name => [name, name.replace(/\s+(designer|artist|director|writer|author)$/i, "").trim()])
+    .map(normalizedStatusText));
+  const suffixes = activity.status === "completed"
+    ? ["已完成", "finished", "completed", "is complete", "complete"]
+    : ["正在工作", "正在工作中", "工作中", "处理中", "is working", "working"];
+  return (activity.status === "working" && normalizedBody === "preparing the next response")
+    || [...aliases].some(name => suffixes.some(suffix => (
+      normalizedBody === `${name} ${suffix}` || normalizedBody === `${name}${suffix}`
+    )));
 }
 
 export function formatActivityDuration(elapsedMs: number | null): string | null {
@@ -86,6 +100,7 @@ export function formatActivityDuration(elapsedMs: number | null): string | null 
 
 export function CapabilityActivityRow({
   activity,
+  displayName = activity.capability_display_name,
   turn,
   retrying = false,
   compact = false,
@@ -93,33 +108,34 @@ export function CapabilityActivityRow({
   onReviseRequest,
 }: {
   activity: ChatCapabilityActivityV2;
+  displayName?: string;
   turn?: AgentCanvasChatTurnV2 | null;
   retrying?: boolean;
   compact?: boolean;
   onRetry?: () => void;
   onReviseRequest?: () => void;
 }) {
+  const t = useTranslation();
+  const locale = useUiLocale();
+  const completionMessage = activity.capability_id === "script_authoring" && activity.status === "completed" && !retrying
+    ? SCRIPT_COMPLETION_MESSAGES[activity.journey_stage ?? ""] : undefined;
+  const name = completionMessage
+    ? t(completionMessage)
+    : capabilityDisplayName(activity.capability_id, displayName, locale);
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
   const actionableFailure = activityActionableFailure(activity, turn);
   const retryable = canRetryFailureInScope(actionableFailure, "turn");
   const canRevise = failureUserAction(actionableFailure) === "revise";
   const errorCode = turn?.operation_failure?.code ?? activity.error_code;
   const errorMessage = turn?.operation_failure?.message ?? activity.message;
-  const terminalActivity = activity.status === "completed"
-    || activity.status === "failed"
-    || activity.status === "superseded";
-  const waitingForModel = turn?.operation_stage === "waiting"
-    || turn?.operation_stage === "waiting_provider_response"
-    || turn?.operation_stage === "provider_waiting";
-  const showTextLoader = !terminalActivity
-    && (activity.status === "working" || waitingForModel);
   const stage = activityStageLabel(activity, turn, retrying);
+  const stageLabel = completionMessage ? null : t(stage);
   const duration = formatActivityDuration(activity.elapsed_ms);
   const rawBody = activity.presentation_text
     ?? (activity.status === "superseded"
       ? `${activity.capability_display_name} was superseded by later progress`
       : activity.status === "completed" ? activity.message : null);
-  const body = isRedundantCompletionText(activity, rawBody) ? null : rawBody;
+  const body = isRedundantActivityText(activity, rawBody, displayName) ? null : rawBody;
   const technicalFailure = activity.status === "failed" && (errorCode || errorMessage)
     ? JSON.stringify({
         code: errorCode ?? null,
@@ -130,7 +146,6 @@ export function CapabilityActivityRow({
   const fallbackWarning = activity.completion_mode === "deterministic_fallback"
     && activity.warning_code === "specialist_materialization_fallback";
   const hasActivityContent = Boolean(body)
-    || showTextLoader
     || activity.status === "failed"
     || fallbackWarning;
 
@@ -138,19 +153,20 @@ export function CapabilityActivityRow({
     <section
       className={`agent-chat__activity is-${activity.status}${compact ? " is-compact" : ""}`}
       role="status"
-      aria-label={activityAriaLabel(activity.capability_display_name, stage)}
+      aria-label={completionMessage ? name : locale.startsWith("zh") ? `${name} ${stageLabel}` : activityAriaLabel(name, stage)}
     >
       <header className="agent-chat__activity-header">
         {compact ? (
           <div className="agent-chat__compact-capability-heading">
-            <strong>{activity.capability_display_name}</strong>
-            <span>{stage}</span>
+            <strong>{name}</strong>
+            {stageLabel ? <> <span>{stageLabel}</span></> : null}
           </div>
         ) : (
           <AgentCapabilityIdentity
             capabilityId={activity.capability_id}
-            displayName={activity.capability_display_name}
-            detail={stage}
+            displayName={displayName}
+            label={name}
+            detail={stageLabel}
             motionState={resolveAgentRoleMotionState({
               status: activity.status,
               turnId: activity.turn_id,
@@ -163,14 +179,6 @@ export function CapabilityActivityRow({
       {hasActivityContent ? (
         <div className="agent-chat__activity-content">
           {body ? <p>{body}</p> : null}
-          {showTextLoader ? (
-            <TextLoader
-              text="Preparing the next response..."
-              variant="skeleton"
-              className="agent-chat__activity-loader"
-              aria-label={`${activity.capability_display_name} is preparing the next response`}
-            />
-          ) : null}
           {activity.status === "failed" ? (
             <>
               <small>This step could not be completed.</small>
@@ -191,7 +199,7 @@ export function CapabilityActivityRow({
                 {retryable && onRetry ? (
                   <button
                     type="button"
-                    aria-label={`Retry ${activity.capability_display_name} activity`}
+                    aria-label={`Retry ${displayName} activity`}
                     onClick={onRetry}
                     disabled={retrying}
                   >
@@ -201,7 +209,7 @@ export function CapabilityActivityRow({
                 {canRevise && onReviseRequest ? (
                   <button
                     type="button"
-                    aria-label={`Revise ${activity.capability_display_name} request`}
+                    aria-label={`Revise ${displayName} request`}
                     onClick={onReviseRequest}
                   >
                     Revise request

@@ -2,7 +2,7 @@ import { SaveIcon } from "../../../icons.tsx";
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
-import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
+import { PromptEditor } from "./PromptEditor.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import {
@@ -44,7 +44,7 @@ export function TextWorkbench({
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
-        <FourLinePromptEditor
+        <PromptEditor
           ariaLabel={isWorldSetting ? t("World Setting content") : canRun ? t("Text prompt") : t("Text content")}
           value={isWorldSetting || !canRun ? draft.textContent : draft.prompt}
           preparing={canRun && preparingPrompt}
@@ -61,9 +61,7 @@ export function TextWorkbench({
         />
       </label>
       {draft.error || draft.promptSaveStatus === "conflict" ? (
-        <div className="agent-node-workbench__text-feedback">
-          <NodeWorkbenchError draft={draft} />
-        </div>
+        <NodeWorkbenchError draft={draft} />
       ) : null}
       <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer agent-node-workbench__footer--text">
         <div className="agent-node-workbench__composer-actions">

@@ -2465,6 +2465,8 @@ export interface ProviderResolvedMediaInputAuditV2 {
   binding_id: string;
   source_node_id: string | null;
   asset_id: string;
+  asset_version_id?: string | null;
+  checksum?: string | null;
   media_type: AgentCanvasAssetMediaTypeV2;
   input_role: CanvasBindingInputRoleV2;
   source_semantic_role: string | null;
@@ -2709,6 +2711,8 @@ export interface ChatProposalCardV2 {
 export interface ChatProposalPointerV2 {
   item_type: "proposal_pointer";
   proposal_id: string;
+  /** Available from the timeline before proposal detail finishes loading. */
+  question?: string;
   sequence: number;
   created_at: string;
 }
@@ -2717,6 +2721,8 @@ export interface ChatCapabilityActivityV2 extends CapabilityIdentityV2 {
   item_type: "expert_activity";
   activity_id: string;
   turn_id: string;
+  /** The persisted workflow step, independent of the role executing it. */
+  journey_stage?: string | null;
   status: "working" | "completed" | "failed" | "superseded";
   sequence: number;
   started_at: string;
@@ -3712,7 +3718,7 @@ export type GuidedInteractionContentV1 =
       character_phase?: "main" | null;
       capability_id: string;
       options: GuidedChoiceOptionV1[];
-      allow_custom: true;
+      allow_custom: boolean;
       allow_exclusion: boolean;
     }
   | {

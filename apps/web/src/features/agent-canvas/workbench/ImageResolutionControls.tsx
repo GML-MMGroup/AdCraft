@@ -1,3 +1,4 @@
+import { NodeWorkbenchFieldError } from "./NodeWorkbenchFeedback.tsx";
 import type { ImageResolutionCapabilitiesV1 } from "../../../api/providerRegistry.ts";
 import {
   defaultImageResolutionParameter,
@@ -32,8 +33,9 @@ function parameterSelect({
       <span title={label}>{label}</span>
       <InlineParameterSelect
         label={label}
-        value={value}
-        options={options}
+        value={value === "auto" ? "" : value}
+        options={options.filter((option) => option !== "auto")}
+        unsetLabel="auto"
         disabled={disabled}
         onChange={onChange}
       />
@@ -69,6 +71,10 @@ export function ImageResolutionControls({
   };
 
   const selectPair = (name: ImageResolutionPairParameter, value: string) => {
+    if (!value) {
+      selectSize("");
+      return;
+    }
     const otherName: ImageResolutionPairParameter = name === IMAGE_RESOLUTION_PARAMETER
       ? IMAGE_ASPECT_RATIO_PARAMETER
       : IMAGE_RESOLUTION_PARAMETER;
@@ -93,8 +99,7 @@ export function ImageResolutionControls({
           label: t("Size"),
           name: IMAGE_SIZE_PARAMETER,
           value: imageResolutionParameter(parameters, IMAGE_SIZE_PARAMETER)
-            ?? defaultImageResolutionParameter(capabilities, IMAGE_SIZE_PARAMETER)
-            ?? (capabilities.size_options.includes("2048x2048") ? "2048x2048" : capabilities.size_options[0] ?? ""),
+            ?? "",
           options: capabilities.size_options,
           disabled,
           onChange: (value) => selectSize(value ?? ""),
@@ -107,14 +112,15 @@ export function ImageResolutionControls({
               label: name === IMAGE_RESOLUTION_PARAMETER ? t("Resolution setting") : t("Ratio"),
               name,
               value: imageResolutionParameter(parameters, name)
-                ?? defaultImageResolutionParameter(capabilities, name)
                 ?? "",
               options: imageResolutionPairOptions(capabilities, name),
               disabled,
               onChange: (value) => selectPair(name, value ?? ""),
             })}
             {issueByName.get(name) ? (
-              <p className="agent-node-workbench__field-error">{issueByName.get(name)}</p>
+              <NodeWorkbenchFieldError>
+                <span>{name === IMAGE_RESOLUTION_PARAMETER ? t("Resolution setting") : t("Ratio")}: </span><span>{issueByName.get(name)}</span>
+              </NodeWorkbenchFieldError>
             ) : null}
           </div>
         ))

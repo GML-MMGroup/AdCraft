@@ -2,6 +2,7 @@ import type {
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
+import { BrandCreativeRoute } from "./BrandCreativeRoute.tsx";
 import { ConceptChoiceDecisionDock } from "./ConceptChoiceDecisionDock.tsx";
 import { BrandFormInteraction } from "./BrandFormInteraction.tsx";
 import type { BrandFormAnswers } from "./BrandFormInteraction.tsx";
@@ -20,6 +21,7 @@ export interface GuidedInteractionCardProps {
   selectedConceptOptionId?: string | null;
   referenceOccurrenceLabel?: string | null;
   onSelectConceptOption?: (optionId: string) => void;
+  onConfirmConceptOption?: () => void;
   onSelectConceptCustom?: () => void;
   onSubmitCustom?: (text: string) => Promise<boolean>;
   brandFormAnswers?: BrandFormAnswers;
@@ -29,6 +31,7 @@ export interface GuidedInteractionCardProps {
   onClearProductMainHandoff?: () => void;
   onProjectsRefresh?: () => Promise<boolean> | void;
   conceptRoleName?: string | null;
+  treatmentSubstep?: string | null;
 }
 
 export function GuidedInteractionCard({
@@ -39,6 +42,7 @@ export function GuidedInteractionCard({
   selectedConceptOptionId = null,
   referenceOccurrenceLabel = null,
   onSelectConceptOption,
+  onConfirmConceptOption,
   onSelectConceptCustom,
   onSubmitCustom,
   brandFormAnswers,
@@ -48,6 +52,7 @@ export function GuidedInteractionCard({
   onClearProductMainHandoff,
   onProjectsRefresh,
   conceptRoleName = null,
+  treatmentSubstep = null,
 }: GuidedInteractionCardProps) {
   if (interaction.status !== "open" && interaction.status !== "submitted") return null;
 
@@ -78,6 +83,11 @@ export function GuidedInteractionCard({
     );
   }
 
+  if (interaction.content.content_kind === "concept_choice" && interaction.content.capability_id === "brand_creative-route") {
+    return <BrandCreativeRoute key={interaction.interaction_id} interaction={interaction} pending={pending}
+      disabled={disabled} issue={issue} onSubmit={onSubmit} />;
+  }
+
   if (interaction.content.content_kind === "concept_choice") {
     return (
       <ConceptChoiceDecisionDock
@@ -88,9 +98,11 @@ export function GuidedInteractionCard({
         issue={issue}
         selectedOptionId={selectedConceptOptionId}
         onSelectOption={onSelectConceptOption ?? (() => undefined)}
+        onConfirmOption={onConfirmConceptOption}
         onSelectCustom={onSelectConceptCustom}
         onSubmitCustom={onSubmitCustom}
         roleName={conceptRoleName}
+        treatmentSubstep={treatmentSubstep}
       />
     );
   }

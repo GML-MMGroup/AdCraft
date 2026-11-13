@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
 import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 
@@ -51,8 +52,17 @@ const interaction: GuidedInteractionV1 = {
   updated_at: "2026-08-27T08:00:00Z",
 };
 
+function LanguageSwitch() {
+  const { setLocale } = useLocale();
+  return <>
+    <button onClick={() => setLocale("zh-CN")}>中文</button>
+    <button onClick={() => setLocale("en-US")}>English</button>
+  </>;
+}
+
 describe("ProductSourceDecisionDock", () => {
   beforeEach(() => {
+    window.localStorage.removeItem("adcraft.locale");
     assets.items = [];
     assets.retry.mockReset();
     assets.retry.mockResolvedValue(undefined);
@@ -67,7 +77,90 @@ describe("ProductSourceDecisionDock", () => {
     }]);
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    window.localStorage.removeItem("adcraft.locale");
+  });
+
+  it("switches the entire main-image panel live without losing the selected image", async () => {
+    assets.items = [projectImage("asset-front", "version-front", "Front.png")];
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <LocaleProvider initialLocale="en-US">
+        <LanguageSwitch />
+        <ProductSourceDecisionDock interaction={{ ...interaction, title: "Product image source",
+          context: "Choose whether to upload or generate the Product source.",
+          content: { ...interaction.content, prompt: "Provide one Product Main image." },
+        }} pending={false} issue={null} onSubmit={submit} />
+      </LocaleProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select Front.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "中文" }));
+    expect(screen.getByRole("article", { name: "产品图片来源" })).toBeTruthy();
+    expect(screen.getByText("请选择上传产品图片，或由智能助手生成。")).toBeTruthy();
+    expect(screen.getByText("请提供 1 张产品主图。")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "使用上传的产品图片" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "生成产品图片" })).toBeTruthy();
+    expect(screen.getByText("项目素材")).toBeTruthy();
+    expect(screen.getByPlaceholderText("搜索图片")).toBeTruthy();
+    expect(screen.getByLabelText("上传产品图片")).toBeTruthy();
+    expect(screen.getByText("已选择 1 张图片，需选择 1 张")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "移除Front.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(screen.getByRole("article", { name: "Product image source" })).toBeTruthy();
+    expect(screen.getByText("1 of 1 image selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      action: expect.objectContaining({ asset_versions: [{ asset_id: "asset-front", version_id: "version-front" }] }),
+    })));
+  });
+
+  it("localizes multiview prompts, ordering controls and selection errors", async () => {
+    assets.items = [projectImage("front", "v-front", "Front.png"), projectImage("side", "v-side", "Side.png")];
+    const submit = vi.fn().mockResolvedValue(true);
+    const multi = multiviewInteraction();
+    render(
+      <LocaleProvider initialLocale="zh-CN">
+        <ProductSourceDecisionDock interaction={{ ...multi, title: "Product image source",
+          context: "Choose how to provide Product Multiview images.",
+          content: { ...multi.content, prompt: "Provide two to eight ordered Product Multiview images." },
+        }} pending={false} issue={null} onSubmit={submit} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("请选择如何提供产品多视角图片。")).toBeTruthy();
+    expect(screen.getByText("请按顺序提供 2–8 张产品多视角图片。")).toBeTruthy();
+    expect(screen.getByLabelText("上传多张产品图片")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "选择Front.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择Front.png" }));
+    expect(screen.getByRole("alert").textContent).toContain("已选择这张产品图片。");
+    fireEvent.click(screen.getByRole("button", { name: "选择Side.png" }));
+    expect(screen.getByText("已选择 2 张图片，需选择 2–8 张")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "将Side.png上移" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用所选产品图片" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      action: expect.objectContaining({ asset_versions: [
+        { asset_id: "side", version_id: "v-side" }, { asset_id: "front", version_id: "v-front" },
+      ] }),
+    })));
+  });
+
+  it("localizes empty state and generation failure even when the locale changes after the error", async () => {
+    const submit = vi.fn().mockRejectedValue(new Error("Unable to prepare the Product source."));
+    render(
+      <LocaleProvider initialLocale="en-US">
+        <LanguageSwitch />
+        <ProductSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={submit} />
+      </LocaleProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "中文" }));
+    expect(screen.getByText("暂无可用的项目图片")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "生成产品图片" }));
+    expect(screen.getByText("智能助手将生成产品图片")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "生成产品图片" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("产品图片准备失败，请重试。"));
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(screen.getByRole("alert").textContent).toContain("The Product source could not be prepared.");
+  });
 
   it("uploads one main Product source and submits the exact immutable handoff", async () => {
     const submit = vi.fn().mockResolvedValue(true);

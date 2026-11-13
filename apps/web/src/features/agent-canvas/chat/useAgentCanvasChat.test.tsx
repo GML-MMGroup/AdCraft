@@ -1,5 +1,8 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, renderHook, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LanguageSwitcher } from "../../../components/LanguageSwitcher.tsx";
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 
 import type {
   AgentCanvasChatViewTimelineV2,
@@ -57,6 +60,10 @@ function workflow(workflowId = "workflow-1"): AgentCanvasWorkflowV2 {
     assets: [],
     active_style_skill: null,
   };
+}
+
+function LocaleTestProvider({ children }: { children: ReactNode }) {
+  return <LocaleProvider initialLocale="zh-CN"><LanguageSwitcher />{children}</LocaleProvider>;
 }
 
 function emptyTimeline(overrides: Partial<AgentCanvasChatViewTimelineV2> = {}): AgentCanvasChatViewTimelineV2 {
@@ -416,6 +423,7 @@ function turnEvent(
 
 describe("useAgentCanvasChat", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.useFakeTimers();
     api.agentCanvasChatTimeline.mockImplementation(() => new Promise(() => {}));
     api.brandNextQuestion.mockResolvedValue(null);
@@ -459,9 +467,118 @@ describe("useAgentCanvasChat", () => {
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.clearAllMocks();
+  });
+
+  it("captures the initial history boundary once and resets it when the workflow changes", async () => {
+    const history: ChatMessageV2 = {
+      item_type: "message", message_kind: "conversation", message_id: "history",
+      conversation_id: "conversation-1", speaker: "adcraft_video_agent", text: "Existing answer",
+      linked_node_ids: [], script_node_id: null, proposal_id: null, capability_id: null,
+      sequence: 10, created_at: "2026-11-11T00:00:00Z",
+    };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ items: [history] }));
+    const { result, rerender } = renderHook(({ id }) => useAgentCanvasChat({
+      workflow: workflow(id), chatRevision: 0, chatEvents: [],
+    }), { initialProps: { id: "workflow-1" } });
+    expect(result.current.state.initialTimelineSequence).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    expect(result.current.state.initialTimelineSequence).toBe(10);
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [history, { ...history, message_id: "new", sequence: 11, text: "New reply" }],
+    }));
+    await act(async () => { await result.current.actions.refresh(); });
+    expect(result.current.state.initialTimelineSequence).toBe(10);
+    expect(result.current.state.items).toHaveLength(2);
+
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    rerender({ id: "workflow-2" });
+    expect(result.current.state.initialTimelineSequence).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    expect(result.current.state.initialTimelineSequence).toBe(0);
+  });
+
+  it("preserves the UI preference and history when an old task language arrives later", async () => {
+    localStorage.setItem("adcraft.locale", "en-US");
+    let resolveSession!: (session: GuidedSessionStateV2) => void;
+    api.agentCanvasCreativeSession.mockImplementation(() => new Promise(resolve => { resolveSession = resolve; }));
+    const history: ChatMessageV2 = {
+      item_type: "message", message_kind: "conversation", message_id: "message-history",
+      conversation_id: "conversation-1", speaker: "adcraft_video_agent", text: "已确认的中文创意方案",
+      linked_node_ids: [], script_node_id: null, proposal_id: null, sequence: 1, created_at: "2026-11-10T00:00:00Z",
+    };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ items: [history] }));
+    const session = { ...guidedSession(), response_locale: "zh-CN" };
+    const { result } = renderHook(() => ({
+      chat: useAgentCanvasChat({ workflow: workflow(), chatRevision: 0, chatEvents: [] }),
+      ui: useLocale(),
+    }), { wrapper: LocaleTestProvider });
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    await act(async () => { resolveSession(session); });
+    expect(result.current.ui.locale).toBe("en-US");
+    expect(result.current.chat.state.guidanceSession).toEqual(session);
+    expect(result.current.chat.state.items).toEqual([history]);
+    const reads = api.agentCanvasChatTimeline.mock.calls.length;
+    const sessionReads = api.agentCanvasCreativeSession.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(result.current.ui.locale).toBe("en-US");
+    expect(localStorage.getItem("adcraft.locale")).toBe("en-US");
+    expect(result.current.chat.state.guidanceSession).toEqual(session);
+    expect(result.current.chat.state.items).toEqual([history]);
+    expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(reads);
+    expect(api.agentCanvasCreativeSession).toHaveBeenCalledTimes(sessionReads);
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+  });
+
+  it("switches the UI during a pending message without changing the task language or restarting the request", async () => {
+    const session = { ...guidedSession(), response_locale: "zh-CN" };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: session }));
+    let finish!: () => void;
+    api.submitAgentCanvasChatMessage.mockImplementation(() => new Promise(resolve => {
+      finish = () => resolve({ workflow_id: "workflow-1", conversation_id: "conversation-1",
+        message_id: "message-2", turn_id: "turn-2", status: "queued", events_cursor: 2 });
+    }));
+    const { result } = renderHook(() => ({
+      chat: useAgentCanvasChat({ workflow: workflow(), chatRevision: 0, chatEvents: [] }),
+      ui: useLocale(),
+    }), { wrapper: LocaleTestProvider });
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    // The next message must use the task language even after switching the UI.
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    let submitted!: Promise<boolean>;
+    act(() => {
+      submitted = result.current.chat.actions.submit({ text: "继续制作广告", mentionedNodeIds: [], mentionedImageAssetIds: [] });
+    });
+    const pendingItems = result.current.chat.state.items;
+    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(result.current.ui.locale).toBe("en-US");
+    expect(result.current.chat.state.sending).toBe(true);
+    expect(result.current.chat.state.items).toEqual(pendingItems);
+    expect(result.current.chat.state.guidanceSession).toEqual(session);
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledOnce();
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith("workflow-1", expect.objectContaining({
+      text: "继续制作广告", response_locale: "zh-CN",
+    }), expect.any(String));
+    await act(async () => { finish(); expect(await submitted).toBe(true); });
+  });
+
+  it("leaves output language to the backend while task settings are unavailable", async () => {
+    api.agentCanvasCreativeSession.mockImplementation(() => new Promise(() => {}));
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    api.submitAgentCanvasChatMessage.mockResolvedValue({ workflow_id: "workflow-1", conversation_id: "conversation-1",
+      message_id: "message-2", turn_id: "turn-2", status: "queued", events_cursor: 2 });
+    const { result } = renderHook(() => useAgentCanvasChat({ workflow: workflow(), chatRevision: 0, chatEvents: [] }),
+      { wrapper: LocaleTestProvider });
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    await act(async () => { await result.current.actions.submit({ text: "继续", mentionedNodeIds: [], mentionedImageAssetIds: [] }); });
+    expect(api.submitAgentCanvasChatMessage.mock.calls.at(-1)?.[1].response_locale).toBeUndefined();
   });
 
   it("does not request a brand question for an ordinary conversation on entry", async () => {
@@ -543,6 +660,50 @@ describe("useAgentCanvasChat", () => {
       expect(onActionReceipt).not.toHaveBeenCalled();
     },
   );
+
+  it("waits for production readiness before requesting or retrying a Brand question", async () => {
+    const clarification = {
+      ...productionMessage(1),
+      text: "Who is the target audience, and what is the advertising goal?",
+      metadata: {
+        turn_id: "production-turn-1",
+        intent_mode: "guided_production",
+        production_readiness: "not_ready",
+      },
+    };
+    let timeline = emptyTimeline({ items: [clarification] });
+    api.agentCanvasChatTimeline.mockImplementation(async () => timeline);
+    api.brandNextQuestion.mockRejectedValue({
+      status: 409,
+      code: "brand_guided_production_required",
+      message: "Brand Professional questions require a guided production request.",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents: [],
+      brandMode: true, brandStage: "brand-memory",
+    }));
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    await act(async () => { await result.current.actions.retryBrandNextQuestion(true); });
+
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+    expect(result.current.state.hasGuidedProductionIntent).toBe(false);
+    expect(result.current.state.brandNextQuestionIssue).toBeNull();
+    expect(result.current.state.items).toEqual([clarification]);
+    expect(result.current.state.agentWaitingForModel).toBe(false);
+
+    const admitted = productionMessage(2);
+    timeline = emptyTimeline({ items: [clarification, {
+      ...admitted,
+      metadata: { ...admitted.metadata, production_readiness: "ready" },
+    }] });
+    api.brandNextQuestion.mockResolvedValue(null);
+    await act(async () => { await result.current.actions.refresh(); });
+
+    expect(result.current.state.hasGuidedProductionIntent).toBe(true);
+    expect(api.brandNextQuestion).toHaveBeenCalledExactlyOnceWith("workflow-1");
+    expect(result.current.state.brandNextQuestionIssue).toBeNull();
+  });
 
   it("a newer gate overrides historic production intent and stale forms until the Agent admits the subject", async () => {
     const interaction = guidedBrandFormInteraction();
@@ -843,6 +1004,64 @@ describe("useAgentCanvasChat", () => {
     ]);
     expect(api.submitAgentCanvasGuidedInteraction.mock.calls[0][3]).not.toBe(api.submitAgentCanvasGuidedInteraction.mock.calls[1][3]);
   });
+
+  it("ignores the old Skill card after the Brand journey has advanced without showing a stale notice", async () => {
+    const original = guidedBrandConceptInteraction();
+    const interaction = {
+      ...original,
+      content: { ...original.content, capability_id: "brand_skill-stack" },
+    } as GuidedInteractionV1;
+    const session = { ...guidedSession(), interaction };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockResolvedValue(session);
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 409, code: "guided_interaction_stale", message: "The Skill selection was already confirmed",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents: [], brandMode: true, brandStage: "treatment",
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    const request = buildConceptChoiceSubmitRequest({
+      interaction, selectedOptionId: "option-1", customText: "", proposalReferences: null,
+    })!;
+    await act(async () => { await result.current.actions.submitGuidedInteraction(interaction, request); });
+
+    expect(api.submitAgentCanvasGuidedInteraction).not.toHaveBeenCalled();
+    expect(api.brandNextQuestion).not.toHaveBeenCalled();
+    expect(result.current.state.guidedAnswerBubbles).toHaveLength(0);
+    expect(result.current.state.guidedInteractionIssue).toBeNull();
+    expect(result.current.state.brandCardRecovery).toBeNull();
+  });
+
+  it.each(["guided_interaction_stale", "brand_context_stale"])(
+    "clears an obsolete Brand warning when the next question arrives after %s",
+    async (code) => {
+      const old = guidedBrandConceptInteraction();
+      let session = { ...guidedSession(), interaction: old };
+      api.agentCanvasChatTimeline.mockImplementation(async () => emptyTimeline({ guidanceSession: session }));
+      api.agentCanvasCreativeSession.mockImplementation(async () => session);
+      api.submitAgentCanvasGuidedInteraction.mockRejectedValueOnce({ status: 409, code, message: "Stale card" });
+      const { result } = renderHook(() => useAgentCanvasChat({
+        workflow: workflow(), chatRevision: 0, chatEvents: [], brandMode: true, brandStage: "campaign",
+      }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+      const request = buildConceptChoiceSubmitRequest({
+        interaction: old, selectedOptionId: "option-1", customText: "", proposalReferences: null,
+      })!;
+      await act(async () => { await result.current.actions.submitGuidedInteraction(old, request); });
+      expect(result.current.state.brandCardRecovery?.phase).toBe("stale");
+
+      session = { ...session, interaction: { ...old, interaction_id: "brand-current-question" } };
+      await act(async () => { await result.current.actions.refresh(); });
+
+      expect(result.current.state.guidanceSession?.interaction?.interaction_id).toBe("brand-current-question");
+      expect(result.current.state.brandCardRecovery).toBeNull();
+      expect(result.current.state.brandCardLocked).toBe(false);
+      expect(result.current.state.guidedInteractionIssue).toBeNull();
+      expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledOnce();
+      expect(api.brandNextQuestion).not.toHaveBeenCalled();
+    },
+  );
 
   it("refreshes brand decisions before and after the next question so Skill selection has a current card", async () => {
     const interaction = guidedBrandConceptInteraction();
@@ -1557,7 +1776,7 @@ describe("useAgentCanvasChat", () => {
           source_entry_ids: ["entry-1"],
           message_key: "planning_progress.next_action",
           message_args: {},
-          response_locale: "en-US",
+          response_locale: "zh-CN",
           item: {
             item_type: "message",
             message_id: "entry-1",
@@ -1591,7 +1810,7 @@ describe("useAgentCanvasChat", () => {
           source_entry_ids: ["entry-1"],
           message_key: "planning_progress.next_action",
           message_args: {},
-          response_locale: "en-US",
+          response_locale: "zh-CN",
           item: {
             item_type: "message",
             message_id: "entry-1",
@@ -2782,7 +3001,7 @@ describe("useAgentCanvasChat", () => {
       "workflow-1",
       {
         text: "Use these references.",
-        response_locale: "en-US",
+        response_locale: undefined,
         mentioned_node_ids: ["node-script-1", "node-video-1"],
         mentioned_image_asset_ids: ["asset-image-1"],
         video_skill_run_id: null,
@@ -2820,7 +3039,7 @@ describe("useAgentCanvasChat", () => {
       "workflow-1",
       {
         text: "Use this visual language.",
-        response_locale: "en-US",
+        response_locale: undefined,
         mentioned_node_ids: [],
         mentioned_image_asset_ids: [],
         video_skill_run_id: null,
@@ -2865,6 +3084,99 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.failedDraft).toMatchObject({
       text: "Create a calm product film.",
     });
+  });
+
+  it("reconciles a pending question even when the timeline already contains its full answer", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    const turn = {
+      turn_id: "turn-1", workflow_id: "workflow-1", conversation_id: "conversation-1",
+      status: "running", turn_kind: "message", request: {}, continuation: null,
+      created_at: "2026-11-10T00:00:00Z", updated_at: "2026-11-10T00:00:00Z",
+    };
+    api.agentCanvasChatTurn.mockResolvedValue(turn);
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1", conversation_id: "conversation-1",
+      message_id: "question-1", turn_id: "turn-1", status: "queued", events_cursor: 0,
+    });
+    const chatEvents: CanvasRuntimeEventV2[] = [];
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(), chatRevision: 0, chatEvents,
+    }));
+    await act(async () => { await result.current.actions.refresh(); });
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Is the project finished?", mentionedNodeIds: [], mentionedImageAssetIds: [],
+      });
+    });
+    expect(result.current.state.agentWorking).toBe(true);
+    const question: ChatMessageV2 = {
+      item_type: "message", message_kind: "conversation", message_id: "question-1",
+      conversation_id: "conversation-1", speaker: "user", text: "Is the project finished?",
+      linked_node_ids: [], script_node_id: null, proposal_id: null, capability_id: null,
+      sequence: 1, created_at: "2026-11-10T00:00:00Z", metadata: { turn_id: "turn-1" },
+    };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ items: [
+      question, { ...question, message_id: "answer-1", sequence: 2,
+        speaker: "adcraft_video_agent", text: "The Editing node is ready." },
+    ] }));
+    api.agentCanvasChatTurn.mockResolvedValue({ ...turn, status: "completed" });
+    // The terminal SSE event is missing; authoritative timeline refresh must recover.
+    await act(async () => { await result.current.actions.refresh(); });
+    expect(result.current.state.agentWorking).toBe(false);
+    expect(result.current.state.turnsById["turn-1"]?.status).toBe("completed");
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+  });
+
+  it("does not let a delayed running response reopen a turn after its terminal event", async () => {
+    let resolveTurn!: (value: unknown) => void;
+    api.agentCanvasChatTurn.mockImplementation(() => new Promise(resolve => { resolveTurn = resolve; }));
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1", conversation_id: "conversation-1",
+      message_id: "question-1", turn_id: "turn-1", status: "queued", events_cursor: 0,
+    });
+    const { result, rerender } = renderHook(
+      ({ chatEvents }) => useAgentCanvasChat({ workflow: workflow(), chatRevision: 0, chatEvents }),
+      { initialProps: { chatEvents: [] as CanvasRuntimeEventV2[] } },
+    );
+    await act(async () => {
+      await result.current.actions.submit({ text: "Hello", mentionedNodeIds: [], mentionedImageAssetIds: [] });
+    });
+    rerender({ chatEvents: [turnEvent("agent_turn_completed", "turn-1", 2)] });
+    expect(result.current.state.agentWorking).toBe(false);
+    await act(async () => { resolveTurn({
+      turn_id: "turn-1", workflow_id: "workflow-1", conversation_id: "conversation-1",
+      status: "running", turn_kind: "message", request: {}, continuation: null,
+    }); });
+    expect(result.current.state.agentWorking).toBe(false);
+    rerender({ chatEvents: [turnEvent("agent_turn_started", "turn-1", 1)] });
+    expect(result.current.state.agentWorking).toBe(false);
+  });
+
+  it("ignores a pending turn lookup from the previous workflow", async () => {
+    let resolveTurn!: (value: unknown) => void;
+    api.agentCanvasChatTurn.mockImplementation(() => new Promise(resolve => { resolveTurn = resolve; }));
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1", conversation_id: "conversation-1",
+      message_id: "question-1", turn_id: "turn-1", status: "queued", events_cursor: 0,
+    });
+    const chatEvents: CanvasRuntimeEventV2[] = [];
+    const { result, rerender } = renderHook(
+      ({ workflowId }) => useAgentCanvasChat({ workflow: workflow(workflowId), chatRevision: 0, chatEvents }),
+      { initialProps: { workflowId: "workflow-1" } },
+    );
+    await act(async () => {
+      await result.current.actions.submit({ text: "Hello", mentionedNodeIds: [], mentionedImageAssetIds: [] });
+    });
+    expect(result.current.state.agentWorking).toBe(true);
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ workflow_id: "workflow-2" }));
+    rerender({ workflowId: "workflow-2" });
+    expect(result.current.state.agentWorking).toBe(false);
+    await act(async () => { resolveTurn({
+      turn_id: "turn-1", workflow_id: "workflow-1", conversation_id: "conversation-1",
+      status: "running", turn_kind: "message", request: {}, continuation: null,
+    }); });
+    expect(result.current.state.agentWorking).toBe(false);
+    expect(result.current.state.turnsById["turn-1"]).toBeUndefined();
   });
 
   it("keeps the Agent working after message acceptance until the turn becomes terminal", async () => {

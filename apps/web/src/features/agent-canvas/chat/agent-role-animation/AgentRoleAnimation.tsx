@@ -16,7 +16,7 @@ class RoleArtworkBoundary extends Component<
 function StaticRoleIcon({ source, generic }: { source: string | null; generic: boolean }) {
   if (!source) return generic ? <span className="agent-chat__role-generic" data-role-generic-fallback="true" aria-hidden="true">✧</span> : null;
   return <img className="agent-chat__role-animation-asset agent-chat__role-animation-static is-visible"
-    data-testid="agent-role-static-icon" src={source} width={32} height={32}
+    data-testid="agent-role-static-icon" src={source} width={48} height={48}
     decoding="sync" alt="" aria-hidden="true" draggable={false} />;
 }
 
@@ -41,7 +41,7 @@ export function AgentRoleAnimation({ capabilityId, motionState }: {
     : <StaticRoleIcon source={visual.source} generic={visual.fallbackKind === "generic"} />;
   return (
     <span ref={ref} className="agent-chat__role-animation-frame"
-      style={{ width: 32, height: 32 }}
+      style={{ width: 48, height: 48 }}
       data-testid="agent-role-animation-frame" data-motion-state={motionState}
       aria-hidden="true">
       {Artwork ? <RoleArtworkBoundary key={capabilityId + visual.generation} fallback={fallback} onError={onError}>

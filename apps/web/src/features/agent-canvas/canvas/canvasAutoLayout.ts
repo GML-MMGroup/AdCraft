@@ -8,6 +8,8 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
+import { alignCanvasIdentityLanes, canvasIdentityFamilyKey } from "./canvasIdentityLayout.ts";
+import { canvasNodeIdentity, type CanvasNodeIdentity, type CanvasNodeIdentitySource } from "./canvasNodeIdentity.ts";
 import {
   agentCanvasNodePlacementSize,
   type AgentCanvasNodeSize,
@@ -22,6 +24,7 @@ export interface AgentCanvasLayoutNode {
   id: string;
   position: CanvasPositionV2;
   size: AgentCanvasNodeSize;
+  identity?: CanvasNodeIdentity;
 }
 
 export interface AgentCanvasLayoutEdge {
@@ -58,6 +61,7 @@ export function agentCanvasLayoutNodeFromFlowNode(
 ): AgentCanvasLayoutNode {
   const measuredWidth = node.measured?.width;
   const measuredHeight = node.measured?.height;
+  const identity = canvasNodeIdentity(node.data.node);
   const fallback = agentCanvasNodePlacementSize(
     node.data.node.node_type,
     node.data.asset ? {
@@ -68,6 +72,7 @@ export function agentCanvasLayoutNodeFromFlowNode(
   return {
     id: node.id,
     position: node.position,
+    ...(identity ? { identity } : {}),
     size: {
       width: measuredWidth && measuredWidth > 0 ? measuredWidth : fallback.width,
       height: measuredHeight && measuredHeight > 0 ? measuredHeight : fallback.height,
@@ -76,15 +81,17 @@ export function agentCanvasLayoutNodeFromFlowNode(
 }
 
 export function agentCanvasLayoutNodeFromCanvasNode(
-  node: Pick<CanvasNodeV2, "node_id" | "node_type" | "output_asset_id" | "position">,
+  node: Pick<CanvasNodeV2, "node_id" | "node_type" | "output_asset_id" | "position"> & CanvasNodeIdentitySource,
   assets: readonly ProjectAssetSummaryV2[] = [],
 ): AgentCanvasLayoutNode {
   const asset = node.output_asset_id
     ? assets.find((candidate) => candidate.asset_id === node.output_asset_id)
     : null;
+  const identity = canvasNodeIdentity(node);
   return {
     id: node.node_id,
     position: node.position,
+    ...(identity ? { identity } : {}),
     size: agentCanvasNodePlacementSize(
       node.node_type,
       asset ? { width: asset.width, height: asset.height } : null,
@@ -165,6 +172,21 @@ function discoverComponents(
     adjacentIds.get(edge.target)?.add(edge.source);
   });
 
+  // Keep a numbered family in one layout section even when its branches have no
+  // shared bindings. These are grouping links only, never directed graph edges.
+  const familyAnchors = new Map<string, string>();
+  nodes.forEach((node) => {
+    if (!node.identity) return;
+    const family = canvasIdentityFamilyKey(node.identity);
+    const anchor = familyAnchors.get(family);
+    if (anchor) {
+      adjacentIds.get(anchor)!.add(node.id);
+      adjacentIds.get(node.id)!.add(anchor);
+    } else {
+      familyAnchors.set(family, node.id);
+    }
+  });
+
   const visited = new Set<string>();
   const components: ConnectedComponent[] = [];
   const isolatedNodes: AgentCanvasLayoutNode[] = [];
@@ -178,7 +200,7 @@ function discoverComponents(
       componentNodeIds.has(edge.source) && componentNodeIds.has(edge.target)
     ));
 
-    if (!componentEdges.length) {
+    if (!componentEdges.length && !componentNodes.some((item) => item.identity)) {
       isolatedNodes.push(componentNodes[0]!);
       return;
     }
@@ -247,6 +269,7 @@ function layoutComponent(component: ConnectedComponent): ComponentLayout {
       y: Math.round(layoutNode.y - node.size.height / 2),
     }];
   }));
+  alignCanvasIdentityLanes(component.nodes, component.edges, positions);
   const componentPositions = [...positions.values()];
   const minX = Math.min(...componentPositions.map((position) => position.x));
   const minY = Math.min(...componentPositions.map((position) => position.y));

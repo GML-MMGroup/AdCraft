@@ -65,6 +65,9 @@ export function projectChatEvents(
         turn_id: turnId,
         capability_id: capabilityId,
         capability_display_name: capabilityDisplayName,
+        ...(stringValue(payload.journey_stage) || previous?.journey_stage ? {
+          journey_stage: stringValue(payload.journey_stage) || previous?.journey_stage,
+        } : {}),
         status,
         sequence: previous?.sequence ?? event.seq,
         started_at: previous?.started_at ?? event.created_at,

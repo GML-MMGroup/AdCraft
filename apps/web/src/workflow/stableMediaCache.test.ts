@@ -37,6 +37,36 @@ describe("stable media cache", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("leaves browser connections available while a canvas of preview bodies is still downloading", async () => {
+    const bodies: ReadableStreamDefaultController<Uint8Array>[] = [];
+    let releaseAll = false;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("preview"));
+          if (releaseAll) controller.close();
+          else bodies.push(controller);
+        },
+      }),
+      { status: 200 },
+    ));
+    const loads = Array.from({ length: 12 }, (_, index) => loadStableMedia(
+      `/api/v2/assets/canvas-${index}/preview?v=v1`,
+    ));
+    try {
+      await vi.waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+      // Response headers have arrived, but their bodies still occupy connections.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      bodies.shift()!.close();
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    } finally {
+      releaseAll = true;
+      bodies.forEach(body => body.close());
+      await Promise.all(loads);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(12);
+  });
+
   it("does not revoke a retained media URL when the memory cache trims", async () => {
     let objectUrlIndex = 0;
     const revokeObjectURL = vi.fn();

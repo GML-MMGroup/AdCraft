@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n/useTranslation";
+import { guidedInteractionCopy } from "./guidedInteractionCopy.ts";
 import { useId, useMemo, useRef, useState } from "react";
 
 import type {
@@ -6,6 +7,7 @@ import type {
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
 import { DecisionDockFrame } from "./DecisionDockFrame.tsx";
+import { BRAND_STAGE_LABELS } from "../brand/brandStageLabels.ts";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 
 export type BrandFormAnswer = {
@@ -43,6 +45,7 @@ export function BrandFormInteraction({
   onSubmit,
 }: BrandFormInteractionProps) {
   const t = useTranslation("en-US");
+  const copy = (text: string) => guidedInteractionCopy(text, t);
   const content = interaction.content.content_kind === "brand_form" ? interaction.content : null;
   const [internalAnswers, setInternalAnswers] = useState<BrandFormAnswers>({});
   const drafts = controlledAnswers ?? internalAnswers;
@@ -136,7 +139,9 @@ export function BrandFormInteraction({
     <DecisionDockFrame
       className={`agent-chat__decision-dock--brand-form${content.rows.some(row => row.options.filter(option => option.option_id !== row.custom_option_id).length > 3) ? " is-expanded" : ""}`}
       title={content.title}
-      context={content.instructions}
+      eyebrow={t(BRAND_STAGE_LABELS[content.stage])}
+      meta={t("{count} questions", { count: content.rows.length })}
+      context={[copy(content.instructions), t("You can view your selected options in the left panel.")].filter(Boolean).join(" ")}
       pending={pending || submittedState || disabled}
       issue={issue}
       footerSummary={(
@@ -158,16 +163,13 @@ export function BrandFormInteraction({
       onSubmit={() => void submit()}
     >
       <div className="agent-chat__brand-form" data-testid="brand-form">
-        <div className="agent-chat__brand-form-intro">
-          <span>{t(content.stage === "brand-memory" ? "Brand Memory" : "Campaign")}</span>
-        </div>
-        <div className="agent-chat__brand-form-table" role="table" aria-label={content.title ?? interaction.title}>
+        <div className="agent-chat__brand-form-table" role="table" aria-label={copy(content.title ?? interaction.title)}>
           {content.rows.map((row, rowIndex) => {
             const answer = answers[row.question_id];
             const rowIssue = issue?.fieldId === row.question_id ? issue : null;
             const errorId = `${fieldIdBase}-${row.question_id}-error`;
             const customSelected = answer?.selectedOptionId === row.custom_option_id;
-            const customLabel = row.options.find((option) => option.option_id === row.custom_option_id)?.label || t("Custom");
+            const customLabel = copy(row.options.find((option) => option.option_id === row.custom_option_id)?.label || t("Custom"));
             // Unselected prefills stay visible as editable drafts; otherwise the
             // field only appears once Custom is chosen.
             const showCustomInput = customSelected || row.prefill_value != null || Boolean(rowIssue);
@@ -183,10 +185,10 @@ export function BrandFormInteraction({
               >
                 <div className="agent-chat__brand-form-prompt" role="rowheader">
                   <span className="agent-chat__brand-form-row-number">{String(rowIndex + 1).padStart(2, "0")}</span>
-                  <strong>{row.prompt}</strong>
+                  <strong>{copy(row.prompt)}</strong>
                   {row.required ? <em>{t("Required")}</em> : null}
                 </div>
-                <div className="agent-chat__brand-form-options" role="radiogroup" aria-label={row.prompt}>
+                <div className="agent-chat__brand-form-options" role="radiogroup" aria-label={copy(row.prompt)}>
                   {row.options.filter((option) => option.option_id !== row.custom_option_id).map((option) => {
                     const selected = answer?.selectedOptionId === option.option_id;
                     return (
@@ -229,7 +231,7 @@ export function BrandFormInteraction({
                 {showCustomInput ? <label className="agent-chat__brand-form-custom-input">
                   <span>{t("Custom content")}</span>
                   <input
-                    aria-label={t("Custom content: {prompt}", { prompt: row.prompt })}
+                    aria-label={t("Custom content: {prompt}", { prompt: copy(row.prompt) })}
                     aria-describedby={rowIssue ? errorId : undefined}
                     aria-invalid={rowIssue ? "true" : undefined}
                     type="text"
@@ -243,7 +245,7 @@ export function BrandFormInteraction({
                       {t("Select “{option}” to submit this text.", { option: customLabel })}
                     </small>
                   ) : null}
-                  {rowIssue ? <small id={errorId} className="agent-chat__decision-dock-field-error">{rowIssue.summary}</small> : null}
+                  {rowIssue ? <small id={errorId} className="agent-chat__decision-dock-field-error">{copy(rowIssue.summary)}</small> : null}
                 </label> : null}
               </section>
             );
