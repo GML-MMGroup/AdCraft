@@ -1545,7 +1545,7 @@ class ProgressiveStoryboardReadyService:
             f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
             "Use the complete matching storyboard grid as the primary ordered reference. "
             "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
-            "then follow panels 1 through 9 as one continuous commercial segment. "
+            f"then follow panels 1 through {len(content.panels)} as one continuous commercial segment. "
             "Preserve required dialogue, voice performance, native ambience, movement, "
             "and synchronized action effects. Generate no background music."
         )
