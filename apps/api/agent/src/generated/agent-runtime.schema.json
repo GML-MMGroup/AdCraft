@@ -19887,7 +19887,6 @@
           "items": {
             "$ref": "#/$defs/GuidedProductAssetVersionRefV1"
           },
-          "maxItems": 8,
           "minItems": 1,
           "title": "Asset Versions",
           "type": "array"
@@ -19921,6 +19920,20 @@
           "title": "Interaction Id",
           "type": "string"
         },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
         "pending_handoff_id": {
           "anyOf": [
             {
@@ -19933,6 +19946,16 @@
           ],
           "default": null,
           "title": "Pending Handoff Id"
+        },
+        "source_role": {
+          "default": "product",
+          "enum": [
+            "character",
+            "product",
+            "scene"
+          ],
+          "title": "Source Role",
+          "type": "string"
         }
       },
       "required": [
@@ -19959,6 +19982,18 @@
             }
           ],
           "default": null
+        },
+        "continuation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Continuation Id"
         },
         "events_cursor": {
           "minimum": 0,
@@ -20021,7 +20056,6 @@
           "items": {
             "$ref": "#/$defs/GuidedProductAssetVersionRefV1"
           },
-          "maxItems": 8,
           "title": "Asset Versions",
           "type": "array"
         },
@@ -20055,6 +20089,20 @@
           "title": "Input Kind",
           "type": "string"
         },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
         "pending_handoff_id": {
           "anyOf": [
             {
@@ -20072,6 +20120,16 @@
           "maxLength": 160,
           "minLength": 1,
           "title": "Question Id",
+          "type": "string"
+        },
+        "source_role": {
+          "default": "product",
+          "enum": [
+            "character",
+            "product",
+            "scene"
+          ],
+          "title": "Source Role",
           "type": "string"
         }
       },
@@ -20107,16 +20165,37 @@
           "type": "string"
         },
         "max_asset_count": {
-          "maximum": 8,
-          "minimum": 1,
-          "title": "Max Asset Count",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Asset Count"
         },
         "min_asset_count": {
           "maximum": 8,
           "minimum": 1,
           "title": "Min Asset Count",
           "type": "integer"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "prompt": {
           "maxLength": 512,
@@ -20129,12 +20208,34 @@
           "minLength": 1,
           "title": "Question Id",
           "type": "string"
+        },
+        "source_label": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Label"
+        },
+        "source_role": {
+          "default": "product",
+          "enum": [
+            "character",
+            "product",
+            "scene"
+          ],
+          "title": "Source Role",
+          "type": "string"
         }
       },
       "required": [
         "expected_guidance_revision",
         "input_kind",
-        "max_asset_count",
         "min_asset_count",
         "prompt",
         "question_id"
@@ -25745,7 +25846,6 @@
           "items": {
             "$ref": "#/$defs/ProductUploadInputProvenanceV1"
           },
-          "maxItems": 8,
           "minItems": 2,
           "title": "Ordered Inputs",
           "type": "array"
@@ -25756,7 +25856,10 @@
           "type": "string"
         },
         "profile_id": {
-          "const": "product-upload-multiview-v1",
+          "enum": [
+            "asset-upload-multiview-v1",
+            "product-upload-multiview-v1"
+          ],
           "title": "Profile Id",
           "type": "string"
         },
@@ -25786,7 +25889,6 @@
           "type": "string"
         },
         "order": {
-          "maximum": 7,
           "minimum": 0,
           "title": "Order",
           "type": "integer"
