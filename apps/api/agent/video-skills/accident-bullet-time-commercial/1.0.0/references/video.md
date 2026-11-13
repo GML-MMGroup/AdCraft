@@ -4,7 +4,7 @@ Use the approved three-item inventory: advertised product plus two supporting
 belongings. Establish all before contact; each needs a separate close-up and
 stable reference. Three views of one product cannot fill these slots.
 
-Specify local timing and these ordered camera states:
+Time this node's assigned part of the route; setup and aftermath may be elsewhere:
 - Track backward from footwear height, rise to a front view of the wearer/items.
 - Show passing shoulder contact, body recoil and individual support releases.
 - Freeze all three items and the background reaction together in one space.

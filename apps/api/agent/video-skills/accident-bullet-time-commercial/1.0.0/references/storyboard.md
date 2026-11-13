@@ -31,8 +31,7 @@ and final panels are not evidence of native first/last-frame conditioning.
 
 Adaptable image-prompt example:
 'Create the supplied ordered grid. One wearer carries an open cup and a loose
-shoulder bag and wears the reference-backed amber-lens glasses. Begin low at
-the footwear and rise to the front. A passerby's shoulder visibly brushes the
+shoulder bag and wears the reference-backed amber-lens glasses. Include footwear-to-front tracking only if setup belongs to this board. A passerby's shoulder visibly brushes the
 wearer; the torso recoils, grip opens, glasses slip and strap loses support.
 Freeze the glasses ahead of the face, cup near one hand and bag below the other
 shoulder. Sample a camera route from front medium view through a separate
