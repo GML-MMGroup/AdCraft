@@ -1199,7 +1199,7 @@ class CapabilityMaterializationPublicationService:
             and journey.suspended_action is None
             and journey.stage_status == "ready"
             and GuidedProductionJourneyPolicyService().evaluate(journey).action
-            in {"invoke_capability", "invoke_internal_checkpoint"}
+            in {"invoke_capability", "invoke_internal_checkpoint", "prepare_editing"}
         )
         if ready_authoring:
             self._on_guided_materialization_completed(envelope, outcome)
