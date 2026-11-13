@@ -10,6 +10,7 @@ import type {
   CanvasNodeV2,
 } from "../../../types-v2.ts";
 import { normalizeProviderParameters } from "../model/providerModels.ts";
+import { nodeRunActivity } from "../model/nodeRunActivity.ts";
 import { canvasAuthoringErrorMessage } from "../canvas/canvasErrorMessage.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
 import { useNodePromptAutosave } from "./useNodePromptAutosave.ts";
@@ -56,6 +57,8 @@ export function useNodeWorkbenchDraft({
   node,
   patchNode: persistNode,
   onRun,
+  onRunStart,
+  runPending = false,
   onSaveImageToLibrary,
   onWorkflowRefresh,
 }: Pick<
@@ -64,6 +67,8 @@ export function useNodeWorkbenchDraft({
   | "node"
   | "patchNode"
   | "onRun"
+  | "onRunStart"
+  | "runPending"
   | "onSaveImageToLibrary"
   | "onWorkflowRefresh"
 >) {
@@ -92,6 +97,9 @@ export function useNodeWorkbenchDraft({
   const [libraryName, setLibraryName] = useState(node.title);
   const [librarySaved, setLibrarySaved] = useState(false);
   const [pending, setPending] = useState(false);
+  const [running, setRunning] = useState(false);
+  const acceptedRunActive = nodeRunActivity(node) !== null;
+  const runInFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [errorAction, setErrorAction] = useState<WorkbenchErrorAction>(null);
   const [dirty, setDirty] = useState(false);
@@ -171,6 +179,8 @@ export function useNodeWorkbenchDraft({
     const changedNode = draftNodeIdRef.current !== node.node_id;
     if (!changedNode && (
       dirty
+      // Keep the saved revision and submitted draft until this Run finishes.
+      || runInFlightRef.current
       || promptAutosave.status === "dirty"
       || promptAutosave.status === "saving"
       || promptAutosave.status === "conflict"
@@ -264,18 +274,31 @@ export function useNodeWorkbenchDraft({
   };
 
   const run = async () => {
-    if (canAutosavePrompt) {
-      if (!(await promptAutosave.flush())) return;
-      if (!prompt.trim()) {
-        setError("Enter a prompt before running this node.");
-        return;
-      }
+    if (runInFlightRef.current || runPending || acceptedRunActive) return;
+    if (canAutosavePrompt && !prompt.trim()) {
+      setError("Enter a prompt before running this node.");
+      return;
     }
-    if ((dirty || parameterMigrationRequired) && !(await save())) return;
-    const runNode = editsGenerationPrompt
-      ? { ...draftBaseRef.current, generation_prompt: prompt.trim() || null }
-      : draftBaseRef.current;
-    await perform(() => onRun(runNode));
+    const releasePreparation = onRunStart?.(node);
+    if (onRunStart && !releasePreparation) return;
+    runInFlightRef.current = true;
+    setRunning(true);
+    setError(null);
+    setErrorAction(null);
+    try {
+      if (canAutosavePrompt && !(await promptAutosave.flush())) return;
+      if (draftBaseRef.current.node_id !== node.node_id || draftBaseRef.current.workflow_id !== node.workflow_id) return;
+      if ((dirty || parameterMigrationRequired) && !(await save())) return;
+      if (draftBaseRef.current.node_id !== node.node_id || draftBaseRef.current.workflow_id !== node.workflow_id) return;
+      const runNode = editsGenerationPrompt
+        ? { ...draftBaseRef.current, generation_prompt: prompt.trim() || null }
+        : draftBaseRef.current;
+      await perform(() => onRun(runNode));
+    } finally {
+      releasePreparation?.();
+      runInFlightRef.current = false;
+      setRunning(false);
+    }
   };
 
   const saveImageToLibrary = async () => {
@@ -325,7 +348,8 @@ export function useNodeWorkbenchDraft({
     libraryName,
     setLibraryName: (value: string) => { setLibraryName(value); setLibrarySaved(false); },
     librarySaved,
-    pending,
+    pending: pending || running || runPending,
+    running: running || runPending,
     error,
     errorAction,
     dirty,

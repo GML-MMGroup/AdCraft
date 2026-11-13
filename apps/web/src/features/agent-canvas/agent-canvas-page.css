@@ -1,3 +1,13 @@
+@import "../../styles/brand-chinese-font.css";
+
+/* Match LibTV's Chinese fallback order, including dialogs portaled to body. */
+body:has(.app-shell--workflow) {
+  --font-ui: var(--font-workflow-ui);
+  --font-body: var(--font-workflow-ui);
+  --font-display: var(--font-workflow-ui);
+  font-family: var(--font-workflow-ui);
+}
+
 .agent-canvas-page {
   --agent-canvas-base-dot-color: rgb(112 112 112 / 22%);
   --agent-canvas-pointer-dot-color: #a3a3a3;

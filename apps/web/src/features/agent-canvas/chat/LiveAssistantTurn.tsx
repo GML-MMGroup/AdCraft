@@ -4,11 +4,10 @@ import type { PresentationStreamView } from "../runtime/useAgentCanvasPresentati
 import { AgentThinkingBlock } from "./AgentThinkingBlock.tsx";
 import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
-import { useTypewriterText } from "./useTypewriterText.ts";
+import type { TypewriterPlayback } from "./useTypewriterText.ts";
 
-export function LiveAssistantTurn({ view }: { view: PresentationStreamView }) {
+export function LiveAssistantTurn({ view, playback }: { view: PresentationStreamView; playback?: TypewriterPlayback }) {
   const t = useTranslation();
-  const answer = useTypewriterText(view.text, { animate: true });
   const open = ["connecting", "open", "reconnecting"].includes(view.status);
   const phase = view.answer_started_at !== null || ["completed", "failed", "superseded"].includes(view.status)
     ? "done"
@@ -24,7 +23,7 @@ export function LiveAssistantTurn({ view }: { view: PresentationStreamView }) {
     message_id: `live:${view.stream_id}`,
     conversation_id: "live",
     speaker: "adcraft_video_agent",
-    text: answer,
+    text: view.text,
     linked_node_ids: [],
     script_node_id: null,
     proposal_id: null,
@@ -44,9 +43,11 @@ export function LiveAssistantTurn({ view }: { view: PresentationStreamView }) {
       {view.reasoning_text ? (
         <AgentThinkingBlock reasoningText={view.reasoning_text} phase={phase} durationSeconds={durationSeconds} />
       ) : null}
-      {answer ? (
+      {view.text ? (
         <NaturalMessage
           message={message}
+          animate
+          playback={playback}
           presentation={projectNaturalMessagePresentation([message]).get(message.message_id) ?? {
             messageId: message.message_id,
             showAgentIdentity: true,

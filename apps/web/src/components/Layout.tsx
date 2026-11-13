@@ -25,10 +25,9 @@ const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; i
 interface LayoutProps {
   children: ReactNode;
   workflowControls?: ReactNode;
-  workflowId?: string | null;
 }
 
-export function Layout({ children, workflowControls, workflowId }: LayoutProps) {
+export function Layout({ children, workflowControls }: LayoutProps) {
   const { locale } = useLocale();
   const labels = locale === "zh-CN" ? localeText.zh : localeText.en;
   const [accountOpen, setAccountOpen] = useState(false);
@@ -131,7 +130,7 @@ export function Layout({ children, workflowControls, workflowId }: LayoutProps) 
           ) : null}
           <div className="top-actions">
             {workflowControls}
-            <LanguageSwitcher workflowId={workflowId} />
+            <LanguageSwitcher />
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
               <span>{labels.tutorial}</span>

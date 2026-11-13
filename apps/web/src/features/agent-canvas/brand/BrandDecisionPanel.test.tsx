@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeBrandDecisionPanelV1 } from "./brandDecisionNormalizers.ts";
 import { BrandDecisionPanel } from "./BrandDecisionPanel.tsx";
@@ -25,6 +25,77 @@ function setup(panel = decisions) { const onRefresh = vi.fn(); const result = re
 function expand(name: string) { fireEvent.click(screen.getByRole("button", { name: new RegExp(name) })); }
 
 describe("BrandDecisionPanel", () => {
+  it("edits the project name and submits the trimmed name to the project's save action", async () => {
+    const onRenameProject = vi.fn().mockResolvedValue(true);
+    const props = { decisions, refreshing: false, onRefresh: vi.fn(), projectName: "Untitled Project", onRenameProject };
+    const view = render(<BrandDecisionPanel {...props} />);
+    expect(screen.getByRole("heading", { name: "Untitled Project" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
+    const input = screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("Untitled Project");
+    fireEvent.change(input, { target: { value: "  夏日新品广告  " } });
+    fireEvent.submit(screen.getByRole("form", { name: "Rename project" }));
+    await waitFor(() => expect(onRenameProject).toHaveBeenCalledWith("project-1", "夏日新品广告"));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull());
+    view.rerender(<BrandDecisionPanel {...props} projectName="夏日新品广告" />);
+    expect(screen.getByRole("heading", { name: "夏日新品广告" })).toBeTruthy();
+    expect(screen.queryByText("Untitled Project")).toBeNull();
+  });
+
+  it("cancels name changes without saving and prevents blank or duplicate submissions", () => {
+    const onRenameProject = vi.fn();
+    render(<BrandDecisionPanel decisions={decisions} refreshing={false} onRefresh={vi.fn()}
+      projectName="Summer campaign" onRenameProject={onRenameProject} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
+    const input = screen.getByRole("textbox", { name: "Project name" });
+    fireEvent.change(input, { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "Confirm rename" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.submit(screen.getByRole("form", { name: "Rename project" }));
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
+    expect((screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe("Summer campaign");
+    fireEvent.submit(screen.getByRole("form", { name: "Rename project" }));
+    expect(onRenameProject).not.toHaveBeenCalled();
+  });
+
+  it.each([false, new Error("Offline")])("keeps the name draft after a failed save so it can be retried (%s)", async (failure) => {
+    const onRenameProject = failure instanceof Error
+      ? vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(true)
+      : vi.fn().mockResolvedValueOnce(failure).mockResolvedValue(true);
+    render(<BrandDecisionPanel decisions={decisions} refreshing={false} onRefresh={vi.fn()}
+      projectName="Original title" onRenameProject={onRenameProject} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "New title" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm rename" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Unable to rename"));
+    expect((screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe("New title");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm rename" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull());
+    expect(onRenameProject).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps pending renames locked and ignores IME confirmation", async () => {
+    let finish!: (saved: boolean) => void;
+    const onRenameProject = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
+    render(<BrandDecisionPanel decisions={decisions} refreshing={false} onRefresh={vi.fn()}
+      onRenameProject={onRenameProject} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
+    const input = screen.getByRole("textbox", { name: "Project name" });
+    fireEvent.change(input, { target: { value: "春季广告" } });
+    expect(fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 })).toBe(false);
+    expect(onRenameProject).not.toHaveBeenCalled();
+    fireEvent.submit(screen.getByRole("form", { name: "Rename project" }));
+    fireEvent.submit(screen.getByRole("form", { name: "Rename project" }));
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onRenameProject).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Renaming project" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Cancel rename" }).hasAttribute("disabled")).toBe(true);
+    await act(async () => finish(true));
+    expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
+  });
+
   it("keeps a compact summary and exposes labeled facts when expanded", () => {
     setup(); const memory = screen.getByRole("button", { name: /Brand Memory/ });
     expect(memory.getAttribute("aria-expanded")).toBe("false"); expect(screen.getByText("Curious urban runners")).toBeTruthy(); expect(screen.getByText("+1 more")).toBeTruthy();

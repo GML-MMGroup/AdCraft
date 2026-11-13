@@ -18,6 +18,10 @@ import type {
 import { AgentCanvasInlineWorkbench } from "./AgentCanvasInlineWorkbench.tsx";
 import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import * as presentationStreams from "../runtime/useAgentCanvasPresentationStreams.ts";
+import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
+import { inputManifestAuditFromEvent } from "../runtime/inputManifestAudit.ts";
+import { normalizeCanvasRuntimeEventV2 } from "../model/normalizers.ts";
+import { LocaleProvider } from "../../../i18n/locale.tsx";
 
 function makeNode(type: CanvasNodeTypeV2, status: CanvasNodeV2["status"] = "draft"): CanvasNodeV2 {
   return {
@@ -201,6 +205,28 @@ function failedRuntime(node: CanvasNodeV2): NodeRuntimeV2 {
   };
 }
 
+function privacyError(index: number | null) {
+  return `media_api_failed:\nprovider=volcengine\nresponse_body=${JSON.stringify({ error: {
+    code: "InputImageSensitiveContentDetected.PrivacyInformation",
+    message: `The input image ${index === null ? "" : `'content[${index}]' `}may contain real person.`,
+    param: index === null ? null : `content[${index}]`,
+  } })}\npayload={"prompt":"Private campaign prompt"}`;
+}
+
+function privacyManifest(node: CanvasNodeV2) {
+  return {
+    node_id: node.node_id, execution_id: "execution-accepted", input_manifest_id: "privacy-manifest",
+    node_run_id: "node-run", text_inputs: [], world_setting_inputs: [], omitted_optional_inputs: [],
+    media_inputs: ["other-image", "other-video", "source-image-asset"].map((id, index) => ({
+      binding_id: index === 2 ? "source-binding" : `other-${index}`,
+      source_node_id: index === 2 ? "source-image" : null,
+      asset_id: id, media_type: index === 1 ? "video" as const : "image" as const,
+      input_role: "image_reference" as const, source_semantic_role: null,
+      transport_type: "data_url", display_order: index, checksum: index === 2 ? "source-image-checksum" : null,
+    })),
+  };
+}
+
 function failedAttempt(runtime: NodeRuntimeV2): NonNullable<CanvasNodeV2["latest_attempt"]> {
   return {
     execution_id: runtime.execution_id!,
@@ -269,6 +295,74 @@ afterEach(() => {
 });
 
 describe("AgentCanvasInlineWorkbench", () => {
+  it("disables Send for a persisted queued video and releases it after cancellation", () => {
+    const node = makeNode("video");
+    node.latest_attempt = {
+      execution_id: "execution-queued", member_id: "member-queued", run_intent_snapshot_id: null,
+      status: "queued", error: null, created_at: node.created_at, updated_at: node.updated_at,
+    };
+    const onRun = vi.fn();
+    const props = { workflow: makeWorkflow(node), node, patchNode: vi.fn(), onRun, onClose: vi.fn() };
+    const view = render(<AgentCanvasInlineWorkbench {...props} />);
+    const send = screen.getByRole("button", { name: "Run video node" });
+    expect(send).toHaveProperty("disabled", true);
+    fireEvent.click(send);
+    expect(onRun).not.toHaveBeenCalled();
+    view.rerender(<AgentCanvasInlineWorkbench {...props} node={{
+      ...node, latest_attempt: { ...node.latest_attempt, status: "cancelled" },
+    }} />);
+    expect(send).toHaveProperty("disabled", false);
+  });
+
+  it("starts node feedback before saving a prompt, blocks repeat clicks, and releases it on save failure", async () => {
+    let rejectSave!: (error: Error) => void;
+    const release = vi.fn();
+    const onRunStart = vi.fn(() => release);
+    const props = renderWorkbench(makeNode("image"), {
+      onRunStart,
+      patchNode: vi.fn(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; })),
+    });
+    fireEvent.change(screen.getByLabelText("Generation prompt"), { target: { value: "New product image" } });
+    const send = screen.getByRole("button", { name: "Run image node" });
+    fireEvent.click(send);
+    expect(onRunStart).toHaveBeenCalledOnce();
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(send);
+    expect(props.onRun).not.toHaveBeenCalled();
+    await act(async () => { rejectSave(new Error("Prompt could not be saved")); });
+    expect(release).toHaveBeenCalledOnce();
+    expect(props.onRun).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("Prompt could not be saved");
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value).toBe("New product image");
+  });
+
+  it("keeps feedback active while saving generation parameters before submitting", async () => {
+    let finishSave!: () => void;
+    const release = vi.fn();
+    const onRunStart = vi.fn(() => release);
+    const node = { ...makeNode("video"), parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: false } };
+    const props = renderWorkbench(node, {
+      onRunStart,
+      providerModels: [audioVideoModel], providerDefaultModelRef: audioVideoModel.model_ref,
+      patchNode: vi.fn((_id, patch, options) => new Promise<void>((resolve) => {
+        finishSave = () => { options?.onSaved?.({ ...node, ...patch, revision: 2 }); resolve(); };
+      })),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate subtitles" }));
+    const send = screen.getByRole("button", { name: "Run video node" });
+    fireEvent.click(send);
+    expect(onRunStart).toHaveBeenCalledOnce();
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledOnce());
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+    expect(props.onRun).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    await act(async () => finishSave());
+    expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: true },
+    }));
+    expect(release).toHaveBeenCalledOnce();
+  });
   it.each(["image", "video"] as const)("shows a %s provider failure arriving after a run was accepted without retrying", async (type) => {
     const node = makeNode(type);
     const props = renderWorkbench(node);
@@ -479,7 +573,151 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
-  it("defaults subtitles on and saves an explicit disabled setting before running a video", async () => {
+  it.each(["InputImageSensitiveContentDetected.PrivacyInformation", "[redacted-base64].PrivacyInformation"])(
+    "explains a reference-image privacy rejection (%s) without suggesting a provider configuration failure",
+    (code) => {
+      const node = makeNode("video");
+      const runtime = failedRuntime(node);
+      runtime.error = {
+        ...runtime.error!,
+        code: "provider_generation_failed",
+        message: [
+          "media_api_failed:",
+          "provider=volcengine",
+          "endpoint=https://provider.example/generations",
+          "status=400",
+          `response_body=${JSON.stringify({ error: {
+            code,
+            message: "The request failed because the input image 'content[1]' may contain real person. Request id: private-request-id",
+          } })}`,
+          'payload={"prompt":"Private campaign prompt"}',
+        ].join("\n"),
+      };
+      const props = renderWorkbench(node, { runtime });
+      const message = screen.getByRole("alert").textContent!;
+      expect(message).toContain("reference image");
+      expect(message).toContain("real person");
+      expect(message).toContain("provider may be mistaken");
+      expect(message).toContain("retry a few times");
+      expect(message).not.toContain("Check the provider settings");
+      expect(message).not.toContain("private-request-id");
+      expect(message).not.toContain("provider.example");
+      expect(message).not.toContain("Private campaign prompt");
+      expect(props.onRun).not.toHaveBeenCalled();
+    },
+  );
+
+  it("highlights only the rejected image from the failed request, and clears it for a new run", () => {
+    const node = makeNode("video");
+    const runtime = failedRuntime(node);
+    runtime.input_manifest_id = "privacy-manifest";
+    runtime.error = { ...runtime.error!, message: privacyError(3) };
+    const workflow = makeReferenceWorkflow(node);
+    // The provider includes text at content[0], then ALL media, including video.
+    const inputManifest = privacyManifest(node);
+    const props = renderWorkbench(node, { workflow, runtime, inputManifest });
+    const image = screen.getByRole("img", { name: "Character board reference" });
+    expect(image.closest("article")?.classList.contains("is-rejected")).toBe(true);
+    expect(screen.getByRole("article").getAttribute("aria-label")).toContain("flagged by the provider");
+    expect(props.onRun).not.toHaveBeenCalled();
+    props.view.rerender(<AgentCanvasInlineWorkbench {...props} runtime={{
+      ...runtime, execution_id: "next-run", visible_status: "working", phase: "queued",
+    }} />);
+    expect(image.closest("article")?.classList.contains("is-rejected")).toBe(false);
+    expect(screen.queryByRole("alert")).toBeNull();
+    props.view.rerender(<AgentCanvasInlineWorkbench {...props} runtime={{
+      ...runtime, visible_status: "ready", error: null,
+    }} />);
+    expect(image.closest("article")?.classList.contains("is-rejected")).toBe(false);
+  });
+
+  it.each(["changed asset", "changed checksum", "changed version", "disabled", "wrong execution", "wrong manifest", "missing index"])(
+    "keeps the reminder without misidentifying a reference: %s", (scenario) => {
+      const node = makeNode("video");
+      const runtime = failedRuntime(node);
+      runtime.input_manifest_id = "privacy-manifest";
+      runtime.error = { ...runtime.error!, message: privacyError(scenario === "missing index" ? null : 3) };
+      const workflow = makeReferenceWorkflow(node);
+      const inputManifest = privacyManifest(node);
+      if (scenario === "changed asset") workflow.nodes[0].output_asset_id = "new-image";
+      if (scenario === "changed checksum") inputManifest.media_inputs[2].checksum = "old-content-checksum";
+      if (scenario === "changed version") workflow.bindings[0].source = {
+        kind: "image_asset", source_asset_id: "source-image-asset", source_asset_version_id: "replacement-version",
+      };
+      if (scenario === "disabled") workflow.bindings[0].enabled = false;
+      if (scenario === "wrong execution") inputManifest.execution_id = "previous-run";
+      if (scenario === "wrong manifest") inputManifest.input_manifest_id = "old-manifest";
+      const request = vi.spyOn(agentCanvasApi, "agentCanvasEvents").mockResolvedValue({ events: [], next_cursor: 0 });
+      renderWorkbench(node, { workflow, runtime, inputManifest });
+      expect(screen.getByRole("article").classList.contains("is-rejected")).toBe(false);
+      expect(screen.getByRole("alert").textContent).toContain("retry a few times");
+      if (scenario === "missing index") expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it("highlights a failed regeneration on a ready node using its latest attempt", () => {
+    const node = makeNode("video", "ready");
+    const runtime = failedRuntime(node);
+    runtime.error = { ...runtime.error!, message: privacyError(3) };
+    node.latest_attempt = failedAttempt(runtime);
+    node.error = null;
+    renderWorkbench(node, { workflow: makeReferenceWorkflow(node), inputManifest: privacyManifest(node) });
+    expect(screen.getByRole("article").classList.contains("is-rejected")).toBe(true);
+    expect(screen.getByRole("alert").textContent).toContain("provider may be mistaken");
+  });
+
+  it("recovers the exact failed input audit after a reload across paginated events", async () => {
+    const node = makeNode("video");
+    const runtime = failedRuntime(node);
+    runtime.input_manifest_id = "privacy-manifest";
+    runtime.error = { ...runtime.error!, message: privacyError(3) };
+    const audit = privacyManifest(node);
+    const event = normalizeCanvasRuntimeEventV2({
+      sequence_no: 201, workflow_id: node.workflow_id, node_id: node.node_id,
+      execution_id: runtime.execution_id, event_type: "provider_inputs_resolved",
+      created_at: "2026-10-25T08:00:00Z",
+      payload: audit,
+    });
+    const unrelated = { ...event, node_id: "other-node", execution_id: "other-run" };
+    const request = vi.spyOn(agentCanvasApi, "agentCanvasEvents")
+      .mockResolvedValueOnce({ events: Array.from({ length: 200 }, () => unrelated), next_cursor: 200 })
+      .mockResolvedValueOnce({ events: [event], next_cursor: 201 });
+    expect(inputManifestAuditFromEvent(event)).not.toBeNull();
+    const props = renderWorkbench(node, { workflow: makeReferenceWorkflow(node), runtime });
+    await waitFor(() => expect(screen.getByRole("article").classList.contains("is-rejected")).toBe(true));
+    expect(request).toHaveBeenNthCalledWith(2, node.workflow_id, 200, 200, expect.any(AbortSignal));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("shows the requested Chinese reminder without generating automatically", () => {
+    const node = makeNode("video");
+    const runtime = failedRuntime(node);
+    runtime.error = { ...runtime.error!, message: privacyError(3) };
+    const props = renderWorkbench(node, { runtime, inputManifest: privacyManifest(node) });
+    props.view.rerender(<LocaleProvider initialLocale="zh-CN"><AgentCanvasInlineWorkbench {...props} /></LocaleProvider>);
+    expect(screen.getByRole("alert").textContent).toBe("供应商提示参考图可能包含真人。供应商可能误报，可以多重试几次。");
+    expect(props.onRun).not.toHaveBeenCalled();
+    localStorage.removeItem("adcraft.locale");
+  });
+
+  it("does not classify a reference-image rejection from text in the submitted prompt", () => {
+    const node = makeNode("video");
+    const runtime = failedRuntime(node);
+    runtime.error = {
+      ...runtime.error!,
+      code: "provider_generation_failed",
+      message: [
+        "media_api_failed:",
+        "status=500",
+        'response_body={"error":{"code":"InternalError","message":"Service unavailable"}}',
+        'payload={"prompt":"InputImageSensitiveContentDetected.PrivacyInformation: input image may contain real person"}',
+      ].join("\n"),
+    };
+    renderWorkbench(node, { runtime });
+    expect(screen.getByRole("alert").textContent).not.toContain("real person");
+  });
+
+  it("defaults subtitles off and saves the enabled setting before running a video", async () => {
     const node = { ...makeNode("video"), parameters: { duration_seconds: 8, generate_audio: false } };
     const patchNode = vi.fn(async (_id, patch, options) => { options.onSaved({ ...node, ...patch, revision: 2 }); });
     const props = renderWorkbench(node, {
@@ -488,24 +726,17 @@ describe("AgentCanvasInlineWorkbench", () => {
     });
     const toggle = screen.getByRole("button", { name: "Generate subtitles" });
     expect(toggle.closest("footer")).toBeTruthy();
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(props.patchNode).not.toHaveBeenCalled();
     fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
     await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
-      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: false },
+      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: true },
     }), expect.any(Object)));
     await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
-      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: false },
+      parameters: { duration_seconds: 8, generate_audio: false, generate_subtitles: true },
     })));
-  });
-
-  it("preserves an explicitly disabled subtitle setting on load", () => {
-    const node = { ...makeNode("video"), parameters: { generate_subtitles: false } };
-    const props = renderWorkbench(node);
-    expect(screen.getByRole("button", { name: "Generate subtitles" }).getAttribute("aria-pressed")).toBe("false");
-    expect(props.patchNode).not.toHaveBeenCalled();
   });
 
   it("restores saved subtitles and persists disabling them independently of audio", async () => {
@@ -629,7 +860,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     renderWorkbench(makeNode("image"), { onRun: vi.fn().mockRejectedValue(new Error("Provider request failed")) });
     fireEvent.click(screen.getByRole("button", { name: "Run image node" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Provider request failed"));
-    expect(screen.getByRole("alert").closest(".agent-node-workbench__image-feedback")).toBeTruthy();
+    expect(screen.getByRole("alert").closest(".agent-node-workbench__feedback")).toBeTruthy();
     expect(screen.getByLabelText("Generation prompt")).toBeTruthy();
   });
 
@@ -644,7 +875,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     fireEvent.blur(editor);
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("changed elsewhere"));
     expect(editor.value).toBe("Keep my local prompt");
-    expect(screen.getByRole("alert").closest(`.agent-node-workbench__${type}-feedback`)).toBeTruthy();
+    expect(screen.getByRole("alert").closest(".agent-node-workbench__feedback")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry local prompt" }));
     await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(2));
     const savedNode = { ...props.node, generation_prompt: "Keep my local prompt", revision: 2 };
@@ -681,26 +912,27 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     expect(shellRule).toBeDefined();
     expect(shellRule).toContain("height: auto;");
-    expect(shellRule).toContain("min-height: 217px;");
+    expect(shellRule).toContain("min-height: 283px;");
     expect(shellRule).toContain("overflow: visible;");
     expect(shellRule).not.toMatch(/overflow-[xy]:\s*(auto|scroll)/);
 
-    const editorRule = css.match(/\.agent-node-workbench__four-line-editor\s*\{([\s\S]*?)\n\}/)?.[1];
-    expect(editorRule).toContain("height: 88px;");
+    const editorRule = css.match(/\.agent-node-workbench__prompt-editor\s*\{([\s\S]*?)\n\}/)?.[1];
+    expect(editorRule).toContain("height: 154px;");
     expect(editorRule).toContain("overflow-y: auto;");
   });
 
-  it("keeps the Script editor on the shared workbench font", () => {
+  it("keeps all prompt editors on the shared workbench font and line height", () => {
     const css = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css"),
       "utf8",
     );
-    const scriptComposerRule = css.match(
-      /\.agent-node-workbench__composer--script textarea\s*\{([\s\S]*?)\n\}/,
+    const promptEditorRule = css.match(
+      /\.agent-node-workbench__prompt-editor\s*\{([\s\S]*?)\n\}/,
     )?.[1];
 
-    expect(scriptComposerRule).toBeTruthy();
-    expect(scriptComposerRule).not.toContain("font-family");
+    expect(promptEditorRule).toBeTruthy();
+    expect(promptEditorRule).not.toContain("font-family");
+    expect(promptEditorRule).toContain("line-height: 22px;");
   });
 
   it.each<[CanvasNodeTypeV2, string]>([
@@ -1518,7 +1750,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     renderWorkbench(makeNode("text"), { onRun: vi.fn().mockRejectedValue(new Error("Text generation failed")) });
     fireEvent.click(screen.getByRole("button", { name: "Run text node" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Text generation failed"));
-    expect(screen.getByRole("alert").closest(".agent-node-workbench__text-feedback")).toBeTruthy();
+    expect(screen.getByRole("alert").closest(".agent-node-workbench__feedback")).toBeTruthy();
   });
 
   it("edits a World Setting in place without model or Run controls", async () => {

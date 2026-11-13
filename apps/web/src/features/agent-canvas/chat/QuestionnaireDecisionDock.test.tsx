@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 import { QuestionnaireDecisionDock } from "./QuestionnaireDecisionDock.tsx";
 
 const interaction: GuidedInteractionV1 = {
@@ -50,9 +51,43 @@ const interaction: GuidedInteractionV1 = {
   updated_at: "2026-08-27T10:00:00Z",
 };
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); window.localStorage.removeItem("adcraft.locale"); });
 
 describe("QuestionnaireDecisionDock", () => {
+  it("switches fixed questions and controls without losing answers or changing submitted values", () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    const current: GuidedInteractionV1 = {
+      ...interaction, title: "Choose production duration", content: {
+        content_kind: "questionnaire", questions: [{
+          question_id: "production_duration_seconds", prompt: "Choose the total advertisement duration.",
+          input_kind: "single_select", allow_custom: true, allow_skip: false, required: true,
+          options: [{ option_id: "duration_seconds_30", title: "30 seconds", summary: "Produce a 30-second advertisement.",
+            difference_tags: [], recommended: true, reference_preview: [] }],
+        }],
+      },
+    };
+    function LanguageToggle() {
+      const { toggleLocale } = useLocale();
+      return <button onClick={toggleLocale}>Switch language</button>;
+    }
+    render(<LocaleProvider initialLocale="zh-CN"><LanguageToggle />
+      <QuestionnaireDecisionDock interaction={current} pending={false} issue={null} onSubmit={submit} />
+    </LocaleProvider>);
+    expect(screen.getByRole("article", { name: "选择广告时长" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /30 秒/ }));
+    expect(screen.getByText("已填写 1 / 1 项")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+    expect((screen.getByRole("radio", { name: /30 seconds/ }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Custom duration in seconds" }), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+    expect((screen.getByRole("spinbutton", { name: "自定义时长（秒）" }) as HTMLInputElement).value).toBe("45");
+    fireEvent.click(screen.getByRole("button", { name: "提交回答" }));
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      expected_interaction_revision: 3, expected_session_revision: 8,
+      answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "45" }],
+    }));
+  });
+
   it("compacts the production duration question without removing its choices", () => {
     render(
       <QuestionnaireDecisionDock

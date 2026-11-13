@@ -95,6 +95,8 @@ function mediaInput(value: unknown): ProviderResolvedMediaInputAuditV2 | null {
     binding_id: bindingId,
     source_node_id: optionalString(item.source_node_id),
     asset_id: assetId,
+    ...(string(item.asset_version_id) ? { asset_version_id: string(item.asset_version_id) } : {}),
+    ...(string(item.checksum) ? { checksum: string(item.checksum) } : {}),
     media_type: type,
     input_role: role,
     source_semantic_role: optionalString(item.source_semantic_role),

@@ -1,85 +1,72 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { LocaleProvider, localeChangedEventName } from "../i18n/locale";
-import { agentCanvasApi, V2ApiError } from "../api/agentCanvasApi";
+import { LocaleProvider } from "../i18n/locale";
+import { agentCanvasApi } from "../api/agentCanvasApi";
 
-vi.mock("../api/agentCanvasApi", async importOriginal => ({
-  ...await importOriginal<typeof import("../api/agentCanvasApi")>(),
+vi.mock("../api/agentCanvasApi", () => ({
   agentCanvasApi: {
     agentCanvasCreativeSession: vi.fn(),
     updateAgentCanvasCreativeSessionLocale: vi.fn(),
   },
 }));
-const read = vi.mocked(agentCanvasApi.agentCanvasCreativeSession);
-const update = vi.mocked(agentCanvasApi.updateAgentCanvasCreativeSessionLocale);
-const apiError = (status: number) => new V2ApiError({ status, message: "failure", details: {}, violations: [], suggestedActions: [], payload: null });
-const setup = (workflowId?: string) => render(<LocaleProvider><LanguageSwitcher workflowId={workflowId}/></LocaleProvider>);
+const setup = () => render(<LocaleProvider><LanguageSwitcher /></LocaleProvider>);
 
-beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
-afterEach(cleanup);
+beforeEach(() => {
+  localStorage.clear();
+  vi.clearAllMocks();
+  vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-US"]);
+});
+afterEach(() => { cleanup(); localStorage.clear(); });
 
 describe("language switch", () => {
-  it("persists the UI preference without a workflow request", () => {
+  it("switches immediately and persists the preference across remounts without a workflow request", () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
-    expect(screen.getByRole("button", { name: "Switch to English" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "切换到中文" }).getAttribute("aria-pressed")).toBe("true");
     expect(localStorage.getItem("adcraft.locale")).toBe("zh-CN");
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(read).not.toHaveBeenCalled();
     cleanup(); setup();
-    expect(screen.getByRole("button", { name: "Switch to English" })).toBeTruthy();
-  });
-
-  it("uses the latest session revision and refreshes after success", async () => {
-    read.mockResolvedValue({ revision: 7 } as Awaited<ReturnType<typeof read>>);
-    update.mockResolvedValue({ revision: 8, response_locale: "zh-CN" } as Awaited<ReturnType<typeof update>>);
-    const changed = vi.fn();
-    window.addEventListener(localeChangedEventName, changed);
-    try {
-      setup("workflow-a");
-      fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
-      await screen.findByRole("button", { name: "Switch to English" });
-      expect(update).toHaveBeenCalledWith("workflow-a", { expected_revision: 7, response_locale: "zh-CN" });
-      expect(changed.mock.calls[0]?.[0].detail).toEqual({ workflowId: "workflow-a", locale: "zh-CN", session: { revision: 8, response_locale: "zh-CN" } });
-    } finally { window.removeEventListener(localeChangedEventName, changed); }
-  });
-
-  it("preserves the current language on failure and permits explicit retry", async () => {
-    read.mockResolvedValue({ revision: 4 } as Awaited<ReturnType<typeof read>>);
-    update.mockRejectedValueOnce(apiError(409)).mockResolvedValueOnce({ revision: 5 } as Awaited<ReturnType<typeof update>>);
-    setup("workflow-a");
-    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("project changed");
-    expect(localStorage.getItem("adcraft.locale")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
-    await screen.findByRole("button", { name: "Switch to English" });
-    expect(read).toHaveBeenCalledTimes(2);
-  });
-
-  it("permits a missing session but rejects a missing PATCH route", async () => {
-    read.mockRejectedValueOnce(apiError(404));
-    const view = setup("workflow-a");
-    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
-    await screen.findByRole("button", { name: "Switch to English" });
-    expect(update).not.toHaveBeenCalled();
-    read.mockResolvedValueOnce({ revision: 1 } as Awaited<ReturnType<typeof read>>);
-    update.mockRejectedValueOnce(apiError(404));
-    view.rerender(<LocaleProvider><LanguageSwitcher workflowId="workflow-b"/></LocaleProvider>);
+    expect(screen.getByRole("group", { name: "语言：中文" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
-    await screen.findByRole("alert");
-    expect(localStorage.getItem("adcraft.locale")).toBe("zh-CN");
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(localStorage.getItem("adcraft.locale")).toBe("en-US");
+    expect(agentCanvasApi.agentCanvasCreativeSession).not.toHaveBeenCalled();
+    expect(agentCanvasApi.updateAgentCanvasCreativeSessionLocale).not.toHaveBeenCalled();
   });
 
-  it("ignores an old workflow response after navigation", async () => {
-    let resolveRead!: (value: Awaited<ReturnType<typeof read>>) => void;
-    read.mockReturnValueOnce(new Promise(resolve => { resolveRead = resolve; }));
-    const view = setup("workflow-a");
-    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
-    view.rerender(<LocaleProvider><LanguageSwitcher workflowId="workflow-b"/></LocaleProvider>);
-    resolveRead({ revision: 1 } as Awaited<ReturnType<typeof read>>);
-    await waitFor(() => expect((screen.getByRole("button", { name: "切换到中文" }) as HTMLButtonElement).disabled).toBe(false));
-    expect(update).not.toHaveBeenCalled();
-    expect(localStorage.getItem("adcraft.locale")).toBeNull();
+  it.each([
+    [["zh-Hant", "en-US"], "zh-CN"],
+    [["en-GB", "zh-CN"], "en-US"],
+    [["fr-FR", "zh-CN"], "zh-CN"],
+    [["fr-FR"], "en-US"],
+  ] as const)("uses the first supported browser language in %j without a saved preference", (languages, expected) => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue([...languages]);
+    vi.spyOn(navigator, "language", "get").mockReturnValue(languages[0]);
+    setup();
+    expect(document.documentElement.lang).toBe(expected);
+  });
+
+  it("prefers a saved choice over the browser and the initial fallback", () => {
+    localStorage.setItem("adcraft.locale", "zh-CN");
+    render(<LocaleProvider initialLocale="en-US"><LanguageSwitcher /></LocaleProvider>);
+    expect(document.documentElement.lang).toBe("zh-CN");
+  });
+
+  it("ignores an invalid saved preference and detects the browser language", () => {
+    localStorage.setItem("adcraft.locale", "invalid");
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
+    setup();
+    expect(document.documentElement.lang).toBe("zh-CN");
+  });
+
+  it("detects and switches language when browser storage is blocked", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("Storage blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("Storage blocked"); });
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
+    setup();
+    expect(document.documentElement.lang).toBe("zh-CN");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(document.documentElement.lang).toBe("en-US");
   });
 });

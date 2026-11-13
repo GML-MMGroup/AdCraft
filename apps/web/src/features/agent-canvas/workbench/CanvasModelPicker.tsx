@@ -1,11 +1,14 @@
+import { NodeWorkbenchFieldError } from "./NodeWorkbenchFeedback.tsx";
 import { createPortal } from "react-dom";
 import { ChevronDownIcon, ChevronUpIcon } from "../../../icons.tsx";
 import { useMemo } from "react";
+import type { CSSProperties } from "react";
 import { useWorkbenchMenu } from "./useWorkbenchMenu.ts";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import { modelEligibility } from "../../../api/providerModelPolicy.ts";
+import { modelBrandIcon } from "../model/modelBrandIcons.ts";
 import type {
   CanvasModelSelectionModeV2,
   CanvasModelSummaryV2,
@@ -18,6 +21,16 @@ function modelSummaryLabel(model: Pick<ProviderModelSummaryV1, "display_name" | 
 
 function readableTransport(value: string): string {
   return value.replaceAll("_", " ");
+}
+
+function ModelIcon({ model }: { model: ProviderModelSummaryV1 | null | undefined }) {
+  const icon = modelBrandIcon(model);
+  if (!icon) return null;
+  const className = `agent-node-workbench__model-icon${icon.wordmark ? " agent-node-workbench__model-icon--wordmark" : ""}`;
+  return icon.monochrome ? (
+    <span className={`${className} agent-node-workbench__model-icon--mask`} aria-hidden="true"
+      style={{ "--model-icon-url": `url("${icon.src}")` } as CSSProperties} />
+  ) : <img className={className} src={icon.src} width={18} height={18} alt="" aria-hidden="true" draggable={false} />;
 }
 
 function modelFromNodeSummary(summary: CanvasModelSummaryV2): ProviderModelSummaryV1 {
@@ -73,7 +86,8 @@ export function CanvasModelPicker({
     () => models.filter((model) => modelEligibility(model, "diagnostic").visible),
     [models],
   );
-  const defaultModelName = models.find((model) => model.model_ref === defaultModelRef)?.display_name;
+  const defaultModel = models.find((model) => model.model_ref === defaultModelRef);
+  const defaultModelName = defaultModel?.display_name;
   const defaultLabel = defaultModelRef === undefined
     ? t("Default model")
     : `${t("Default model")} · ${error ? t("Unavailable") : defaultModelName ?? (defaultModelRef ? t("Name unavailable") : t("Not configured"))}`;
@@ -103,7 +117,7 @@ export function CanvasModelPicker({
           setOpen(false);
         }}
       >
-        <strong>{defaultLabel}</strong>
+        <span className="agent-node-workbench__model-option-name"><ModelIcon model={defaultModel} /><strong>{defaultLabel}</strong></span>
         {showOptionDetails ? <small>{t("Uses the current API Space default for this node type.")}</small> : null}
       </button>
       {visibleModels.map((model) => {
@@ -122,7 +136,7 @@ export function CanvasModelPicker({
               setOpen(false);
             }}
           >
-            <strong>{model.display_name}</strong>
+            <span className="agent-node-workbench__model-option-name"><ModelIcon model={model} /><strong>{model.display_name}</strong></span>
             {showOptionDetails ? (
               <>
                 <small>
@@ -141,7 +155,6 @@ export function CanvasModelPicker({
         );
       })}
       {!visibleModels.length && !loading ? <p>{t("No compatible models are currently available.")}</p> : null}
-      {!showStatusDetails && error ? <p role="alert">{error}</p> : null}
     </div>,
     document.body,
   ) : null;
@@ -166,7 +179,10 @@ export function CanvasModelPicker({
             setOpen((current) => !current);
           }}
         >
-          <span>{loading ? t("Loading compatible models...") : selectedLabel}</span>
+          <span className="agent-node-workbench__model-selection-name">
+            {!loading && <ModelIcon model={selectionMode === "default" ? defaultModel : selectedModel} />}
+            <span className="agent-node-workbench__model-name-text">{loading ? t("Loading compatible models...") : selectedLabel}</span>
+          </span>
           {showStatusDetails && selectedModel ? <small className={`is-${selectedModel.availability}`}>{selectedModel.availability}</small> : null}
           {appearance === "monochrome" ? (
             <span className="agent-node-workbench__model-chevron" aria-hidden="true">
@@ -176,11 +192,11 @@ export function CanvasModelPicker({
         </summary>
       </details>
       {menu}
-      {showStatusDetails && error ? <p className="agent-node-workbench__field-error">{error}</p> : null}
-      {showStatusDetails && selectionMode === "explicit" && selectedModel && !modelEligibility(selectedModel, "diagnostic").selectable ? (
-        <p className="agent-node-workbench__field-error">
+      {error ? <NodeWorkbenchFieldError>{error}</NodeWorkbenchFieldError> : null}
+      {selectionMode === "explicit" && selectedModel && !modelEligibility(selectedModel, "diagnostic").selectable ? (
+        <NodeWorkbenchFieldError>
           {modelEligibility(selectedModel, "diagnostic").reason}
-        </p>
+        </NodeWorkbenchFieldError>
       ) : null}
       {showStatusDetails && modelResolution ? (
         <p className="agent-node-workbench__model-resolution">

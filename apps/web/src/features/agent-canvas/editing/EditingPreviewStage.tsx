@@ -1,3 +1,4 @@
+import { useEditingText } from "./editingMessages.ts";
 import {
   useEffect,
   useId,
@@ -98,6 +99,7 @@ export function EditingPreviewStage({
   playing,
   sequence,
 }: EditingPreviewStageProps) {
+  const t = useEditingText();
   const [view, setView] = useState<PreviewView>("draft");
   const previewId = useId();
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -400,7 +402,7 @@ export function EditingPreviewStage({
             aria-controls={draftPanelId}
             onKeyDown={(event) => handleTabKeyDown(event, "draft")}
             onClick={() => selectView("draft")}
-          >Draft preview</button>
+          >{t("Draft preview")}</button>
           <button
             ref={exportTabRef}
             id={exportTabId}
@@ -411,9 +413,9 @@ export function EditingPreviewStage({
             aria-controls={exportPanelId}
             onKeyDown={(event) => handleTabKeyDown(event, "export")}
             onClick={() => selectView("export")}
-          >Exported output</button>
+          >{t("Exported output")}</button>
         </div>
-      ) : <span className="agent-editing-preview__label">Draft preview</span>}
+      ) : <span className="agent-editing-preview__label">{t("Draft preview")}</span>}
       <div
         ref={canvasRef}
         className="agent-editing-preview__canvas"

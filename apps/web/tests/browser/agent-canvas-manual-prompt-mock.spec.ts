@@ -137,10 +137,10 @@ test("unifies Text and World Setting panel bounds, references and monochrome mod
         const f = (await footer.boundingBox())!;
         const b = (await action.boundingBox())!;
         const e = (await editor.boundingBox())!;
-        expect(p.height).toBe(217);
+        expect(p.height).toBeGreaterThanOrEqual(283);
         expect(p.y + p.height - f.y - f.height).toBe(13);
         expect(p.x + p.width - b.x - b.width).toBe(13);
-        expect(e.height).toBeGreaterThan(40);
+        expect(e.height).toBe(154);
         expect(e.y + e.height).toBeLessThanOrEqual(f.y);
         expect(await panel.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       };
@@ -201,7 +201,7 @@ test("Text save icons preserve generation flush and structured-content save auth
   }
 });
 
-test("keeps every image prompt panel fixed with a bottom footer and no parameter or status rows", async ({ page }) => {
+test("keeps every image prompt at seven lines with an expanding panel and bottom footer", async ({ page }) => {
   for (const width of [1280, 390, 330]) {
     await page.setViewportSize({ width, height: 900 });
     for (const count of [0, 1, 12]) {
@@ -213,9 +213,9 @@ test("keeps every image prompt panel fixed with a bottom footer and no parameter
         const p = (await panel.boundingBox())!;
         const f = (await footer.boundingBox())!;
         const e = (await editor.boundingBox())!;
-        expect(p.height).toBe(217);
+        expect(p.height).toBeGreaterThanOrEqual(283);
         expect(p.y + p.height - f.y - f.height).toBe(13);
-        expect(e.height).toBeGreaterThan(40);
+        expect(e.height).toBe(154);
         expect(e.y + e.height).toBeLessThanOrEqual(f.y);
         expect(await panel.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       };
@@ -254,6 +254,7 @@ test("keeps the video audio icon beside Run with typed support and exact submitt
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/tests/browser/agent-canvas-manual-prompt-mock.html?audioToggle=off");
     const toggle = page.getByRole("button", { name: "Generate audio", exact: true });
+    const subtitles = page.getByRole("button", { name: "Generate subtitles", exact: true });
     const run = page.getByRole("button", { name: "Run video node" });
     const ratio = page.locator("footer").getByLabel("Aspect ratio");
     await expect(page.getByRole("checkbox", { name: "Generate audio" })).toHaveCount(0);
@@ -261,10 +262,12 @@ test("keeps the video audio icon beside Run with typed support and exact submitt
     await expect(page.getByTestId("video-toolbar-parameters")).toHaveText("null");
     const initial = (await toggle.boundingBox())!;
     const r = (await run.boundingBox())!;
+    const s = (await subtitles.boundingBox())!;
     const p = (await ratio.boundingBox())!;
     expect(initial.width).toBe(32);
     expect(initial.height).toBe(32);
-    expect(initial.x + initial.width + 8).toBeCloseTo(r.x, 0);
+    expect(initial.x + initial.width + 4).toBeCloseTo(s.x, 0);
+    expect(s.x + s.width + 8).toBeCloseTo(r.x, 0);
     expect(initial.y + initial.height / 2).toBeCloseTo(r.y + r.height / 2, 0);
     if (width > 600) {
       expect(initial.x).toBeGreaterThanOrEqual(p.x + p.width);
@@ -273,20 +276,12 @@ test("keeps the video audio icon beside Run with typed support and exact submitt
       expect(initial.y).toBeGreaterThanOrEqual(p.y + p.height);
     }
     const icon = toggle.locator(".agent-node-workbench__audio-icon");
-    const renderedIcon = await icon.evaluate(async (element) => {
-      const iconUrl = getComputedStyle(element).maskImage.slice(5, -2);
-      const image = new Image();
-      image.src = iconUrl;
-      await image.decode();
-      const svg = new DOMParser().parseFromString(await (await fetch(iconUrl)).text(), "image/svg+xml");
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = 48;
-      const context = canvas.getContext("2d")!;
-      context.drawImage(image, 0, 0, 48, 48);
-      const pixels = context.getImageData(0, 0, 48, 48).data;
-      return { viewBox: svg.documentElement.getAttribute("viewBox"), nonblank: pixels.some((value, index) => index % 4 === 3 && value > 0) };
+    const renderedIcon = await icon.evaluate((element) => {
+      const bounds = (element as SVGGraphicsElement).getBBox();
+      return { viewBox: element.getAttribute("viewBox"), nonblank: bounds.width > 0 && bounds.height > 0 };
     });
-    expect(renderedIcon).toEqual({ viewBox: "0 0 48 48", nonblank: true });
+    expect(renderedIcon).toEqual({ viewBox: "0 0 24 24", nonblank: true });
+    const mutedShape = await icon.locator("path").last().getAttribute("d");
     await toggle.hover();
     await expect(page.getByRole("tooltip")).toHaveText("开启视频音频生成");
     await toggle.focus();
@@ -294,13 +289,15 @@ test("keeps the video audio icon beside Run with typed support and exact submitt
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(await toggle.boundingBox()).toEqual(initial);
     await expect(toggle).toHaveCSS("color", "rgb(245, 245, 245)");
-    await expect(toggle).toHaveCSS("border-top-color", "rgb(163, 163, 163)");
+    await expect(toggle).toHaveCSS("border-top-width", "0px");
+    await expect(subtitles).toHaveCSS("border-top-width", "0px");
+    expect(await icon.locator("path").last().getAttribute("d")).not.toBe(mutedShape);
     await page.getByLabel("Choose model").click();
     await page.getByRole("option", { name: "Silent model", exact: true }).click();
     await expect(toggle).toBeDisabled();
     await expect(toggle).toHaveCSS("color", "rgb(112, 112, 112)");
     await toggle.locator("..").hover();
-    await expect(page.getByRole("tooltip")).toHaveText("当前模型不支持生成音频");
+    await expect(page.getByRole("tooltip")).toHaveText("The current model does not support audio generation");
     await toggle.evaluate((element) => (element as HTMLButtonElement).click());
     await expect(page.getByTestId("video-toolbar-parameters")).toHaveText("null");
     await page.getByLabel("Choose model").click();
@@ -322,7 +319,7 @@ test("keeps the video audio icon beside Run with typed support and exact submitt
   await expect(page.getByTestId("video-toolbar-parameters")).toHaveText("null");
 });
 
-test("keeps a manually created Video workbench at 217px with its controls pinned to the bottom", async ({ page }) => {
+test("expands a manually created Video workbench around seven prompt lines with bottom controls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/tests/browser/agent-canvas-manual-prompt-mock.html?manualVideo=1");
 
@@ -337,9 +334,9 @@ test("keeps a manually created Video workbench at 217px with its controls pinned
   const assetBounds = (await asset.boundingBox())!;
   const modelBounds = (await model.boundingBox())!;
 
-  expect(panelBounds.height).toBeCloseTo(217, 0);
+  expect(panelBounds.height).toBeGreaterThanOrEqual(283);
   expect(panelBounds.y + panelBounds.height - footerBounds.y - footerBounds.height).toBeCloseTo(13, 0);
-  expect(editorBounds.height).toBeGreaterThan(88);
+  expect(editorBounds.height).toBe(154);
   expect(Math.abs(assetBounds.y + assetBounds.height / 2 - modelBounds.y - modelBounds.height / 2)).toBeLessThan(2);
   expect(await panel.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
   await expect(panel.locator(".agent-node-workbench__prompt-preparation")).toHaveCount(0);
@@ -378,14 +375,16 @@ test("reuses image menu styling for video controls without clipping", async ({ p
     }
     await expect(toolbar.getByLabel("Audio mode")).toHaveCount(0);
     await duration.fill("8");
-    await expect(duration).toHaveCSS("border-top-color", "rgb(163, 163, 163)");
+    await expect(duration.locator("..").locator("span")).toHaveText("s");
+    expect(await toolbar.innerText()).not.toMatch(/Duration|Ratio|Resolution/);
+    await expect(duration).toHaveCSS("border-top-width", "0px");
     await expect(duration).toHaveCSS("box-shadow", "none");
     await expect(duration).toHaveCSS("outline-style", "none");
     for (const [trigger, label, value] of [[resolution, "Resolution", "1080p"], [ratio, "Aspect ratio", "9:16"]] as const) {
       expect(await trigger.locator(":scope > span").first().evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       await expect(trigger).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await trigger.click();
-      await expect(trigger).toHaveCSS("border-top-color", "rgb(163, 163, 163)");
+      await expect(trigger).toHaveCSS("border-top-width", "0px");
       const menu = page.getByRole("listbox", { name: label, exact: true });
       await expect(menu).toHaveCSS("background-color", "rgb(32, 32, 32)");
       await expect(menu.locator("small, em")).toHaveCount(0);
@@ -401,7 +400,7 @@ test("reuses image menu styling for video controls without clipping", async ({ p
     const modelMenu = page.getByRole("listbox", { name: "Compatible models" });
     await expect(modelMenu).toHaveCSS("background-color", "rgb(32, 32, 32)");
     await expect(modelMenu.locator("small, em")).toHaveCount(0);
-    await expect(model).toHaveCSS("border-top-color", "rgb(163, 163, 163)");
+    await expect(model).toHaveCSS("border-top-width", "0px");
     await page.keyboard.press("Escape");
     await expect(model).toBeFocused();
     await resolution.focus();
@@ -567,3 +566,41 @@ test("keeps a non-empty prompt editable while preparation is not ready", async (
     await expect(page.getByRole("button", { name: "Run image node" })).toBeVisible();
   }
 });
+
+for (const type of ["image", "video", "audio", "text", "script"] as const) {
+  test(`shows seven complete prompt lines and aligns scrolling in ${type} panels`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`/tests/browser/agent-canvas-manual-prompt-mock.html?promptPreparing=${type}&references=5`);
+      await page.getByRole("button", { name: "Mark prompt ready", exact: true }).click();
+      const panel = page.getByRole("region", { name: `${type} node workbench` });
+      const editor = panel.getByRole("textbox");
+      await expect(editor).toHaveAttribute("rows", "7");
+      await expect(editor).toHaveCSS("line-height", "22px");
+      await expect(editor).toHaveCSS("height", "154px");
+      await expect(editor).toHaveCSS("padding-top", "0px");
+      await expect(editor).toHaveCSS("padding-bottom", "0px");
+      await editor.fill(Array.from({ length: 39 }, (_, i) => `第${i + 1}行，完整显示 Prompt line ${i + 1} gjpqÁÉ`).join("\n"));
+      await editor.evaluate(element => { element.scrollTop = 0; });
+      await editor.hover();
+      await page.mouse.wheel(0, 50);
+      await expect.poll(() => editor.evaluate(element => element.scrollTop)).toBe(154);
+      await editor.evaluate(element => { element.scrollTop = 35; });
+      await expect.poll(() => editor.evaluate(element => element.scrollTop)).toBe(44);
+      await editor.evaluate(element => { element.scrollTop = element.scrollHeight; });
+      await expect.poll(() => editor.evaluate(element => element.scrollTop % 22)).toBe(0);
+      const bounds = await editor.evaluate(element => {
+        const panel = element.closest(".agent-node-workbench")!;
+        const editor = element.getBoundingClientRect();
+        const refs = panel.querySelector(".agent-node-workbench__references")!.getBoundingClientRect();
+        const footer = panel.querySelector("footer")!.getBoundingClientRect();
+        return { clientHeight: element.clientHeight, aboveFooter: editor.bottom <= footer.top,
+          belowReferences: editor.top >= refs.bottom, panelHeight: panel.getBoundingClientRect().height,
+          overflows: panel.scrollHeight > panel.clientHeight + 1 };
+      });
+      expect(bounds).toMatchObject({ clientHeight: 154, aboveFooter: true, belowReferences: true, overflows: false });
+      expect(bounds.panelHeight).toBeGreaterThanOrEqual(283);
+      if (type === "video") await page.screenshot({ path: `/tmp/adcraft-seven-lines-${width}.png` });
+    }
+  });
+}

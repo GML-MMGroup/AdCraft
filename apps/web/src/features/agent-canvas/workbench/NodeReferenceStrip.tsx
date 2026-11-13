@@ -6,6 +6,7 @@ import type {
 import { mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { REFERENCE_IMAGE_REJECTION_LABEL } from "./referenceImageRejection.ts";
 
 function referencePreview(asset: AgentCanvasWorkflowV2["assets"][number] | undefined | null): string | null {
   if (!asset) return null;
@@ -43,9 +44,11 @@ export function NodeReferenceStrip({
   deleteBinding,
   pending,
   perform,
+  rejectedBindingId = null,
 }: {
   workflow: AgentCanvasWorkflowV2;
   node: CanvasNodeV2;
+  rejectedBindingId?: string | null;
   deleteBinding?: (bindingId: string) => Promise<void>;
   pending: boolean;
   perform: (action: () => Promise<unknown>) => Promise<boolean>;
@@ -63,12 +66,14 @@ export function NodeReferenceStrip({
         {inboundBindings.map((binding, index) => {
           const source = sourcePresentation(workflow, binding);
           const label = binding.label || source.name || `${t("Reference")} ${index + 1}`;
+          const rejected = binding.binding_id === rejectedBindingId;
+          const warning = t(REFERENCE_IMAGE_REJECTION_LABEL);
           return (
             <article
               key={binding.binding_id}
-              className={`${source.previewUrl ? "is-media" : "is-text"}${!binding.enabled ? " is-disabled" : ""}`}
-              title={label}
-              aria-label={source.previewUrl ? undefined : `${label} ${t("text reference")}`}
+              className={`${source.previewUrl ? "is-media" : "is-text"}${!binding.enabled ? " is-disabled" : ""}${rejected ? " is-rejected" : ""}`}
+              title={rejected ? `${label} · ${warning}` : label}
+              aria-label={rejected ? `${label} · ${warning}` : source.previewUrl ? undefined : `${label} ${t("text reference")}`}
             >
               {source.previewUrl ? (
                 <StableMediaPreview src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
@@ -77,6 +82,7 @@ export function NodeReferenceStrip({
                   <DocumentIcon />
                 </span>
               )}
+              {rejected ? <span className="agent-node-workbench__reference-warning" aria-hidden="true">!</span> : null}
               <button
                 type="button"
                 aria-label={t("Remove {label} reference", { label })}

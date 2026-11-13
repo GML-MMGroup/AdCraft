@@ -121,6 +121,11 @@ describe("useAgentCanvasRuntime", () => {
     api.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: workflow, etag: "\"workflow-r1\"" });
     api.agentCanvasNode.mockResolvedValue({ node_id: "image-1" } as CanvasNodeV2);
     api.openAgentCanvasEventStream.mockReturnValue(new EventSourceStub());
+    api.runAgentCanvas.mockImplementation(async (workflowId, request) => ({
+      workflow_id: workflowId, execution_id: "execution-1", status: "queued",
+      accepted_node_ids: request.node_ids, joined_node_ids: [], skipped: [], waiting_node_ids: [],
+      run_intent_snapshot_ids: {}, events_cursor: 43,
+    }));
   });
 
   afterEach(() => {

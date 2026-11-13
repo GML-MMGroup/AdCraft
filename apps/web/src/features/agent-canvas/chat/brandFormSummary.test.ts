@@ -85,19 +85,6 @@ describe("projectBrandSummaries", () => {
     expect(projectBrandSummaries({ ...decisions("production"), mode: "creation" }, items, answers)).toEqual([]);
   });
 
-  it.each([
-    ["brand-memory", "Let's start with the brand basics. Which brand settings should this ad follow?"],
-    ["campaign", "Now the campaign brief: what should this ad achieve, and where will it run?"],
-  ] as const)("asks the current %s question before showing any confirmed or prefilled answer", (stage, question) => {
-    const exchanges = projectBrandSummaries(decisions(stage), items, answers, { showCurrentQuestion: true });
-    const pending = exchanges.find((exchange) => exchange.stage === stage);
-
-    expect(pending?.question).toBe(question);
-    expect(pending?.rows).toEqual([]);
-    expect(pending!.sequence).toBeGreaterThan(17);
-    expect(exchanges.every((exchange) => exchange === pending || exchange.sequence < pending!.sequence)).toBe(true);
-  });
-
   it("lists each selected value without option details, in form order", () => {
     const [brand, campaign, skills] = projectBrandSummaries(decisions("production"), items, answers);
 
@@ -112,13 +99,32 @@ describe("projectBrandSummaries", () => {
     ]);
   });
 
-  it("places each summary between the preceding conversation and the next Brand stage", () => {
-    const [brand, campaign, skills] = projectBrandSummaries(decisions("production"), items, answers);
+  it.each([true, false])("places skills immediately after Campaign when early confirmation is %s", (earlyConfirmed) => {
+    const [brand, campaign, skills] = projectBrandSummaries(
+      { ...decisions("production"), early_skills_confirmed: earlyConfirmed }, items, answers,
+    );
 
     expect(brand!.sequence).toBeGreaterThan(6);
     expect(campaign!.sequence).toBeGreaterThan(brand!.sequence);
     expect(campaign!.sequence).toBeLessThan(7);
-    expect(skills!.sequence).toBeGreaterThan(8);
-    expect(skills!.sequence).toBeLessThan(9);
+    expect(skills!.sequence).toBeGreaterThan(campaign!.sequence);
+    expect(skills!.sequence).toBeLessThan(7);
   });
+
+  it("pairs the skill summary with the latest recorded question at its original position", () => {
+    const earlier = { ...answer("skill-stack-early", 3), sequence: 6.5 };
+    const latest = { ...answer("skill-stack", 6), sequence: 8.5 };
+    const skills = projectBrandSummaries(decisions("production"), items, [latest, ...answers, earlier])
+      .find(summary => summary.stage === "skill-stack")!;
+    expect(skills.answer).toBe(latest);
+    expect(skills.sequence).toBe(latest.sequence);
+  });
+});
+
+
+it("shows an early confirmed combination with directions, but never treats recommendations as confirmed", () => {
+  const panel = decisions("hypothesis");
+  expect(projectBrandSummaries(panel, [], []).some(item => item.stage === "skill-stack-early")).toBe(false);
+  const selected = projectBrandSummaries({ ...panel, early_skills_confirmed: true }, [], []);
+  expect(selected.find(item => item.stage === "skill-stack-early")?.rows.map(row => row.value).join(" ")).toContain("Private Ritual");
 });

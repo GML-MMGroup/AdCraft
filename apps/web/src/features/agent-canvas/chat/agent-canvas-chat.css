@@ -1,13 +1,15 @@
+@import "../../../styles/workflow-panels.css";
+
 .agent-chat {
-  --agent-chat-canvas: #0a0a0a;
-  --agent-chat-panel: #151515;
-  --agent-chat-raised: #202020;
-  --agent-chat-selected: #292929;
-  --agent-chat-border: #353535;
-  --agent-chat-strong-line: #4a4a4a;
-  --agent-chat-primary: #f5f5f5;
-  --agent-chat-secondary: #a3a3a3;
-  --agent-chat-muted: #707070;
+  --agent-chat-canvas: var(--surface-input);
+  --agent-chat-panel: var(--nav-bg);
+  --agent-chat-raised: var(--surface-raised);
+  --agent-chat-selected: var(--surface-selected);
+  --agent-chat-border: var(--border-default);
+  --agent-chat-strong-line: var(--border-strong);
+  --agent-chat-primary: var(--text-primary);
+  --agent-chat-secondary: var(--text-secondary);
+  --agent-chat-muted: var(--text-disabled);
 
   position: absolute;
   z-index: 14;
@@ -139,24 +141,35 @@
 .agent-chat__header {
   display: grid;
   flex: 0 0 auto;
-  min-height: 92px;
+  min-height: 56px;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--agent-chat-border);
+  padding: 10px 14px;
+  border-bottom: 0;
   background: var(--agent-chat-panel);
 }
 
 .agent-chat__identity {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 3px;
+  align-items: center;
+  gap: 8px;
 }
 
-.agent-chat__header > .agent-execution-mode {
-  grid-column: 1 / -1;
-  justify-content: space-between;
+.agent-chat__logo {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.agent-chat__identity > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-chat__header > .agent-chat__recipe {
@@ -312,7 +325,7 @@
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: var(--agent-chat-strong-line) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
@@ -433,11 +446,22 @@
   animation: agent-chat-message-in 260ms cubic-bezier(.23, 1, .32, 1) both;
 }
 
-.agent-chat__message-identity {
-  color: var(--agent-chat-secondary);
-  font-size: 10px;
-  font-weight: 620;
-  line-height: 1.3;
+.agent-chat__message-avatar {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  width: 30px;
+  height: 30px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.agent-chat__message-avatar img {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
 }
 
 .agent-chat__message-body {
@@ -579,8 +603,14 @@
 
 .agent-chat__message--agent {
   width: fit-content;
-  max-width: min(86%, 520px);
+  max-width: min(100%, 558px);
   align-self: flex-start;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.agent-chat__message--agent > :not(.agent-chat__message-avatar) {
+  grid-column: 2;
 }
 
 .agent-chat__message--agent > span {
@@ -596,44 +626,6 @@
   border-radius: 12px;
   background: var(--agent-chat-raised);
   color: var(--agent-chat-primary);
-}
-
-.agent-chat__message--user .agent-chat__message-body::before,
-.agent-chat__message--agent .agent-chat__message-body--agent-bubble::before,
-.agent-chat__message--user .agent-chat__message-body::after,
-.agent-chat__message--agent .agent-chat__message-body--agent-bubble::after {
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  pointer-events: none;
-}
-
-.agent-chat__message--user .agent-chat__message-body::before,
-.agent-chat__message--agent .agent-chat__message-body--agent-bubble::before {
-  content: "";
-  bottom: -7px;
-  border-width: 7px 7px 0 0;
-  border-color: var(--agent-chat-border) transparent transparent transparent;
-}
-
-.agent-chat__message--user .agent-chat__message-body::after,
-.agent-chat__message--agent .agent-chat__message-body--agent-bubble::after {
-  content: "";
-  bottom: -5px;
-  border-width: 5px 5px 0 0;
-  border-color: var(--agent-chat-raised) transparent transparent transparent;
-}
-
-.agent-chat__message--agent .agent-chat__message-body--agent-bubble::before,
-.agent-chat__message--agent .agent-chat__message-body--agent-bubble::after {
-  left: 12px;
-}
-
-.agent-chat__message--user .agent-chat__message-body::before,
-.agent-chat__message--user .agent-chat__message-body::after {
-  right: 12px;
-  transform: scaleX(-1);
 }
 
 .agent-chat__message--agent :is(p, .agent-chat__markdown) {
@@ -699,17 +691,10 @@
   display: grid;
   gap: 16px;
   width: 100%;
-  /* Keep the answer tail inside the virtualized item's paint boundary. */
-  padding-bottom: 8px;
 }
 
 .agent-chat__guided-question-bubble {
   animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
-}
-
-.agent-chat__pending-question {
-  /* Keep the tail inside the virtualized row's paint containment. */
-  padding-bottom: 8px;
 }
 
 .agent-chat__guided-question-bubble .agent-chat__message-body {
@@ -766,8 +751,6 @@
 
 .agent-chat__proposal-reply {
   display: grid;
-  /* Keep the answer tail inside the virtualized item's paint boundary. */
-  padding-bottom: 8px;
 }
 
 .agent-chat__message-skill {
@@ -810,7 +793,7 @@
   min-width: 0;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
+  min-height: 48px;
   line-height: 1.3;
 }
 
@@ -869,6 +852,16 @@
   gap: 2px;
 }
 
+.agent-chat__activity .agent-chat__capability-identity-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.agent-chat__activity .agent-chat__capability-identity-copy > span {
+  flex-shrink: 0;
+}
+
 .agent-chat__capability-identity-copy strong {
   min-width: 0;
   overflow: hidden;
@@ -919,7 +912,7 @@
   display: grid;
   min-width: 0;
   gap: 7px;
-  margin: 3px 0 0 41px;
+  margin: 3px 0 0 57px;
   padding-left: 13px;
   border-left: 1px solid var(--agent-chat-border);
 }
@@ -958,9 +951,9 @@
 
 .agent-chat__capability-icon {
   display: block;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -987,20 +980,20 @@
 .agent-chat__role-generic {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  height: 100%;
   border: 1px solid currentColor;
   border-radius: 50%;
   color: var(--agent-role-accent, currentColor);
-  font-size: 18px;
+  font-size: 26px;
 }
 
 .agent-chat__role-animation-frame {
   position: relative;
   display: block;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   pointer-events: none;
 }
 
@@ -1008,16 +1001,16 @@
   position: absolute;
   inset: 0;
   display: block;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   transition: opacity 120ms cubic-bezier(.23, 1, .32, 1);
 }
 
 .agent-chat__role-animation-artwork > svg {
   display: block;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  height: 100%;
 }
 
 .agent-chat__role-animation-asset.is-hidden {
@@ -1157,6 +1150,27 @@
 
 .agent-chat__working-loader {
   color: var(--agent-chat-secondary);
+}
+
+.agent-chat__working-text {
+  white-space: pre;
+}
+
+.agent-chat__working-character {
+  /* A shared cycle clears every character together; each reveal is a hard step. */
+  animation: agent-chat-type-character var(--typing-cycle)
+    linear(0 0%, 0 var(--character-reveal), 1 var(--character-reveal), 1 100%) infinite;
+}
+
+@keyframes agent-chat-type-character {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__working-character {
+    animation: none;
+  }
 }
 
 .agent-chat__artifact {
@@ -1310,7 +1324,7 @@
 }
 
 .agent-chat__stage-thread--loading {
-  min-height: 48px;
+  min-height: 64px;
   align-items: center;
 }
 
@@ -1330,7 +1344,7 @@
 
 .agent-chat__stage-thread > header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
@@ -2261,6 +2275,10 @@ button.agent-chat__node-links--related:hover {
   max-height: min(68vh, 620px);
 }
 
+.agent-chat__current-interaction--overlay:has(> .agent-chat__decision-dock--concept) {
+  max-height: min(68dvh, 620px);
+}
+
 .agent-chat__decision-dock--brand-form:not(.is-expanded) {
   max-height: min(50vh, 480px);
 }
@@ -2289,6 +2307,11 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__timeline-shell:has(> .agent-chat__current-interaction--overlay:not([hidden])) > .agent-chat__timeline {
   flex: 1 1 0;
   min-height: clamp(88px, 16vh, 180px);
+}
+
+/* Leave room for the selection hint, all four directions and the confirmation footer. */
+.agent-chat__timeline-shell:has(> .agent-chat__current-interaction--overlay:not([hidden]) > .agent-chat__decision-dock--concept) > .agent-chat__timeline {
+  min-height: 32px;
 }
 
 .agent-chat__interaction-collapse {
@@ -2373,7 +2396,7 @@ button.agent-chat__node-links--related:hover {
   padding: 0 2px;
   overflow-y: hidden;
   overscroll-behavior: contain;
-  scrollbar-color: var(--agent-chat-strong-line) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-width: thin;
   resize: none;
   border: 0;
@@ -2429,7 +2452,7 @@ button.agent-chat__node-links--related:hover {
 :is(.agent-chat__timeline, .agent-chat__composer textarea)::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
-  background: var(--agent-chat-strong-line);
+  background: var(--scrollbar-thumb);
   background-clip: padding-box;
 }
 
@@ -2440,11 +2463,11 @@ button.agent-chat__node-links--related:hover {
 }
 
 :root :is(.agent-chat__timeline, .agent-chat__composer textarea) {
-  scrollbar-color: var(--agent-chat-strong-line) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 :root :is(.agent-chat__timeline, .agent-chat__composer textarea)::-webkit-scrollbar-thumb {
-  background: var(--agent-chat-strong-line);
+  background: var(--scrollbar-thumb);
   background-clip: padding-box;
 }
 
@@ -2531,15 +2554,15 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__style-overlay {
-  --style-panel: #181818;
-  --style-header: #1c1c1c;
-  --style-surface: #222222;
-  --style-surface-hover: #282828;
-  --style-border: #383838;
-  --style-divider: #2c2c2c;
-  --style-text: #f2f2f2;
-  --style-secondary: #a0a0a0;
-  --style-muted: #707070;
+  --style-panel: var(--surface-card);
+  --style-header: var(--nav-bg);
+  --style-surface: var(--surface-raised);
+  --style-surface-hover: var(--surface-selected);
+  --style-border: var(--border-strong);
+  --style-divider: var(--border-default);
+  --style-text: var(--text-primary);
+  --style-secondary: var(--text-secondary);
+  --style-muted: var(--text-disabled);
   position: fixed;
   z-index: 100;
   inset: 0;
@@ -2694,9 +2717,9 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__style-categories button[aria-selected="true"] {
-  border-color: #e5e5e5;
-  background: #e5e5e5;
-  color: #181818;
+  border-color: var(--brand);
+  background: var(--surface-selected);
+  color: var(--text-primary);
 }
 
 .agent-chat__style-categories button:not([aria-selected="true"]):hover {
@@ -2786,9 +2809,9 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__style-menu .agent-chat__style-option.is-selected {
-  border-color: var(--agent-chat-primary);
-  background: var(--style-surface);
-  box-shadow: inset 0 0 0 1px var(--agent-chat-primary);
+  border-color: var(--brand);
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px var(--brand);
 }
 
 .agent-chat__style-menu .agent-chat__style-option:disabled {
@@ -2898,9 +2921,9 @@ button.agent-chat__node-links--related:hover {
   height: 25px;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid var(--style-text);
-  background: var(--style-panel);
-  color: var(--style-text);
+  border: 1px solid var(--brand);
+  background: var(--surface-raised);
+  color: var(--text-primary);
 }
 
 .agent-chat__style-selected-mark svg {
@@ -3178,7 +3201,7 @@ button.agent-chat__node-links--related:hover {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: var(--agent-chat-strong-line) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-width: thin;
 }
 
@@ -3189,7 +3212,7 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__decision-dock-body::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
-  background: var(--agent-chat-strong-line);
+  background: var(--scrollbar-thumb);
   background-clip: padding-box;
 }
 
@@ -3729,26 +3752,6 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__concept-choice-custom-input textarea:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.agent-chat__concept-choice-custom-input > button {
-  justify-self: end;
-  min-height: 29px;
-  padding: 0 11px;
-  border: 1px solid var(--agent-chat-primary);
-  border-radius: 7px;
-  background: var(--agent-chat-primary);
-  color: var(--agent-chat-panel);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.agent-chat__concept-choice-custom-input > button:disabled {
-  border-color: var(--agent-chat-strong-line);
-  background: var(--agent-chat-strong-line);
-  color: var(--agent-chat-muted);
-  cursor: not-allowed;
 }
 
 .agent-chat__brand-form-jump {
@@ -4691,7 +4694,7 @@ button.agent-chat__node-links--related:hover {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: var(--agent-chat-strong-line) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-width: thin;
 }
 
@@ -4985,4 +4988,346 @@ button.agent-chat__node-links--related:hover {
     transition: none !important;
     transform: none !important;
   }
+}
+
+/* Choice cards: the body owns scrolling; header and form actions stay in place. */
+.agent-chat__decision-dock:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) {
+  --choice-accent: var(--brand);
+  --choice-selected: var(--surface-selected);
+  border-color: var(--border-default);
+  border-radius: 13px;
+  background: var(--surface-card);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%), inset 0 1px 0 rgb(255 255 255 / 3%);
+}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-header {
+  gap: 8px;
+  padding: 15px 16px 13px;
+  border-bottom-color: var(--border-default);
+  background: var(--surface-card);
+}
+
+.agent-chat__decision-dock-eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+}
+
+.agent-chat__decision-dock-eyebrow > span:last-child:not(:first-child) {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-header > strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-header > p {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-body {
+  gap: 10px;
+  padding: 12px;
+  scrollbar-gutter: stable;
+}
+
+/* Flex items retain their full height when Custom expands. Grid auto tracks can
+   shrink the options track below its wrapped content and overlap the input. */
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-body {
+  display: flex;
+  flex-direction: column;
+}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-body > * {
+  flex: 0 0 auto;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__decision-dock-options {
+  gap: 8px;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option {
+  position: relative;
+  grid-template-columns: 25px minmax(0, 1fr) 16px;
+  gap: 10px;
+  align-items: start;
+  margin: 0;
+  padding: 12px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option-index {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option-copy { gap: 6px; }
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option-copy strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option-copy strong em {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--brand);
+  border-radius: 4px;
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-size: 9px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option-copy > span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option-check {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  margin-top: 4px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option.is-selected {
+  border-color: var(--choice-accent);
+  background: var(--choice-selected);
+  box-shadow: inset 2px 0 0 var(--choice-accent);
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-selected .agent-chat__proposal-option-index,
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-selected .agent-chat__proposal-option-check {
+  border-color: var(--choice-accent);
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+.agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option.is-custom {
+  border-style: dashed;
+  background: transparent;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-custom .agent-chat__proposal-option-index {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 21px;
+  font-weight: 400;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-custom .agent-chat__proposal-option-copy {gap: 2px;}
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-custom .agent-chat__proposal-option-copy > span {font-size: 10px;}
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-custom.is-selected {background: var(--choice-selected);}
+
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-table {gap: 16px; border: 0; border-radius: 0; background: transparent;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-row {gap: 10px; padding: 0 0 16px; border-bottom-color: var(--border-default);}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-row:last-child {padding-bottom: 0;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-prompt {align-items: center; gap: 8px;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-prompt strong {font-size: 12px; line-height: 1.65;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-row-number {color: var(--text-primary); font-size: 11px;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-prompt em {color: var(--text-secondary);}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-options {gap: 7px;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option {gap: 10px; padding: 11px 10px; border-color: var(--border-default); border-radius: 8px; background: var(--surface-raised);}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option-mark {margin-top: 2px; border-color: var(--border-strong);}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option-copy {gap: 4px;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option-copy strong {font-size: 12px; line-height: 1.5;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option-copy small {color: var(--text-secondary); font-size: 11px; line-height: 1.6;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option.is-custom {border-style: dashed; background: transparent;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option.is-custom small {font-size: 10px;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option.is-selected {border-color: var(--choice-accent); background: var(--choice-selected);}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option.is-selected .agent-chat__brand-form-option-mark {background: var(--surface-raised); border-color: var(--choice-accent); color: var(--text-primary);}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) :is(.agent-chat__brand-form-custom-input input, .agent-chat__concept-choice-custom-input textarea) {
+  padding: 10px 11px;
+  border-color: var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-input);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__concept-choice-custom-input {padding: 2px 0 0;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-custom-input > span,
+.agent-chat__decision-dock--concept .agent-chat__concept-choice-custom-input label > span {color: var(--text-secondary); font-size: 11px;}
+
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-footer {grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px 14px; border-top-color: var(--border-default); background: var(--surface-raised);}
+.agent-chat__decision-dock--brand-form .agent-chat__decision-dock-footer > span {font-size: 11px; line-height: 1.6;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-jump {display: block; margin: 3px 0 0; color: var(--text-primary); font-size: 10px; text-decoration-color: var(--brand);}
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-footer > button {min-height: 34px; border-radius: 8px; padding-inline: 13px; background: var(--surface-raised); border-color: var(--brand); color: var(--text-primary); font-size: 11px; font-weight: 600; cursor: pointer;}
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-footer > button:disabled {background: var(--surface-raised); border-color: var(--border-strong); color: var(--text-secondary); cursor: not-allowed;}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option:focus-visible,
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option:has(input:focus-visible),
+:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) :is(input, textarea, button):focus-visible {
+  outline: 2px solid var(--choice-accent);
+  outline-offset: 2px;
+}
+
+.agent-chat__decision-dock--concept .agent-chat__proposal-option:disabled {cursor: default; opacity: 0.6;}
+.agent-chat__decision-dock--concept .agent-chat__proposal-option.is-selected:disabled {opacity: 1;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option:has(input:disabled) {cursor: default; opacity: 0.65;}
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option.is-selected:has(input:disabled) {opacity: 1;}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-footer > button:hover:not(:disabled) {border-color: var(--brand-hover); background: var(--surface-hover);}
+  .agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option:hover:not(:disabled):not(.is-selected),
+  .agent-chat__decision-dock--brand-form .agent-chat__brand-form-option:hover:has(input:not(:disabled)):not(.is-selected) {border-color: var(--brand); background: var(--surface-raised);}
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option,
+  .agent-chat__decision-dock--brand-form .agent-chat__brand-form-option {transition: none;}
+}
+
+.agent-chat__current-interaction--overlay :is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) .agent-chat__decision-dock-header {
+  padding-right: 44px;
+}
+
+.agent-chat__decision-dock--brand-form .agent-chat__brand-form-option.is-selected:hover {
+  border-color: var(--choice-accent);
+  background: var(--choice-selected);
+}
+
+@media (max-width: 380px) {
+  .agent-chat__decision-dock--brand-form .agent-chat__decision-dock-footer {grid-template-columns: minmax(0, 1fr);}
+}
+
+/* Conversation presentation: open Agent copy, quiet user bubbles, compact decisions. */
+.agent-chat .agent-chat__timeline-content { gap: 22px; padding: 22px 18px 18px; }
+.agent-chat .agent-chat__timeline-virtualized { gap: 22px; }
+.agent-chat .agent-chat__message--agent { width: 100%; column-gap: 11px; }
+.agent-chat .agent-chat__message-avatar { margin-top: 2px; }
+.agent-chat .agent-chat__message--agent .agent-chat__message-body--agent-bubble {
+  width: 100%; padding: 3px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+.agent-chat .agent-chat__message--agent :is(p, .agent-chat__markdown) {
+  color: var(--text-primary); font-size: 13px; line-height: 1.85; letter-spacing: .015em;
+}
+.agent-chat .agent-chat__markdown :is(h1, h2, h3, h4) { margin-block: 16px 7px; font-size: 14px; line-height: 1.6; font-weight: 600; color: var(--text-primary); }
+.agent-chat .agent-chat__markdown :is(h1, h2, h3, h4):first-child { margin-top: 0; }
+.agent-chat .agent-chat__markdown p + p { margin-top: 12px; }
+.agent-chat .agent-chat__markdown :is(ul, ol) { padding-left: 18px; }
+.agent-chat .agent-chat__markdown li { margin-block: 5px; }
+.agent-chat .agent-chat__message--user { max-width: 88%; }
+.agent-chat .agent-chat__message--user .agent-chat__message-body {
+  border: 0; border-radius: 14px; padding: 11px 14px; background: var(--surface-raised); color: var(--text-primary); box-shadow: none;
+}
+.agent-chat .agent-chat__message--user p { font-size: 13px; line-height: 1.75; }
+.agent-chat .agent-chat__message-meta { min-height: 0; height: 0; position: relative; }
+.agent-chat .agent-chat__message-meta time { position: absolute; right: 0; top: 0; font-size: 9px; }
+.agent-chat .agent-chat__guided-answer-pair { gap: 0; }
+.agent-chat .agent-chat__guided-answer-pair:has(> .agent-chat__guided-question-bubble) { gap: 16px; }
+.agent-chat__selection-receipt {
+  --selection-accent: var(--brand-hover);
+  min-width: 0; margin-left: 41px; border: 1px solid var(--selection-accent); border-radius: 10px;
+  background: var(--surface-card); color: var(--text-primary); overflow: hidden;
+  box-shadow: 0 0 0 1px rgb(178 192 237 / 12%);
+}
+.agent-chat__selection-receipt summary,
+.agent-chat__selection-receipt-summary {
+  display: flex; align-items: center; gap: 10px; min-width: 0; padding: 11px 12px; list-style: none;
+}
+.agent-chat__selection-receipt summary { cursor: pointer; transition: background-color 140ms ease; }
+.agent-chat__selection-receipt summary::-webkit-details-marker { display: none; }
+.agent-chat__selection-receipt summary:hover { background: var(--surface-raised); }
+.agent-chat__selection-receipt summary:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: -3px; border-radius: 9px; }
+.agent-chat__selection-receipt-mark { display: grid; flex: 0 0 20px; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: var(--surface-selected); color: var(--selection-accent); }
+.agent-chat__selection-receipt-mark svg { width: 12px; height: 12px; }
+.agent-chat__selection-receipt-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.agent-chat__selection-receipt-copy small {
+  width: fit-content; font-size: 10px; font-weight: 400; color: var(--selection-accent);
+}
+.agent-chat__selection-receipt-copy strong { font-size: 12px; font-weight: 500; line-height: 1.65; overflow-wrap: anywhere; }
+.agent-chat__selection-receipt summary > svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--selection-accent); transition: transform 140ms ease; }
+.agent-chat__selection-receipt details[open] > summary > svg { transform: rotate(180deg); }
+.agent-chat__selection-receipt-detail { padding: 0 13px 13px 42px; }
+.agent-chat__selection-receipt-value { display: block; margin: 0; color: var(--text-primary); font-size: 13px; font-weight: 500; line-height: 1.7; overflow-wrap: anywhere; }
+.agent-chat__selection-receipt-detail > p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.8; overflow-wrap: anywhere; }
+.agent-chat__selection-receipt .agent-chat__selection-list { margin: 0; gap: 10px; }
+.agent-chat__selection-receipt .agent-chat__selection-list > div { gap: 4px; }
+.agent-chat__selection-receipt .agent-chat__selection-list dt { color: var(--text-secondary); font-size: 11px; }
+.agent-chat__selection-receipt .agent-chat__selection-list dd { margin: 0; color: var(--text-primary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+
+/* Keep the current decision visually attached to the conversation and its actions reachable. */
+.agent-chat .agent-chat__current-interaction--overlay { padding: 12px 14px 0; background: transparent; }
+.agent-chat .agent-chat__timeline-shell:has(> .agent-chat__current-interaction--overlay:not([hidden]) > .agent-chat__decision-dock--concept) > .agent-chat__timeline {
+  min-height: 88px;
+}
+.agent-chat .agent-chat__decision-dock:is(.agent-chat__decision-dock--concept, .agent-chat__decision-dock--brand-form) {
+  --choice-accent: var(--brand); --choice-selected: var(--surface-selected);
+  border-color: var(--border-strong); border-radius: 15px; background: var(--surface-card); box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-header { gap: 7px; padding: 14px 42px 12px 15px; }
+.agent-chat .agent-chat__decision-dock-eyebrow { color: var(--text-primary); font-size: 10px; letter-spacing: .04em; }
+.agent-chat .agent-chat__decision-dock-header > strong { color: var(--text-primary); font-size: 14px; line-height: 1.65; font-weight: 550; }
+.agent-chat .agent-chat__decision-dock-header > p { color: var(--text-secondary); font-size: 11px; line-height: 1.7; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-body { padding: 0 10px 10px; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-options { gap: 5px; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option {
+  padding: 10px; gap: 9px; border-color: transparent; background: var(--surface-raised); border-radius: 9px;
+}
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__proposal-option-index { width: 23px; height: 23px; border: 0; background: var(--surface-raised); color: var(--text-secondary); border-radius: 6px; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__proposal-option-copy { gap: 3px; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__proposal-option-copy strong { font-size: 12px; line-height: 1.6; font-weight: 550; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__proposal-option-copy > span { font-size: 11px; line-height: 1.6; color: var(--text-secondary); }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-options .agent-chat__proposal-option.is-selected { border-color: var(--brand); background: var(--surface-selected); box-shadow: none; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__proposal-option.is-selected .agent-chat__proposal-option-index { background: var(--surface-raised); color: var(--text-primary); }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-footer { background: transparent; border-color: var(--border-default); padding: 10px 12px; }
+.agent-chat .agent-chat__decision-dock--concept .agent-chat__decision-dock-footer > button { min-height: 36px; font-size: 12px; padding-inline: 18px; border-radius: 8px; }
+.agent-chat .agent-chat__interaction-collapse { top: 22px; right: 25px; border: 0; background: transparent; }
+.agent-chat .agent-chat__interaction-chip { margin: 10px 14px 0; border-radius: 10px; box-shadow: none; }
+.agent-chat .agent-chat__composer { margin: 14px; border-radius: 13px; box-shadow: none; background: var(--surface-raised); border-color: var(--border-default); }
+.agent-chat .agent-chat__composer textarea { font-size: 13px; line-height: 1.7; }
+@media (max-width: 420px) {
+  .agent-chat .agent-chat__timeline-content { padding-inline: 14px; }
+  .agent-chat__selection-receipt { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__selection-receipt summary, .agent-chat__selection-receipt summary > svg { transition: none; }
 }

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { guidedInteractionCopy } from "./guidedInteractionCopy.ts";
 
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
@@ -43,7 +45,7 @@ function isSelectable(candidate: GuidedReferenceCandidateV2): boolean {
     && Boolean(candidate.asset_id && candidate.asset_version_id);
 }
 
-function referenceLabel(referenceKind: GuidedReferenceKindV1): string {
+function referenceLabel(referenceKind: GuidedReferenceKindV1) {
   return referenceKind === "character_main" ? "Character reference" : "Scene reference";
 }
 
@@ -60,6 +62,9 @@ export function ReferenceSourceDecisionDock({
   issue,
   onSubmit,
 }: ReferenceSourceDecisionDockProps) {
+  const t = useTranslation();
+  // Translate fixed API copy without rewriting custom questions or asset names.
+  const copy = (text: string) => guidedInteractionCopy(text, t);
   const content = interaction.content.content_kind === "reference_source"
     ? interaction.content
     : null;
@@ -218,29 +223,35 @@ export function ReferenceSourceDecisionDock({
 
   return (
     <DecisionDockFrame
-      title={content.question}
+      title={copy(content.question)}
       context={content.reference_kind === "character_main"
-        ? `${occurrenceLabel ?? referenceLabel(content.reference_kind)} · Main`
-        : "Scene · Main"}
+        ? t("{name} · Main", { name: occurrenceLabel ?? t(referenceLabel(content.reference_kind)) })
+        : t("Scene · Main")}
       pending={pending || preparing}
-      issue={effectiveIssue}
+      issue={effectiveIssue ? {
+        ...effectiveIssue,
+        summary: copy(effectiveIssue.summary),
+        detail: effectiveIssue.detail ? copy(effectiveIssue.detail) : null,
+      } : null}
       showSubmitBar={false}
     >
       <p className="agent-chat__reference-source-target">
-        Target node · {content.target_node_id} · revision {content.target_node_revision}
+        {t("Target node · {nodeId} · revision {revision}", {
+          nodeId: content.target_node_id, revision: content.target_node_revision,
+        })}
       </p>
       <div className="agent-chat__reference-source-picker">
-        <div className="agent-chat__reference-source-modes" role="tablist" aria-label="Reference source">
+        <div className="agent-chat__reference-source-modes" role="tablist" aria-label={t("Reference source")}>
           <button type="button" role="tab" aria-selected={sourceMode === "upload"} onClick={() => setSourceMode("upload")}>
-            Upload
+            {t("Upload")}
           </button>
           <button type="button" role="tab" aria-selected={sourceMode === "library"} onClick={() => setSourceMode("library")}>
-            Asset Library
+            {t("Asset Library")}
           </button>
         </div>
         {sourceMode === "library" ? (
           <>
-            <div className="agent-chat__reference-source-scopes" role="tablist" aria-label="Asset library scope">
+            <div className="agent-chat__reference-source-scopes" role="tablist" aria-label={t("Asset library scope")}>
               {(["project", "mine", "recommended"] as const).map((candidateScope) => (
                 <button
                   key={candidateScope}
@@ -253,27 +264,27 @@ export function ReferenceSourceDecisionDock({
                     setSelected(null);
                   }}
                 >
-                  {candidateScope === "project" ? "Project" : candidateScope === "mine" ? "My Assets" : "Recommended"}
+                  {t(candidateScope === "project" ? "Project" : candidateScope === "mine" ? "My Assets" : "Recommended")}
                 </button>
               ))}
             </div>
             <input
-              aria-label="Search reference assets"
+              aria-label={t("Search reference assets")}
               type="search"
               value={query}
               disabled={busy}
-              placeholder="Search reference assets"
+              placeholder={t("Search reference assets")}
               onChange={(event) => setQuery(event.currentTarget.value)}
             />
-            <div className="agent-chat__reference-source-assets" aria-label="Reference candidates">
-              {candidates.loading ? <p role="status">Loading reference assets</p> : null}
+            <div className="agent-chat__reference-source-assets" aria-label={t("Reference candidates")}>
+              {candidates.loading ? <p role="status">{t("Loading reference assets")}</p> : null}
               {!candidates.loading && candidates.error ? (
                 <div role="alert">
-                  <span>{candidates.error}</span>
-                  <button type="button" disabled={busy} onClick={() => void candidates.retry()}>Retry</button>
+                  <span>{copy(candidates.error)}</span>
+                  <button type="button" disabled={busy} onClick={() => void candidates.retry()}>{t("Retry")}</button>
                 </div>
               ) : null}
-              {!candidates.loading && !candidates.error && candidates.items.length === 0 ? <p>No reference assets available</p> : null}
+              {!candidates.loading && !candidates.error && candidates.items.length === 0 ? <p>{t("No reference assets available")}</p> : null}
               {!candidates.loading && !candidates.error ? candidates.items.map((candidate) => {
                 const selectable = isSelectable(candidate);
                 const selectedItem = selected?.assetId === candidate.asset_id
@@ -283,7 +294,7 @@ export function ReferenceSourceDecisionDock({
                     key={`${candidate.asset_id}:${candidate.asset_version_id}`}
                     type="button"
                     className={selectedItem ? "is-selected" : undefined}
-                    aria-label={`Select ${candidate.display_name}`}
+                    aria-label={t("Select {name}", { name: candidate.display_name })}
                     aria-pressed={selectedItem}
                     disabled={busy || !selectable}
                     onClick={() => selectCandidate(candidate)}
@@ -295,7 +306,7 @@ export function ReferenceSourceDecisionDock({
               }) : null}
               {candidates.hasMore ? (
                 <button type="button" disabled={busy || candidates.loadingMore} onClick={() => void candidates.loadMore()}>
-                  {candidates.loadingMore ? "Loading" : "Load more"}
+                  {t(candidates.loadingMore ? "Loading" : "Load more")}
                 </button>
               ) : null}
             </div>
@@ -303,26 +314,26 @@ export function ReferenceSourceDecisionDock({
         ) : (
           <>
             <label>
-              <span>Upload reference</span>
-              <input aria-label="Upload reference" type="file" accept="image/*" disabled={busy} onChange={selectFile} />
+              <span>{t("Upload reference")}</span>
+              <input aria-label={t("Upload reference")} type="file" accept="image/*" disabled={busy} onChange={selectFile} />
             </label>
-            <p className="agent-chat__reference-source-limit">单张参考图不应超过 4 MB。</p>
+            <p className="agent-chat__reference-source-limit">{t("Each reference image must be no larger than 4 MB.")}</p>
           </>
         )}
         {selected ? (
           <div className="agent-chat__reference-source-selected">
             {selected.previewUrl ? <StableMediaPreview src={selected.previewUrl} alt="" /> : null}
             <span>{selected.displayName}</span>
-            <button type="button" disabled={busy} onClick={() => setSelected(null)}>Remove</button>
+            <button type="button" disabled={busy} onClick={() => setSelected(null)}>{t("Remove")}</button>
           </div>
         ) : null}
       </div>
-      <div className="agent-chat__decision-dock-secondary-actions" aria-label="Reference source actions">
+      <div className="agent-chat__decision-dock-secondary-actions" aria-label={t("Reference source actions")}>
         <button type="button" disabled={busy || !selected} onClick={() => void submit("use_reference")}>
-          {content.use_reference_label}
+          {copy(content.use_reference_label)}
         </button>
         <button type="button" disabled={busy} onClick={() => void submit("skip_reference")}>
-          {content.skip_reference_label}
+          {copy(content.skip_reference_label)}
         </button>
       </div>
     </DecisionDockFrame>

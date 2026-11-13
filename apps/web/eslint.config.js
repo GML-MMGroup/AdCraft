@@ -17,7 +17,7 @@ export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "cutia/**/*.{ts,tsx}"],
     languageOptions: {
       parserOptions: {
         ecmaFeatures: {

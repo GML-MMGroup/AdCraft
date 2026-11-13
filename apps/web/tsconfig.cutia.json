@@ -1,0 +1,38 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": [
+        "./vendor/cutia/src/*"
+      ],
+      "@cutia/ui/icons": [
+        "./vendor/cutia/ui/icons/index.tsx"
+      ],
+      "@i18next-toolkit/nextjs-approuter": [
+        "./cutia/adapters/i18n.tsx"
+      ],
+      "next/image": [
+        "./cutia/adapters/image.tsx"
+      ],
+      "@/stores/agent-store": [
+        "./cutia/adapters/agent-store.ts"
+      ],
+      "@/lib/tts/service": [
+        "./cutia/adapters/tts.ts"
+      ],
+      "@/lib/transcription/import": [
+        "./cutia/adapters/captions.ts"
+      ]
+    }
+  },
+  "include": [
+    "cutia",
+    "src/features/agent-canvas/editing/cutia",
+    "tests/browser/agent-canvas-editing-mock.tsx",
+    "tests/browser/agent-canvas-editing-mock.spec.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ]
+}

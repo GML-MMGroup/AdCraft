@@ -229,7 +229,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   }, [labels, moveProjectToTrash, savedProjects, selectedProjects, selectionBusy, toggleProjectFavorite]);
 
   return (
-    <section className="content-wrap">
+    <section className="content-wrap projects-page">
       <PageHeader title={labels.title} editorial />
       <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">

@@ -143,7 +143,7 @@ function RuntimePanelFixture() {
           <button onClick={() => failArtwork()}>Fail artwork</button>
         </> : null}
         <p>使用正式对话面板、状态投影和动画组件。数据为确定性测试夹具，不连接真实项目。</p>
-        <p>右侧 32px 角色图标由各自的活动和 Turn 驱动。全局 Workflow 状态不用于播放判断。</p>
+        <p>右侧 48px 角色图标由各自的活动和 Turn 驱动。全局 Workflow 状态不用于播放判断。</p>
         <button onClick={() => refresh(() => begin())}>New parallel attempt</button>
         <button onClick={() => refresh(() => begin(true))}>Run all ten roles</button>
         <button onClick={() => refresh(() => {

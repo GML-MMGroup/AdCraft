@@ -12,9 +12,9 @@ export interface PlayableEditingSequence {
 }
 
 export function isBackendReadyEditingVideo(input: EditingVideoInput): boolean {
+  // A later attempt's state must not hide the last successful output asset.
   return input.entry.enabled
-    && input.asset?.status === "ready"
-    && (input.node === null || input.node.status === "ready");
+    && input.asset?.status === "ready";
 }
 
 export function isPlayableEditingVideo(input: EditingVideoInput): boolean {

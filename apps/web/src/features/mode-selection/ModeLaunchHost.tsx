@@ -3,13 +3,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "../../components/Layout";
 import { ModeLaunchContext } from "./ModeLaunchContext";
-import { useOptionalApp } from "../../AppContextValue.ts";
 
 const ModeSelectionPage = lazy(() => import("../../pages/ModeSelectionPage").then(module => ({ default: module.ModeSelectionPage })));
 
 export function ModeLaunchHost() {
   const t = useTranslation();
-  const agentCanvasWorkflow = useOptionalApp()?.agentCanvasWorkflow;
   const location = useLocation();
   const navigate = useNavigate();
   const choosing = location.pathname === "/projects/new";
@@ -58,7 +56,7 @@ export function ModeLaunchHost() {
     ready, finish, revealing: active && revealing, preparing: active, keyboard,
   }}>
     {!choosing && <div ref={layer} tabIndex={-1} inert={active}>
-      <Layout workflowId={location.pathname.startsWith("/workflow") ? agentCanvasWorkflow?.workflow_id : null}><Suspense fallback={<div className="agent-canvas-state">{t("Opening project…")}</div>}><Outlet /></Suspense></Layout>
+      <Layout><Suspense fallback={<div className="agent-canvas-state">{t("Opening project…")}</div>}><Outlet /></Suspense></Layout>
     </div>}
     {overlay && <Suspense fallback={<div className="mode-launch-loading">{t("Opening mode selection…")}</div>}>
       <ModeSelectionPage />

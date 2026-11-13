@@ -18,24 +18,46 @@ async function expectUnclipped(row: Locator) {
   await expect(row).toHaveCSS("content-visibility", "auto");
 }
 
+test("Agent avatar is ready with the bubble even when image requests are unavailable", async ({ page }) => {
+  await page.route("**/*", route => route.request().resourceType() === "image"
+    ? route.abort()
+    : route.continue());
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  const first = page.locator(item("first"));
+  await expect(first.locator(".agent-chat__message-body")).toBeVisible();
+  // Check after paint, without polling until a separate image eventually loads.
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  expect(await first.getByRole("img", { name: "AdCraft" }).evaluate(element => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalWidth > 0;
+  })).toBe(true);
+});
+
 for (const width of [390, 720]) {
-  test(`guided answer tails remain inside the paint boundary at width ${width}`, async ({ page }) => {
+  test(`guided bubbles have no tails and remain inside the paint boundary at width ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 740 });
     await page.goto(`${url}?guided-only`);
     for (const key of ["guided-short", "guided-long"]) {
       const row = page.locator(item(key));
-      const bubble = row.locator(".agent-chat__guided-answer-bubble .agent-chat__message-body");
-      await bubble.scrollIntoViewIfNeeded();
       await expect(row).toHaveCSS("content-visibility", "auto");
-      await expect.poll(() => bubble.evaluate(element => {
-        const rect = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        const tail = getComputedStyle(element, "::before");
-        const tailBottom = rect.bottom - parseFloat(style.borderBottomWidth) - parseFloat(tail.bottom);
-        const boundary = element.closest(".agent-chat__timeline-virtualized-item")!.getBoundingClientRect();
-        return tail.content !== "none" && parseFloat(tail.borderTopWidth) > 0
-          && tailBottom <= boundary.bottom + 0.1;
-      })).toBe(true);
+      const question = row.getByRole("article", { name: "Agent question" });
+      await expect(question).toHaveCount(1);
+      await expect(question).toBeVisible();
+      await expect(question).toHaveText("What should this advertisement communicate?");
+      await expect(row.locator("details")).not.toHaveAttribute("open");
+      for (const bubble of await row.locator(".agent-chat__message-body").all()) {
+        await bubble.scrollIntoViewIfNeeded();
+        await expect.poll(() => bubble.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const boundary = element.closest(".agent-chat__timeline-virtualized-item")!.getBoundingClientRect();
+          return getComputedStyle(element, "::before").content === "none"
+            && getComputedStyle(element, "::after").content === "none"
+            && rect.top >= boundary.top - 0.1
+            && rect.bottom <= boundary.bottom + 0.1;
+        })).toBe(true);
+      }
       await expect(row.locator(".agent-chat__guided-answer-pair")).toHaveCSS("row-gap", "16px");
     }
   });
@@ -48,8 +70,9 @@ for (const width of [390, 720]) {
       const rect = (key: string) => document.querySelector(`[data-timeline-key="${key}"]`)!.getBoundingClientRect();
       return { compact: rect("continued").top - rect("first").bottom, normal: rect("user").top - rect("continued").bottom };
     });
-    expect(gaps.compact).toBeCloseTo(8, 0);
-    expect(gaps.normal).toBeCloseTo(16, 0);
+    // The current conversation layout uses a 22px gap and an 8px continuation inset.
+    expect(gaps.compact).toBeCloseTo(14, 0);
+    expect(gaps.normal).toBeCloseTo(22, 0);
     await expect(page.locator(`${item("continued")} article`)).toHaveCSS("margin-top", "0px");
   });
 }

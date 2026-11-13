@@ -27,10 +27,12 @@ export function AgentCanvasMediaGenerationLoader({
   mediaType,
   nodeId,
   overMedia = false,
+  statusLabel,
 }: {
   mediaType: "image" | "video";
   nodeId: string;
   overMedia?: boolean;
+  statusLabel?: string;
 }) {
   return (
     <div
@@ -40,7 +42,7 @@ export function AgentCanvasMediaGenerationLoader({
         overMedia ? "agent-canvas-node__working--over-media" : "",
       ].filter(Boolean).join(" ")}
       role="status"
-      aria-label={`Generating ${mediaType}`}
+      aria-label={statusLabel ?? `Generating ${mediaType}`}
       style={mediaGenerationLoaderDelays(nodeId)}
     >
       <span

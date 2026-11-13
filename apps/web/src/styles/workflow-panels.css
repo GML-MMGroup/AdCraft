@@ -1,0 +1,16 @@
+/* Workflow panels keep neutral surfaces; blue is reserved for their outlines. */
+:where(.agent-chat, .agent-chat__style-overlay, .brand-decision-panel, .brand-treatment-review, .brand-form-confirmation) {
+  --nav-bg: #151515;
+  --surface-card: #202020;
+  --surface-raised: #262626;
+  --surface-input: #141414;
+  --surface-selected: #292929;
+  --surface-hover: #303030;
+  --text-primary: #f2f2f2;
+  --text-secondary: #a3a3a3;
+  --text-disabled: #707070;
+  --text-inverse: #171717;
+  --scrollbar-thumb: #525252;
+  --border-default: color-mix(in srgb, var(--brand) 24%, #292929);
+  --border-strong: color-mix(in srgb, var(--brand) 46%, #292929);
+}

@@ -85,7 +85,7 @@ describe("BrandFormInteraction", () => {
     expect(draft.disabled).toBe(false);
     expect(screen.getAllByRole("radio").every(input => !(input as HTMLInputElement).checked)).toBe(true);
     expect(screen.queryByRole("textbox", { name: "Custom content: Who is this for?" })).toBeNull();
-    expect(screen.getByText("The product is a draft. Explicitly choose an answer in every row.")).toBeTruthy();
+    expect(screen.getByText("The product is a draft. Explicitly choose an answer in every row.", { exact: false })).toBeTruthy();
     expect(screen.queryByText("Choose one direction per row. Select Custom before entering your own answer.")).toBeNull();
     fireEvent.change(draft, { target: { value: "  Custom skateboard  " } });
     view.rerender(<BrandFormInteraction interaction={prefilledInteraction()} pending={false} issue={null} onSubmit={submit} />);

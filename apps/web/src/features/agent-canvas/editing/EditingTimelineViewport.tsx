@@ -8,7 +8,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 
 import {
@@ -16,6 +15,9 @@ import {
   pixelsToTime,
   timeToPixels,
 } from "./editingTimelineMath.ts";
+
+import { frameTime } from "./editingManualActions.ts";
+import { useEditingText } from "./editingMessages.ts";
 
 const TRACK_LABEL_WIDTH = 124;
 const TIME_GUTTER_WIDTH = 18;
@@ -30,6 +32,9 @@ export interface EditingTimelineViewportRenderState {
 interface EditingTimelineViewportProps {
   children: (state: EditingTimelineViewportRenderState) => ReactNode;
   duration: number;
+  zoom?: number;
+  fps?: number;
+  playing?: boolean;
   playheadSeconds: number;
   onPlayheadChange: (seconds: number) => void;
 }
@@ -39,14 +44,15 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function timeLabel(value: number): string {
-  const totalSeconds = Math.max(0, Math.round(value));
+  const totalSeconds = Math.max(0, Math.floor(value));
   const minutes = Math.floor(totalSeconds / 60);
-  return `${minutes}:${String(totalSeconds % 60).padStart(2, "0")}`;
+  const fraction = value % 1 > .001 ? (value % 1).toFixed(2).slice(1) : "";
+  return `${minutes}:${String(totalSeconds % 60).padStart(2, "0")}${fraction}`;
 }
 
 function tickInterval(pixelsPerSecond: number): number {
   const minimumSeconds = pixelsPerSecond > 0 ? 72 / pixelsPerSecond : 1;
-  const magnitude = 10 ** Math.floor(Math.log10(Math.max(1, minimumSeconds)));
+  const magnitude = 10 ** Math.floor(Math.log10(Math.max(.001, minimumSeconds)));
   return [1, 2, 5, 10].map((factor) => factor * magnitude)
     .find((candidate) => candidate >= minimumSeconds) ?? 10 * magnitude;
 }
@@ -54,9 +60,14 @@ function tickInterval(pixelsPerSecond: number): number {
 export function EditingTimelineViewport({
   children,
   duration,
+  zoom = 1,
+  fps = 30,
+  playing = false,
   onPlayheadChange,
   playheadSeconds,
 }: EditingTimelineViewportProps) {
+  const t = useEditingText();
+  const previousScaleRef = useRef(0);
   const viewportRef = useRef<HTMLDivElement>(null);
   const playheadDragCancelRef = useRef<(() => void) | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -78,29 +89,45 @@ export function EditingTimelineViewport({
   const timeViewportWidth = Math.max(1, availableTrackWidth - 2 * TIME_GUTTER_WIDTH);
   const timeOrigin = TRACK_LABEL_WIDTH + TIME_GUTTER_WIDTH;
   const fitScale = fitPixelsPerSecond(timeViewportWidth, safeDuration);
-  const pixelsPerSecond = fitScale;
+  const pixelsPerSecond = fitScale * Math.max(1, Math.min(16, zoom));
   const contentWidth = Math.max(timeViewportWidth, timeToPixels(safeDuration, pixelsPerSecond));
   const timeScrollSurfaceWidth = TIME_GUTTER_WIDTH + contentWidth + TIME_GUTTER_WIDTH;
   const maxScrollLeft = Math.max(0, timeScrollSurfaceWidth - availableTrackWidth);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || scrollLeft <= maxScrollLeft) return;
-    viewport.scrollLeft = maxScrollLeft;
-    setScrollLeft(maxScrollLeft);
-  }, [maxScrollLeft, scrollLeft]);
+    if (!viewport) return;
+    const previousScale = previousScaleRef.current;
+    previousScaleRef.current = pixelsPerSecond;
+    let next = viewport.scrollLeft;
+    if (previousScale > 0 && previousScale !== pixelsPerSecond) {
+      const anchor = Math.max(0, Math.min(timeViewportWidth, playheadSeconds * previousScale - next));
+      next = playheadSeconds * pixelsPerSecond - anchor;
+    } else if (playing) {
+      const position = playheadSeconds * pixelsPerSecond;
+      if (position < next || position > next + timeViewportWidth) next = position - timeViewportWidth * .2;
+    }
+    next = clamp(next, 0, maxScrollLeft);
+    if (Math.abs(viewport.scrollLeft - next) > .5) {
+      viewport.scrollLeft = next;
+      setScrollLeft(next);
+    }
+  }, [maxScrollLeft, pixelsPerSecond, playheadSeconds, playing, timeViewportWidth]);
 
-  const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+  useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-
-    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-    const nextScrollLeft = clamp(scrollLeft + delta, 0, maxScrollLeft);
-    if (nextScrollLeft === scrollLeft) return;
-    event.preventDefault();
-    viewport.scrollLeft = nextScrollLeft;
-    setScrollLeft(nextScrollLeft);
-  };
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) return;
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      const next = clamp(viewport.scrollLeft + delta, 0, maxScrollLeft);
+      if (next === viewport.scrollLeft) return;
+      event.preventDefault();
+      viewport.scrollLeft = next;
+    };
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  }, [maxScrollLeft]);
 
   const updatePlayheadFromClientX = (clientX: number) => {
     const viewport = viewportRef.current;
@@ -160,11 +187,11 @@ export function EditingTimelineViewport({
   const onPlayheadKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      onPlayheadChange(Math.max(0, playheadSeconds - 1));
+      onPlayheadChange(Math.max(0, playheadSeconds - 1 / fps));
     }
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1));
+      onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1 / fps));
     }
     if (event.key === "Home") {
       event.preventDefault();
@@ -204,6 +231,8 @@ export function EditingTimelineViewport({
   };
 
   const contentStyle = {
+    "--editing-major-tick-width": `${tickInterval(pixelsPerSecond) * pixelsPerSecond}px`,
+    "--editing-minor-tick-width": `${tickInterval(pixelsPerSecond) * pixelsPerSecond / 5}px`,
     "--agent-editing-timeline-content-width": `${contentWidth}px`,
     "--agent-editing-timeline-time-gutter": `${TIME_GUTTER_WIDTH}px`,
     width: TRACK_LABEL_WIDTH + timeScrollSurfaceWidth,
@@ -216,7 +245,6 @@ export function EditingTimelineViewport({
         className="agent-editing-timeline-viewport__scroller"
         data-testid="timeline-scroll-viewport"
         onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
-        onWheel={onWheel}
       >
         <div className="agent-editing-timeline-viewport__content" style={contentStyle}>
           <div
@@ -230,13 +258,17 @@ export function EditingTimelineViewport({
             aria-valuenow={playheadSeconds}
             onClick={(event) => seekFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())}
             onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1));
-              if (event.key === "ArrowRight") onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1));
+              if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) event.preventDefault();
+              if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1 / fps));
+              if (event.key === "ArrowRight") onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1 / fps));
               if (event.key === "Home") onPlayheadChange(0);
               if (event.key === "End") onPlayheadChange(safeDuration);
             }}
           >
-            <div className="agent-editing-timeline-viewport__ruler-label" aria-hidden="true">Time</div>
+            <div className="agent-editing-timeline-viewport__ruler-label" aria-hidden="true">
+              <strong>{frameTime(playheadSeconds, fps)}</strong>
+              <small>{fps} FPS · {t("Time")}</small>
+            </div>
             <div className="agent-editing-timeline-viewport__ruler" style={{ width: contentWidth }} aria-hidden="true">
               {ticks.map((tick) => (
                 <span key={tick} style={{ left: timeToPixels(tick, pixelsPerSecond) }}>

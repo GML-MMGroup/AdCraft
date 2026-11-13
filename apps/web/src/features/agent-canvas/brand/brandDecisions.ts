@@ -7,6 +7,8 @@ export type BrandStageV2 =
   | "campaign"
   | "hypothesis"
   | "adspec"
+  | "creative-route"
+  | "skill-stack-early"
   | "skill-stack"
   | "treatment"
   | "production";
@@ -165,6 +167,8 @@ export interface BrandBriefSummary {
   unresolved_fields: string[];
 }
 export interface BrandTreatmentDocument {
+  full_script?: { title: string; screenplay: string } | null;
+  review?: { source_content_digest: string } | null;
   schema_version: string;
   brand_profile: BrandBriefSummary;
   campaign_brief: BrandBriefSummary;

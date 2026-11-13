@@ -1,4 +1,6 @@
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
+import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage } from "node:http";
 import { API_METADATA_CACHE_CONTROL, isVersionedAgentIconRequest, isVersionedAssetContentRequest, mediaCacheControl, VERSIONED_AGENT_ICON_CACHE_CONTROL } from "./mediaCachePolicy";
@@ -53,9 +55,22 @@ function configureAgentIconCache() {
 }
 
 export default defineConfig({
-  plugins: [react(), configureAgentIconCache(), agentRoleRetryPlugin()],
+  plugins: [react(), tailwindcss(), configureAgentIconCache(), agentRoleRetryPlugin()],
+  resolve: {
+    alias: {
+      "@/stores/agent-store": fileURLToPath(new URL("./cutia/adapters/agent-store.ts", import.meta.url)),
+      "@/lib/tts/service": fileURLToPath(new URL("./cutia/adapters/tts.ts", import.meta.url)),
+      "@/lib/transcription/import": fileURLToPath(new URL("./cutia/adapters/captions.ts", import.meta.url)),
+      "@/components/editor/panels/properties/text-speech-panel": fileURLToPath(new URL("./cutia/adapters/text-speech-panel.tsx", import.meta.url)),
+      "@i18next-toolkit/nextjs-approuter": fileURLToPath(new URL("./cutia/adapters/i18n.tsx", import.meta.url)),
+      "next/image": fileURLToPath(new URL("./cutia/adapters/image.tsx", import.meta.url)),
+      "@cutia/ui/icons": fileURLToPath(new URL("./vendor/cutia/ui/icons/index.tsx", import.meta.url)),
+      "@": fileURLToPath(new URL("./vendor/cutia/src", import.meta.url)),
+    },
+  },
   build: {
     rollupOptions: {
+      input: { app: "index.html", cutia: "cutia-editor.html" },
       output: {
         manualChunks(id) {
           if (id.includes("vite/preload-helper")) {

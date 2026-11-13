@@ -1,10 +1,13 @@
+import { NodeWorkbenchFeedback } from "./NodeWorkbenchFeedback.tsx";
 import { Link } from "react-router-dom";
 
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import type { CanvasNodeErrorV2 } from "../../../types-v2.ts";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { referenceImageRejection, REFERENCE_IMAGE_REJECTION_MESSAGE } from "./referenceImageRejection.ts";
 
 function executionErrorMessage(message: string): string {
+  if (referenceImageRejection(message)) return REFERENCE_IMAGE_REJECTION_MESSAGE;
   const detail = message.split(/\r?\npayload=/, 1)[0] ?? "";
   if (/\bSetLimitExceeded\b/i.test(detail)) {
     return "The model's usage limit was reached (SetLimitExceeded). Check its usage limit and Safe Experience Mode in the Ark console before running again.";
@@ -24,26 +27,28 @@ export function NodeWorkbenchError({ draft, executionError }: {
   const t = useTranslation("en-US");
   if (draft.promptSaveStatus === "conflict") {
     return (
-      <div className="agent-node-workbench__error" role="alert">
-        <span>{t("This prompt was changed elsewhere. Review the latest workflow before continuing.")}</span>
-        <button
-          type="button"
-          disabled={draft.pending}
-          onClick={() => void draft.retryPromptSave()}
-        >
-          {t("Retry local prompt")}
-        </button>
-        <button
-          type="button"
-          disabled={draft.pending}
-          onClick={() => {
-            draft.discardPromptChanges();
-            void draft.refreshWorkflow?.();
-          }}
-        >
-          {t("Discard local prompt")}
-        </button>
-      </div>
+      <NodeWorkbenchFeedback>
+        <div className="agent-node-workbench__error" role="alert">
+          <span>{t("This prompt was changed elsewhere. Review the latest workflow before continuing.")}</span>
+          <button
+            type="button"
+            disabled={draft.pending}
+            onClick={() => void draft.retryPromptSave()}
+          >
+            {t("Retry local prompt")}
+          </button>
+          <button
+            type="button"
+            disabled={draft.pending}
+            onClick={() => {
+              draft.discardPromptChanges();
+              void draft.refreshWorkflow?.();
+            }}
+          >
+            {t("Discard local prompt")}
+          </button>
+        </div>
+      </NodeWorkbenchFeedback>
     );
   }
   const message = draft.error ?? (executionError ? executionErrorMessage(executionError.message) : null);
@@ -54,11 +59,13 @@ export function NodeWorkbenchError({ draft, executionError }: {
   }
   const action = draft.error ? draft.errorAction : null;
   return (
-    <p className="agent-node-workbench__error" role="alert">
-      <span>{message}</span>
-      {action === "open_api_space" ? <Link to="/api-space">{t("Configure provider")}</Link> : null}
-      {action === "sync_models" ? <Link to="/api-space">{t("Sync models")}</Link> : null}
-      {action === "choose_model" ? <span> {t("Choose a compatible model below.")}</span> : null}
-    </p>
+    <NodeWorkbenchFeedback>
+      <p className="agent-node-workbench__error" role="alert">
+        <span>{message === REFERENCE_IMAGE_REJECTION_MESSAGE ? t(REFERENCE_IMAGE_REJECTION_MESSAGE) : message}</span>
+        {action === "open_api_space" ? <Link to="/api-space">{t("Configure provider")}</Link> : null}
+        {action === "sync_models" ? <Link to="/api-space">{t("Sync models")}</Link> : null}
+        {action === "choose_model" ? <span> {t("Choose a compatible model below.")}</span> : null}
+      </p>
+    </NodeWorkbenchFeedback>
   );
 }

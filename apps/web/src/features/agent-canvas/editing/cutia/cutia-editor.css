@@ -1,0 +1,18 @@
+.cutia-editor-panel { position: fixed; inset: 12px; z-index: 120; display: flex; flex-direction: column; overflow: hidden; min-width: 0; border: 1px solid #3a3a3a; border-radius: 12px; background: #171717; color: #ededed; box-shadow: 0 12px 80px #0008; }
+.cutia-editor-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #333; background: #262626; }
+.cutia-editor-title, .cutia-editor-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cutia-editor-title strong { font-size: 13px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cutia-editor-title span, .cutia-editor-actions > span { font-size: 11px; color: #aaa; }
+.cutia-editor-actions { flex-wrap: wrap; }
+.cutia-editor-panel button, .cutia-editor-panel select { font: inherit; font-size: 12px; color: #eee; background: #343434; border: 1px solid #4a4a4a; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
+.cutia-editor-panel button:hover { background: #434343; }
+.cutia-editor-panel button:disabled { opacity: .4; cursor: default; }
+.cutia-editor-panel .cutia-export-button { color: white; background: #2769df; border-color: #3b7cf0; }
+.cutia-editor-panel .cutia-close-button { font-size: 22px; line-height: 20px; padding: 3px 8px; background: transparent; border-color: transparent; }
+.cutia-editor-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #171717; }
+.cutia-editor-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 14px; background: #3b2424; font-size: 12px; color: #ffc9c9; }
+.cutia-editor-error > span { flex: 1; min-width: 160px; overflow-wrap: anywhere; }
+@media(max-width:760px) { .cutia-editor-panel { inset: 0; border-radius: 0; }.cutia-editor-header { padding: 8px; }.cutia-editor-title strong { max-width: 160px; }.cutia-editor-actions { gap: 5px; }.cutia-editor-panel button, .cutia-editor-panel select { padding: 5px 7px; } }
+
+.cutia-editor-notice { margin: 0; padding: 6px 14px; font-size: 12px; color: #d4c19c; background: #302b22; }
+.cutia-editor-actions select { max-width: 220px; }

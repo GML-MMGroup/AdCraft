@@ -3,7 +3,7 @@ import type { UiMessageKey } from "../../../i18n/uiMessages.ts";
 import type { BrandDecisionPanelV1, BrandSlotValueV1, BrandStageV2 } from "../brand/brandDecisions.ts";
 import { isPersistedGuidedAnswerMessage, type GuidedAnswerBubbleV1 } from "./guidedAnswerPresentation.ts";
 
-export type BrandSummaryStage = "brand-memory" | "campaign" | "skill-stack";
+export type BrandSummaryStage = "brand-memory" | "campaign" | "skill-stack" | "skill-stack-early";
 
 export interface BrandSummaryRow {
   key: string;
@@ -13,33 +13,28 @@ export interface BrandSummaryRow {
 }
 
 /**
- * Foundation questions appear when their guided stage starts, before the form loads.
- * Confirmed choices are rebuilt from the Brand decisions read model and appended
- * to the same exchange once that stage is complete. Pending questions have no rows.
+ * Confirmed choices are rebuilt from the Brand decisions read model once their
+ * stage is complete. Agent questions come from the conversation and interactions.
  */
 export interface BrandSummaryExchange {
   key: string;
   stage: BrandSummaryStage;
-  question: UiMessageKey;
   rows: BrandSummaryRow[];
   sequence: number;
+  answer?: GuidedAnswerBubbleV1;
 }
 
 const STAGE_ORDER: BrandStageV2[] = [
   "brand-memory",
   "campaign",
+  "skill-stack-early",
   "hypothesis",
   "adspec",
+  "creative-route",
   "skill-stack",
   "treatment",
   "production",
 ];
-
-const QUESTIONS: Record<BrandSummaryStage, UiMessageKey> = {
-  "brand-memory": "Let's start with the brand basics. Which brand settings should this ad follow?",
-  campaign: "Now the campaign brief: what should this ad achieve, and where will it run?",
-  "skill-stack": "Which creative methods and audiovisual style should drive this ad?",
-};
 
 const SLOT_LABELS: ReadonlyArray<readonly [string, UiMessageKey]> = [
   ["brand_product_identity", "Product"],
@@ -141,7 +136,6 @@ export function projectBrandSummaries(
   decisions: BrandDecisionPanelV1 | null | undefined,
   items: readonly ChatTimelineItemV2[],
   answers: readonly GuidedAnswerBubbleV1[],
-  { showCurrentQuestion = false }: { showCurrentQuestion?: boolean } = {},
 ): BrandSummaryExchange[] {
   if (!decisions || decisions.mode !== "brand") return [];
   const current = stageIndex(decisions.journey.stage);
@@ -153,27 +147,37 @@ export function projectBrandSummaries(
     ["campaign", decisions.campaign_brief?.values ?? decisions.slot_values],
   ];
   for (const [stage, values] of formStages) {
-    const awaitingAnswer = showCurrentQuestion && decisions.journey.stage === stage;
-    if (!passed(stage) && !awaitingAnswer) continue;
-    const rows = awaitingAnswer ? [] : slotRows(values, stage);
-    if (!awaitingAnswer && !rows.length) continue;
+    if (!passed(stage)) continue;
+    const rows = slotRows(values, stage);
+    if (!rows.length) continue;
     summaries.push({
       key: `brand-summary:${stage}`,
       stage,
-      question: QUESTIONS[stage],
       rows,
-      sequence: awaitingAnswer
-        ? Math.max(0, ...items.map((item) => item.sequence), ...answers.map((answer) => answer.sequence)) + 1
-        : summarySequence(stage, latestConfirmation(values, stage), items, answers),
+      sequence: summarySequence(stage, latestConfirmation(values, stage), items, answers),
     });
   }
 
   const skills = decisions.skill_stack?.entries.filter((entry) => entry.selected) ?? [];
-  if (passed("skill-stack") && skills.length) {
+  const skillStage = decisions.early_skills_confirmed ? "skill-stack-early" : "skill-stack";
+  if (passed(skillStage) && skills.length) {
+    const answer = answers
+      .filter((entry) => /_brand_skill-stack(?:-early)?_\d+(?:_|$)/.test(entry.interaction_id))
+      .reduce<GuidedAnswerBubbleV1 | undefined>((latest, entry) => (
+        !latest || entry.sequence > latest.sequence ? entry : latest
+      ), undefined);
+    const campaign = summaries.find((summary) => summary.stage === "campaign");
+    let sequence = answer?.sequence ?? summarySequence(skillStage, null, items, answers);
+    if (!answer && campaign) {
+      // Older histories without a Skill exchange use Campaign as their anchor.
+      const nextSequence = Math.min(...[...items, ...answers, ...summaries]
+        .map((entry) => entry.sequence).filter((value) => value > campaign.sequence));
+      sequence = campaign.sequence + (Number.isFinite(nextSequence) ? nextSequence - campaign.sequence : 1) / 2;
+    }
     summaries.push({
       key: "brand-summary:skill-stack",
-      stage: "skill-stack",
-      question: QUESTIONS["skill-stack"],
+      stage: skillStage,
+      answer,
       rows: [...skills]
         .sort((left, right) => (left.skill_kind === right.skill_kind ? 0 : left.skill_kind === "creative_method" ? -1 : 1))
         .map((entry) => ({
@@ -182,7 +186,7 @@ export function projectBrandSummaries(
           fallbackLabel: entry.skill_kind,
           value: entry.title,
         })),
-      sequence: summarySequence("skill-stack", null, items, answers),
+      sequence,
     });
   }
   return summaries;
