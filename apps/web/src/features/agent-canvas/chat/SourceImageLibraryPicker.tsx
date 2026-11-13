@@ -36,8 +36,11 @@ export function SourceImageLibraryPicker({
       ))}
     </div>
     {scope === "project" ? projectContent : <>
-      <input type="search" aria-label={t("Search reference assets")} placeholder={t("Search reference assets")}
-        value={query} disabled={busy} onChange={(event) => setQuery(event.currentTarget.value)} />
+      <div className="agent-chat__product-source-picker-header">
+        <span>{t(scope === "mine" ? "My Assets" : "Recommended")}</span>
+        <input type="search" aria-label={t("Search reference assets")} placeholder={t("Search reference assets")}
+          value={query} disabled={busy} onChange={(event) => setQuery(event.currentTarget.value)} />
+      </div>
       <div className="agent-chat__reference-source-assets" aria-label={t("Reference candidates")}>
         {candidates.loading ? <p role="status">{t("Loading reference assets")}</p> : null}
         {!candidates.loading && candidates.error ? <div role="alert">
