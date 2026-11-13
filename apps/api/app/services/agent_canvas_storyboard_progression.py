@@ -1521,7 +1521,8 @@ class ProgressiveStoryboardReadyService:
         video_content = VideoSegmentContentV2(
             segment_summary=content.sequence_summary,
             duration_seconds=duration_seconds,
-            storyboard_content="Follow the accepted ordered storyboard frames.",
+            storyboard_content=content.narrative_goal,
+            production_handoff=content.production_handoff,
             representation_mode=representation.mode,
             style=VisualStyleContractV2(
                 style_prompt=(
@@ -1541,11 +1542,14 @@ class ProgressiveStoryboardReadyService:
         )
         now = datetime.now(timezone.utc)
         seed_prompt = (
-            f"Exact Storyboard Production Plan segment for {sequence_id}: "
-            f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
-            "Use the complete matching storyboard grid as the primary ordered reference. "
-            "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
-            f"then follow panels 1 through {len(content.panels)} as one continuous commercial segment. "
+            f"Accepted story segment for {sequence_id}: {content.sequence_summary}\n"
+            f"Narrative goal: {content.narrative_goal}\n"
+            f"Production handoff: {'; '.join(content.production_handoff)}\n"
+            "Generate a full-frame scene from time zero. The attached storyboard grid is an "
+            "off-screen story-process reference, not a first/last-frame target. "
+            "Preserve the authored events and continuity; use the approved camera direction "
+            "and timing without copying panel layouts or matching panel framing. "
+            "Never display the sheet, its borders, or a zoom from the sheet into a panel. "
             "Preserve required dialogue, voice performance, native ambience, movement, "
             "and synchronized action effects. Generate no background music."
         )
