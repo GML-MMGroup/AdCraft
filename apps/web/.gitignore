@@ -2,8 +2,8 @@ node_modules/
 dist/
 
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 *.tsbuildinfo
 
@@ -14,6 +14,27 @@ dist/
 .vite-skill-gallery/
 
 .vite-conversation-preview/
+
+# Local agent workspace, implementation notes, and task scratch directories
+/.codex/
+/docs/
+/frontend/
+/task/
+/task_v2/
+**/*.NOTES.md
+
+# Local build caches and generated validation reports (keep test source/fixtures)
+/.vite/
+/.vite-*/
+/coverage/
+/playwright-report/
+/test-results/
+/blob-report/
+*.log
+*.log.*
+*.tmp
+*.bak
+*.swp
 
 # Local promotional demo, copied media, video exports, and packaging artifacts
 /public/promo/
