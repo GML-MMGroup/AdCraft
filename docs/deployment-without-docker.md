@@ -302,6 +302,10 @@ Run these from the AdCraft project root.
 
 The launchers stop only native processes that they started. They retain .env, runtime-data, .venv, node_modules, and logs. Do not delete runtime-data unless you intentionally want to remove generated media and the local database.
 
+Before updating, stop AdCraft and back up your local `.env` files and actual `MEDIA_DATA_DIR`, including its SQLite database and media. After updating the code, rerun the launcher, or restart all three manually managed services. API startup applies the bundled database migrations automatically; keep `apps/api/alembic/` and `apps/api/alembic.ini` with the project. Replacing code alone does not undo a database migration; a blocked downgrade requires a matching pre-upgrade backup.
+
+New Editing nodes can automatically export a default cut and add a `Final video` node when their enabled upstream media is ready. Historical Editing nodes are not automatically enrolled. This worker runs inside the API; no fourth service or new startup command is needed.
+
 ## Common problems
 
 | Symptom | What to do |

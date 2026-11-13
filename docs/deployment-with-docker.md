@@ -300,6 +300,10 @@ Run these from the project folder when AdCraft has already been deployed.
 
 You do not need to run Docker commands yourself. If Windows PowerShell blocks one of the maintenance scripts, open PowerShell as administrator from the project folder and run the displayed command again.
 
+Before updating, stop AdCraft and back up your local `.env` files and actual `MEDIA_DATA_DIR`, including its SQLite database and media. Rerun the deployment launcher after updating the code; API startup applies the bundled database migrations automatically. Keep `apps/api/alembic/` and `apps/api/alembic.ini` with the project. Replacing code alone does not undo a database migration; a blocked downgrade requires a matching pre-upgrade backup.
+
+New Editing nodes can automatically export a default cut and add a `Final video` node when their enabled upstream media is ready. Historical Editing nodes are not automatically enrolled. This worker runs inside the API; no fourth service or new startup command is needed.
+
 ## Keep These Files
 
 - `apps/api/.env` holds backend configuration and the API keys saved in API Space. Keep it private and do not delete it when updating AdCraft.
