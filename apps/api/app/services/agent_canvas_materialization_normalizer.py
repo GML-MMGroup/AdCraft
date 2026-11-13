@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from collections.abc import Callable, Mapping
 import re
 
@@ -101,7 +103,10 @@ def _violations(capability_id: CapabilityIdV1, result: BaseModel) -> tuple[str, 
         return ("materialization_prompt_role_mismatch",)
     if capability_id == "scene_design" and _VIDEO_DIRECTIVE.search(prompt):
         return ("materialization_prompt_role_mismatch",)
-    if capability_id == "storyboard_design" and "3x3" not in prompt.casefold():
+    if (
+        capability_id == "storyboard_design"
+        and storyboard_layout_name(len(result.structured_content.panels)) not in prompt.casefold()
+    ):
         return ("materialization_prompt_role_mismatch",)
     return ()
 
@@ -140,10 +145,11 @@ def _fallback_prompt(capability_id: CapabilityIdV1, result: BaseModel) -> str | 
         )
     if capability_id == "storyboard_design":
         panels = tuple(getattr(structured, "panels", ()))
-        if len(panels) != 9:
+        if len(panels) not in (4, 9):
             return None
         return _join(
-            "Create one ordered 3x3 storyboard grid with exactly nine frames.",
+            f"Create one ordered {storyboard_layout_name(len(panels))} storyboard grid "
+            f"with exactly {len(panels)} frames.",
             str(getattr(structured, "sequence_summary", "")),
             *(
                 f"Frame {panel.panel_index}: {panel.beat}; {panel.composition}; "

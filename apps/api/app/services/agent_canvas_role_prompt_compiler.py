@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from app.services.agent_canvas_video_subtitles import with_managed_video_subtitles
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CHARACTER_IDENTITY_SCOPE,
@@ -241,6 +243,11 @@ class AgentCanvasRolePromptCompiler:
             character_projection=character_projection,
             scene_projection=scene_projection,
             product_projection=product_projection,
+            storyboard_beats=(
+                tuple(row.content_beat for row in context.storyboard_projection.rows)
+                if context.storyboard_projection is not None
+                else None
+            ),
         )
         editable_prompt = (
             editable_prompt_override
@@ -750,6 +757,7 @@ def _render(
     character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
     scene_projection: SceneEnvironmentProjectionV1 | None = None,
     product_projection: ProductIdentityAuthorityProjectionV1 | None = None,
+    storyboard_beats: tuple[str, ...] | None = None,
 ) -> tuple[str, str]:
     if isinstance(brief, WorldViewRoleBriefV2):
         return (
@@ -865,10 +873,11 @@ def _render(
             "No provider rendering syntax or final shot-grid layout.",
         )
     if isinstance(brief, StoryboardGridRoleBriefV2):
+        beats = storyboard_beats or brief.beats
         return (
-            "Create one complete 3x3 Storyboard Sequence with exactly nine ordered "
+            f"Create one complete {storyboard_layout_name(len(beats))} Storyboard Sequence with exactly {len(beats)} ordered "
             f"visual beats. Sequence: {brief.sequence_summary}. Beats: "
-            f"{'; '.join(brief.beats)}. Visual language: {brief.visual_language}.",
+            f"{'; '.join(beats)}. Visual language: {brief.visual_language}.",
             DEFAULT_IMAGE_OVERLAYS,
         )
     if isinstance(brief, VideoSegmentRoleBriefV2):

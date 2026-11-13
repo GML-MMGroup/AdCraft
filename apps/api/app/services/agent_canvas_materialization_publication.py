@@ -2303,7 +2303,7 @@ def _existing_segment_draft(
         None,
     )
     rows = tuple(row for row in content.rows if row.sequence_id == sequence_id)
-    if record is None or record.generation_prompt is None or len(rows) != 9:
+    if record is None or record.generation_prompt is None or len(rows) not in (4, 9):
         return None
     return StoryboardSegmentMaterializationDraftV2(
         generation_prompt=record.generation_prompt,

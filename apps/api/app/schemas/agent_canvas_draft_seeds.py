@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.schemas.storyboard_layout import StoryboardPanels
+
 from hashlib import sha256
 import json
 from typing import Annotated, Literal, TypeAlias
@@ -110,14 +112,16 @@ class StoryboardPanelSeedV1(_DraftSeedModel):
 class StoryboardDraftSeedV1(_DraftSeedModel):
     seed_kind: Literal["storyboard_design"]
     sequence_summary: BoundedTextV1
-    panel_beats: tuple[StoryboardPanelSeedV1, ...] = Field(min_length=9, max_length=9)
+    panel_beats: StoryboardPanels[StoryboardPanelSeedV1]
     continuity_anchors: tuple[BoundedItemV1, ...] = Field(min_length=1, max_length=16)
     camera_language: BoundedTextV1
     exclusions: tuple[BoundedItemV1, ...] = Field(default=(), max_length=32)
 
     @model_validator(mode="after")
     def validate_panel_order(self) -> "StoryboardDraftSeedV1":
-        if tuple(panel.panel_index for panel in self.panel_beats) != tuple(range(1, 10)):
+        if tuple(panel.panel_index for panel in self.panel_beats) != tuple(
+            range(1, len(self.panel_beats) + 1)
+        ):
             raise ValueError("Storyboard Draft Seed panels must be ordered from 1 through 9.")
         return self
 

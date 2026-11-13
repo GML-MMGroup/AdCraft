@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -1519,7 +1521,7 @@ class ProgressiveStoryboardReadyService:
         video_content = VideoSegmentContentV2(
             segment_summary=content.sequence_summary,
             duration_seconds=duration_seconds,
-            storyboard_content="Follow the nine ordered storyboard frames.",
+            storyboard_content="Follow the accepted ordered storyboard frames.",
             representation_mode=representation.mode,
             style=VisualStyleContractV2(
                 style_prompt=(
@@ -1939,10 +1941,10 @@ def _accepted_segment(
     sequence_id: str,
 ) -> StoryboardSegmentMaterializationDraftV2:
     rows = tuple(row for row in content.rows if row.sequence_id == sequence_id)
-    if len(rows) != 9:
+    if len(rows) not in (4, 9):
         raise V2PersistenceError(
             "storyboard_fanout_invalid",
-            "Storyboard fan-out requires nine accepted Plan rows for every sequence.",
+            "Storyboard fan-out requires four or nine accepted Plan rows for every sequence.",
             stage="storyboard_progression",
             details={"sequence_id": sequence_id, "row_count": len(rows)},
         )
@@ -1961,7 +1963,7 @@ def _accepted_segment(
     if generation_prompt is None:
         sequence = next(item for item in content.segments if item.sequence_id == sequence_id)
         generation_prompt = (
-            "Render one 3x3 storyboard grid from the accepted Plan rows. "
+            f"Render one {storyboard_layout_name(len(rows))} storyboard grid from the accepted Plan rows. "
             f"Narrative goal: {sequence.narrative_goal}"
         )
     return StoryboardSegmentMaterializationDraftV2(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -487,7 +489,8 @@ class DeterministicVideoAgentGateway:
         aliases = tuple(item.alias for item in context.anchors)
         return StoryboardSegmentMaterializationDraftV2(
             generation_prompt=(
-                "Create one ordered 3x3 storyboard grid with exactly nine frames for "
+                f"Create one ordered {storyboard_layout_name(context.panel_count)} storyboard grid "
+                f"with exactly {context.panel_count} frames for "
                 f"{context.sequence.narrative_goal}."
             ),
             rows=tuple(
@@ -497,7 +500,7 @@ class DeterministicVideoAgentGateway:
                     anchor_aliases=aliases,
                     camera_description=f"Distinct camera composition {index}.",
                 )
-                for index in range(1, 10)
+                for index in range(1, context.panel_count + 1)
             ),
         )
 
@@ -891,11 +894,21 @@ class PiVideoAgentGateway:
             )
             validation_profile = "storyboard_sequence_window_parity_v1"
             validation_context = authority.model_dump(mode="json")
+        elif operation == "materialize_storyboard_segment" and isinstance(
+            context, StoryboardSegmentAuthoringContextV2
+        ):
+            validation_profile = "storyboard_panel_count_v1"
+            validation_context = {"panel_count": context.panel_count}
         elif operation == "author_role_brief" and isinstance(
             context, RolePromptPreparationContextV2
         ):
             validation_context = {
                 "role_variant": context.role_variant,
+                "panel_count": (
+                    len(context.storyboard_projection.rows)
+                    if context.storyboard_projection is not None
+                    else None
+                ),
                 "prompt_authority": (
                     "user_authored" if context.user_prompt is not None else "system_generated"
                 ),

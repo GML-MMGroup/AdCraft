@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.core.storyboard_layout import storyboard_grid_size, validate_storyboard_panel_indices
+
 from app.schemas.agent_canvas import CanvasNodeV2, ResolvedMediaInputSnapshotV2
 from app.schemas.agent_canvas_ad_media import StoryboardGridContentV2
 from app.schemas.seedance_inputs import (
@@ -64,15 +66,16 @@ def build_storyboard_grid_grounding_plan(
         )
     except ValidationError as error:
         raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid") from error
-    if len(content.panels) != 9 or [panel.panel_index for panel in content.panels] != list(
-        range(1, 10)
-    ):
-        raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid")
+    panel_count = len(content.panels)
+    try:
+        validate_storyboard_panel_indices([panel.panel_index for panel in content.panels])
+    except ValueError as error:
+        raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid") from error
 
     panel_shots = metadata.get("panel_shots")
     if panel_shots is None:
-        panel_shots = [target_shot_id] * 9
-    if not isinstance(panel_shots, (list, tuple)) or len(panel_shots) != 9:
+        panel_shots = [target_shot_id] * panel_count
+    if not isinstance(panel_shots, (list, tuple)) or len(panel_shots) != panel_count:
         raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid")
     if any(str(shot_id) != target_shot_id for shot_id in panel_shots):
         raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid")
@@ -132,9 +135,12 @@ def build_storyboard_grid_grounding_plan(
         grid_version_id=version_id,
         grid_checksum=grid_input.asset_checksum,
         storyboard_revision=revision,
+        grid_rows=storyboard_grid_size(panel_count),
+        grid_columns=storyboard_grid_size(panel_count),
+        panel_count=panel_count,
         panels=panels,
         target_shot_id=target_shot_id,
-        target_panel_indices=tuple(range(1, 10)),
+        target_panel_indices=tuple(range(1, panel_count + 1)),
         ordered_references=ordered,
         provider_reference_limit=provider_reference_limit,
         prompt_snapshot_digest=prompt_digest,

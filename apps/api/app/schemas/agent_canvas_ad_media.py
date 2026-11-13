@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.schemas.storyboard_layout import StoryboardPanels
+
 import logging
 
 from collections.abc import Callable
@@ -162,7 +164,7 @@ class StoryboardGridContentV2(_AdMediaModel):
     sequence_summary: str = Field(min_length=1, max_length=8_192)
     narrative_goal: str = Field(min_length=1, max_length=4_096)
     style: VisualStyleContractV2
-    panels: tuple[StoryboardPanelV2, ...] = Field(min_length=9, max_length=9)
+    panels: StoryboardPanels[StoryboardPanelV2]
     no_generated_text: bool = False
 
     @model_validator(mode="after")

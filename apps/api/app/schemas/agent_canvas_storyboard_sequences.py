@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.schemas.storyboard_layout import StoryboardPanels
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -92,12 +94,12 @@ class StoryboardSequenceDraftV2(_StoryboardSequenceModel):
     start_state: str = Field(min_length=1, max_length=2_048)
     end_state: str = Field(min_length=1, max_length=2_048)
     continuity_from_previous: str | None = Field(default=None, max_length=2_048)
-    rows: tuple[StoryboardSequenceRowDraftV2, ...] = Field(min_length=9, max_length=9)
+    rows: StoryboardPanels[StoryboardSequenceRowDraftV2]
 
     @model_validator(mode="after")
     def validate_rows(self) -> "StoryboardSequenceDraftV2":
-        if [row.panel_index for row in self.rows] != list(range(1, 10)):
-            raise ValueError("Storyboard sequence panels must be ordered from 1 through 9.")
+        if [row.panel_index for row in self.rows] != list(range(1, len(self.rows) + 1)):
+            raise ValueError("Storyboard sequence panels must follow contiguous reading order.")
         return self
 
 
@@ -142,13 +144,13 @@ class StoryboardSequenceOutlineDraftV2(_StoryboardSequenceModel):
 
 
 class StoryboardSegmentMaterializationDraftV2(_StoryboardSequenceModel):
-    rows: tuple[StoryboardSequenceRowDraftV2, ...] = Field(min_length=9, max_length=9)
+    rows: StoryboardPanels[StoryboardSequenceRowDraftV2]
     generation_prompt: str = Field(min_length=1, max_length=16_384)
 
     @model_validator(mode="after")
     def validate_rows(self) -> "StoryboardSegmentMaterializationDraftV2":
-        if [row.panel_index for row in self.rows] != list(range(1, 10)):
-            raise ValueError("Storyboard segment panels must be ordered from 1 through 9.")
+        if [row.panel_index for row in self.rows] != list(range(1, len(self.rows) + 1)):
+            raise ValueError("Storyboard segment panels must follow contiguous reading order.")
         return self
 
 
@@ -159,6 +161,7 @@ class StoryboardSegmentAuthoringContextV2(_StoryboardSequenceModel):
     plan_revision: int = Field(ge=1)
     plan_content_digest: str = Field(pattern=r"^sha256:[0-9a-zA-Z_-]+$")
     sequence: StoryboardNarrativeSegmentV2
+    panel_count: Literal[4, 9] = 9
     narrative_context: str | None = Field(default=None, max_length=65_536)
     selected_direction: str | None = Field(default=None, max_length=8_192)
     brand_decisions: BrandProductionContextV1 | None = None
@@ -175,7 +178,7 @@ class StoryboardGridAuthoringContextV2(_StoryboardSequenceModel):
     plan_revision: int = Field(ge=1)
     plan_content_digest: str = Field(pattern=r"^sha256:[0-9a-zA-Z_-]+$")
     sequence: StoryboardNarrativeSegmentV2
-    rows: tuple[StoryboardPlanRowV2, ...] = Field(min_length=9, max_length=9)
+    rows: StoryboardPanels[StoryboardPlanRowV2]
     anchors: tuple[AgentAnchorV2, ...] = Field(default=(), max_length=64)
     style_excerpt: str | None = Field(default=None, max_length=8_192)
 
@@ -183,8 +186,8 @@ class StoryboardGridAuthoringContextV2(_StoryboardSequenceModel):
     def validate_sequence_scope(self) -> "StoryboardGridAuthoringContextV2":
         if any(row.sequence_id != self.sequence.sequence_id for row in self.rows):
             raise ValueError("Storyboard context rows must belong to one sequence.")
-        if [row.panel_index for row in self.rows] != list(range(1, 10)):
-            raise ValueError("Storyboard context requires panels 1 through 9.")
+        if [row.panel_index for row in self.rows] != list(range(1, len(self.rows) + 1)):
+            raise ValueError("Storyboard context requires contiguous panel indices.")
         return self
 
 

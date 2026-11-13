@@ -511,6 +511,9 @@ def _grounding_audit(
         if not item.required and (item.asset_id, item.version_id) not in delivered_keys
     )
     return StoryboardGridGroundingAuditV1(
+        panel_count=plan.panel_count,
+        grid_rows=plan.grid_rows,
+        grid_columns=plan.grid_columns,
         requested=requested,
         delivered=delivered,
         serialized=(),

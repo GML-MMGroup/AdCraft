@@ -304,7 +304,7 @@ export type SceneViewDirectionV2 = { readonly "view_or_zone": string; readonly "
 
 export type ScriptRoleBriefV2 = { readonly "editable_prompt": string; readonly "style_description"?: string | null; readonly "production_handoff"?: ReadonlyArray<string>; readonly "role_variant"?: "script"; readonly "narrative": string; readonly "timing": string; readonly "dialogue"?: string; readonly "voiceover"?: string };
 
-export type StoryboardGridRoleBriefV2 = { readonly "editable_prompt": string; readonly "style_description"?: string | null; readonly "human_face_rendering": "absent" | "photorealistic" | "stylized" | null; readonly "production_handoff"?: ReadonlyArray<string>; readonly "role_variant"?: "storyboard_grid"; readonly "sequence_summary": string; readonly "beats": ReadonlyArray<string>; readonly "visual_language": string };
+export type StoryboardGridRoleBriefV2 = { readonly "editable_prompt": string; readonly "style_description"?: string | null; readonly "human_face_rendering": "absent" | "photorealistic" | "stylized" | null; readonly "production_handoff"?: ReadonlyArray<string>; readonly "role_variant"?: "storyboard_grid"; readonly "sequence_summary": string; readonly "beats": ReadonlyArray<string> | ReadonlyArray<string>; readonly "visual_language": string };
 
 export type VideoSegmentRoleBriefV2 = { readonly "editable_prompt": string; readonly "style_description"?: string | null; readonly "production_handoff"?: ReadonlyArray<string>; readonly "role_variant"?: "video_segment"; readonly "segment_summary": string; readonly "duration_seconds": number; readonly "action": string; readonly "dialogue"?: string; readonly "voiceover"?: string; readonly "ambience"?: string; readonly "action_effects"?: string; readonly "target_style": string };
 
@@ -370,11 +370,11 @@ export type StoryboardOutlineSegmentDraftV2 = { readonly "order": number; readon
 
 export type StoryboardSequenceOutlineDraftV2 = { readonly "narrative_outline": string; readonly "aspect_ratio": string; readonly "total_duration_seconds": number; readonly "segments": ReadonlyArray<StoryboardOutlineSegmentDraftV2> };
 
-export type StoryboardSegmentMaterializationDraftV2 = { readonly "rows": ReadonlyArray<StoryboardSequenceRowDraftV2>; readonly "generation_prompt": string };
+export type StoryboardSegmentMaterializationDraftV2 = { readonly "rows": ReadonlyArray<StoryboardSequenceRowDraftV2> | ReadonlyArray<StoryboardSequenceRowDraftV2>; readonly "generation_prompt": string };
 
-export type StoryboardSegmentAuthoringContextV2 = { readonly "response_locale"?: string; readonly "workflow_id": string; readonly "plan_document_id": string; readonly "plan_revision": number; readonly "plan_content_digest": string; readonly "sequence": StoryboardNarrativeSegmentV2; readonly "narrative_context"?: string | null; readonly "selected_direction"?: string | null; readonly "brand_decisions"?: BrandProductionContextV1 | null; readonly "prior_end_state"?: string | null; readonly "prior_final_panel"?: StoryboardPlanRowV2 | null; readonly "anchors"?: ReadonlyArray<AgentAnchorV2>; readonly "style_excerpt"?: string | null };
+export type StoryboardSegmentAuthoringContextV2 = { readonly "response_locale"?: string; readonly "workflow_id": string; readonly "plan_document_id": string; readonly "plan_revision": number; readonly "plan_content_digest": string; readonly "sequence": StoryboardNarrativeSegmentV2; readonly "panel_count"?: 4 | 9; readonly "narrative_context"?: string | null; readonly "selected_direction"?: string | null; readonly "brand_decisions"?: BrandProductionContextV1 | null; readonly "prior_end_state"?: string | null; readonly "prior_final_panel"?: StoryboardPlanRowV2 | null; readonly "anchors"?: ReadonlyArray<AgentAnchorV2>; readonly "style_excerpt"?: string | null };
 
-export type StoryboardGridAuthoringContextV2 = { readonly "response_locale"?: string; readonly "workflow_id": string; readonly "plan_document_id": string; readonly "plan_revision": number; readonly "plan_content_digest": string; readonly "sequence": StoryboardNarrativeSegmentV2; readonly "rows": ReadonlyArray<StoryboardPlanRowV2>; readonly "anchors"?: ReadonlyArray<AgentAnchorV2>; readonly "style_excerpt"?: string | null };
+export type StoryboardGridAuthoringContextV2 = { readonly "response_locale"?: string; readonly "workflow_id": string; readonly "plan_document_id": string; readonly "plan_revision": number; readonly "plan_content_digest": string; readonly "sequence": StoryboardNarrativeSegmentV2; readonly "rows": ReadonlyArray<StoryboardPlanRowV2> | ReadonlyArray<StoryboardPlanRowV2>; readonly "anchors"?: ReadonlyArray<AgentAnchorV2>; readonly "style_excerpt"?: string | null };
 
 export type CanvasPositionV2 = { readonly "x": number; readonly "y": number };
 
@@ -442,7 +442,7 @@ export type SceneDesignBoardContentV2 = { readonly "scene_asset_kind"?: "main" |
 
 export type StoryboardPanelV2 = { readonly "panel_index": number; readonly "beat": string; readonly "composition": string; readonly "camera": string; readonly "subject_action": string; readonly "continuity_from_previous": string };
 
-export type StoryboardGridContentV2 = { readonly "production_handoff"?: ReadonlyArray<string>; readonly "sequence_summary": string; readonly "narrative_goal": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<StoryboardPanelV2>; readonly "no_generated_text"?: boolean };
+export type StoryboardGridContentV2 = { readonly "production_handoff"?: ReadonlyArray<string>; readonly "sequence_summary": string; readonly "narrative_goal": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<StoryboardPanelV2> | ReadonlyArray<StoryboardPanelV2>; readonly "no_generated_text"?: boolean };
 
 export type VideoSegmentContentV2 = { readonly "production_handoff"?: ReadonlyArray<string>; readonly "segment_summary": string; readonly "duration_seconds": number; readonly "storyboard_content": string; readonly "representation_mode"?: "illustrated" | "illustration_to_live_action"; readonly "style_expression"?: VideoStyleExpressionV2 | null; readonly "style"?: VisualStyleContractV2 | null; readonly "dialogue"?: string; readonly "voice_style"?: string; readonly "environment_sound"?: string; readonly "action_effects"?: string; readonly "negative_constraints"?: string; readonly "background_music"?: false };
 
@@ -920,9 +920,9 @@ export type InitializeStoryboardPlanPatchV2 = { readonly "document_id": string; 
 
 export type ReplaceNarrativeSegmentPatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "replace_narrative_segment"; readonly "segment": StoryboardNarrativeSegmentV2 };
 
-export type ReplaceStoryboardRowsPatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "replace_storyboard_rows"; readonly "sequence_id": string; readonly "rows": ReadonlyArray<StoryboardPlanRowV2> };
+export type ReplaceStoryboardRowsPatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "replace_storyboard_rows"; readonly "sequence_id": string; readonly "rows": ReadonlyArray<StoryboardPlanRowV2> | ReadonlyArray<StoryboardPlanRowV2> };
 
-export type MaterializeStoryboardSegmentPatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "materialize_storyboard_segment"; readonly "sequence_id": string; readonly "rows": ReadonlyArray<StoryboardPlanRowV2>; readonly "generation_prompt": string };
+export type MaterializeStoryboardSegmentPatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "materialize_storyboard_segment"; readonly "sequence_id": string; readonly "rows": ReadonlyArray<StoryboardPlanRowV2> | ReadonlyArray<StoryboardPlanRowV2>; readonly "generation_prompt": string };
 
 export type FreezeStoryboardVisualAnchorPatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "freeze_storyboard_visual_anchor"; readonly "visual_anchor": StoryboardVisualAnchorV2 };
 

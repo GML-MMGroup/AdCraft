@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.schemas.storyboard_layout import StoryboardPanels
+
 from collections import defaultdict
 from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
@@ -332,12 +334,12 @@ class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
         ordered_rows: list[StoryboardPlanRowV2] = []
         for sequence_id in sequence_ids:
             sequence_rows = rows_by_sequence[sequence_id]
-            if len(sequence_rows) not in {0, 9}:
-                raise ValueError("Each storyboard sequence requires zero or nine rows.")
+            if len(sequence_rows) not in {0, 4, 9}:
+                raise ValueError("Each storyboard sequence requires zero, four or nine rows.")
             if not sequence_rows:
                 continue
-            if [row.panel_index for row in sequence_rows] != list(range(1, 10)):
-                raise ValueError("Storyboard panel indices must be ordered from 1 through 9.")
+            if [row.panel_index for row in sequence_rows] != list(range(1, len(sequence_rows) + 1)):
+                raise ValueError("Storyboard panel indices must be in contiguous reading order.")
             ordered_rows.extend(sequence_rows)
         if list(self.rows) != ordered_rows:
             raise ValueError("Storyboard rows must follow segment order.")
@@ -371,7 +373,9 @@ class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
                 row_count = len(rows_by_sequence[item.sequence_id])
                 if item.status == "pending" and (row_count or item.generation_prompt):
                     raise ValueError("Pending storyboard segments cannot contain generated rows.")
-                if item.status == "materialized" and (row_count != 9 or not item.generation_prompt):
+                if item.status == "materialized" and (
+                    row_count not in {4, 9} or not item.generation_prompt
+                ):
                     raise ValueError("Materialized storyboard segments require rows and prompt.")
         return self
 
@@ -459,10 +463,14 @@ class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
         ordered_rows: list[StoryboardPlanRowV2] = []
         for sequence_id in sequence_ids:
             sequence_rows = rows_by_sequence[sequence_id]
-            if len(sequence_rows) not in {0, 9}:
-                raise ValueError("Each materialized Storyboard sequence requires nine rows.")
-            if sequence_rows and [row.panel_index for row in sequence_rows] != list(range(1, 10)):
-                raise ValueError("Storyboard panel indices must be ordered from 1 through 9.")
+            if len(sequence_rows) not in {0, 4, 9}:
+                raise ValueError(
+                    "Each materialized Storyboard sequence requires four or nine rows."
+                )
+            if sequence_rows and [row.panel_index for row in sequence_rows] != list(
+                range(1, len(sequence_rows) + 1)
+            ):
+                raise ValueError("Storyboard panel indices must be in contiguous reading order.")
             ordered_rows.extend(sequence_rows)
         if list(self.rows) != ordered_rows:
             raise ValueError("Storyboard rows must follow segment order.")
@@ -480,7 +488,9 @@ class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
                 row_count = len(rows_by_sequence[item.sequence_id])
                 if item.status == "pending" and (row_count or item.generation_prompt):
                     raise ValueError("Pending storyboard sequences cannot contain generated rows.")
-                if item.status == "materialized" and (row_count != 9 or not item.generation_prompt):
+                if item.status == "materialized" and (
+                    row_count not in {4, 9} or not item.generation_prompt
+                ):
                     raise ValueError(
                         "Materialized storyboard sequences require rows and a generation prompt."
                     )
@@ -623,13 +633,13 @@ class ReplaceNarrativeSegmentPatchV2(_AgentDocumentPatchBaseV2):
 class ReplaceStoryboardRowsPatchV2(_AgentDocumentPatchBaseV2):
     operation: Literal["replace_storyboard_rows"]
     sequence_id: str = Field(min_length=1, max_length=160)
-    rows: tuple[StoryboardPlanRowV2, ...] = Field(min_length=9, max_length=9)
+    rows: StoryboardPanels[StoryboardPlanRowV2]
 
 
 class MaterializeStoryboardSegmentPatchV2(_AgentDocumentPatchBaseV2):
     operation: Literal["materialize_storyboard_segment"]
     sequence_id: str = Field(min_length=1, max_length=160)
-    rows: tuple[StoryboardPlanRowV2, ...] = Field(min_length=9, max_length=9)
+    rows: StoryboardPanels[StoryboardPlanRowV2]
     generation_prompt: str = Field(min_length=1, max_length=16_384)
 
 

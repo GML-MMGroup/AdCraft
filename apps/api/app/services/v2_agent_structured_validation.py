@@ -260,6 +260,8 @@ def _semantic_violations(
         return ()
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
+    if profile == "storyboard_panel_count_v1":
+        return _storyboard_panel_count_violations(context, value, field="rows")
     if profile == "storyboard_sequence_window_parity_v1":
         return _storyboard_sequence_window_violations(context, value)
     if profile == "proposal_candidate_count_v1":
@@ -591,6 +593,35 @@ def _normalized_form_option_label(label: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", label).split()).casefold()
 
 
+def _storyboard_panel_count_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+    *,
+    field: str,
+) -> tuple[StructuredViolation, ...]:
+    expected = context.get("panel_count")
+    if expected not in (4, 9):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The frozen Storyboard panel count must be four or nine.",
+                field_path="panel_count",
+            ),
+        )
+    actual = len(value.get(field, ()))
+    if actual == expected:
+        return ()
+    return (
+        StructuredViolation(
+            code="storyboard_panel_count_mismatch",
+            message="Use exactly the supplied panel count in reading order; preserve the approved story and duration.",
+            field_path=field,
+            expected=expected,
+            actual=actual,
+        ),
+    )
+
+
 def _role_prompt_contract_violations(
     context: dict[str, Any],
     value: dict[str, Any],
@@ -612,6 +643,10 @@ def _role_prompt_contract_violations(
         )
     if prompt_authority == "user_authored":
         return ()
+    if role_variant == "storyboard_grid" and context.get("panel_count") is not None:
+        violations = _storyboard_panel_count_violations(context, value, field="beats")
+        if violations:
+            return violations
     if role_variant == "scene_board":
         projection_digest = context.get("scene_projection_digest")
         projection_required = context.get("scene_projection_required", True)

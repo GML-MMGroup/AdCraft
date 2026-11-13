@@ -94,7 +94,11 @@ def deterministic_role_brief(
         value = {
             "role_variant": variant,
             "sequence_summary": summary,
-            "beats": [f"Ordered beat {index}" for index in range(1, 10)],
+            "beats": (
+                [row.content_beat for row in context.storyboard_projection.rows]
+                if context.storyboard_projection is not None
+                else [f"Ordered beat {index}" for index in range(1, 10)]
+            ),
             "visual_language": "Preserve the accepted visual language.",
         }
     elif variant == "video_segment":

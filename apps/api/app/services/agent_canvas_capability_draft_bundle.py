@@ -342,7 +342,7 @@ def stage_definitions(
                 "image",
                 "storyboard_sequence",
                 "Grid 1",
-                {"sequence_id": "sequence-1", "panel_count": 9},
+                {"sequence_id": "sequence-1"},
             ),
         ),
         "video_direction": (

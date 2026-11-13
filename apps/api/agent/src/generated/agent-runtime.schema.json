@@ -22936,13 +22936,25 @@
           "type": "string"
         },
         "rows": {
-          "items": {
-            "$ref": "#/$defs/StoryboardPlanRowV2"
-          },
-          "maxItems": 9,
-          "minItems": 9,
-          "title": "Rows",
-          "type": "array"
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPlanRowV2"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPlanRowV2"
+              },
+              "maxItems": 9,
+              "minItems": 9,
+              "type": "array"
+            }
+          ],
+          "title": "Rows"
         },
         "sequence_id": {
           "maxLength": 160,
@@ -28770,13 +28782,25 @@
           "type": "string"
         },
         "rows": {
-          "items": {
-            "$ref": "#/$defs/StoryboardPlanRowV2"
-          },
-          "maxItems": 9,
-          "minItems": 9,
-          "title": "Rows",
-          "type": "array"
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPlanRowV2"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPlanRowV2"
+              },
+              "maxItems": 9,
+              "minItems": 9,
+              "type": "array"
+            }
+          ],
+          "title": "Rows"
         },
         "sequence_id": {
           "maxLength": 160,
@@ -33868,13 +33892,25 @@
           "type": "string"
         },
         "rows": {
-          "items": {
-            "$ref": "#/$defs/StoryboardPlanRowV2"
-          },
-          "maxItems": 9,
-          "minItems": 9,
-          "title": "Rows",
-          "type": "array"
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPlanRowV2"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPlanRowV2"
+              },
+              "maxItems": 9,
+              "minItems": 9,
+              "type": "array"
+            }
+          ],
+          "title": "Rows"
         },
         "sequence": {
           "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
@@ -33925,13 +33961,25 @@
           "type": "boolean"
         },
         "panels": {
-          "items": {
-            "$ref": "#/$defs/StoryboardPanelV2"
-          },
-          "maxItems": 9,
-          "minItems": 9,
-          "title": "Panels",
-          "type": "array"
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPanelV2"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardPanelV2"
+              },
+              "maxItems": 9,
+              "minItems": 9,
+              "type": "array"
+            }
+          ],
+          "title": "Panels"
         },
         "production_handoff": {
           "default": [],
@@ -33965,13 +34013,25 @@
       "additionalProperties": false,
       "properties": {
         "beats": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 9,
-          "minItems": 9,
-          "title": "Beats",
-          "type": "array"
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 9,
+              "minItems": 9,
+              "type": "array"
+            }
+          ],
+          "title": "Beats"
         },
         "editable_prompt": {
           "maxLength": 32768,
@@ -34735,6 +34795,15 @@
           "default": null,
           "title": "Narrative Context"
         },
+        "panel_count": {
+          "default": 9,
+          "enum": [
+            4,
+            9
+          ],
+          "title": "Panel Count",
+          "type": "integer"
+        },
         "plan_content_digest": {
           "pattern": "^sha256:[0-9a-zA-Z_-]+$",
           "title": "Plan Content Digest",
@@ -34838,13 +34907,25 @@
           "type": "string"
         },
         "rows": {
-          "items": {
-            "$ref": "#/$defs/StoryboardSequenceRowDraftV2"
-          },
-          "maxItems": 9,
-          "minItems": 9,
-          "title": "Rows",
-          "type": "array"
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardSequenceRowDraftV2"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/StoryboardSequenceRowDraftV2"
+              },
+              "maxItems": 9,
+              "minItems": 9,
+              "type": "array"
+            }
+          ],
+          "title": "Rows"
         }
       },
       "required": [

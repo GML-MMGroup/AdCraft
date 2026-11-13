@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.schemas.storyboard_layout import StoryboardPanels
+
 from datetime import datetime
 from hashlib import sha256
 import json
@@ -672,7 +674,7 @@ class StoryboardGridRoleBriefV2(_ImageRoleBriefModel):
     )
     role_variant: Literal["storyboard_grid"] = "storyboard_grid"
     sequence_summary: str = Field(min_length=1, max_length=8_192)
-    beats: tuple[str, ...] = Field(min_length=9, max_length=9)
+    beats: StoryboardPanels[str]
     visual_language: str = Field(min_length=1, max_length=4_096)
 
 

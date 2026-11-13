@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from app.schemas.storyboard_layout import StoryboardPanels
+
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.core.storyboard_layout import storyboard_grid_size, validate_storyboard_panel_indices
 
 from app.schemas.agent_canvas import CanvasInputRoleV2
 
@@ -50,10 +54,10 @@ class StoryboardGridGroundingPlanV1(_SeedanceInputModel):
     grid_version_id: str = Field(min_length=1)
     grid_checksum: str = Field(min_length=1)
     storyboard_revision: str = Field(min_length=1)
-    grid_rows: Literal[3] = 3
-    grid_columns: Literal[3] = 3
-    panel_count: Literal[9] = 9
-    panels: tuple[StoryboardPanelReferenceV1, ...] = Field(min_length=9, max_length=9)
+    grid_rows: Literal[2, 3] = 3
+    grid_columns: Literal[2, 3] = 3
+    panel_count: Literal[4, 9] = 9
+    panels: StoryboardPanels[StoryboardPanelReferenceV1]
     target_shot_id: str = Field(min_length=1, max_length=256)
     target_panel_indices: tuple[int, ...] = Field(min_length=1, max_length=9)
     ordered_references: tuple[StoryboardGroundingReferenceV1, ...] = Field(
@@ -63,6 +67,16 @@ class StoryboardGridGroundingPlanV1(_SeedanceInputModel):
     prompt_snapshot_digest: str = Field(min_length=1)
     panel_sequence_fingerprint: str = Field(min_length=1)
     plan_fingerprint: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_layout(self) -> "StoryboardGridGroundingPlanV1":
+        size = storyboard_grid_size(self.panel_count)
+        if (self.grid_rows, self.grid_columns, len(self.panels)) != (size, size, self.panel_count):
+            raise ValueError("Storyboard grounding dimensions must match its panel count.")
+        validate_storyboard_panel_indices([panel.panel_index for panel in self.panels])
+        if any(index not in range(1, self.panel_count + 1) for index in self.target_panel_indices):
+            raise ValueError("Storyboard target panels must belong to the selected grid.")
+        return self
 
 
 class StoryboardGridGroundingAuditV1(_SeedanceInputModel):
@@ -75,9 +89,9 @@ class StoryboardGridGroundingAuditV1(_SeedanceInputModel):
     submitted: tuple[StoryboardReferenceIdentityAuditV1, ...] = ()
     primary_reference_asset_id: str = Field(min_length=1)
     primary_reference_version_id: str = Field(min_length=1)
-    panel_count: Literal[9] = 9
-    grid_rows: Literal[3] = 3
-    grid_columns: Literal[3] = 3
+    panel_count: Literal[4, 9] = 9
+    grid_rows: Literal[2, 3] = 3
+    grid_columns: Literal[2, 3] = 3
     panel_sequence_fingerprint: str = Field(min_length=1)
     plan_fingerprint: str = Field(min_length=1)
     provider_request_field: str = Field(min_length=1)
@@ -85,6 +99,13 @@ class StoryboardGridGroundingAuditV1(_SeedanceInputModel):
     prompt_reference_labels: tuple[str, ...] = ()
     omitted_optional_references: tuple[str, ...] = ()
     omitted_payload: bool = True
+
+    @model_validator(mode="after")
+    def validate_layout(self) -> "StoryboardGridGroundingAuditV1":
+        size = storyboard_grid_size(self.panel_count)
+        if (self.grid_rows, self.grid_columns) != (size, size):
+            raise ValueError("Storyboard audit dimensions must match its panel count.")
+        return self
 
     @property
     def all_lifecycle_asset_ids(self) -> tuple[str, ...]:
