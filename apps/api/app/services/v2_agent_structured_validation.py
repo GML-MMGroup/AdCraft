@@ -834,7 +834,7 @@ def _storyboard_sequence_window_violations(
                         "Repair only generation grouping and boundary handoffs; preserve exact "
                         "speech, story order, total duration and every indivisible action. "
                         "Honor explicit count/fixed authority. Do not repeat invalid windows. "
-                        "Four-panel segments are 4s; longer segments use nine panels."
+                        "Four-panel segments last exactly 4 seconds; longer segments use nine panels."
                     ),
                     field_path="segments",
                     expected={

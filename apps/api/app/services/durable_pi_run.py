@@ -275,7 +275,9 @@ class DurablePiRunService:
                     failure_payload = projected_event.payload
                     raise PiAgentRuntimeError(
                         _safe_error_code(failure_payload),
-                        _safe_error_message_for_code(_safe_error_code(failure_payload)),
+                        _safe_error_message_for_code(
+                            _safe_error_code(failure_payload), _safe_audit_metadata(failure_payload)
+                        ),
                         retryable=bool(failure_payload.get("retryable")),
                         details=_safe_audit_metadata(failure_payload),
                     ) from error
@@ -688,7 +690,7 @@ class DurablePiRunService:
                 created_at=datetime.now(timezone.utc),
                 payload={
                     "code": code,
-                    "message": _safe_error_message_for_code(code),
+                    "message": _safe_error_message_for_code(code, audit),
                     "retryable": retryable,
                     "audit": safe_agent_transport_audit(dict(audit)),
                 },
