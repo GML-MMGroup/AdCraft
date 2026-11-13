@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.services.agent_canvas_creative_method_validation import creative_method_option_violations
 
 import json
+from dataclasses import replace
 import logging
 from typing import Any
 import unicodedata
@@ -23,6 +24,10 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceWindowV2,
 )
 from app.services.agent_canvas_storyboard_sequence_windows import StoryboardSequenceWindowPlanner
+from app.services.agent_canvas_storyboard_timing_repair import (
+    COALESCING_RULE,
+    coalesce_storyboard_beats,
+)
 from app.services.agent_canvas_role_prompt_compiler import role_prompt_text_violation
 from app.services.v2_agent_contract_registry import (
     AgentStructuredContractRegistryError,
@@ -97,6 +102,19 @@ class V2AgentStructuredValidationService:
                 exclude_unset=run.contract_name == "CompactTurnIntentDecisionV3",
             ),
         )
+        if (
+            run.contract_name == "StoryboardSequenceOutlineDraftV2"
+            and run.validation_profile == "storyboard_sequence_window_parity_v1"
+        ):
+            coalesced = coalesce_storyboard_beats(run.validation_context, normalized_value)
+            if coalesced is not None:
+                normalized_value = coalesced
+                normalization = replace(
+                    normalization,
+                    value=coalesced,
+                    rule_ids=(*normalization.rule_ids, COALESCING_RULE),
+                    normalized_path_count=normalization.normalized_path_count + 2,
+                )
         if run.validation_profile == "canary_reject_first_v1":
             if submission.attempt == 1:
                 return _rejected(
@@ -260,6 +278,8 @@ def _semantic_violations(
         return ()
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
+    if profile == "storyboard_panel_count_v1":
+        return _storyboard_panel_count_violations(context, value, field="rows")
     if profile == "storyboard_sequence_window_parity_v1":
         return _storyboard_sequence_window_violations(context, value)
     if profile == "proposal_candidate_count_v1":
@@ -591,6 +611,35 @@ def _normalized_form_option_label(label: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", label).split()).casefold()
 
 
+def _storyboard_panel_count_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+    *,
+    field: str,
+) -> tuple[StructuredViolation, ...]:
+    expected = context.get("panel_count")
+    if expected not in (4, 9):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The frozen Storyboard panel count must be four or nine.",
+                field_path="panel_count",
+            ),
+        )
+    actual = len(value.get(field, ()))
+    if actual == expected:
+        return ()
+    return (
+        StructuredViolation(
+            code="storyboard_panel_count_mismatch",
+            message="Use exactly the supplied panel count in reading order; preserve the approved story and duration.",
+            field_path=field,
+            expected=expected,
+            actual=actual,
+        ),
+    )
+
+
 def _role_prompt_contract_violations(
     context: dict[str, Any],
     value: dict[str, Any],
@@ -612,6 +661,10 @@ def _role_prompt_contract_violations(
         )
     if prompt_authority == "user_authored":
         return ()
+    if role_variant == "storyboard_grid" and context.get("panel_count") is not None:
+        violations = _storyboard_panel_count_violations(context, value, field="beats")
+        if violations:
+            return violations
     if role_variant == "scene_board":
         projection_digest = context.get("scene_projection_digest")
         projection_required = context.get("scene_projection_required", True)
@@ -776,12 +829,29 @@ def _storyboard_sequence_window_violations(
                 StructuredViolation(
                     code="storyboard_sequence_timing_mismatch",
                     message=(
-                        "Use ordered, contiguous positive windows within the 15-second cap "
-                        "that cover the confirmed total and honor any explicit count. "
-                        "Narrative allocations of whole-second totals require whole-second "
-                        "generation durations."
+                        "Generation windows must be contiguous whole seconds, 4-15s each. "
+                        "Approved prose timecodes describe story beats, not fixed node boundaries. "
+                        "Repair only generation grouping and boundary handoffs; preserve exact "
+                        "speech, story order, total duration and every indivisible action. "
+                        "Honor explicit count/fixed authority. Do not repeat invalid windows. "
+                        "Four-panel segments last exactly 4 seconds; longer segments use nine panels."
                     ),
                     field_path="segments",
+                    expected={
+                        "timing_mode": authority.timing_mode,
+                        "minimum_seconds": 4,
+                        "maximum_seconds": authority.max_sequence_duration_seconds,
+                        "total_seconds": authority.total_duration_seconds,
+                    },
+                    actual=[
+                        {
+                            "order": s.get("order"),
+                            "start": s.get("start_seconds"),
+                            "end": s.get("end_seconds"),
+                        }
+                        for s in segments[:16]
+                        if isinstance(s, dict)
+                    ],
                 )
             )
         return tuple(violations)

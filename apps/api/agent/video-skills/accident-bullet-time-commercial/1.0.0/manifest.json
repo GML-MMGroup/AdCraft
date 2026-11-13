@@ -1,0 +1,53 @@
+{
+  "skill_id": "accident-bullet-time-commercial",
+  "version": "1.0.0",
+  "display_name": "Accident Bullet-Time Commercial",
+  "description": "Recreate an accidental bullet-time commercial: footwear-to-face tracking, visible contact, several carried items frozen together, a continuous camera tour of each item, then a pullback, resumed gravity and every object landing. Keep this complete incident in one continuous video segment, even in long ads. One advertised product still requires supporting belongings.",
+  "content_locale": "en-US",
+  "category": "commercial-craft",
+  "tags": [
+    "accidental release",
+    "bullet time",
+    "multi-item camera traversal",
+    "frozen space",
+    "speed ramp",
+    "product macro"
+  ],
+  "supported_use_cases": [
+    "accessory launches",
+    "food and beverage films",
+    "handheld product showcases",
+    "short product commercials"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Reference camera sequence: walking setup, several belongings frozen together, separate close views of each, and the same incident resolved on the ground.",
+    "media_url": "/api/v2/video-skills/accident-bullet-time-commercial/preview?v=1.0.0"
+  },
+  "display_order": 90,
+  "allows_meme_captions": false,
+  "allows_comedic_sound_effects": true,
+  "files": {
+    "SKILL.md": "51ef4b7ed24e6c2eb567469012fdfc60398a7955da5deb758ec15afc3fa3456d",
+    "previews/preview.webp": "75f2f37d47cc0f923607c51c01c3e769c7b7e7de1b925b82f28df1ecb1b7c354",
+    "references/bgm.md": "fb0b656d46dbd1990311cc6ee0780b7dbac1b497dacda5b5df218aadd0fcd117",
+    "references/character.md": "95df6eb9b7e07b54ea03c1cbcf7ea652a2abe6a5f336c30ca206aa55d32b2fa5",
+    "references/product.md": "fe3b24af55472cdee68cf57d5a34a91deab7731918f94704b19484297266feb3",
+    "references/prop.md": "32efb408c578210b36869994dff6bbdf22b4206312cefe872dc72312d4ec1e1d",
+    "references/scene.md": "4327d694fdf2f2b9637f2b21afb15e15dec99c776630b18bc8d066d349a0fcac",
+    "references/script.md": "4710d9fe0bd5e99bf1565cc468c91a90dd6009b18a9ca8410ae07c294c612ded",
+    "references/source-analysis.md": "53bbfaf6ce643de0ae8b074f60e409c20da54a4119b8fc4aa417a6c7186e29c7",
+    "references/storyboard.md": "07ff20f321acd87294c3c5de6650acb1ba0fe601689311f27eed199ae96dbf03",
+    "references/video.md": "b65ba610ad45ccf5b7f294b5c53ceb41656e47f29786fe14ddd867337bf6b0a1"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "product": "references/product.md",
+    "prop": "references/prop.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

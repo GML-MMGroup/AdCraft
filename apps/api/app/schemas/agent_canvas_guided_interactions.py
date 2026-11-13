@@ -8,7 +8,7 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
-from app.schemas.agent_canvas_guided_product import GuidedProductSourceActionV1
+from app.schemas.agent_canvas_guided_product import GuidedProductSourceActionV1, GuidedSourceScopeV1
 from app.schemas.brand_professional_mode import BrandFormSubmitV1, BrandFormV1
 from app.schemas.language import BCP47Tag
 
@@ -84,18 +84,25 @@ class GuidedQuestionnaireV1(_GuidedInteractionModel):
         return self
 
 
-class GuidedProductSourceQuestionV1(_GuidedInteractionModel):
+class GuidedProductSourceQuestionV1(GuidedSourceScopeV1):
     content_kind: Literal["product_source"] = "product_source"
     input_kind: Literal["main", "multiview"]
     question_id: str = Field(min_length=1, max_length=160)
     prompt: str = Field(min_length=1, max_length=512)
     expected_guidance_revision: int = Field(ge=1)
     min_asset_count: int = Field(ge=1, le=8)
-    max_asset_count: int = Field(ge=1, le=8)
+    max_asset_count: int | None = Field(ge=1, default=None)
+    source_label: str | None = Field(
+        default=None, max_length=256, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def validate_asset_count_contract(self) -> "GuidedProductSourceQuestionV1":
-        expected = (1, 1) if self.input_kind == "main" else (2, 8)
+        expected = (
+            ((1, 1) if self.input_kind == "main" else (2, 8))
+            if self.source_role == "product"
+            else (1, None)
+        )
         if (self.min_asset_count, self.max_asset_count) != expected:
             raise ValueError("Product source question has an invalid asset count contract.")
         return self

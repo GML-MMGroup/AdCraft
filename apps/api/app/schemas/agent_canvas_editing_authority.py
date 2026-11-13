@@ -52,6 +52,8 @@ class EditingExportStartCommandV2(_EditingAuthorityModel):
     request_digest: str = Field(pattern=_SHA256)
     ready_video_node_ids: tuple[str, ...] = ()
     source_asset_assertions: tuple[RevisionAssertionV2, ...] = ()
+    automatic_default: bool = False
+    required_ready_outputs: dict[str, str] = Field(default_factory=dict)
     skipped_inputs: tuple[EditingSkippedInputV2, ...] = ()
     bgm_node_id: str | None = Field(default=None, max_length=160)
     verified_reusable_export_id: str | None = Field(default=None, max_length=160)

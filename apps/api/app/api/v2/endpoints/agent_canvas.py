@@ -187,6 +187,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
+    GuidedProductSourceSubmitV1,
 )
 from app.schemas.agent_canvas_guided_references import (
     ReferenceCandidateKindV2,
@@ -436,6 +437,10 @@ from app.services.agent_canvas_video_parameter_compiler import (
 )
 from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_editing_output_reuse import EditingExportOutputReuseService
+from app.services.agent_canvas_editing_default_export import EditingDefaultExportCoordinator
+from app.persistence.agent_canvas_editing_default_export_repository import (
+    EditingDefaultExportRepository,
+)
 from app.services.model_selection import ModelSelectionService
 from app.services.model_resolution import ModelResolutionService
 from app.services.provider_adapter_registry import build_trusted_provider_adapter_registry
@@ -565,6 +570,7 @@ class AgentCanvasRuntime:
     editing_responses: EditingResponseProjector
     editing_exports: EditingExportService
     editing_output_reuse: EditingExportOutputReuseService
+    editing_default_exports: EditingDefaultExportCoordinator
     editing_export_repository: AgentCanvasEditingExportRepository
     continuation_outbox: AgentCanvasContinuationOutboxRepository
     continuation_worker: AgentCanvasContinuationWorker
@@ -1447,6 +1453,19 @@ def create_agent_canvas_runtime(
         connection_policy=connection_policy,
     )
 
+    editing_default_exports = EditingDefaultExportCoordinator(
+        repository=EditingDefaultExportRepository(database),
+        workflows=workflow_repository,
+        nodes=editing_nodes,
+        exports=editing_exports,
+        export_records=editing_export_repository,
+        output_reuse=editing_output_reuse,
+        asset_resolver=asset_service.resolve_asset,
+        asset_path=asset_service.resolve_asset_path,
+        asset_version_path=asset_service.resolve_asset_version_path,
+        probe=V2MediaProbe(ffprobe_path=settings.ffprobe_path),
+    )
+
     run_service = AgentCanvasRunService(
         workflow_repository,
         runtime_repository,
@@ -2126,6 +2145,7 @@ def create_agent_canvas_runtime(
         editing_responses=editing_responses,
         editing_exports=editing_exports,
         editing_output_reuse=editing_output_reuse,
+        editing_default_exports=editing_default_exports,
         editing_export_repository=editing_export_repository,
         continuation_outbox=continuation_outbox,
         continuation_worker=continuation_worker,
@@ -3448,12 +3468,19 @@ def retry_chat_turn(
     "/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit",
     response_model=GuidedInteractionAcceptedV1,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        200: {
+            "model": GuidedInteractionAcceptedV1,
+            "description": "Existing asset source committed synchronously.",
+        }
+    },
 )
 def submit_guided_interaction(
     workflow_id: str,
     interaction_id: str,
     request: GuidedInteractionSubmitRequestV1,
     background_tasks: BackgroundTasks,
+    response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> GuidedInteractionAcceptedV1:
@@ -3477,6 +3504,14 @@ def submit_guided_interaction(
             request,
             idempotency_key=idempotency_key,
         )
+        if (
+            isinstance(request, GuidedProductSourceSubmitV1)
+            and request.action.source_role != "product"
+            and request.action.choice == "upload"
+        ):
+            # Existing images are validated/combined and committed synchronously.
+            # Reserve HTTP 202 for bounded acceptance of queued authoring work.
+            response.status_code = status.HTTP_200_OK
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     if isinstance(request, GuidedMediaReviewSubmitV1) and request.action == "accept":

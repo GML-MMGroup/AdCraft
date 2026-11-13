@@ -16,6 +16,16 @@ function localFile(name: string) {
 }
 
 describe("productSourceSelection", () => {
+  it("preserves exact library provenance alongside project sources", () => {
+    const library = createAssetVersionDraftItem({ assetId: "library", versionId: "v1", displayName: "Library", previewUrl: null,
+      catalog: { source_scope: "recommended", entity_id: "entity", member_id: "member" } });
+    const project = createAssetVersionDraftItem({ assetId: "project", versionId: "v2", displayName: "Project", previewUrl: null });
+    expect(resolveProductSourceAssetVersions([library, project], new Map()).assetVersions).toEqual([
+      { asset_id: "library", version_id: "v1", source_scope: "recommended", entity_id: "entity", member_id: "member" },
+      { asset_id: "project", version_id: "v2" },
+    ]);
+  });
+
   it("replaces the current Main source when a new source is selected", () => {
     const first = createAssetVersionDraftItem({
       assetId: "asset-1",
@@ -129,4 +139,14 @@ describe("productSourceSelection", () => {
       new ProductSourceSelectionError("conflicting_handoff", "The Product uploads returned conflicting pending handoffs."),
     );
   });
+});
+
+it("accepts one or any larger number of existing asset images without a count cap", () => {
+  let selected: ReturnType<typeof addProductSourceItem> = [];
+  for (let index = 0; index < 33; index++) {
+    selected = addProductSourceItem(selected, createLocalFileDraftItem(localFile(`${index}.png`), `key-${index}`, ""), "multiview", null);
+    expect(validateProductSourceDraft(selected, "multiview", 1, null)).toBeNull();
+  }
+  expect(selected).toHaveLength(33);
+  expect(validateProductSourceDraft([], "multiview", 1, null)).not.toBeNull();
 });

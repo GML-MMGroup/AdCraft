@@ -21,6 +21,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
     AssetVersionRow,
     WorkflowEventRow,
+    ProjectRow,
 )
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_editing import (
@@ -289,6 +290,36 @@ class AgentCanvasEditingExportRepository:
                 "editing_manifest_revision_conflict",
                 "Editing manifest changed before export admission.",
             )
+        if command.automatic_default:
+            active_project = connection.execute(
+                select(ProjectRow.project_id)
+                .join(
+                    AgentCanvasWorkflowRow,
+                    AgentCanvasWorkflowRow.project_id == ProjectRow.project_id,
+                )
+                .where(
+                    AgentCanvasWorkflowRow.workflow_id == command.workflow_id,
+                    ProjectRow.status == "active",
+                )
+            ).scalar_one_or_none()
+            if active_project is None:
+                raise _error(
+                    "editing_project_inactive", "Automatic export requires an active Project."
+                )
+        for node_id, asset_id in command.required_ready_outputs.items():
+            available = connection.execute(
+                select(AgentCanvasNodeRow.node_id).where(
+                    AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                    AgentCanvasNodeRow.node_id == node_id,
+                    AgentCanvasNodeRow.status == "ready",
+                    AgentCanvasNodeRow.output_asset_id == asset_id,
+                )
+            ).scalar_one_or_none()
+            if available is None:
+                raise _error(
+                    "editing_inputs_pending",
+                    "An upstream media output changed before automatic export.",
+                )
         for assertion in command.source_asset_assertions:
             found = connection.execute(
                 select(

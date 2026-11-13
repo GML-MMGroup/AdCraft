@@ -3633,9 +3633,14 @@ export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
 export interface GuidedProductAssetVersionRefV1 {
   asset_id: string;
   version_id: string;
+  source_scope?: GuidedReferenceCandidateScopeV2;
+  entity_id?: string;
+  member_id?: string;
 }
 
 export interface GuidedProductSourceActionV1 {
+  source_role?: "product" | "character" | "scene";
+  occurrence_id?: string | null;
   input_kind: "main" | "multiview";
   choice: "upload" | "generate";
   handoff_mode: "pending" | "apply";
@@ -3699,12 +3704,15 @@ export type GuidedInteractionContentV1 =
     }
   | {
       content_kind: "product_source";
+      source_role?: "product" | "character" | "scene";
+      occurrence_id?: string | null;
+      source_label?: string | null;
       input_kind: "main" | "multiview";
       question_id: string;
       prompt: string;
       expected_guidance_revision: number;
       min_asset_count: number;
-      max_asset_count: number;
+      max_asset_count: number | null;
     }
   | {
       content_kind: "concept_choice";

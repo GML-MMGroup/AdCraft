@@ -300,6 +300,10 @@ http://127.0.0.1:8080
 
 您不需要自行运行 Docker 命令。若 Windows PowerShell 阻止某个维护脚本，请从项目文件夹以管理员身份打开 PowerShell，再运行表中显示的命令。
 
+更新前先停止 AdCraft，备份本地 `.env` 文件及实际使用的 `MEDIA_DATA_DIR`，包括其中的 SQLite 数据库和媒体。更新代码后重新运行部署启动器；API 启动时会自动执行随代码提供的数据库迁移。请保留项目中的 `apps/api/alembic/` 和 `apps/api/alembic.ini`。仅替换旧代码不能撤销数据库迁移；降级受阻时需要恢复匹配的升级前备份。
+
+新建的 Editing 节点可在已启用的上游媒体就绪后自动导出默认成片，并添加 `Final video` 节点；历史 Editing 节点不会自动加入。该任务运行在 API 内，不需要第四个服务，也无需新增启动命令。
+
 ## 保留这些文件
 
 - `apps/api/.env` 保存后端配置及在 API Space 中保存的 API 密钥。请保持私密，更新 AdCraft 时不要删除它。

@@ -552,7 +552,7 @@ class AgentWorkingDocumentService:
         requirement projections.  Including the document's global parameters
         and planned-node registry as well can push the detached Stage context
         over its 64KB persistence bound.  Keep the exact document identity and
-        all nine rows, but bound prose fields and omit metadata that the
+        all accepted rows, but bound prose fields and omit metadata that the
         storyboard role projector does not consume.
         """
 
@@ -1047,12 +1047,12 @@ def _with_computed_cursor(
         for record in content.node_records
         if record.node_role == "storyboard_grid" and record.sequence_id is not None
     }
-    contiguous_sequences = 0
+    panel_cursor = 0
     for segment in content.segments:
         if segment.sequence_id not in linked_sequences:
             break
-        contiguous_sequences += 1
-    return content.model_copy(update={"materialized_panel_cursor": contiguous_sequences * 9})
+        panel_cursor += sum(row.sequence_id == segment.sequence_id for row in content.rows)
+    return content.model_copy(update={"materialized_panel_cursor": panel_cursor})
 
 
 def _document_overview(document: AgentWorkingDocumentV2) -> dict[str, object]:

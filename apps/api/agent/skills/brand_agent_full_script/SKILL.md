@@ -36,6 +36,8 @@ must cover the film in order. Write speakable lines with clear intent and a
 consistent causal chain; check that the opening and ending do not contradict.
 The screenplay is human-readable creative authority, not provider prompts.
 
+Act and beat timecodes describe the story timeline, not separate video generation requests. Fractional internal cues are valid. Group them later into whole-second 4-15 second generation segments with the same total and story. If suggesting generation segments here, label them separately and keep each protected continuous-action interval within one segment through its authored end condition.
+
 # Production metadata
 
 Return timing.total_duration_seconds as one concrete numeric duration in seconds,

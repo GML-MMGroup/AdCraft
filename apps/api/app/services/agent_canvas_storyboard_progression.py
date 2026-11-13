@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -1519,7 +1521,8 @@ class ProgressiveStoryboardReadyService:
         video_content = VideoSegmentContentV2(
             segment_summary=content.sequence_summary,
             duration_seconds=duration_seconds,
-            storyboard_content="Follow the nine ordered storyboard frames.",
+            storyboard_content=content.narrative_goal,
+            production_handoff=content.production_handoff,
             representation_mode=representation.mode,
             style=VisualStyleContractV2(
                 style_prompt=(
@@ -1539,11 +1542,14 @@ class ProgressiveStoryboardReadyService:
         )
         now = datetime.now(timezone.utc)
         seed_prompt = (
-            f"Exact Storyboard Production Plan segment for {sequence_id}: "
-            f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
-            "Use the complete matching storyboard grid as the primary ordered reference. "
-            "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
-            "then follow panels 1 through 9 as one continuous commercial segment. "
+            f"Accepted story segment for {sequence_id}: {content.sequence_summary}\n"
+            f"Narrative goal: {content.narrative_goal}\n"
+            f"Production handoff: {'; '.join(content.production_handoff)}\n"
+            "Generate a full-frame scene from time zero. The attached storyboard grid is an "
+            "off-screen story-process reference, not a first/last-frame target. "
+            "Preserve the authored events and continuity; use the approved camera direction "
+            "and timing without copying panel layouts or matching panel framing. "
+            "Never display the sheet, its borders, or a zoom from the sheet into a panel. "
             "Preserve required dialogue, voice performance, native ambience, movement, "
             "and synchronized action effects. Generate no background music."
         )
@@ -1939,10 +1945,10 @@ def _accepted_segment(
     sequence_id: str,
 ) -> StoryboardSegmentMaterializationDraftV2:
     rows = tuple(row for row in content.rows if row.sequence_id == sequence_id)
-    if len(rows) != 9:
+    if len(rows) not in (4, 9):
         raise V2PersistenceError(
             "storyboard_fanout_invalid",
-            "Storyboard fan-out requires nine accepted Plan rows for every sequence.",
+            "Storyboard fan-out requires four or nine accepted Plan rows for every sequence.",
             stage="storyboard_progression",
             details={"sequence_id": sequence_id, "row_count": len(rows)},
         )
@@ -1961,7 +1967,7 @@ def _accepted_segment(
     if generation_prompt is None:
         sequence = next(item for item in content.segments if item.sequence_id == sequence_id)
         generation_prompt = (
-            "Render one 3x3 storyboard grid from the accepted Plan rows. "
+            f"Render one {storyboard_layout_name(len(rows))} storyboard grid from the accepted Plan rows. "
             f"Narrative goal: {sequence.narrative_goal}"
         )
     return StoryboardSegmentMaterializationDraftV2(

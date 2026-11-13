@@ -79,6 +79,11 @@
       "display_order": 80
     },
     {
+      "skill_id": "accident-bullet-time-commercial",
+      "version": "1.0.0",
+      "display_order": 90
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "display_order": 110

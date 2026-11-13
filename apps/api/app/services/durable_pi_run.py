@@ -275,7 +275,9 @@ class DurablePiRunService:
                     failure_payload = projected_event.payload
                     raise PiAgentRuntimeError(
                         _safe_error_code(failure_payload),
-                        _safe_error_message_for_code(_safe_error_code(failure_payload)),
+                        _safe_error_message_for_code(
+                            _safe_error_code(failure_payload), _safe_audit_metadata(failure_payload)
+                        ),
                         retryable=bool(failure_payload.get("retryable")),
                         details=_safe_audit_metadata(failure_payload),
                     ) from error
@@ -688,7 +690,7 @@ class DurablePiRunService:
                 created_at=datetime.now(timezone.utc),
                 payload={
                     "code": code,
-                    "message": _safe_error_message_for_code(code),
+                    "message": _safe_error_message_for_code(code, audit),
                     "retryable": retryable,
                     "audit": safe_agent_transport_audit(dict(audit)),
                 },
@@ -745,7 +747,9 @@ class DurablePiRunService:
         payload = result.terminal_payload
         raise PiAgentRuntimeError(
             safe_error_code or _safe_error_code(payload),
-            _safe_error_message_for_code(safe_error_code or _safe_error_code(payload)),
+            _safe_error_message_for_code(
+                safe_error_code or _safe_error_code(payload), _safe_audit_metadata(payload)
+            ),
             retryable=bool(payload.get("retryable")),
             details=_safe_audit_metadata(payload),
         )
@@ -823,7 +827,21 @@ def _safe_error_code(payload: Mapping[str, Any]) -> str:
     return "agent_runtime_unavailable"
 
 
-def _safe_error_message_for_code(code: str) -> str:
+def _safe_error_message_for_code(code: str, audit: Mapping[str, Any] | None = None) -> str:
+    if code == "agent_structured_output_invalid" and audit:
+        attempts = audit.get("structured_validation_attempts")
+        latest = attempts[-1] if isinstance(attempts, list) and attempts else None
+        if (
+            audit.get("operation") == "plan_storyboard_sequence_outline"
+            and isinstance(latest, dict)
+            and "storyboard_sequence_timing_mismatch" in latest.get("violation_codes", ())
+        ):
+            return (
+                "Storyboard video segment timing could not be prepared. New generation segments "
+                "must be whole seconds, 4-15 seconds each, and cover the confirmed total. "
+                "Story beats may be grouped while preserving the script; explicit segment counts "
+                "and fixed windows must remain unchanged. Retry this failed draft."
+            )
     return _SAFE_FAILURE_MESSAGES.get(code, "Agent runtime failed.")
 
 
@@ -841,7 +859,7 @@ def _normalized_runtime_error(
     )
     return PiAgentRuntimeError(
         code,
-        _safe_error_message_for_code(code),
+        _safe_error_message_for_code(code, audit),
         retryable=retryable,
         details=audit,
     )
@@ -862,7 +880,7 @@ def _safe_terminal_failure_payload(
     )
     return {
         "code": code,
-        "message": _safe_error_message_for_code(code),
+        "message": _safe_error_message_for_code(code, audit),
         "retryable": retryable,
         "audit": audit,
     }

@@ -42,7 +42,9 @@ function guidanceProjection(
   const copy: Record<GuidanceAwaitingV1["kind"], [string, string]> = {
     clarification: ["Your input is needed", "Answer the current question to continue"],
     concept_selection: ["Your creative choice is needed", "Choose an option to continue"],
-    product_source: ["A product source is needed", "Add or choose a product source to continue"],
+    product_source: awaiting.stage === "character" || awaiting.stage === "scene"
+      ? ["Choose an image source", "Use existing images or ask the Agent to design"]
+      : ["A product source is needed", "Add or choose a product source to continue"],
     brand_form: ["Your brand form is needed", "Complete the Brand Memory or Campaign form to continue"],
     media_review: ["Your media review is needed", "Review the generated media to continue"],
     reference_source: ["A reference source is needed", "Choose a reference image or skip to continue"],

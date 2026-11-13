@@ -2812,3 +2812,29 @@ class AgentCanvasGuidedProductionReceiptRow(Base):
     payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasEditingDefaultExportRow(Base):
+    """One recoverable default-export intent; manual exports retain their own identity."""
+
+    __tablename__ = "agent_canvas_editing_default_exports"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('waiting','exporting','completed','failed','skipped')",
+            name="ck_editing_default_exports_status",
+        ),
+        Index("ix_editing_default_exports_pending", "status", "updated_at"),
+    )
+    node_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_nodes.node_id", ondelete="CASCADE"), primary_key=True
+    )
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    export_id: Mapped[str | None] = mapped_column(Text)
+    output_node_id: Mapped[str | None] = mapped_column(Text)
+    position_json: Mapped[str] = mapped_column(Text, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)

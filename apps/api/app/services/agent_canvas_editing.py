@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_editing_default_export_repository import DEFAULT_EXPORT_INTENT
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasBindingSourceNodeV2,
@@ -110,10 +111,15 @@ class EditingNodeService:
         manifest: EditingManifestV2,
         *,
         expected_revision: int,
+        automatic_default: bool = False,
     ) -> CanvasNodeV2:
         node = self._require_editing_node(workflow_id, node_id)
         workflow = self._workflows.get_workflow(workflow_id)
         self._validate_manifest_bindings_from_snapshot(workflow, node_id, manifest)
+        if automatic_default and node.metadata.get(DEFAULT_EXPORT_INTENT) is not True:
+            raise _error(
+                "editing_default_superseded", "Manual editing replaced the default export."
+            )
         current = EditingNodeContentV2.model_validate(node.structured_content)
         updated_manifest = self._canonical_manifest(
             workflow,
@@ -136,6 +142,14 @@ class EditingNodeService:
         updated = node.model_copy(
             update={
                 "structured_content": updated_content.model_dump(mode="json"),
+                "metadata": {
+                    **node.metadata,
+                    **(
+                        {DEFAULT_EXPORT_INTENT: False}
+                        if not automatic_default and DEFAULT_EXPORT_INTENT in node.metadata
+                        else {}
+                    ),
+                },
                 "revision": node.revision + 1,
                 "updated_at": datetime.now(timezone.utc),
             }

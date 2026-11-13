@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from app.services.agent_canvas_image_presentation import (
     AUTHORED_IMAGE_PRESENTATION,
     DEFAULT_IMAGE_OVERLAYS,
@@ -90,8 +92,8 @@ _ROLE_BOUNDARIES = {
         "Keep the authored views within the same environment. " + DEFAULT_IMAGE_OVERLAYS,
     ),
     "storyboard_sequence": (
-        "Render one complete 3x3 storyboard image for one coherent sequence. "
-        "Keep all nine distinct frames in strict reading order with consistent "
+        "Render one complete storyboard image using the authored grid layout. "
+        "Keep all distinct frames in strict reading order with consistent "
         "identities, world details, visual style, and narrative continuity. "
         "Preserve non-dialogue authored text and original product marks. "
         "Do not render spoken dialogue as subtitles, speech bubbles or quoted lines in the grid. "
@@ -636,7 +638,8 @@ def _registration(
     boundary: str,
     negative: str,
 ) -> AgentCanvasPromptRegistration:
-    registry_ref = f"adcraft.agent_canvas.{role}.v1"
+    version = 2 if role == "storyboard_sequence" else 1
+    registry_ref = f"adcraft.agent_canvas.{role}.v{version}"
     return AgentCanvasPromptRegistration(
         semantic_role=role,
         registry_ref=registry_ref,
@@ -684,6 +687,9 @@ def _reference_description(
                 "Storyboard grid for this segment: use as loose narrative guidance. "
                 "Follow the written action beats and target Video style. Do not match panels "
                 "one-to-one or copy their exact framing, camera moves, or timing. "
+                "Use it only as an off-screen sequence guide, never as the opening or closing frame. "
+                "Begin directly with the first authored full-frame scene; never show the sheet "
+                "and zoom into a cell, animate its panels, or transition through its layout. "
                 "Do not show the grid itself."
             )
         return (
@@ -742,8 +748,8 @@ def _storyboard_visual_anchor_clause(reference_bundle: AdReferenceBundleV2) -> s
     return (
         f"Image {index} is a style-only reference for palette, rendering medium, "
         "linework, texture, and lighting treatment. It is not a storyboard to edit "
-        "or continue by retaining its panels. Generate all nine panels anew from the "
-        "current Node's own nine-panel text, including each panel's content, action, "
+        "or continue by retaining its panels. Generate all target panels anew from the "
+        "current Node's own panel text and layout, including each panel's content, action, "
         "composition, and camera. Do not copy, trace, or reuse the reference's panel "
         "images, narrative events, actions, poses, camera angles, shot compositions, or panel order. "
         "Do not import its subjects, objects, or locations unless the current text "
@@ -860,18 +866,28 @@ def _render_content(structured: object, *, generation_prompt: str = "") -> str:
         )
     if isinstance(structured, StoryboardGridContentV2):
         frame_positions = (
-            "Top-left frame",
-            "Top-center frame",
-            "Top-right frame",
-            "Middle-left frame",
-            "Center frame",
-            "Middle-right frame",
-            "Bottom-left frame",
-            "Bottom-center frame",
-            "Bottom-right frame",
+            (
+                "Top-left frame",
+                "Top-center frame",
+                "Top-right frame",
+                "Middle-left frame",
+                "Center frame",
+                "Middle-right frame",
+                "Bottom-left frame",
+                "Bottom-center frame",
+                "Bottom-right frame",
+            )
+            if len(structured.panels) == 9
+            else (
+                "Top-left frame",
+                "Top-right frame",
+                "Bottom-left frame",
+                "Bottom-right frame",
+            )
         )
         return "\n".join(
             [
+                f"Layout: {storyboard_layout_name(len(structured.panels))}, exactly {len(structured.panels)} ordered panels.",
                 f"Sequence: {structured.sequence_summary}",
                 *[
                     (

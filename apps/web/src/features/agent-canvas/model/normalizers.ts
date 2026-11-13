@@ -5352,6 +5352,9 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
   if (contentKind === "product_source") {
     forbidUnknownFields(record, [
       "content_kind",
+      "source_role",
+      "occurrence_id",
+      "source_label",
       "input_kind",
       "question_id",
       "prompt",
@@ -5361,15 +5364,23 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     ], path);
     if (kind !== "product_source") fail(path, "invalid Product source interaction content");
     const inputKind = expectLiteral(record.input_kind, new Set(["main", "multiview"] as const), `${path}.input_kind`);
+    const sourceRole = record.source_role === undefined ? "product" : expectLiteral(record.source_role, new Set(["product", "character", "scene"] as const), `${path}.source_role`);
+    const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
+    if ((sourceRole === "character" && !occurrenceId) || (sourceRole !== "character" && occurrenceId !== null) || (sourceRole !== "product" && inputKind !== "multiview")) {
+      fail(path, "invalid asset source scope");
+    }
     const minAssetCount = expectPositiveInteger(record.min_asset_count, `${path}.min_asset_count`);
-    const maxAssetCount = expectPositiveInteger(record.max_asset_count, `${path}.max_asset_count`);
-    const expectedCounts = inputKind === "main" ? [1, 1] : [2, 8];
+    const maxAssetCount = record.max_asset_count == null ? null : expectPositiveInteger(record.max_asset_count, `${path}.max_asset_count`);
+    const expectedCounts = sourceRole === "product" ? (inputKind === "main" ? [1, 1] : [2, 8]) : [1, null];
     if (minAssetCount !== expectedCounts[0] || maxAssetCount !== expectedCounts[1]) {
       fail(path, "invalid Product source asset count contract");
     }
     return {
       content_kind: "product_source",
       input_kind: inputKind,
+      ...(record.source_role !== undefined ? { source_role: sourceRole } : {}),
+      ...(record.occurrence_id !== undefined ? { occurrence_id: occurrenceId } : {}),
+      ...(record.source_label !== undefined ? { source_label: nullableStringWithDefault(record.source_label, `${path}.source_label`) } : {}),
       question_id: expectNonEmptyString(record.question_id, `${path}.question_id`),
       prompt: expectNonEmptyString(record.prompt, `${path}.prompt`),
       expected_guidance_revision: expectPositiveInteger(

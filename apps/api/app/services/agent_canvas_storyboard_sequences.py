@@ -6,6 +6,8 @@ from hashlib import sha256
 from math import ceil
 from typing import Literal, Protocol, cast
 
+from app.core.storyboard_layout import storyboard_panel_count
+
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from sqlalchemy.engine import Connection
@@ -371,7 +373,7 @@ class StoryboardSequenceAuthoringService:
         planned_node: StoryboardPlannedNodeV3 | None = None,
         materialization_id: str | None = None,
     ) -> StoryboardProductionPlanContentV3:
-        """Plan one authoritative nine-row sequence without runtime mirrors."""
+        """Plan one authoritative sequence without runtime mirrors."""
 
         sequence_ids = tuple(item.sequence_id for item in content.segments)
         if sequence_id not in sequence_ids:
@@ -419,7 +421,7 @@ class StoryboardSequenceAuthoringService:
             if (
                 current_materialization.status != "materialized"
                 or expected_prompt != current_materialization.generation_prompt
-                or len(existing_rows) != 9
+                or len(existing_rows) != len(draft.rows)
                 or any(
                     row.content_beat != draft_row.content_beat
                     or row.camera_description != draft_row.camera_description
@@ -527,13 +529,13 @@ class StoryboardSequenceAuthoringService:
     def derived_materialized_panel_cursor(content: StoryboardProductionPlanContentV3) -> int:
         """Project the retired cursor from contiguous committed plan records."""
 
-        materialized = {row.sequence_id for row in content.rows}
         contiguous = 0
         for segment in content.segments:
-            if segment.sequence_id not in materialized:
+            rows = tuple(row for row in content.rows if row.sequence_id == segment.sequence_id)
+            if not rows:
                 break
-            contiguous += 1
-        return contiguous * 9
+            contiguous += len(rows)
+        return contiguous
 
     def build_grid_context(
         self,
@@ -642,11 +644,20 @@ class StoryboardSequenceAuthoringService:
             plan_revision=plan_revision,
             plan_content_digest=plan_content_digest,
             sequence=sequence,
+            panel_count=(
+                len(existing_rows)
+                if (
+                    existing_rows := tuple(
+                        row for row in content.rows if row.sequence_id == sequence_id
+                    )
+                )
+                else storyboard_panel_count(round(sequence.end_seconds - sequence.start_seconds, 3))
+            ),
             narrative_context=content.narrative_outline,
             selected_direction=selected_direction,
             brand_decisions=brand_decisions,
             prior_end_state=prior.end_state if prior is not None else None,
-            prior_final_panel=(prior_rows[-1] if len(prior_rows) == 9 else None),
+            prior_final_panel=(prior_rows[-1] if len(prior_rows) in {4, 9} else None),
             anchors=anchors,
             style_excerpt=style_excerpt,
         )
@@ -812,7 +823,7 @@ class StoryboardSequenceAuthoringService:
                 f"storyboard_segment_materialized:{updated.document_id}:"
                 f"{sequence_id}:{updated.revision}"
             ),
-            payload={"sequence_id": sequence_id, "panel_count": 9},
+            payload={"sequence_id": sequence_id, "panel_count": len(rows)},
         )
         self._append_event(
             workflow_id=workflow_id,
@@ -824,7 +835,7 @@ class StoryboardSequenceAuthoringService:
                 f"storyboard_sequence_materialized:{updated.document_id}:"
                 f"{sequence_id}:{updated.revision}"
             ),
-            payload={"sequence_id": sequence_id, "panel_count": 9},
+            payload={"sequence_id": sequence_id, "panel_count": len(rows)},
         )
         return updated
 
@@ -1518,7 +1529,7 @@ def _continuity_handoff(
     if previous is None:
         return ""
     previous_rows = tuple(row for row in content.rows if row.sequence_id == previous.sequence_id)
-    if len(previous_rows) != 9:
+    if len(previous_rows) not in {4, 9}:
         raise _storyboard_authority_error(
             "A later Storyboard sequence requires the previous sequence's final panel."
         )
@@ -1586,7 +1597,7 @@ def _ensure_adjacent_sequence_is_distinct(
         for item in content.segment_materializations
         if item.sequence_id == previous.sequence_id
     )
-    if len(previous_rows) != 9 or previous_materialization.status != "materialized":
+    if len(previous_rows) not in {4, 9} or previous_materialization.status != "materialized":
         return
     previous_rows_payload = tuple(
         (

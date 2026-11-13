@@ -6,6 +6,7 @@ import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
+  GuidedReferenceCandidateV2,
 } from "../../../types-v2.ts";
 import { useAgentCanvasAssets } from "../assets/useAgentCanvasAssets.ts";
 import { DecisionDockFrame } from "./DecisionDockFrame.tsx";
@@ -20,6 +21,7 @@ import {
   resolveProductSourceAssetVersions,
   validateProductSourceDraft,
   type ProductSourceDraftItem,
+  type SourceLibraryIdentity,
 } from "./productSourceSelection.ts";
 import type { AgentAssetBrowserItem } from "../assets/assetSelection.ts";
 import type { ProductMainHandoff } from "./productSourceHandoff.ts";
@@ -82,6 +84,9 @@ export function ProductSourceDecisionDock({
   }, []);
 
   if (!content) return null;
+  const sourceRole = content.source_role ?? "product";
+  const genericSource = sourceRole !== "product";
+  const sourceScope = genericSource ? { source_role: sourceRole, occurrence_id: content.occurrence_id ?? null } : {};
 
   const validationIssue = validateProductSourceDraft(
     selected,
@@ -93,7 +98,9 @@ export function ProductSourceDecisionDock({
   const canSubmit = interaction.allowed_actions.includes("select_source")
     && (choice === "generate" || countValid);
   const busy = pending || preparing || assets.uploading;
-  const selectionSummary = content.input_kind === "main"
+  const selectionSummary = content.max_asset_count === null
+    ? t("{count} images selected", { count: selected.length })
+    : content.input_kind === "main"
     ? t("{count} of 1 image selected", { count: selected.length })
     : t("{count} of {min}-{max} images selected", {
         count: selected.length, min: content.min_asset_count, max: content.max_asset_count,
@@ -112,6 +119,7 @@ export function ProductSourceDecisionDock({
           expected_interaction_revision: interaction.revision,
           expected_session_revision: interaction.expected_session_revision,
           action: {
+            ...sourceScope,
             input_kind: content.input_kind,
             choice: "generate",
             handoff_mode: "apply",
@@ -132,8 +140,8 @@ export function ProductSourceDecisionDock({
         ? await assets.uploadFilesWithReceipts(
             localItems.map((item) => item.file),
             {
-              semanticRole: content.input_kind === "main" ? "product_main" : "product_multiview",
-              metadata: { input_kind: content.input_kind },
+              semanticRole: sourceRole === "character" ? "character_three_view" : sourceRole === "scene" ? "scene_multi_view_grid" : content.input_kind === "main" ? "product_main" : "product_multiview",
+              metadata: { input_kind: content.input_kind, ...sourceScope },
             },
             localItems.map((item) => item.uploadIdempotencyKey),
           )
@@ -156,6 +164,7 @@ export function ProductSourceDecisionDock({
         expected_interaction_revision: interaction.revision,
         expected_session_revision: interaction.expected_session_revision,
         action: {
+          ...sourceScope,
           input_kind: content.input_kind,
           choice: "upload",
           handoff_mode: "apply",
@@ -212,6 +221,17 @@ export function ProductSourceDecisionDock({
     updateSelected(() => addProductSourceItem(selected, draft, content.input_kind, content.max_asset_count));
   };
 
+  const selectLibraryAsset = (candidate: GuidedReferenceCandidateV2, catalog: SourceLibraryIdentity) => {
+    const draft = createAssetVersionDraftItem({
+      assetId: candidate.asset_id,
+      versionId: candidate.asset_version_id,
+      displayName: candidate.display_name,
+      previewUrl: candidate.preview_url,
+      catalog,
+    });
+    updateSelected(() => addProductSourceItem(selected, draft, content.input_kind, content.max_asset_count));
+  };
+
   const selectFiles = (files: File[]) => {
     onClearProductMainHandoff?.();
     updateSelected(() => files.reduce((next, file) => {
@@ -228,21 +248,22 @@ export function ProductSourceDecisionDock({
 
   return (
     <DecisionDockFrame
-      title={productSourceCopy(interaction.title, t)}
+      title={content.source_label ? `${productSourceCopy(interaction.title, t)} · ${content.source_label}` : productSourceCopy(interaction.title, t)}
       context={productSourceCopy(interaction.context, t)}
       pending={busy}
       issue={effectiveIssue ? {
         ...effectiveIssue,
-        summary: productSourceCopy(effectiveIssue.summary, t),
-        detail: effectiveIssue.detail ? productSourceCopy(effectiveIssue.detail, t) : null,
+        summary: productSourceCopy(effectiveIssue.summary, t, genericSource),
+        detail: effectiveIssue.detail ? productSourceCopy(effectiveIssue.detail, t, genericSource) : null,
       } : null}
-      footerSummary={choice === "upload" ? selectionSummary : t("The Agent will prepare a Product source")}
-      submitLabel={t(choice === "upload" ? "Use selected Product" : "Generate Product")}
+      footerSummary={choice === "upload" ? selectionSummary : t(genericSource ? "The Agent will design and generate this asset" : "The Agent will prepare a Product source")}
+      submitLabel={t(genericSource ? (choice === "upload" ? "Use selected images" : "Let the Agent design") : (choice === "upload" ? "Use selected Product" : "Generate Product"))}
       submitDisabled={!canSubmit}
       onSubmit={() => { void submit(); }}
     >
       <fieldset className="agent-chat__product-source" disabled={busy}>
         <legend>{productSourceCopy(content.prompt, t)}</legend>
+        {genericSource ? <p>{t("One image is used as-is; multiple images are combined in the selected order.")}</p> : null}
         <div className="agent-chat__product-source-choices">
           <label>
             <input
@@ -251,21 +272,27 @@ export function ProductSourceDecisionDock({
               checked={choice === "upload"}
               onChange={() => setChoice("upload")}
             />
-            <span>{t("Use uploaded Product source")}</span>
+            <span>{t(genericSource ? "Use existing images" : "Use uploaded Product source")}</span>
           </label>
           <label>
             <input
               type="radio"
               name={`${interaction.interaction_id}-source-choice`}
-              aria-label={t("Generate Product source")}
+              aria-label={t(genericSource ? "Agent design and generation" : "Generate Product source")}
               checked={choice === "generate"}
               onChange={() => setChoice("generate")}
             />
-            <span>{t("Generate Product source")}</span>
+            <span>{t(genericSource ? "Agent design and generation" : "Generate Product source")}</span>
           </label>
         </div>
         {choice === "upload" ? (
           <ProductSourceAssetPicker
+            genericSource={genericSource}
+            sourceLibrary={genericSource ? {
+              workflowId: interaction.workflow_id,
+              sourceRole,
+              onSelect: selectLibraryAsset,
+            } : undefined}
             items={assets.items}
             selected={selected}
             inputKind={content.input_kind}

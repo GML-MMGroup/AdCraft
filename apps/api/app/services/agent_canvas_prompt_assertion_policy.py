@@ -208,7 +208,9 @@ _IMAGE_ROLE_BOUNDARIES = {
 }
 
 
-def _default_policy(recipe, *, legacy_scene: bool = False) -> PromptAssertionPolicyV1:
+def _default_policy(
+    recipe, *, legacy_scene: bool = False, legacy_storyboard: bool = False
+) -> PromptAssertionPolicyV1:
     role = recipe.role_variant
     if role == "product_multiview":
         special = dict(_SPECIAL_POLICIES[role])
@@ -223,12 +225,19 @@ def _default_policy(recipe, *, legacy_scene: bool = False) -> PromptAssertionPol
     if role in _IMAGE_ROLE_BOUNDARIES:
         historical = _historical_default_policy(recipe)
         scene = role == "scene_board" and not legacy_scene
+        adaptive_storyboard = role == "storyboard_grid" and not legacy_storyboard
+        boundary = (
+            "Render the authored sequence in its accepted layout: 2x2 with four ordered panels "
+            "or 3x3 with nine ordered panels. Use the supplied panel count and do not add panels."
+            if adaptive_storyboard
+            else _IMAGE_ROLE_BOUNDARIES[role]
+        )
         return _policy(
             recipe.recipe_id,
             recipe.recipe_version,
             historical.assertion_ids,
             (
-                _IMAGE_ROLE_BOUNDARIES[role]
+                boundary
                 + " "
                 + AUTHORED_IMAGE_PRESENTATION
                 + (" " + SCENE_ENVIRONMENT_PRESENTATION if scene else ""),
@@ -236,7 +245,7 @@ def _default_policy(recipe, *, legacy_scene: bool = False) -> PromptAssertionPol
             (DEFAULT_IMAGE_OVERLAYS, SCENE_ENVIRONMENT_EXCLUSIONS)
             if scene
             else (DEFAULT_IMAGE_OVERLAYS,),
-            policy_version="3" if scene else "2",
+            policy_version="3" if scene or adaptive_storyboard else "2",
         )
     return _historical_default_policy(recipe)
 
@@ -286,6 +295,10 @@ class PromptAssertionPolicyRegistry:
         role = recipe_id.rsplit(".", 1)[-1]
         if policy_version == "1" and role in _IMAGE_ROLE_BOUNDARIES:
             policy = _historical_default_policy(RolePromptRecipeRegistry().resolve(role))
+        if policy_version == "2" and role == "storyboard_grid":
+            policy = _default_policy(
+                RolePromptRecipeRegistry().resolve(role), legacy_storyboard=True
+            )
         if policy_version == "2" and role == "scene_board":
             policy = _default_policy(RolePromptRecipeRegistry().resolve(role), legacy_scene=True)
         if policy_version == "3" and role == "product_multiview":

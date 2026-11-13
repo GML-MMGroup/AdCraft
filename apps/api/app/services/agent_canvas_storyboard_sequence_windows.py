@@ -14,6 +14,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
 class StoryboardSequenceWindowPlanner:
     """Bound Agent allocation and validate its windows before freezing topology."""
 
+    MIN_SEQUENCE_DURATION_SECONDS = 4.0
     MAX_SEQUENCE_DURATION_SECONDS = 15.0
     MAX_SEQUENCE_COUNT = 128
 
@@ -43,6 +44,10 @@ class StoryboardSequenceWindowPlanner:
             raise cls._invalid("Storyboard sequence count must be an integer from 1 through 128.")
         if sequence_count < minimum_count:
             raise cls._invalid("Storyboard sequence count exceeds the duration policy.")
+        if sequence_count * cls.MIN_SEQUENCE_DURATION_SECONDS > duration:
+            raise cls._invalid(
+                "Storyboard sequence count requires at least 4 seconds per generation segment."
+            )
 
         boundaries = [0.0]
         boundaries.extend(
@@ -78,12 +83,16 @@ class StoryboardSequenceWindowPlanner:
             raise ValueError("Storyboard outline count does not match authority.")
         if authority.timing_mode == "fixed" and windows != authority.windows:
             raise ValueError("Storyboard outline timing does not match fixed authority.")
-        if authority.timing_mode == "narrative" and authority.total_duration_seconds.is_integer():
+        if authority.timing_mode != "fixed":
             if any(
-                not (window.end_seconds - window.start_seconds).is_integer() for window in windows
+                (duration := round(window.end_seconds - window.start_seconds, 3))
+                < StoryboardSequenceWindowPlanner.MIN_SEQUENCE_DURATION_SECONDS
+                or not duration.is_integer()
+                for window in windows
             ):
                 raise ValueError(
-                    "Use whole-second generation durations; subsecond timing belongs inside shots."
+                    "Use whole-second generation durations of at least 4 seconds; "
+                    "four-panel segments last exactly 4 seconds."
                 )
         return StoryboardSequenceAuthorityPlanV2.model_validate(
             {**authority.model_dump(mode="json"), "windows": windows}
@@ -96,16 +105,11 @@ class StoryboardSequenceWindowPlanner:
                 "Storyboard duration must be a finite number."
             )
         duration = float(value)
-        if not isfinite(duration) or duration <= 0 or duration > 3_600:
+        if not isfinite(duration) or duration < 4 or duration > 3_600 or not duration.is_integer():
             raise StoryboardSequenceWindowPlanner._invalid(
-                "Storyboard duration must be greater than zero and at most 3600 seconds."
+                "Storyboard generation requires a whole-second total from 4 through 3600 seconds."
             )
-        rounded = round(duration, 3)
-        if rounded <= 0 or rounded != duration:
-            raise StoryboardSequenceWindowPlanner._invalid(
-                "Storyboard duration requires millisecond precision."
-            )
-        return rounded
+        return duration
 
     @staticmethod
     def _aspect_ratio(value: object) -> str:

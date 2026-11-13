@@ -31,6 +31,7 @@ import {
   type AgentCredentialSnapshot,
   type AgentRuntimeTransportSource,
 } from "./python-internal-client.js";
+import { storyboardTimingRepairPolicy } from "./prompts/generation-timing.js";
 import { modelAttemptTimeoutMs, type ModelAttemptStage } from "./run-budget.js";
 import {
   claimAgentModelTraceOutcome,
@@ -1257,6 +1258,9 @@ function repairPayload(
     validation?.result,
     isBrandTreatmentReview ? 32 : 8,
   );
+  const isStoryboardTiming = input.request.operation === "plan_storyboard_sequence_outline" &&
+    input.request.contract_name === "StoryboardSequenceOutlineDraftV2" &&
+    violations.some((violation) => violation.code === "storyboard_sequence_timing_mismatch");
   const malformedExcerpt = (isTreatment || isRoleBrief) && invalidValue === undefined && invalidContent
     ? JSON.stringify({
       content: invalidContent.slice(0, 8_192),
@@ -1268,7 +1272,9 @@ function repairPayload(
     messages: [
       {
         role: "system",
-        content: isIntake
+        content: isStoryboardTiming
+          ? `${input.systemPrompt}\n\n${storyboardTimingRepairPolicy}`
+          : isIntake
           ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
           : isBrandTreatmentReview
             ? `${input.systemPrompt}\n\n${brandTreatmentReviewRepairPolicy}`

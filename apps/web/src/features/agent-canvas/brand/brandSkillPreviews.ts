@@ -34,6 +34,7 @@ const CREATIVE_METHOD_ARTWORK = new Set([
 // Authored companion pairs from the backend's seed/creative_method_skills and
 // agent/video-skills packages. This only shares artwork; selection stays independent.
 const COMPANION_STYLE: Readonly<Record<string, string>> = {
+  "accident-to-product-showcase": "accident-bullet-time-commercial",
   "summer-sensory-use-moment": "japanese-summer-sensory-film",
   "streetwear-identity-journey": "2000s-street-fashion-film",
   "product-triggered-world-expansion": "surreal-cinematic-product-worlds",

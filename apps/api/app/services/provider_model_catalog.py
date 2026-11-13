@@ -260,7 +260,7 @@ def _ark_video_profile(
         supports_provider_idempotency=False,
         conformance_status="compatible",
         adapter_revision="ark-video-native-v1",
-        capability_revision=f"{model_ref.replace(':', '-')}-v1",
+        capability_revision=f"{model_ref.replace(':', '-')}-v2",
         release_tier=release_tier,
         parameter_matrix=_parameter_matrix(
             schema_id="ark-video-generation-v1",
@@ -268,7 +268,7 @@ def _ark_video_profile(
                 {
                     "name": "duration_seconds",
                     "value_type": "integer",
-                    "minimum": 1,
+                    "minimum": 4,
                     "maximum": 15,
                     "default": 5,
                 },
@@ -537,7 +537,7 @@ _MINIMAX_VIDEO_PROFILES = {
 def _video_capability_metadata(
     profile: Mapping[str, Any],
     *,
-    duration_range_seconds: tuple[int, int] = (1, 15),
+    duration_range_seconds: tuple[int, int] = (4, 15),
     max_references: int = 15,
     provider_protocol: str = "ark_video",
 ) -> dict[str, Any]:
@@ -730,7 +730,7 @@ _TRUSTED_MANIFESTS = (
             ],
             "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
             "supported_resolutions": ["480p", "720p", "1080p"],
-            "duration_range_seconds": [1, 15],
+            "duration_range_seconds": [4, 15],
             "supports_native_audio": True,
             "default_parameters": {
                 "duration_seconds": 5,

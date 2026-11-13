@@ -2,6 +2,12 @@ import type { GuidedProductAssetVersionRefV1 } from "../../../types-v2.ts";
 
 export type ProductSourceInputKind = "main" | "multiview";
 
+export interface SourceLibraryIdentity {
+  source_scope: "mine" | "recommended";
+  entity_id: string;
+  member_id: string;
+}
+
 export interface ProductSourceAssetVersionDraftItem {
   kind: "asset_version";
   key: string;
@@ -10,6 +16,7 @@ export interface ProductSourceAssetVersionDraftItem {
   displayName: string;
   previewUrl: string | null;
   pendingHandoffId: string | null;
+  catalog?: SourceLibraryIdentity;
 }
 
 export interface ProductSourceLocalFileDraftItem {
@@ -53,6 +60,7 @@ export function createAssetVersionDraftItem(input: {
   displayName: string;
   previewUrl: string | null;
   pendingHandoffId?: string | null;
+  catalog?: SourceLibraryIdentity;
 }): ProductSourceAssetVersionDraftItem {
   return {
     kind: "asset_version",
@@ -81,13 +89,13 @@ export function addProductSourceItem(
   current: readonly ProductSourceDraftItem[],
   item: ProductSourceDraftItem,
   inputKind: ProductSourceInputKind,
-  maxAssetCount: number,
+  maxAssetCount: number | null,
 ): ProductSourceDraftItem[] {
   if (inputKind === "main") return [item];
   if (current.some((candidate) => candidate.key === item.key)) {
     throw new ProductSourceSelectionError("duplicate", "This Product source is already selected.");
   }
-  if (current.length >= maxAssetCount) {
+  if (maxAssetCount !== null && current.length >= maxAssetCount) {
     throw new ProductSourceSelectionError(
       "max_count",
       `You can select at most ${maxAssetCount} Product source${maxAssetCount === 1 ? "" : "s"}.`,
@@ -120,9 +128,10 @@ export function validateProductSourceDraft(
   current: readonly ProductSourceDraftItem[],
   inputKind: ProductSourceInputKind,
   minAssetCount: number,
-  maxAssetCount: number,
+  maxAssetCount: number | null,
 ): string | null {
-  if (current.length >= minAssetCount && current.length <= maxAssetCount) return null;
+  if (current.length >= minAssetCount && (maxAssetCount === null || current.length <= maxAssetCount)) return null;
+  if (maxAssetCount === null) return "Select at least one image.";
   if (inputKind === "main") return `Select exactly ${minAssetCount} Product source.`;
   return `Select ${minAssetCount}-${maxAssetCount} Product sources.`;
 }
@@ -138,7 +147,7 @@ export function resolveProductSourceAssetVersions(
   const assetVersions = current.map((item) => {
     if (item.kind === "asset_version") {
       if (item.pendingHandoffId) pendingHandoffIds.add(item.pendingHandoffId);
-      return { asset_id: item.assetId, version_id: item.versionId };
+      return { asset_id: item.assetId, version_id: item.versionId, ...item.catalog };
     }
     const uploaded = uploadedByDraftKey.get(item.key);
     if (!uploaded) {

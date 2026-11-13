@@ -202,6 +202,27 @@
       "review_status": "approved"
     },
     {
+      "skill_id": "accident-bullet-time-commercial",
+      "version": "1.0.0",
+      "origin": "in_house",
+      "sources": [],
+      "retained_methods": [
+        "contact-triggered speed ramp",
+        "parallax-led product inspection",
+        "Return to gravity"
+      ],
+      "merged_duplicates": [
+        "Merged the accident, suspended inspection and landing grammar across four supplied videos, including two tutorials."
+      ],
+      "removed_runtime_constraints": [
+        "Kept the tutorial provider interface, fixed source runtime and resolution settings out of runtime requirements.",
+        "Adapted short internal shot intervals to the accepted AdCraft generation windows rather than requiring one node per shot."
+      ],
+      "naming_adaptation": "Used a neutral treatment name centered on an accident and bullet-time product photography.",
+      "commercial_adaptation": "Preserved footwear approach, visible contact, simultaneous freeze, a continuous camera path through distinct belongings, pullback and complete landing. One advertised product retains supporting props. The latest correction supersedes the airborne endpoint: collision through every item landing and settling stays in one video segment, including long ads. Grid images guide story progression off screen without first/last-frame locks.",
+      "review_status": "approved"
+    },
+    {
       "skill_id": "fashion-showcase-film",
       "version": "1.0.0",
       "sources": [

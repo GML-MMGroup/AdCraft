@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.storyboard_layout import storyboard_layout_name
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -271,7 +273,8 @@ def _render_result(
             title="Storyboard Sequence",
             summary_prompt=seed.sequence_summary,
             generation_prompt=_join(
-                "Create one ordered 3x3 storyboard grid with exactly nine frames.",
+                f"Create one ordered {storyboard_layout_name(len(panels))} storyboard grid "
+                f"with exactly {len(panels)} frames.",
                 seed.sequence_summary,
                 f"Camera language: {seed.camera_language}",
                 *(

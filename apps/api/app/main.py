@@ -155,6 +155,15 @@ def _lifespan(
                     **recovery_kwargs,
                 )
             )
+            default_export_stop = asyncio.Event()
+            default_export_task = asyncio.create_task(
+                _poll_agent_canvas_default_exports(
+                    settings,
+                    default_export_stop,
+                    settings_provider=settings_provider,
+                    **recovery_kwargs,
+                )
+            )
             brand_poll_stop = asyncio.Event()
             brand_poll_task = asyncio.create_task(
                 _poll_brand_continuations(
@@ -177,11 +186,13 @@ def _lifespan(
             try:
                 yield
             finally:
+                default_export_stop.set()
                 provider_poll_stop.set()
                 continuation_poll_stop.set()
                 guided_media_resume_poll_stop.set()
                 brand_poll_stop.set()
                 deletion_poll_stop.set()
+                await default_export_task
                 await provider_poll_task
                 await continuation_poll_task
                 await guided_media_resume_poll_task
@@ -450,6 +461,38 @@ def _recover_agent_canvas_provider_tasks(
             runtime.scheduler.resume(execution.execution_id)
     finally:
         runtime.database.dispose()
+
+
+async def _poll_agent_canvas_default_exports(
+    settings: Settings,
+    stop: asyncio.Event,
+    *,
+    runtime_factory: AgentCanvasRuntimeFactory | None = None,
+    settings_provider: Callable[[], Settings] | None = None,
+) -> None:
+    """Poll durable automatic delivery independently of model and media generation."""
+
+    def recover(cycle_settings: Settings) -> None:
+        runtime = (runtime_factory or create_agent_canvas_runtime)(cycle_settings)
+        try:
+            worker = getattr(runtime, "editing_default_exports", None)
+            if worker is not None:
+                worker.run_once()
+        finally:
+            runtime.database.dispose()
+
+    while not stop.is_set():
+        cycle_settings = settings_provider() if settings_provider else settings
+        try:
+            await asyncio.to_thread(recover, cycle_settings)
+        except Exception:
+            logger.exception("Automatic default Editing export polling failed.")
+        try:
+            await asyncio.wait_for(
+                stop.wait(), timeout=max(1, cycle_settings.v2_provider_task_poll_interval_seconds)
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 def _recover_agent_canvas_editing_exports(

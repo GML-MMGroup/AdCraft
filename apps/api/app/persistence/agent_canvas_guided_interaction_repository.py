@@ -307,6 +307,9 @@ class AgentCanvasGuidedInteractionRepository:
         idempotency_key: str,
         input_kind: Literal["main", "multiview"] = "main",
         prompt: str | None = None,
+        source_role: Literal["product", "character", "scene"] = "product",
+        occurrence_id: str | None = None,
+        source_label: str | None = None,
     ) -> GuidedInteractionV1:
         """Atomically open the Product source wait and its Journey owner."""
 
@@ -335,7 +338,7 @@ class AgentCanvasGuidedInteractionRepository:
                             "Guidance session changed before Product entry.",
                         )
                     journey = _journey(session)
-                    if journey.stage != "product":
+                    if journey.stage != source_role:
                         raise _error(
                             "guided_product_stage_invalid",
                             "Product source interaction is only available during the Product stage.",
@@ -366,6 +369,8 @@ class AgentCanvasGuidedInteractionRepository:
                         if (
                             not isinstance(existing.content, GuidedProductSourceQuestionV1)
                             or existing.content.input_kind != input_kind
+                            or existing.content.source_role != source_role
+                            or existing.content.occurrence_id != occurrence_id
                         ):
                             raise _error(
                                 "guided_interaction_conflict",
@@ -374,27 +379,49 @@ class AgentCanvasGuidedInteractionRepository:
                         connection.commit()
                         return existing
 
+                    if source_role != "product":
+                        next_action = GuidedProductionJourneyPolicyService().evaluate(journey)
+                        if next_action.action != "invoke_capability" or (
+                            source_role == "character"
+                            and (
+                                next_action.occurrence_id != occurrence_id
+                                or next_action.character_phase != "main"
+                            )
+                        ):
+                            raise _error(
+                                "guided_interaction_stale",
+                                "Asset source no longer matches the next authoring step.",
+                            )
                     revision = int(session["revision"])
                     identity = sha256(
-                        f"product-source:{workflow_id}:{session['session_id']}:{journey.stage_revision}:{input_kind}:v1".encode(
+                        f"product-source:{workflow_id}:{session['session_id']}:{journey.stage_revision}:{source_role}:{occurrence_id or '-'}:{input_kind}:v1".encode(
                             "utf-8"
                         )
                     ).hexdigest()[:32]
                     interaction_id = f"interaction_product_source_{identity}"
-                    checkpoint_id = f"product_source:{journey.stage_revision}:{input_kind}"
+                    checkpoint_id = f"product_source:{journey.stage_revision}:{source_role}:{occurrence_id or '-'}:{input_kind}"
                     now = datetime.now(timezone.utc)
                     question = GuidedProductSourceQuestionV1(
                         input_kind=input_kind,
-                        question_id=f"product_{input_kind}_source",
+                        source_role=source_role,
+                        occurrence_id=occurrence_id,
+                        source_label=source_label,
+                        question_id=f"{source_role}_{input_kind}_source",
                         prompt=prompt
                         or (
-                            "Provide one Product Main image."
+                            "Provide one or more existing images, or ask the Agent to design this asset."
+                            if source_role != "product"
+                            else "Provide one Product Main image."
                             if input_kind == "main"
                             else "Provide two to eight ordered Product Multiview images."
                         ),
                         expected_guidance_revision=revision + 1,
-                        min_asset_count=1 if input_kind == "main" else 2,
-                        max_asset_count=1 if input_kind == "main" else 8,
+                        min_asset_count=1
+                        if source_role != "product" or input_kind == "main"
+                        else 2,
+                        max_asset_count=(1 if input_kind == "main" else 8)
+                        if source_role == "product"
+                        else None,
                     )
                     interaction = GuidedInteractionV1(
                         interaction_id=interaction_id,
@@ -406,8 +433,8 @@ class AgentCanvasGuidedInteractionRepository:
                         response_locale=str(session["response_locale"]),
                         expected_session_revision=revision + 1,
                         revision=1,
-                        title="Product image source",
-                        context="Choose whether to upload or generate the Product source.",
+                        title=f"{source_role.title()} image source",
+                        context=f"Choose whether to upload or generate the {source_role.title()} source.",
                         content=question,
                         allowed_actions=("select_source",),
                         submit_path=(
@@ -425,20 +452,26 @@ class AgentCanvasGuidedInteractionRepository:
                         requires_user_action=True,
                         resume_policy="submit_interaction",
                         interaction_id=interaction_id,
-                        stage="product",
+                        stage=source_role,
                         stage_revision=journey.stage_revision,
                         created_at=now,
                     )
                     waiting_action = JourneyActionProjectionV2(
-                        action_id=f"product-source:{workflow_id}:{journey.stage_revision}",
+                        action_id=f"product-source:{workflow_id}:{journey.stage_revision}:{source_role}:{occurrence_id or '-'}",
                         action_kind="wait_for_user:product_source",
-                        stage="product",
+                        stage=source_role,
                         stage_revision=journey.stage_revision,
                         status="waiting_user",
                         turn_id=source_turn_id,
+                        occurrence_id=occurrence_id,
+                        character_phase="main" if source_role == "character" else None,
                     )
                     next_journey = journey.model_copy(
-                        update={"stage_status": "waiting_user", "active_action": waiting_action}
+                        update={
+                            "stage_status": "waiting_user",
+                            "active_action": waiting_action,
+                            "active_occurrence_id": occurrence_id,
+                        }
                     )
                     _insert_interaction_and_awaiting_in_transaction(
                         connection, interaction, awaiting
@@ -472,7 +505,7 @@ class AgentCanvasGuidedInteractionRepository:
                             created_at=now.isoformat(),
                             payload={
                                 "session_id": str(session["session_id"]),
-                                "stage": "product",
+                                "stage": source_role,
                                 "stage_revision": journey.stage_revision,
                                 "action_kind": waiting_action.action_kind,
                                 "interaction_id": interaction_id,
@@ -503,6 +536,8 @@ class AgentCanvasGuidedInteractionRepository:
         workflow_id: str,
         *,
         input_kind: Literal["main", "multiview"],
+        source_role: Literal["product", "character", "scene"] = "product",
+        occurrence_id: str | None = None,
     ) -> bool:
         """Return whether this workflow already closed a Product source choice.
 
@@ -547,9 +582,44 @@ class AgentCanvasGuidedInteractionRepository:
             except (TypeError, ValueError):
                 continue
             action = request.get("action")
-            if isinstance(action, dict) and action.get("input_kind") == input_kind:
+            if (
+                isinstance(action, dict)
+                and action.get("input_kind") == input_kind
+                and action.get("source_role", "product") == source_role
+                and action.get("occurrence_id") == occurrence_id
+            ):
                 return True
         return False
+
+    def has_started_asset_design(
+        self, workflow_id: str, *, source_role: str, occurrence_id: str | None
+    ) -> bool:
+        """Do not insert a new source gate ahead of existing proposals or nodes."""
+        with self._database.engine.connect() as connection:
+            proposal = connection.execute(
+                select(AgentCanvasConceptProposalRow.proposal_id)
+                .where(
+                    AgentCanvasConceptProposalRow.workflow_id == workflow_id,
+                    AgentCanvasConceptProposalRow.capability_id == f"{source_role}_design",
+                    AgentCanvasConceptProposalRow.character_occurrence_id == occurrence_id,
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            nodes = (
+                connection.execute(
+                    select(AgentCanvasNodeRow.metadata_json).where(
+                        AgentCanvasNodeRow.workflow_id == workflow_id,
+                        AgentCanvasNodeRow.creative_role == source_role,
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return proposal is not None or any(
+            source_role == "scene"
+            or json.loads(str(metadata)).get("occurrence_id") == occurrence_id
+            for metadata in nodes
+        )
 
     def get_awaiting(
         self, workflow_id: str, *, node_id: str | None = None, interaction_id: str | None = None

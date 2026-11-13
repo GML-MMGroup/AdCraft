@@ -17,13 +17,54 @@ class _GuidedProductModel(BaseModel):
 class GuidedProductAssetVersionRefV1(_GuidedProductModel):
     asset_id: str = Field(min_length=1, max_length=160)
     version_id: str = Field(min_length=1, max_length=160)
+    source_scope: Literal["project", "mine", "recommended"] = Field(
+        default="project", exclude_if=lambda value: value == "project"
+    )
+    entity_id: str | None = Field(
+        default=None, min_length=1, max_length=160, exclude_if=lambda value: value is None
+    )
+    member_id: str | None = Field(
+        default=None, min_length=1, max_length=160, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def validate_catalog_identity(self) -> "GuidedProductAssetVersionRefV1":
+        if self.source_scope == "project":
+            if self.entity_id is not None or self.member_id is not None:
+                raise ValueError("Project images cannot carry catalog identity.")
+        elif self.entity_id is None or self.member_id is None:
+            raise ValueError("Library images require exact entity and member identities.")
+        return self
 
 
-class GuidedProductInputCommitRequestV1(_GuidedProductModel):
+class GuidedSourceScopeV1(_GuidedProductModel):
+    """Asset scope carried by the backwards-compatible product_source transport."""
+
+    source_role: Literal["product", "character", "scene"] = Field(
+        default="product", exclude_if=lambda value: value == "product"
+    )
+    occurrence_id: str | None = Field(
+        default=None, min_length=1, max_length=160, exclude_if=lambda value: value is None
+    )
     input_kind: Literal["main", "multiview"]
+
+    @model_validator(mode="after")
+    def validate_source_scope(self) -> "GuidedSourceScopeV1":
+        if (self.source_role == "character") != (self.occurrence_id is not None):
+            raise ValueError("Only Character sources require an occurrence identity.")
+        if self.source_role != "product" and self.input_kind != "multiview":
+            raise ValueError("Character and Scene sources enter directly as multiview assets.")
+        return self
+
+    def valid_source_count(self, count: int) -> bool:
+        if self.source_role != "product":
+            return count >= 1
+        return count == 1 if self.input_kind == "main" else 2 <= count <= 8
+
+
+class GuidedProductInputCommitRequestV1(GuidedSourceScopeV1):
     asset_versions: tuple[GuidedProductAssetVersionRefV1, ...] = Field(
         min_length=1,
-        max_length=8,
     )
     interaction_id: str = Field(min_length=1, max_length=160)
     expected_interaction_revision: int = Field(ge=1)
@@ -33,12 +74,9 @@ class GuidedProductInputCommitRequestV1(_GuidedProductModel):
 
     @model_validator(mode="after")
     def validate_cardinality(self) -> "GuidedProductInputCommitRequestV1":
-        expected = 1 if self.input_kind == "main" else range(2, 9)
-        valid = (
-            len(self.asset_versions) == expected
-            if isinstance(expected, int)
-            else len(self.asset_versions) in expected
-        )
+        if self.source_role != "product" and self.pending_handoff_id:
+            raise ValueError("Only Product sources support pending handoffs.")
+        valid = self.valid_source_count(len(self.asset_versions))
         if not valid:
             raise ValueError(
                 "main requires exactly one asset version and multiview requires two to eight."
@@ -53,22 +91,23 @@ class ProductUploadInputProvenanceV1(_GuidedProductModel):
     asset_id: str = Field(min_length=1, max_length=160)
     version_id: str = Field(min_length=1, max_length=160)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    order: int = Field(ge=0, le=7)
+    order: int = Field(ge=0)
 
 
 class ProductUploadCompilationProvenanceV1(_GuidedProductModel):
     kind: Literal["upload_compilation"] = "upload_compilation"
-    profile_id: Literal["product-upload-multiview-v1"]
+    profile_id: Literal["product-upload-multiview-v1", "asset-upload-multiview-v1"]
     profile_version: int = Field(ge=1)
     ordered_inputs: tuple[ProductUploadInputProvenanceV1, ...] = Field(
         min_length=2,
-        max_length=8,
     )
     output_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     compiler_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
     @model_validator(mode="after")
     def validate_order(self) -> "ProductUploadCompilationProvenanceV1":
+        if self.profile_id == "product-upload-multiview-v1" and len(self.ordered_inputs) > 8:
+            raise ValueError("Product compilation supports at most eight images.")
         if tuple(item.order for item in self.ordered_inputs) != tuple(
             range(len(self.ordered_inputs))
         ):
@@ -100,18 +139,17 @@ class GuidedProductInputCommitResponseV1(_GuidedProductModel):
     input_kind: Literal["main", "multiview"]
     node: CanvasNodeV2
     compiled_asset: ProjectAssetSummaryV2 | None = None
+    continuation_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
     receipt: GuidedProductInputCommitReceiptV1
     replayed: bool = False
     events_cursor: int = Field(ge=0)
 
 
-class GuidedProductSourceActionV1(_GuidedProductModel):
-    input_kind: Literal["main", "multiview"]
+class GuidedProductSourceActionV1(GuidedSourceScopeV1):
     choice: Literal["upload", "generate"]
     handoff_mode: Literal["pending", "apply"] = "apply"
     asset_versions: tuple[GuidedProductAssetVersionRefV1, ...] = Field(
         default=(),
-        max_length=8,
     )
     pending_handoff_id: str | None = Field(default=None, max_length=160)
     expected_guidance_revision: int = Field(ge=1)
@@ -119,18 +157,17 @@ class GuidedProductSourceActionV1(_GuidedProductModel):
 
     @model_validator(mode="after")
     def validate_handoff(self) -> "GuidedProductSourceActionV1":
+        if self.source_role != "product" and (
+            self.handoff_mode != "apply" or self.pending_handoff_id
+        ):
+            raise ValueError("Only Product sources support pending handoffs.")
         if self.choice == "generate":
             if self.handoff_mode != "apply" or self.asset_versions or self.pending_handoff_id:
                 raise ValueError("Generate Product source actions cannot carry upload handoffs.")
             return self
         if not self.asset_versions:
             raise ValueError("Upload Product source actions require AssetVersion references.")
-        expected = 1 if self.input_kind == "main" else range(2, 9)
-        valid = (
-            len(self.asset_versions) == expected
-            if isinstance(expected, int)
-            else len(self.asset_versions) in expected
-        )
+        valid = self.valid_source_count(len(self.asset_versions))
         if not valid:
             raise ValueError(
                 "main upload requires one asset version and multiview upload requires two to eight."

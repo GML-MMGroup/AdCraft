@@ -139,6 +139,8 @@ class EditingExportService:
         request: EditingExportRequestV2,
         *,
         idempotency_key: str,
+        required_ready_outputs: dict[str, str] | None = None,
+        expected_workflow_revision: int | None = None,
     ) -> EditingExportAcceptedV2:
         content = self._nodes.content(workflow_id, node_id)
         manifest = content.manifest
@@ -148,6 +150,10 @@ class EditingExportService:
                 "Editing manifest revision does not match.",
             )
         resolved = self._inputs.resolve(workflow_id, node_id, manifest)
+        if required_ready_outputs is not None and resolved.skipped:
+            raise _error(
+                "editing_inputs_pending", "Automatic export is waiting for all media inputs."
+            )
         renderer_payload = _renderer_fingerprint_payload(self._renderer)
         fingerprint = _fingerprint(manifest.model_dump(mode="json"), resolved, renderer_payload)
         reusable = self._exports.find_completed(workflow_id, node_id, fingerprint)
@@ -177,7 +183,7 @@ class EditingExportService:
         now = self._clock()
         command = EditingExportStartCommandV2(
             workflow_id=workflow_id,
-            expected_workflow_revision=workflow.revision,
+            expected_workflow_revision=expected_workflow_revision or workflow.revision,
             node_id=node_id,
             expected_node_revision=node.revision,
             manifest_revision=manifest.manifest_revision,
@@ -207,6 +213,8 @@ class EditingExportService:
                 item.node_id for item in resolved.videos if item.node_id is not None
             ),
             source_asset_assertions=source_assertions,
+            required_ready_outputs=required_ready_outputs or {},
+            automatic_default=required_ready_outputs is not None,
             skipped_inputs=resolved.skipped,
             bgm_node_id=resolved.bgm.node_id if resolved.bgm else None,
             verified_reusable_export_id=reusable_export_id,

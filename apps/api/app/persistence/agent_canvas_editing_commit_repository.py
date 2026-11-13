@@ -105,6 +105,13 @@ class AgentCanvasEditingExportCommitRepository:
                     content = EditingNodeContentV2.model_validate_json(
                         str(node["structured_content_json"])
                     )
+                    if command.outcome == "completed" and content.manifest.manifest_revision != int(
+                        export["manifest_revision"]
+                    ):
+                        raise _error(
+                            "editing_manifest_revision_conflict",
+                            "The timeline changed before export publication.",
+                        )
                     asset_id, version_id = self._register_asset(connection, command)
                     self._fault("after_asset")
 

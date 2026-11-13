@@ -10,6 +10,7 @@ const assets = vi.hoisted(() => ({
   uploadFilesWithReceipts: vi.fn(),
   retry: vi.fn(),
   items: [] as Array<Record<string, unknown>>,
+  candidateRequests: [] as Array<{ scope: string; referenceKind: string }>,
 }));
 
 vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
@@ -23,6 +24,18 @@ vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
     uploadFiles: vi.fn(),
     uploadFilesWithReceipts: assets.uploadFilesWithReceipts,
   }),
+}));
+
+vi.mock("./useGuidedReferenceCandidates.ts", () => ({
+  useGuidedReferenceCandidates: (options: { scope: string; referenceKind: string }) => {
+    assets.candidateRequests.push(options);
+    return {
+      items: [{ entity_id: `entity-${options.scope}`, member_id: `member-${options.scope}`,
+        asset_id: `asset-${options.scope}`, asset_version_id: `version-${options.scope}`,
+        media_type: "image", display_name: `Library ${options.scope}`, preview_url: "/preview.png", selectable: true }],
+      loading: false, loadingMore: false, error: null, hasMore: false, retry: vi.fn(), loadMore: vi.fn(),
+    };
+  },
 }));
 
 const interaction: GuidedInteractionV1 = {
@@ -64,6 +77,7 @@ describe("ProductSourceDecisionDock", () => {
   beforeEach(() => {
     window.localStorage.removeItem("adcraft.locale");
     assets.items = [];
+    assets.candidateRequests = [];
     assets.retry.mockReset();
     assets.retry.mockResolvedValue(undefined);
     assets.uploadFilesWithReceipts.mockReset();
@@ -80,6 +94,72 @@ describe("ProductSourceDecisionDock", () => {
   afterEach(() => {
     cleanup();
     window.localStorage.removeItem("adcraft.locale");
+  });
+
+  it.each(["character", "scene"] as const)("mixes recommended, personal and uploaded %s images without losing order", async (role) => {
+    const submit = vi.fn().mockResolvedValue(true);
+    assets.uploadFilesWithReceipts.mockResolvedValue([{ asset: { asset_id: "uploaded", version_id: "upload-v1" }, pending_handoff_id: null }]);
+    render(<LocaleProvider initialLocale="en-US"><LanguageSwitch /><ProductSourceDecisionDock interaction={{ ...interaction, content: {
+      content_kind: "product_source", source_role: role, occurrence_id: role === "character" ? "character-2" : null,
+      input_kind: "multiview", min_asset_count: 1, max_asset_count: null, expected_guidance_revision: 11,
+      question_id: `${role}_multiview_source`, prompt: "Choose a source.",
+    } }} pending={false} issue={null} onSubmit={submit} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Library recommended" }));
+    fireEvent.click(screen.getByRole("tab", { name: "My Assets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Library mine" }));
+    fireEvent.change(screen.getByLabelText("Upload images"), { target: { files: [new File(["image"], "local.png", { type: "image/png" })] } });
+    fireEvent.click(screen.getByRole("button", { name: "Move local.png up" }));
+    fireEvent.click(screen.getByRole("button", { name: "中文" }));
+    expect(screen.getByRole("tab", { name: "推荐素材" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "我的素材" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "使用所选图片" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0][0].action.asset_versions).toEqual([
+      { asset_id: "asset-recommended", version_id: "version-recommended", source_scope: "recommended", entity_id: "entity-recommended", member_id: "member-recommended" },
+      { asset_id: "uploaded", version_id: "upload-v1" },
+      { asset_id: "asset-mine", version_id: "version-mine", source_scope: "mine", entity_id: "entity-mine", member_id: "member-mine" },
+    ]);
+    expect(assets.uploadFilesWithReceipts.mock.calls[0][0]).toHaveLength(1);
+    expect(assets.candidateRequests.some((r) => r.referenceKind === `${role}_main` && r.scope === "recommended")).toBe(true);
+  });
+
+  it.each(["character", "scene"] as const)("submits %s images directly with occurrence identity and no Main upload", async (role) => {
+    assets.items = Array.from({ length: 9 }, (_, index) => projectImage(`asset-${index}`, `v-${index}`, `View ${index}`));
+    const submit = vi.fn().mockResolvedValue(true);
+    const source: GuidedInteractionV1 = {
+      ...interaction, title: `${role === "character" ? "Character" : "Scene"} image source`,
+      content: { content_kind: "product_source", source_role: role,
+        occurrence_id: role === "character" ? "character-2" : null, source_label: role === "character" ? "Nurse" : null,
+        input_kind: "multiview", min_asset_count: 1, max_asset_count: null,
+        question_id: `${role}_multiview_source`, prompt: "Provide one or more existing images, or ask the Agent to design this asset.", expected_guidance_revision: 11 },
+    };
+    render(<ProductSourceDecisionDock interaction={source} pending={false} issue={null} onSubmit={submit} />);
+    expect(screen.getByText("One image is used as-is; multiple images are combined in the selected order.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Select View 0" }));
+    expect((screen.getByRole("button", { name: "Use selected images" }) as HTMLButtonElement).disabled).toBe(false);
+    for (let index = 1; index < 9; index++) fireEvent.click(screen.getByRole("button", { name: `Select View ${index}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Move View 8 up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected images" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    const action = submit.mock.calls[0][0].action;
+    expect(action.source_role).toBe(role);
+    expect(action.occurrence_id).toBe(role === "character" ? "character-2" : null);
+    expect(action.input_kind).toBe("multiview");
+    expect(action.asset_versions).toHaveLength(9);
+    expect(action.asset_versions[7].asset_id).toBe("asset-8");
+    expect(assets.uploadFilesWithReceipts).not.toHaveBeenCalled();
+  });
+
+  it("can select Agent design for a Scene without supplying any image", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    render(<ProductSourceDecisionDock interaction={{ ...interaction, title: "Scene image source", content: {
+      content_kind: "product_source", source_role: "scene", occurrence_id: null, input_kind: "multiview",
+      question_id: "scene_multiview_source", prompt: "Choose a source.", expected_guidance_revision: 11, min_asset_count: 1, max_asset_count: null,
+    } }} pending={false} issue={null} onSubmit={submit} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Agent design and generation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Let the Agent design" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ source_role: "scene", choice: "generate", asset_versions: [] }) })));
   });
 
   it("switches the entire main-image panel live without losing the selected image", async () => {
