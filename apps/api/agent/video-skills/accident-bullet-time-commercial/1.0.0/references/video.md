@@ -1,60 +1,52 @@
-# Reproduce the reference camera choreography
+# Film the complete accident with one continuous camera path
 
-Use the approved three-item inventory: advertised product plus two supporting
-belongings. Establish all before contact; each needs a separate close-up and
-stable reference. Three views of one product cannot fill these slots.
+Use the approved inventory and physical map. Establish every carried item before
+contact; A, B and C each receive a separate visit, with the advertised item most
+prominent. Preserve additional approved props and their landing destinations.
 
-Time this node's assigned part of the route; setup and aftermath may be elsewhere:
-- Track backward from footwear height, rise to a front view of the wearer/items.
-- Show passing shoulder contact, body recoil and individual support releases.
-- Freeze all three items and the background reaction together in one space.
-- Push from front medium into that space, travel to A, then B, then C. At each
-  stop use a small lateral/partial arc move and a readable sharp detail. Show
-  changing parallax and occlusion while each object stays still. Keep screen
-  direction coherent through transitions; a focus switch alone is insufficient.
-- Pull back to the same front three-quarter medium view before unfreezing.
-- End the protected interval when the freeze sequence completes. Continue the
-  same trajectories to landing/reaction only if assigned to this video segment.
+Keep collision through all objects landing in one video segment, even in long
+ads: visible contact/release, simultaneous freeze, tour, pullback, resumed fall,
+every ground contact and settling. Reserve the final two to three seconds for
+descent and settling. End only after all released belongings reach the ground;
+other nodes may contain earlier setup or later reaction/brand payoff. Fit the
+complete action within the provider cap, currently fifteen seconds, and the
+confirmed total. Shorten holds or extra setup first; disclose incompatible
+explicit timing instead of splitting the action or extending its duration.
 
-Lock world positions, orientations, component openings and droplets throughout
-the frozen interval. Only camera viewpoint and resulting reflections change.
-Objects do not spin, vanish, duplicate or take turns existing. Preserve a
-continuous traversing-camera impression instead of unrelated macro cuts.
-Collision/release through the complete freeze tour and pullback belong to ONE
-video generation node, even in long ads. No inter-node boundary may fall inside
-that interval. End at freeze completion; touchdown is not required. Objects may
-remain airborne for the next segment. Landing may occur later in the story.
-The advertised item receives the longest or most detailed close view.
+Describe a continuous camera path, not a list of cuts:
+- Track backward from footwear height and rise to establish wearer and items.
+- Show the passing shoulder contact, recoil and actual support loss; freeze all
+  subjects together. Push from front medium toward A along an unobstructed path.
+- At each bridge state direction, distance/height change and a shared background
+  landmark. Let the outgoing item remain at the edge as the next enters. Show
+  continuous parallax, changing overlap and gradual focus transfer during travel.
+  Carry camera axis, lens perspective and velocity through the bridge; no new
+  viewpoint appears instantly. Allocate time for travel as well as detail holds.
+- Ease back from C to the same front three-quarter medium view. Resume time and
+  descend with the falling items to their contacts and final settled positions.
 
-LONG-AD EXAMPLE: one twelve-second protected node inside a thirty-second ad.
-'Use the established wearer and three reference-backed belongings. Local 0-1.5s:
-show shoulder contact, recoil, grip/support loss and release; freeze them together.
-1.5-4.5s: push toward advertised A and inspect its real detail with parallax.
-4.5-7.5s: traverse to B; 7.5-10.5s: traverse to C, keeping all objects' frozen
-positions and states. 10.5-12s: pull back to the front medium view and complete
-the freeze tour. End with all three items still airborne in their mapped
-positions; this node does not show landing. The following node continues here.'
-The preceding eight seconds may establish the scene; the following ten seconds
-may resume movement and finish the story. Those are separate generation nodes.
+All frozen objects, openings, liquid shapes, droplets and background poses stay
+fixed in world space. No spinning products, rolling droplets or flowing liquid
+while time is frozen. Only the camera moves; reflections change with viewpoint.
+Use crisp readable materials and sufficient focus. No cuts, dissolves, whip-pan
+resets, teleporting macro inserts or angle jumps inside this action. Speed ramps
+change subject time continuously without replacing the camera view.
 
-FIFTEEN-SECOND EXAMPLE, when approved:
-'0-3s footwear-to-face tracking establishes the wearer and three belongings.
-3-5s visible contact, recoil, release and freeze. 5-7.5s move past advertised
-item A's real detail; 7.5-9.25s traverse to B; 9.25-11s traverse to C. Each
-stays rigid in its mapped position while the camera moves. 11-12s pull back
-to the same front medium view, still frozen. 12-13.5s resume time and follow
-all items to the ground. 13.5-15s settle and show the owner's face reaction.'
+Adaptable fifteen-second example:
+0-2s footwear-to-face tracking; 2-3s contact/release and shared freeze.
+3-6s push toward advertised A at upper left and pass its real detail.
+6-8s slide right/down to B at lower right, A leaving left as B enters right.
+8-10s arc down/left to C deeper at center, B leaving right while C enlarges;
+the same background doorway drifts continuously behind all three visits.
+10-12s ease backward/up to front medium. 12-14.5s resume time, follow every
+released item to ground contact, spill/bounce and settling; 14.5-15s hold the
+settled consequence and reaction. Replace this map with the actual storyboard
+geometry. A longer film's following node starts after this landed end_state.
 
-The fifteen-second example is a complete single-video ad; landing is optional
-within the protected node. In a long ad, end this node after freeze completion
-with the actual airborne or grounded state. Other nodes may contain setup or
-later movement/payoff. Never distribute the A/B/C tour across four-second nodes.
-Fit the complete protected interval within the provider's segment limit and
-preserve the confirmed total; disclose incompatible timing instead of splitting.
-
-Specify start and end states, including camera pose, item positions, orientations,
-openings and motion phase. A later node continues that state. If a previous
-video's actual final frame is supplied, use it according to the supported input
-mode; do not invent a frame binding or claim native first/last-frame locking
-from prose or ordinary reference images. Preserve speech/subtitle settings.
-Contact and motion foley belong here; BGM is separate.
+The attached grid is an off-screen story-process reference, not a first/last-frame
+target. Begin at time zero inside the full-frame authored scene. Never show the
+sheet, borders, multiple panels or a transition from a sheet into a panel. Use
+story order and identity guidance without exact panel framing or timing locks.
+State camera pose and every item's settled location for the next segment;
+ordinary reference images do not supply native frame locks. Preserve approved
+speech and subtitle choices. Contact/movement foley belongs here; BGM is separate.

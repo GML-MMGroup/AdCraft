@@ -1,49 +1,42 @@
-# Sample the fixed three-item camera route
+# Sample one continuous route through a complete accident
 
-Start from the approved inventory A, B and C: one primary advertised product
-and two distinct supporting belongings, unless the approved product set already
-supplies those physical items. Identify each item's reference, initial support,
-frozen depth/screen side and landing area. A view of another surface of A is
-still A; it cannot replace the B or C visit. All items exist together after
-release even when only one is sharp or inside a close framing.
+Use the approved A/B/C inventory and references: the advertised item and two
+supporting belongings, or the approved product set. Map each item's initial
+support, frozen screen side/depth and landing area. Account for extra released
+props too. All items coexist throughout the tour, even when offscreen.
 
-Before drawing panels, keep collision/release through freeze completion inside
-ONE storyboard sequence and its ONE downstream video node. This applies even
-when the surrounding advertisement has many segments. The A/B/C visits are
-internal shots; they never become separate video nodes. Reserve this interval
-within the actual segment cap before allocating surrounding story beats.
+Keep collision through all objects landing in one video segment and its matching
+storyboard sequence. Sample approach, contact/release, shared freeze, A, B, C,
+pullback, descent, then all belongings settled on the ground. Keep the required
+grid format. Panels represent moments on a continuous path, not cuts, equal
+time slots or standalone videos. Put landing in the final panel of this action
+board; a later payoff board starts with the already grounded state.
 
-For a whole-ad board, sample: low approach; contact/release; shared freeze;
-A close-up; B close-up; C close-up; front-medium pullback; resumed movement;
-consequence/reaction. Panels are sampled states, not compulsory cuts or equal
-time slots. If this board covers only the protected freeze interval, spend the
-later panels on the end of the tour and pullback instead of forcing a landing.
-Its final panel may show all items still airborne at freeze completion.
-Match the accepted segment's actual end_state; a later board can own the fall.
+Establish a single spatial map before writing panels. For each A-to-B and B-to-C
+bridge name the camera's direction, changing distance/height, shared background
+landmark and overlap: the outgoing item slides toward an edge while the next
+enters. Keep lens perspective and axis coherent. The camera travels through the
+empty space between objects; do not jump to a freshly composed macro viewpoint.
+Frozen positions, orientations, openings, droplets and background poses stay
+fixed. Only viewpoint, occlusion and optical reflections change.
 
-Four-panel/four-second nodes may cover setup or post-freeze story outside this
-interval. Never use the grid count to cut the freeze tour across nodes. If a
-confirmed short window must contain the entire protected action, preserve its
-single-node scope and explain the pacing conflict; do not invent a valid split.
-Write the protected interval and concrete outgoing state into narrative_goal,
-start_state and end_state before materialization. Image descriptions of first
-and final panels are not evidence of native first/last-frame conditioning.
+Reserve two to three seconds for resumed gravity, every ground contact and
+settling within the same generation, respecting the fifteen-second cap and
+accepted total. Extra setup or payoff may use other nodes; the collision, tour
+and landing remain together. Write this scope and the concrete landed end_state
+into narrative_goal and production_handoff, not only visual panel descriptions.
 
-Adaptable image-prompt example:
-'Create the supplied ordered grid. One wearer carries an open cup and a loose
-shoulder bag and wears the reference-backed amber-lens glasses. Include footwear-to-front tracking only if setup belongs to this board. A passerby's shoulder visibly brushes the
-wearer; the torso recoils, grip opens, glasses slip and strap loses support.
-Freeze the glasses ahead of the face, cup near one hand and bag below the other
-shoulder. Sample a camera route from front medium view through a separate
-close-up of the glasses hinge, the cup rim and the bag seam, then back to the
-same front medium view. Keep all three objects' positions, angles, openings
-and droplets fixed during those views. For a complete-ad board, finish with the same objects landing and the owner
-looking down. For a freeze-only board, finish with the front-medium view of all
-three objects still suspended, ready for the next segment. Preserve each identity;
-one instance per moment, with repetition across cells representing time.'
+Adaptable board example: establish a wearer carrying glasses, cup and bag;
+show the support loss; freeze glasses at upper left near the face, cup lower
+right ahead of the torso and bag lower center behind the cup. Sample the camera
+advancing to the glasses, sliding right/down toward the cup with the glasses
+still at the left edge, then arcing down/left toward the bag as the cup leaves
+right. Keep a background doorway moving with continuous parallax. Pull back,
+resume gravity and follow all three down; finish with glasses, cup and bag
+settled and the owner looking down. Substitute the approved map and identities.
 
-Replace identities and setting, not the route. Preserve the selected medium,
-required grid and product print. Keep arrows, panel lettering, dialogue and
-tutorial UI out of the image; image lettering rules do not disable Video
-subtitles. Put visit order, camera movement and handoff into narrative_goal
-and the downstream Video prompt, not only the grid's appearance description.
+The grid is an off-screen story-process reference, not a first/last-frame target.
+The Video starts inside the full-frame scene, without sheet flashes or a zoom
+into cells. Preserve the selected medium, product print and ordinary scene text.
+Keep dialogue, panel labels, arrows and tutorial UI out of the image; this does
+not turn off Video subtitles. Retain original product lettering and logos.

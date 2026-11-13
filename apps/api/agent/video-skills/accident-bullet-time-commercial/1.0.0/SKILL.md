@@ -1,6 +1,6 @@
 ---
 name: Accident Bullet-Time Commercial
-description: Recreate an accidental bullet-time commercial: footwear-to-face tracking, visible contact, several carried items frozen together, a continuous camera tour of each item, then a pullback and resumed motion. Keep collision through freeze completion in one video segment, even in long ads; that segment may end airborne. One advertised product still requires supporting belongings.
+description: Recreate an accidental bullet-time commercial: footwear-to-face tracking, visible contact, several carried items frozen together, a continuous camera tour of each item, then a pullback, resumed gravity and every object landing. Keep this complete incident in one continuous video segment, even in long ads. One advertised product still requires supporting belongings.
 ---
 
 # Accident Bullet-Time Commercial
@@ -22,14 +22,15 @@ the wearer. Lock positions, orientations, openings, liquid and droplets, with
 the background reaction frozen too.
 4. Use parallax-led product inspection: push from front medium into that space
 and travel successively past A, B and C. Each receives a sharp material close-up
-with a small lateral or partial arc move. Other items remain in the same space,
+along one physically continuous camera path. Describe travel between items,
+not just separate close-up destinations. Other items remain in the same space,
 possibly offscreen or defocused. Camera travel creates the viewpoint change;
 objects do not spin, duplicate or take turns existing. Give the advertised item
 the longest or most detailed visit.
-5. Pull back to the wearer's front three-quarter medium view and complete the
-freeze sequence. Return to gravity follows according to the approved story;
-landing and reaction can occur in this segment or a later one. Complete the
-original incident rather than inserting an unrelated studio packshot.
+5. Pull back to the wearer's front three-quarter medium view, then Return to
+gravity in the same take. Follow every released item down to ground contact
+and settling before the segment ends, including loose props outside the tour.
+Show the wearer's reaction without inserting an unrelated studio packshot.
 
 A single-item fallback, three surfaces of one item, digital zoom-only movement
 or disconnected macro inserts do not reproduce this route. Supporting props
@@ -37,20 +38,19 @@ remain story belongings without competing brands or invented selling claims.
 
 ## One indivisible video segment
 
-Visible collision/release through simultaneous freeze, visits A/B/C and final
-pullback/freeze completion MUST belong to ONE video generation segment, even
-inside long ads. No node boundary belongs inside that interval. Freeze completion
-is not touchdown: its ending may retain all items airborne. Later movement,
-landing or other story can start in a separate segment from that exact state.
+The complete action from collision through all objects landing belongs to
+one video segment: contact/release, shared freeze, A/B/C visits, pullback,
+resumed fall, ground contact and settling. No node boundary belongs inside it.
+Reserve the final two to three seconds for descent and settling; shorten static
+holds or extra setup first. A later node starts after all items are grounded.
 
-Reserve the protected interval before allocating other beats. Fit it within the
-actual single-generation limit, currently at most fifteen seconds, while keeping
-the confirmed total. Move extra setup and later payoff outside it. Never split
-it to fill four-second windows or equalize durations. If fixed timing prevents
-a valid allocation, state the conflict rather than silently splitting it.
-Record the protected action and its actual airborne/grounded endpoint in script,
-outline narrative_goal, start_state/end_state and Video prompt. These are state
-descriptions, not native first/last-frame API controls.
+Fit the action within the actual single-generation limit, currently fifteen
+seconds, and the confirmed total. Additional setup precedes contact; extra
+reaction or brand payoff follows landing. Never split the incident to equalize
+node durations. State incompatible timing instead of silently exceeding limits.
+Record this scope in the script, outline, grid and Video prompt. A grid samples
+the action; it is an off-screen story-process reference, not a first/last-frame
+target. Output begins in the full-frame scene, never on the sheet.
 
 ## Appearance and role scope
 

@@ -107,12 +107,26 @@ budget must be acknowledged without silently dropping visits or blocking text.
 The teaching interfaces, source brands, exact wardrobe and provider settings
 remain provenance rather than platform policy.
 
-## Later user correction: segment boundary at freeze completion
+## Current correction: landing-complete segment and actual continuous travel
 
-Collision/release, simultaneous freeze, all item visits and the final pullback
-through freeze completion now form one indivisible video-generation segment,
-even within a longer advertisement. The endpoint need not be grounded: objects
-may remain airborne and later motion/landing may belong to another segment.
-This supersedes the earlier permission to distribute the freeze tour across
-segments or let a four-second node carry an unfinished part of that interval.
-First/last-frame state descriptions are not native provider frame controls.
+The latest user review supersedes the earlier freeze-completion boundary that
+allowed a node to finish with airborne belongings. Protect collision, shared
+freeze, all visits, pullback, resumed gravity and every object landing/settling
+inside one generation segment. Extra story follows only after that completion.
+Source A is the timing template: its actual roughly ten seconds include the
+fall and ground-level consequence, not just the suspended showcase.
+
+In project proj_fb5631225e220d75, the first generated video lasted 13.088 seconds
+and ended airborne; the 7.104-second second video opened on the full grid before
+the fall. The first prompt named consecutive cup/fries/burger close-ups without
+physical bridges and described rolling condensation during an otherwise frozen
+state. These are prompt contradictions, not evidence of native frame locking.
+The provider audit used loose guidance and reference_image inputs for the grid.
+
+The replacement describes the continuous route between item positions, keeps
+frozen material still, and reserves two to three seconds for ground contact and
+settling. Individual reference edits are not proof of a literally uncut source;
+the requested generated shot must maintain continuous camera motion and spatial
+parallax. Keep the grid as an off-screen story guide, with no visible sheet or
+panel zoom and no first/last-frame requirement. Existing media remain evidence,
+not automatically repaired outputs.

@@ -8,8 +8,8 @@ core_principle: >
   the reference sequence: footwear-to-face tracking, visible impact and release,
   a moving-camera close-up tour of each distinct item, a pullback to the wearer,
   then resumed gravity and reaction. Even one advertised product needs supporting
-  belongings. Keep collision through freeze completion in one video segment,
-  even in a long ad; the segment may end airborne. Identities and setting can
+  belongings. Keep collision through all objects landing in one video segment,
+  even in a long ad; finish after every released item has settled on the ground. Identities and setting can
   change, but the multi-item tour cannot.
 consumer_psychology: >
   An interrupted ordinary action creates anticipation. Delaying the consequence
@@ -91,8 +91,8 @@ consistent. Multiple product views do not create multiple inventory slots.
    orientations, openings, liquid shape and droplets along with the reaction.
 4. From the front medium view, push into that space and travel successively
    to A, B and C. Each gets its own close-up, readable surface detail and a
-   small lateral/partial arc movement with changing background overlap. Keep
-   a continuous traveling-camera impression. Objects remain still and singular;
+   small lateral/partial arc movement with changing background overlap. Describe
+   one continuous camera path with visible travel between these positions. Objects remain still and singular;
    offscreen or defocused belongings still exist in the same shared space.
 5. Pull back to the same front three-quarter medium view before time resumes.
 6. Restore ordinary time, follow those trajectories to ground contact and
@@ -105,55 +105,56 @@ visit. For the three-slot tour, avoid unrelated studio inserts and three angles
 of only the main product. A sealed vessel keeps its seal unless its real
 mechanism and the approved action support an explicit opening before freeze.
 
-### Keep collision through freeze completion in one video segment
+### Keep collision through all objects landing in one video segment
 
-Protect the whole interval from visible collision/release through simultaneous
-freeze, visits A/B/C and the final pullback/freeze completion as ONE generation
-segment. This applies to long advertisements too. Never put a video-node
-boundary inside it. The endpoint is completion of the freeze sequence, not
-arrival on the ground. Items may remain airborne there. Later motion, landing,
-reaction and the brand ending may belong to a following segment.
+Protect the complete incident as one video segment: visible contact/release,
+simultaneous freeze, A/B/C visits, pullback, resumed fall, all ground contacts
+and settling. This includes every released supporting prop, bag, loose piece
+or spill, not only the advertised item. End with all objects grounded. No node
+boundary belongs inside this interval, even in a long advertisement.
 
-Reserve this segment first during outline allocation, within the actual model
-limit and current fifteen-second application cap. Fit surrounding setup and
-later payoff into the remaining approved total; boundaries go before contact
-or after freeze completion. Short internal visits are not separate generations.
-A four-second node may cover surrounding story, not a fragment of the protected
-tour. If explicit windows or counts prevent a valid allocation, explain the
-conflict without silently extending the total or splitting the interval.
+Reserve the final two to three seconds for descent and settling before assigning
+the tour holds. Fit the full action within the current fifteen-second cap and
+confirmed total. Move extra setup before contact and later reaction or brand
+payoff after landing. Short internal visits are not separate generations.
+Shorten static holds before removing travel or descent; explain an incompatible
+explicit duration instead of splitting the action or silently extending time.
 
-When no total is confirmed, propose reference-like timing, commonly ten to
-fifteen seconds for a complete short ad. For a ten-second complete-ad example:
-0-2 setup; 2-2.5 contact/release; 2.5-4.5 visit A; 4.5-5.9 visit B; 5.9-7.3
-visit C; 7.3-8 pullback and freeze completion; 8-10 resumed fall and reaction.
-All of this may share one video; the protected interval is 2-8 seconds, not a
-requirement to include the final fall. Give the real advertised item the most
-attention, regardless of its slot.
+A ten-second complete-ad example: 0-2 setup; 2-2.5 contact/release; 2.5-4.5
+visit A; 4.5-5.8 travel/visit B; 5.8-7 travel/visit C; 7-8 pullback; 8-10
+resume gravity, land every item and settle. Allocate more time, up to fifteen
+seconds, for more complicated geometry rather than overloading each second.
+For an approved thirty-second ad: 0-7 extra setup; 7-22 one complete incident
+including landing; 22-30 reaction and brand payoff starting with grounded items.
+Keep the main advertised item dominant regardless of its tour slot.
 
-Long-ad allocation example, only when a thirty-second total is approved:
-0-8 setup; 8-20 one protected collision/freeze/tour segment, ending with all
-three belongings still airborne in a front-medium view; 20-30 resumed movement
-and the approved payoff. These are three valid generation windows. Never split
-the protected middle window into separate collision, item visits and pullback.
+### Connect visits through the same physical space
 
-### Make the boundary state explicit without pretending to lock frames
+Map each frozen item's screen side, depth and height. Name the actual camera
+travel from A to B and B to C: direction, height/distance change, background
+landmark and overlapping view as one item leaves and the next enters. Keep a
+continuous axis and lens perspective. A-to-B is movement through intervening
+space, not a newly framed close-up. Include travel time in the budget. Subjects,
+liquid and droplets stay motionless until ordinary time resumes; focus shifts
+and viewpoint-dependent reflections do not make the objects move.
 
-Record the protected action in narrative_goal, its pre-contact start_state and
-its freeze-completion end_state. Specify camera pose, wearer pose, the identity,
-position, orientation, opening and airborne/grounded status of every item, plus
-whether ordinary motion has resumed. The following segment continues that exact
-state. A storyboard final panel or a textual state is guidance, not a native
-provider first/last-frame parameter. If a real preceding video end frame is
-available and bound, use the supported image input mode; do not invent bindings
-or launch additional frame-generation work solely because this Skill is selected.
+### Make the landed boundary explicit without pretending to lock frames
 
-### Carry the fixed sequence into production prompts
+Record the full protected action in narrative_goal, a pre-contact start_state
+and a landed end_state: camera pose, wearer reaction and every item's grounded
+position, orientation and opening state. The following segment continues from
+that settled consequence, without replaying contact or descent. A storyboard
+grid is an off-screen story-process reference, not a first/last-frame target.
+Panels sample the story; they impose neither cuts nor exact camera compositions.
+A real preceding video end frame is separate, explicitly bound input authority;
+do not invent frame bindings or new frame-generation work for this method.
 
-The script, storyboard narrative goal and Video prompt must name A, B and C,
-their visit order, contact before release, simultaneous freeze, camera route,
-front-medium pullback and the actual freeze-completion state. Each item retains its geometry
-and state across views. Timing/camera-only revisions reuse approved assets and
-replace stale single-object, spinning or opening instructions in affected text.
-Review these links before returning; this is prompt guidance, not a paid visual
-check or a new backend rejection gate. Preserve approved speech, subtitle
-settings and actual product facts.
+### Carry the complete action into production prompts
+
+The script, outline, storyboard and Video prompt must agree on the inventory,
+contact before release, shared freeze, visit order, continuous travel, pullback
+and landing-complete endpoint. Keep additional approved objects accounted for.
+Timing/camera revisions reuse approved identities and replace stale instructions
+that stop at freeze, move frozen droplets, or reserve landing for another node.
+Review these links before returning text; this adds no paid visual check or
+backend rejection gate. Preserve speech, subtitles and actual product facts.

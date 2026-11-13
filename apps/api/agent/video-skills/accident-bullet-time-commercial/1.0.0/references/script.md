@@ -1,49 +1,41 @@
-# One advertised product, several belongings, one accident
+# One advertised product, several belongings, one complete accident
 
-Build a three-slot inventory: the advertised product and two distinct supporting
-belongings that fit the wearer and location. A supplied product set can fill
-multiple slots with its real separate items. Choose plausible unbranded props
-when the brief names only one product; publish those choices in the story and
-normal prop-design flow. The three slots are different physical items, not
-three copies or surfaces of the advertised product. Keep the primary product
-commercially dominant. Use references for its actual features and assign each
-supporting prop its own stable identity.
+Build a default three-slot inventory: the advertised product plus two distinct,
+plausible supporting belongings. An approved product set may fill these slots
+with real separate items. Establish neutral supporting props through the normal
+prop-design flow. Do not replace the visits with three surfaces of one object.
+Keep any additional approved belongings in the physical inventory too.
+For every released item state its original support, release mechanism, frozen
+position and landing destination. Respect available hands and actual mechanisms;
+a sealed container stays closed unless a credible opening is already authored.
 
-Preserve this sequence: footwear-level tracking rises to the wearer and all
-items; visible passing shoulder contact; recoil and release; all items freeze
-together; camera visits A then B then C in separate close views; camera returns
-to a front medium view; normal time resumes, items land and the wearer reacts.
-For each item state its original hand or attachment, release mechanism, frozen
-position and landing destination. Establish every item before the collision.
-Use one worn item plus two hand/shoulder-supported items when appropriate;
-account for the actual number of hands and credible support changes.
+Preserve the sequence: footwear tracking rises to the wearer and belongings;
+visible passing contact causes recoil and support loss; everything freezes
+together; the camera visits A, B and C; it pulls back to front medium; time
+resumes, all objects land and settle, and the wearer reacts. Give the advertised
+product the strongest attention. Keep approved speech and claims intact; a drop
+or intact landing does not prove durability.
 
-Keep camera direction, speed contrast, tour order and final reconnection from
-the references even when casting, props, product or location change. Only vary
-the concrete materials, identities and justified physical details. If a supplied
-constraint prevents the multi-item incident, state the conflict rather than
-quietly turning this into a single-object beauty film.
+Protect collision through all objects landing as one video segment, even in a
+long advertisement. Reserve this interval before allocating surrounding beats.
+The final two to three seconds cover resumed fall, every ground contact and
+settling, including loose bags, packaging or spilled material, not only the
+three hero visits. End_state lists all released belongings on the ground; a
+later node begins from that settled state, not a second falling sequence.
 
-Treat visible collision/release through the end of the freeze tour and its
-pullback as one indivisible generation interval, even in a long advertisement.
-Reserve one video segment for it before allocating the rest of the story.
-No cut between generation nodes may occur inside contact, freeze or the A/B/C
-visits. The protected interval ends when the freeze sequence finishes; it does
-not require touchdown. Its end state may be the same belongings still airborne.
-Post-freeze falling, landing, reactions or a brand ending can occupy later nodes.
+Fit the whole interval within the current fifteen-second cap and confirmed
+total. A complete short film commonly uses ten to fifteen seconds. In a longer
+ad, move extra setup before contact or brand payoff after landing; shorten
+static holds before compromising continuous travel or descent. Do not invent
+four-second fragments of the incident or silently extend the total. Identify
+an incompatible explicit allocation without creating a new rejection gate.
 
-Prefer enough time for the full tour, commonly ten to fifteen seconds when no
-length is fixed, while respecting actual model limits and the confirmed total.
-Move extra setup or later payoff outside the protected segment, not part of the
-freeze tour. Four-second nodes may serve those surrounding beats; never split
-the protected interval to obtain them. If explicit timing/count cannot fit the
-interval, identify the conflict without silently repartitioning or hiding text.
-Record start_state before contact, the complete protected action in narrative_goal,
-and exact end_state at freeze completion. Include camera pose, each item's
-position/orientation/opening, airborne or grounded status, reaction and motion
-phase. A later segment continues that state rather than assuming a landing.
-
-Keep approved speech and claims intact; brief speech may accompany the opening.
-Neither a drop nor an intact landing proves durability. Review that A, B and C
-each receive a distinct visit, then return the written story without an extra
-visual-model check or a new authoring rejection gate.
+Write the tour as one continuous camera path in one physical space. Each visit
+has a route in and out, shared screen direction/depth and visible parallax;
+three listed close-ups alone do not specify continuity. Frozen subjects and
+liquid stay still while the camera moves. Preserve this in narrative_goal and
+production_handoff so later authors do not turn visits into separate cuts.
+Record pre-contact start_state, landed end_state and exact local timing. Grid
+panels sample these events without imposing cuts or native frame conditioning.
+Review the inventory, route and landing before returning the text; this adds
+no paid visual-model check.
