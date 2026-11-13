@@ -10,23 +10,16 @@
   position: fixed;
   z-index: 57;
   display: grid;
-  width: 216px;
+  width: min(216px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   gap: 4px;
   padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid #353535;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--panel-bg, #f7f7fb) 88%, transparent);
-  box-shadow: 0 18px 42px rgba(27, 29, 47, 0.22);
-  color: var(--text-primary, #22263b);
-  backdrop-filter: blur(18px) saturate(1.16);
-}
-
-.agent-canvas-connected-menu__eyebrow {
-  padding: 5px 8px 6px;
-  color: var(--text-muted, #73778c);
-  font-size: 11px;
-  font-weight: 650;
-  text-transform: uppercase;
+  background: #151515;
+  box-shadow: 0 20px 44px rgb(0 0 0 / 46%);
+  color: #dedede;
 }
 
 .agent-canvas-connected-menu__option {
@@ -50,14 +43,15 @@
 
 .agent-canvas-connected-menu__option > button:hover,
 .agent-canvas-connected-menu__option > button:focus-visible {
-  background: color-mix(in srgb, var(--brand) 13%, transparent);
+  background: #303030;
+  color: #fff;
   outline: none;
 }
 
 .agent-canvas-connected-menu__option > button > .agent-canvas-node-icon {
   width: 18px;
   height: 18px;
-  color: var(--brand);
+  color: currentColor;
 }
 
 .agent-canvas-connected-menu__option > button > span {
@@ -70,9 +64,9 @@
   height: 28px;
   margin: 0 8px 5px 45px;
   padding: 0 6px;
-  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+  border: 1px solid #353535;
   border-radius: 5px;
-  background: transparent;
+  background: #1d1d1d;
   color: inherit;
   font-size: 10px;
   text-transform: capitalize;
@@ -86,18 +80,9 @@
   white-space: nowrap;
 }
 
-.agent-canvas-connected-menu small {
-  overflow: hidden;
-  color: var(--text-muted, #73778c);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  text-transform: capitalize;
-  white-space: nowrap;
-}
-
 .agent-canvas-connected-menu p {
   margin: 2px 8px 8px;
-  color: var(--text-muted, #73778c);
+  color: var(--text-secondary, #9399a9);
   font-size: 12px;
   line-height: 1.45;
 }

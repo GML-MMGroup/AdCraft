@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
-import type { PresentationStreamEventV1 } from "../../../types-v2.ts";
+import type { PresentationStreamEventV1, PresentationStreamSummaryV1 } from "../../../types-v2.ts";
 import { normalizePresentationStreamEventV1 } from "../model/normalizers.ts";
+import { reservePresentationConnection } from "./presentationConnectionSlots.ts";
 
 export const PRESENTATION_STREAM_EVENT_TYPES: readonly PresentationStreamEventV1["event_type"][] = [
   "started",
@@ -78,6 +79,7 @@ function isTerminalEvent(eventType: PresentationStreamEventV1["event_type"]): bo
 export function useAgentCanvasPresentationStreams(
   workflowId: string | null,
   streamIds: readonly string[],
+  summaries: readonly PresentationStreamSummaryV1[] = [],
 ): Record<string, PresentationStreamView> {
   const streamKey = useMemo(
     () => [...new Set(streamIds.filter((streamId) => Boolean(streamId)))].sort().join("\u0000"),
@@ -86,6 +88,9 @@ export function useAgentCanvasPresentationStreams(
   const [views, setViews] = useState<Record<string, PresentationStreamView>>({});
   const viewsRef = useRef(new Map<string, PresentationStreamView>());
   const workflowScopeRef = useRef<string | null>(null);
+  const terminalKey = JSON.stringify(summaries
+    .filter(summary => summary.status !== "open" && streamIds.includes(summary.stream_id))
+    .map(summary => [summary.stream_id, summary.status]).sort());
 
   useEffect(() => {
     const activeIds = streamKey ? streamKey.split("\u0000") : [];
@@ -100,6 +105,12 @@ export function useAgentCanvasPresentationStreams(
     activeIds.forEach((streamId) => {
       if (!viewsRef.current.has(streamId)) viewsRef.current.set(streamId, initialView(streamId));
     });
+    // Discovery can observe completion before the terminal SSE event arrives.
+    // Keep already received text, but stop the connection even in that race.
+    for (const [streamId, status] of JSON.parse(terminalKey) as Array<[string, PresentationStreamViewStatus]>) {
+      const view = viewsRef.current.get(streamId);
+      if (view) viewsRef.current.set(streamId, { ...view, status });
+    }
     setViews(Object.fromEntries(activeIds.map((streamId) => [streamId, viewsRef.current.get(streamId)!])));
 
     if (!workflowId || !activeIds.length) return undefined;
@@ -108,6 +119,7 @@ export function useAgentCanvasPresentationStreams(
       source: EventSource | null;
       reconnectTimer: number | null;
       finished: boolean;
+      releaseSlot: (() => void) | null;
     }>();
 
     const updateView = (
@@ -130,7 +142,7 @@ export function useAgentCanvasPresentationStreams(
       );
       subscription.reconnectTimer = window.setTimeout(() => {
         subscription.reconnectTimer = null;
-        connect(streamId, attempt + 1);
+        enqueue(streamId, attempt + 1);
       }, delay);
     };
 
@@ -151,7 +163,7 @@ export function useAgentCanvasPresentationStreams(
         );
         subscription.source = source;
         const handleMessage = (message: MessageEvent<string>) => {
-          if (cancelled || subscription.finished) return;
+          if (cancelled || subscription.finished || subscription.source !== source) return;
           let event: PresentationStreamEventV1;
           try {
             event = normalizePresentationStreamEventV1(JSON.parse(message.data));
@@ -162,6 +174,7 @@ export function useAgentCanvasPresentationStreams(
             }));
             subscription.finished = true;
             source.close();
+            subscription.releaseSlot?.();
             return;
           }
           if (event.workflow_id !== workflowId || event.stream_id !== streamId) {
@@ -171,6 +184,7 @@ export function useAgentCanvasPresentationStreams(
             }));
             subscription.finished = true;
             source.close();
+            subscription.releaseSlot?.();
             return;
           }
           const previous = viewsRef.current.get(streamId) ?? initialView(streamId);
@@ -219,6 +233,7 @@ export function useAgentCanvasPresentationStreams(
           if (terminal) {
             subscription.finished = true;
             source.close();
+            subscription.releaseSlot?.();
           }
         };
         source.onmessage = handleMessage;
@@ -226,26 +241,40 @@ export function useAgentCanvasPresentationStreams(
           source.addEventListener(eventType, handleMessage as EventListener);
         });
         source.onopen = () => {
+          if (cancelled || subscription.finished || subscription.source !== source) return;
           updateView(streamId, (view) => ({ ...view, status: "open" }));
         };
         source.onerror = () => {
-          if (cancelled || subscription.finished) return;
+          if (cancelled || subscription.finished || subscription.source !== source) return;
           source.close();
           subscription.source = null;
+          subscription.releaseSlot?.();
           scheduleReconnect(streamId, attempt + 1);
         };
       } catch {
+        subscription.releaseSlot?.();
         scheduleReconnect(streamId, attempt + 1);
       }
+    };
+
+    const enqueue = (streamId: string, attempt: number) => {
+      const subscription = subscriptions.get(streamId);
+      if (!subscription || cancelled || subscription.finished) return;
+      subscription.releaseSlot = reservePresentationConnection((release) => {
+        subscription.releaseSlot = release;
+        if (cancelled || subscription.finished) { release(); return; }
+        connect(streamId, attempt);
+      });
     };
 
     activeIds.forEach((streamId) => {
       const view = viewsRef.current.get(streamId);
       // A cursor past the terminal event cannot replay it on a new connection.
       // Preserve finished streams when another conversation stream is added.
-      if (view?.last_event_type && isTerminalEvent(view.last_event_type)) return;
-      subscriptions.set(streamId, { source: null, reconnectTimer: null, finished: false });
-      connect(streamId, 0);
+      if (view && ["completed", "failed", "superseded"].includes(view.status)) return;
+      if (view?.protocol_error) return;
+      subscriptions.set(streamId, { source: null, reconnectTimer: null, finished: false, releaseSlot: null });
+      enqueue(streamId, 0);
     });
 
     return () => {
@@ -254,9 +283,10 @@ export function useAgentCanvasPresentationStreams(
         subscription.finished = true;
         if (subscription.reconnectTimer !== null) window.clearTimeout(subscription.reconnectTimer);
         subscription.source?.close();
+        subscription.releaseSlot?.();
       });
     };
-  }, [streamKey, workflowId]);
+  }, [streamKey, terminalKey, workflowId]);
 
   return views;
 }

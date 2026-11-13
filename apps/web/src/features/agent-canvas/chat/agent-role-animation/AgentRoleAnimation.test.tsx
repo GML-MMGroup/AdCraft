@@ -39,8 +39,8 @@ describe("AgentRoleAnimation visual lifecycle", () => {
     visual.snapshot.mockReturnValue({ ...ready, status: "fallback", Artwork: null, error: "offline" });
     render(<AgentRoleAnimation capabilityId="scene_design" motionState="working" />);
     const frame = screen.getByTestId("agent-role-animation-frame");
-    expect(getComputedStyle(frame).width).toBe("32px");
-    expect(getComputedStyle(frame).height).toBe("32px");
+    expect(getComputedStyle(frame).width).toBe("48px");
+    expect(getComputedStyle(frame).height).toBe("48px");
     expect(frame.dataset.roleWaitingMotion).toBeUndefined();
     expect(screen.queryByTestId("agent-role-static-icon")).toBeNull();
   });

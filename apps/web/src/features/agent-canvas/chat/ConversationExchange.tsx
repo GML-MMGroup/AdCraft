@@ -1,41 +1,30 @@
-import type { ReactNode } from "react";
-
 import { useTranslation } from "../../../i18n/useTranslation";
+import { BRAND_STAGE_LABELS } from "../brand/brandStageLabels.ts";
 import type { BrandSummaryExchange } from "./brandFormSummary.ts";
 import type { ProposalReply } from "./conversationExchange.ts";
+import { SelectionReceipt } from "./SelectionReceipt.tsx";
 import { GuidedQuestionBubble } from "./GuidedQuestionBubble.tsx";
-
-function UserAnswerBubble({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <article className="agent-chat__message agent-chat__message--user agent-chat__guided-answer-bubble" aria-label={label}>
-      <div className="agent-chat__message-body">{children}</div>
-    </article>
-  );
-}
 
 export function ProposalReplyBubble({ reply }: { reply: ProposalReply }) {
   const t = useTranslation();
   return (
     <div className="agent-chat__proposal-reply">
-      <UserAnswerBubble label={t("Your guided answer")}>
-        <strong className="agent-chat__guided-answer-value">
-          <span className="agent-chat__exchange-letter">{reply.letter}</span>
-          {reply.title}
-        </strong>
-      </UserAnswerBubble>
+      <SelectionReceipt label={t("Your guided answer")} heading={t("Selected")} value={`${reply.letter} · ${reply.title}`} />
     </div>
   );
 }
 
-/** Ask first, then append confirmed selections without replacing the question. */
-export function BrandSummaryBubbles({ summary }: { summary: BrandSummaryExchange }) {
+/** Retain the recorded question alongside its confirmed selections. */
+export function BrandSummaryBubbles({ summary, showQuestion = true }: {
+  summary: BrandSummaryExchange;
+  showQuestion?: boolean;
+}) {
   const t = useTranslation();
   return (
     <div className="agent-chat__guided-answer-pair" data-brand-summary={summary.stage}>
-      <GuidedQuestionBubble label={t(summary.question)} />
+      {showQuestion && summary.answer ? <GuidedQuestionBubble label={summary.answer.label} /> : null}
       {summary.rows.length > 0 ? (
-        <UserAnswerBubble label={t("Your selections")}>
-          <small className="agent-chat__selection-heading">{t("Selected")}</small>
+        <SelectionReceipt label={t("Your selections")} heading={t("Confirmed")} value={t(BRAND_STAGE_LABELS[summary.stage])}>
           <dl className="agent-chat__selection-list">
             {summary.rows.map((row) => (
               <div key={row.key}>
@@ -44,7 +33,7 @@ export function BrandSummaryBubbles({ summary }: { summary: BrandSummaryExchange
               </div>
             ))}
           </dl>
-        </UserAnswerBubble>
+        </SelectionReceipt>
       ) : null}
     </div>
   );

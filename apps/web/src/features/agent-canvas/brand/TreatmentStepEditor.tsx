@@ -22,7 +22,7 @@ export function TreatmentStepEditor({ step, panel, responseLocale = "en-US", onS
   const [error, setError] = useState("");
   const inFlight = useRef(false);
   const valid = label.trim() && label.length <= 160 && sections.every(s => s.title.trim() && s.title.length <= 80 && s.text.trim() && s.text.length <= 400);
-  return <form onSubmit={async event => {
+  return <form className="treatment-review__editor" onSubmit={async event => {
     event.preventDefault(); if (!valid || inFlight.current) return;
     inFlight.current = true; setPending(true); setError("");
     try { onSaved(await agentCanvasApi.brandEditTreatment(panel.workflow_id, step.step_key, {expected_stage_revision:panel.journey.stage_revision,selected_label:label,detail:{sections}})); }
@@ -35,6 +35,6 @@ export function TreatmentStepEditor({ step, panel, responseLocale = "en-US", onS
       <label>{t("Section content")}<textarea rows={4} value={section.text} maxLength={400} onChange={e => setSections(current => current.map((s,i) => i === index ? {...s,text:e.target.value} : s))}/></label>
     </fieldset>)}
     {error && <p role="alert">{error}</p>}
-    <button type="submit" disabled={!valid || pending}>{t("Save changes")}</button><button type="button" disabled={pending} onClick={onCancel}>{t("Cancel editing")}</button>
+    <div className="treatment-review__editor-actions"><button className="treatment-review__confirm" type="submit" disabled={!valid || pending}>{t("Save changes")}</button><button className="treatment-review__secondary-button" type="button" disabled={pending} onClick={onCancel}>{t("Cancel editing")}</button></div>
   </form>;
 }

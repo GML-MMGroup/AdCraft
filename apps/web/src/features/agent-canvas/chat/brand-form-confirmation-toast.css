@@ -1,0 +1,84 @@
+@import "../../../styles/brand-chinese-font.css";
+@import "../../../styles/workflow-panels.css";
+
+.brand-form-confirmation {
+  --confirmation-accent: var(--brand);
+  position: fixed;
+  z-index: 1600;
+  top: calc(80px + env(safe-area-inset-top, 0px));
+  right: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 28px;
+  align-items: start;
+  gap: 12px;
+  width: min(400px, calc(100vw - 32px));
+  box-sizing: border-box;
+  margin-inline: auto;
+  padding: 18px 14px 21px 18px;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-card);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 5%);
+  color: var(--text-primary);
+  font-family: var(--font-workflow-ui, "Manrope", "AdCraft Brand Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 180ms cubic-bezier(.23, 1, .32, 1), transform 180ms cubic-bezier(.23, 1, .32, 1);
+}
+
+@starting-style {
+  .brand-form-confirmation { opacity: 0; transform: translateY(-6px); }
+}
+
+.brand-form-confirmation__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.brand-form-confirmation__icon svg { width: 22px; height: 22px; }
+.brand-form-confirmation__copy { min-width: 0; }
+.brand-form-confirmation__copy strong { display: block; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.brand-form-confirmation__copy p { margin: 5px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.brand-form-confirmation__close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+.brand-form-confirmation__close svg { width: 16px; height: 16px; }
+.brand-form-confirmation__close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.brand-form-confirmation__close:active { transform: scale(.95); }
+@media (hover: hover) and (pointer: fine) {
+  .brand-form-confirmation__close:hover { background: rgb(255 255 255 / 7%); color: var(--text-primary); }
+}
+.brand-form-confirmation__track { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: var(--surface-selected); }
+.brand-form-confirmation__progress {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--confirmation-accent);
+  transform-origin: left center;
+  animation: brand-form-confirmation-countdown linear forwards;
+}
+@keyframes brand-form-confirmation-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-form-confirmation { transition: none; }
+  .brand-form-confirmation__close { transition: none; }
+}

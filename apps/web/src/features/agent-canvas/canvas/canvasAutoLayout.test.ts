@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import type { CanvasBindingV2, CanvasLayoutPositionV2, CanvasPositionV2 } from "../../../types-v2.ts";
+import type { CanvasBindingV2, CanvasLayoutPositionV2, CanvasNodeV2, CanvasPositionV2, ProjectAssetSummaryV2 } from "../../../types-v2.ts";
 import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
 import type { AgentCanvasNodeSize } from "./nodeGeometry.ts";
 import { agentCanvasNodePlacementSize } from "./nodeGeometry.ts";
 import {
   agentCanvasLayoutNodeFromFlowNode,
+  agentCanvasLayoutNodeFromCanvasNode,
   computeAgentCanvasAutoLayout,
   enabledNodeLayoutEdges,
   type AgentCanvasLayoutEdge,
   type AgentCanvasLayoutNode,
   type AgentCanvasAutoLayoutResult,
 } from "./canvasAutoLayout.ts";
+import productionLayout from "./fixtures/productionLayout.json";
 
 const DEFAULT_SIZE: AgentCanvasNodeSize = { width: 272, height: 184 };
 
@@ -40,6 +42,19 @@ function node(
   position: CanvasPositionV2 = { x: 0, y: 0 },
 ): AgentCanvasLayoutNode {
   return { id, position, size };
+}
+
+function storyboardNode(
+  id: string,
+  number: unknown,
+  role: "storyboard_sequence" | "storyboard_video" = "storyboard_sequence",
+  metadata: Record<string, unknown> = {},
+): CanvasNodeV2 {
+  return {
+    ...productionLayout.nodes.find(item => item.creative_role === role),
+    node_id: id,
+    metadata: { sequence_index: number, source_agent_document_id: "document-1", ...metadata },
+  } as CanvasNodeV2;
 }
 
 function edge(id: string, source: string, target: string): AgentCanvasLayoutEdge {
@@ -76,6 +91,13 @@ function assetBinding(id: string, assetId: string, target: string): CanvasBindin
 
 function positionsById(positions: CanvasLayoutPositionV2[]): Record<string, CanvasPositionV2> {
   return Object.fromEntries(positions.map((position) => [position.node_id, position]));
+}
+
+function verticalCenters(result: AgentCanvasAutoLayoutResult, nodes: AgentCanvasLayoutNode[]): Record<string, number> {
+  const sizes = new Map(nodes.map(item => [item.id, item.size]));
+  return Object.fromEntries(result.positions.map(position => [
+    position.node_id, position.y + sizes.get(position.node_id)!.height / 2,
+  ]));
 }
 
 function overlappingPairs(
@@ -140,6 +162,19 @@ describe("agentCanvasLayoutNodeFromFlowNode", () => {
     expect(agentCanvasLayoutNodeFromFlowNode(flowNode({ nodeType: "script" })).size)
       .toEqual(agentCanvasNodePlacementSize("script"));
   });
+
+  it("passes the same persisted creative identity from measured and canonical nodes", () => {
+    for (const canonical of productionLayout.nodes as CanvasNodeV2[]) {
+      const flow = flowNode({ nodeType: canonical.node_type });
+      flow.data.node = canonical;
+      expect(agentCanvasLayoutNodeFromFlowNode(flow).identity)
+        .toEqual(agentCanvasLayoutNodeFromCanvasNode(canonical).identity);
+    }
+    expect(agentCanvasLayoutNodeFromFlowNode({
+      ...flowNode({ nodeType: "image" }),
+      data: { node: storyboardNode("grid", 4), asset: null },
+    } as AgentCanvasFlowNode).identity?.number).toBe(4);
+  });
 });
 
 describe("enabledNodeLayoutEdges", () => {
@@ -164,6 +199,114 @@ describe("enabledNodeLayoutEdges", () => {
 });
 
 describe("computeAgentCanvasAutoLayout", () => {
+  it("orders a production canvas by creative identity and aligns each image with its matching output", () => {
+    const canonicalNodes = productionLayout.nodes as CanvasNodeV2[];
+    const assets = productionLayout.assets as ProjectAssetSummaryV2[];
+    const nodes = canonicalNodes.map(item => agentCanvasLayoutNodeFromCanvasNode(item, assets));
+    const result = computeAgentCanvasAutoLayout(nodes, productionLayout.edges);
+    const positions = positionsById(result.positions);
+    const sizes = new Map(nodes.map(item => [item.id, item.size]));
+    const center = (item: CanvasNodeV2) => positions[item.node_id]!.y + sizes.get(item.node_id)!.height / 2;
+
+    for (const role of ["storyboard_sequence", "storyboard_video"] as const) {
+      const ordered = canonicalNodes.filter(item => item.creative_role === role).sort((a, b) => center(a) - center(b));
+      expect(ordered.map(item => item.metadata.sequence_index)).toEqual([1, 2, 3, 4, 5]);
+    }
+    for (const grid of canonicalNodes.filter(item => item.creative_role === "storyboard_sequence")) {
+      const video = canonicalNodes.find(item => item.creative_role === "storyboard_video"
+        && item.metadata.source_sequence_id === grid.metadata.source_sequence_id)!;
+      expect(Math.abs(center(grid) - center(video))).toBeLessThanOrEqual(1);
+      expect(positions[grid.node_id]!.x).toBeLessThan(positions[video.node_id]!.x);
+    }
+    for (const phase of ["main", "turnaround"]) {
+      const ordered = canonicalNodes.filter(item => item.creative_role === "character" && item.metadata.character_phase === phase)
+        .sort((a, b) => center(a) - center(b));
+      expect(ordered.map(item => item.metadata.occurrence_id)).toEqual(["character-1", "character-2", "character-3"]);
+    }
+    for (const main of canonicalNodes.filter(item => item.creative_role === "character" && item.metadata.character_phase === "main")) {
+      const turnaround = canonicalNodes.find(item => item.creative_role === "character"
+        && item.metadata.character_phase === "turnaround" && item.metadata.occurrence_id === main.metadata.occurrence_id)!;
+      expect(Math.abs(center(main) - center(turnaround))).toBeLessThanOrEqual(1);
+    }
+    assertCompleteIntegerBounds(result, nodes);
+    expect(computeAgentCanvasAutoLayout([...nodes].reverse(), [...productionLayout.edges].reverse())).toEqual(result);
+    expect(computeAgentCanvasAutoLayout(nodes.map(item => ({ ...item, position: positions[item.id]! })), productionLayout.edges))
+      .toEqual(result);
+  });
+
+  it("keeps disconnected sequence pairs in numeric order, including double-digit numbers", () => {
+    const canonical = [10, 2, 1].flatMap(number => [
+      storyboardNode(`grid-${number}`, number),
+      storyboardNode(`video-${number}`, number, "storyboard_video"),
+    ]);
+    const nodes = canonical.map(item => agentCanvasLayoutNodeFromCanvasNode(item));
+    const edges = [1, 2, 10].map(number => edge(`pair-${number}`, `grid-${number}`, `video-${number}`));
+    const result = computeAgentCanvasAutoLayout(nodes, edges);
+    const positions = positionsById(result.positions);
+    const centers = verticalCenters(result, nodes);
+    expect(positions["grid-1"]!.y).toBeLessThan(positions["grid-2"]!.y);
+    expect(positions["grid-2"]!.y).toBeLessThan(positions["grid-10"]!.y);
+    for (const number of [1, 2, 10]) {
+      expect(centers[`grid-${number}`]).toBe(centers[`video-${number}`]);
+    }
+    assertCompleteIntegerBounds(result, nodes);
+  });
+
+  it("does not merge equal sequence numbers from different documents or sequence identities", () => {
+    const canonical = [
+      storyboardNode("grid-a", 1, "storyboard_sequence", { source_sequence_id: "a" }),
+      storyboardNode("video-a", 1, "storyboard_video", { source_sequence_id: "a" }),
+      storyboardNode("grid-b", 1, "storyboard_sequence", { source_sequence_id: "b" }),
+      storyboardNode("video-b", 1, "storyboard_video", { source_sequence_id: "a", source_agent_document_id: "document-2" }),
+    ];
+    const nodes = canonical.map(item => agentCanvasLayoutNodeFromCanvasNode(item));
+    const result = computeAgentCanvasAutoLayout(nodes, [
+      edge("a-a", "grid-a", "video-a"),
+      edge("a-b", "grid-a", "video-b"),
+    ]);
+    const centers = verticalCenters(result, nodes);
+    expect(centers["grid-a"]).toBe(centers["video-a"]);
+    expect(new Set([centers["grid-a"], centers["grid-b"], centers["video-b"]]).size).toBe(3);
+    assertCompleteIntegerBounds(result, nodes);
+  });
+
+  it("separates duplicate variants without losing their input/output pairing", () => {
+    const canonical = [
+      storyboardNode("grid-a", 1),
+      storyboardNode("grid-b", 1),
+      storyboardNode("video-a", 1, "storyboard_video"),
+      storyboardNode("video-b", 1, "storyboard_video"),
+      storyboardNode("grid-next", 2),
+    ];
+    const nodes = canonical.map(item => agentCanvasLayoutNodeFromCanvasNode(item));
+    const result = computeAgentCanvasAutoLayout(nodes, [
+      edge("a-b", "grid-a", "video-b"),
+      edge("b-a", "grid-b", "video-a"),
+    ]);
+    const centers = verticalCenters(result, nodes);
+    expect(centers["grid-a"]).toBe(centers["video-b"]);
+    expect(centers["grid-b"]).toBe(centers["video-a"]);
+    expect(centers["grid-next"]!).toBeGreaterThan(Math.max(centers["grid-a"]!, centers["grid-b"]!));
+    assertCompleteIntegerBounds(result, nodes);
+  });
+
+  it("keeps unnumbered and malformed legacy nodes clear of numbered lanes", () => {
+    const canonical = [
+      storyboardNode("grid", 1),
+      storyboardNode("video", 1, "storyboard_video"),
+      storyboardNode("missing", undefined),
+      storyboardNode("invalid", "2"),
+    ];
+    const nodes = canonical.map(item => agentCanvasLayoutNodeFromCanvasNode(item));
+    expect(nodes.filter(item => item.identity).map(item => item.id)).toEqual(["grid", "video"]);
+    const result = computeAgentCanvasAutoLayout(nodes, [
+      edge("grid-video", "grid", "video"),
+      edge("missing-video", "missing", "video"),
+      edge("invalid-video", "invalid", "video"),
+    ]);
+    assertCompleteIntegerBounds(result, nodes);
+  });
+
   it("returns an empty result for an empty canvas", () => {
     expect(computeAgentCanvasAutoLayout([], [])).toEqual({
       positions: [],

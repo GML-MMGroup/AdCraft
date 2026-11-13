@@ -1,0 +1,20 @@
+AdCraft video editor third-party notices
+
+Cutia: https://github.com/msgbyte/cutia
+Pinned source: ba7dc787815155a197a3f4e875af46720084bc77
+MIT license: CUTIA-MIT.txt
+AdCraft integrations and adaptations are documented in vendor/cutia/INTEGRATION.md.
+
+Mediabunny and @mediabunny/aac-encoder: 1.65.2
+Source: https://github.com/Vanilagy/mediabunny/tree/v1.65.2
+Source package: https://registry.npmjs.org/@mediabunny/aac-encoder/-/aac-encoder-1.65.2.tgz
+MPL-2.0 license: MEDIABUNNY-MPL-2.0.txt
+
+The optional AAC encoder contains an unmodified FFmpeg AAC build.
+FFmpeg source: https://github.com/FFmpeg/FFmpeg/tree/60a2818f76dcd1fee3155b1791304af104a0fc1b
+FFmpeg license: FFMPEG-LGPL-2.1.txt and FFMPEG-NOTICE.md
+Exact build commands, compiler version, source revisions and WASM checksum:
+AAC-BUILD-AND-SOURCE.md
+The AAC module is dynamically loaded only when native AAC encoding is unavailable.
+To replace it with a modified build, follow those build instructions, replace the
+@mediabunny/aac-encoder package, and run npm run build in apps/web.

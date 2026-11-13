@@ -1,3 +1,17 @@
+@import "../styles/brand-chinese-font.css";
+
+/* Include project dialogs rendered through a body portal. */
+body:has(.projects-page) {
+  --font-ui: var(--font-workflow-ui);
+  --font-body: var(--font-workflow-ui);
+  --font-display: var(--font-workflow-ui);
+  font-family: var(--font-workflow-ui);
+}
+
+.projects-page .page-title.page-title--editorial {
+  font-family: "Literata", var(--font-cjk-ui), serif;
+}
+
 .page-toolbar,
 .empty-state,
 .deleted-panel {
@@ -784,8 +798,43 @@
 
 .trash-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding-right: 16px;
+}
+
+.trash-page .catalog-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.trash-deletion-notice {
+  margin: -8px 0 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.trash-delete-action {
+  white-space: nowrap;
+}
+
+.trash-delete-action svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+:root .trash-page .trash-delete-action:disabled {
+  border-color: var(--border-default);
+  background: var(--surface-raised);
+  box-shadow: none;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

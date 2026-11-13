@@ -20,8 +20,8 @@ test("real chat panel plays concurrent roles independently and keeps messages si
   await expect(scene.getByTestId("agent-capability-icon")).toHaveCount(1);
   await expect(character.getByTestId("agent-capability-icon")).toHaveCount(1);
   const box = await scene.getByTestId("agent-role-animation-frame").boundingBox();
-  expect(box?.width).toBe(32);
-  expect(box?.height).toBe(32);
+  expect(box?.width).toBe(48);
+  expect(box?.height).toBe(48);
   await page.getByRole("button", { name: "Scene provider waiting", exact: true }).click();
   await expect(page.getByRole("status", { name: "Scene Designer waiting", exact: true })).toBeVisible();
   await expect.poll(() => running(scene)).toBe(true);

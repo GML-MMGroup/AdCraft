@@ -64,7 +64,7 @@ describe("DecisionDockFrame", () => {
 
     const pendingAction = screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement;
     expect(screen.getByRole("article").getAttribute("aria-busy")).toBe("true");
-    expect(pendingAction.disabled).toBe(false);
+    expect(pendingAction.disabled).toBe(true);
     expect(pendingAction.getAttribute("aria-disabled")).toBe("true");
     expect(document.activeElement).toBe(pendingAction);
     fireEvent.click(pendingAction);

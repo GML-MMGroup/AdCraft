@@ -471,7 +471,7 @@ async function requestV2Response(
 export function v2AuthoringPreconditionTarget(path: string, method: string): V2PreconditionTarget | null {
   if (!new Set(["POST", "PATCH", "PUT", "DELETE"]).has(method.toUpperCase())) return null;
   const pathname = path.split("?", 1)[0] ?? path;
-  const project = pathname.match(/^\/projects\/([^/]+)(?:\/restore)?$/);
+  const project = pathname.match(/^\/projects\/([^/]+)(?:\/(?:restore|permanent))?$/);
   if (project) return { resource: "project", id: decodeURIComponent(project[1] ?? "") };
   if (/^\/workflows\/plan-from-(?:prompt|chat)$/.test(pathname)) return null;
   const workflow = pathname.match(/^\/workflows\/([^/]+)(\/.*)?$/);
@@ -636,11 +636,11 @@ export const v2Api = {
     );
   },
 
-  brandDecisions(workflowId: string): Promise<BrandDecisionPanelV1> {
+  brandDecisions(workflowId: string, options: { signal?: AbortSignal } = {}): Promise<BrandDecisionPanelV1> {
     const query = new URLSearchParams({ workflow_id: workflowId });
     return requestV2(
       `/brand/decisions?${query.toString()}`,
-      {},
+      { signal: options.signal },
       normalizeBrandDecisionPanelV1,
     );
   },
@@ -684,10 +684,10 @@ export const v2Api = {
     );
   },
 
-  brandNextQuestion(workflowId: string): Promise<BrandDecisionPanelV1["open_card"] | Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }>> {
+  brandNextQuestion(workflowId: string, options?: { retryFailed: boolean }): Promise<BrandDecisionPanelV1["open_card"] | Extract<GuidedInteractionContentV1, { content_kind: "brand_form" }>> {
     return requestV2(
       `/brand/decisions/${encodeURIComponent(workflowId)}/next-question`,
-      { method: "POST" },
+      { method: "POST", ...(options?.retryFailed ? { body: JSON.stringify({ retry_failed: true }) } : {}) },
       (payload) => payload === null ? null
         : typeof payload === "object" && payload !== null && "content_kind" in payload && payload.content_kind === "brand_form"
           ? normalizeGuidedBrandFormV1(payload)
@@ -1441,11 +1441,12 @@ export const v2Api = {
   listAgentCanvasPresentationStreams(
     workflowId: string,
     limit = 20,
+    options: { signal?: AbortSignal } = {},
   ): Promise<PresentationStreamListResponseV1> {
     const query = new URLSearchParams({ limit: String(limit) });
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/presentation/streams?${query.toString()}`,
-      {},
+      { signal: options.signal },
       normalizePresentationStreamListResponseV1,
     );
   },
@@ -1585,6 +1586,17 @@ export const v2Api = {
 
   trashProject(projectId: string): Promise<void> {
     return requestV2(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" });
+  },
+
+  async permanentlyDeleteProject(projectId: string, projectVersion: number): Promise<void> {
+    if (!Number.isSafeInteger(projectVersion) || projectVersion < 1) {
+      throw new Error("A current project version is required for permanent deletion.");
+    }
+    await requestV2Response(
+      `/projects/${encodeURIComponent(projectId)}/permanent`,
+      { method: "DELETE", headers: { "If-Match": `"project:${projectId}:${projectVersion}"` } },
+      { conflictHandling: "caller", captureAuthoringEtag: false },
+    );
   },
 
   restoreProject(projectId: string): Promise<V2EtaggedResponse<ProjectV2>> {

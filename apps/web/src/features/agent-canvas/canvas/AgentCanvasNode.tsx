@@ -18,6 +18,8 @@ import {
 } from "react";
 
 import { PlayIcon } from "../../../icons.tsx";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { nodeRunActivity } from "../model/nodeRunActivity.ts";
 import type {
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
@@ -31,7 +33,7 @@ import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
 import { CanvasVideoPreview } from "./CanvasVideoPreview.tsx";
 import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
-import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
+import { canvasNodeDisplayName } from "./canvasNodeDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import {
   mediaAssetCanvasPreviewRenditionPath,
@@ -68,17 +70,13 @@ const NODE_STATUS_LABELS: Record<CanvasNodeStatusV2, string> = {
 };
 
 export interface AgentCanvasNodeCallbacks {
+  onRendered?: (workflowId: string, nodeId: string) => void;
   onRun?: (nodeId: string) => void;
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
   onOpenEditing?: (nodeId: string) => void;
   onOpenVideoPreview?: (nodeId: string, asset: ProjectAssetSummaryV2) => void;
   renderWorkbench?: (node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => ReactNode;
-  onOpenConnectedNodeMenu?: (
-    nodeId: string,
-    direction: "upstream" | "downstream",
-    point: { x: number; y: number },
-  ) => void;
 }
 
 export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanvasNodeCallbacks {
@@ -86,6 +84,7 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   asset?: ProjectAssetSummaryV2 | null;
   runtime?: NodeRuntimeV2 | null;
   workbenchActive?: boolean;
+  runPending?: boolean;
   disabled?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
@@ -106,6 +105,7 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   asset?: ProjectAssetSummaryV2 | null;
   runtime?: NodeRuntimeV2 | null;
   selected?: boolean;
+  runPending?: boolean;
   disabled?: boolean;
   onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
   onScriptContentHeightResolved?: (height: number) => void;
@@ -225,16 +225,24 @@ export function AgentCanvasNodeCard({
   node,
   asset,
   selected = false,
+  runPending = false,
   onOpenVideoPreview,
   onOpenEditing,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
   mediaDimensions,
 }: AgentCanvasNodeCardProps) {
-  const status = node.status;
-  const previousNodeRef = useRef({ nodeId: node.node_id, status });
+  const t = useTranslation();
+  const activity = nodeRunActivity(node);
+  const status = runPending || activity ? "working" : node.status;
+  const activityLabel = activity === "queued" ? t("Queued")
+    : activity === "waiting" ? t("Waiting to generate") : undefined;
+  const previousNodeRef = useRef({
+    nodeId: node.node_id, status, canonicalWorking: node.status === "working",
+    outputAssetId: node.output_asset_id, outputVersionId: node.output_asset_version_id,
+  });
   const [generationRevealNodeId, setGenerationRevealNodeId] = useState<string | null>(null);
-  const label = creativeRoleDisplayName(node.creative_role);
+  const label = canvasNodeDisplayName(node, t);
   const resolvedMediaDimensions = mediaDimensions
     ?? (validAgentCanvasMediaDimensions(asset)
       ? { width: asset.width, height: asset.height }
@@ -252,17 +260,28 @@ export function AgentCanvasNodeCard({
 
   useLayoutEffect(() => {
     const previous = previousNodeRef.current;
-    previousNodeRef.current = { nodeId: node.node_id, status };
+    const continuingRun = previous.nodeId === node.node_id && previous.status === "working" && status === "working";
+    previousNodeRef.current = {
+      nodeId: node.node_id,
+      status,
+      canonicalWorking: node.status === "working" || (continuingRun && previous.canonicalWorking),
+      // Keep the output at submission time until the presentation finishes working.
+      outputAssetId: continuingRun ? previous.outputAssetId : node.output_asset_id,
+      outputVersionId: continuingRun ? previous.outputVersionId : node.output_asset_version_id,
+    };
     if (previous.nodeId !== node.node_id) {
       setGenerationRevealNodeId(null);
       return;
     }
     if (previous.status === "working" && status === "ready") {
-      setGenerationRevealNodeId(node.node_id);
+      const generated = previous.canonicalWorking
+        || previous.outputAssetId !== node.output_asset_id
+        || previous.outputVersionId !== node.output_asset_version_id;
+      setGenerationRevealNodeId(generated ? node.node_id : null);
     } else if (status !== "ready") {
       setGenerationRevealNodeId(null);
     }
-  }, [node.node_id, status]);
+  }, [node.node_id, node.output_asset_id, node.output_asset_version_id, node.status, status]);
 
   return (
     <article
@@ -275,9 +294,9 @@ export function AgentCanvasNodeCard({
       data-testid={`agent-canvas-node-${node.node_id}`}
       data-node-type={node.node_type}
       data-node-status={status}
-      aria-label={`${label} node, ${NODE_STATUS_LABELS[status]}`}
+      aria-label={`${label} node, ${activityLabel ?? NODE_STATUS_LABELS[status]}`}
     >
-      <AgentCanvasNodeHeader node={node} status={status} dimensions={resolvedMediaDimensions} />
+      <AgentCanvasNodeHeader node={node} status={status} dimensions={resolvedMediaDimensions} activityLabel={activityLabel} />
       <div className="agent-canvas-node__surface">
         {(!generatingMediaType || hasPriorMediaOutput) ? (
           <NodeSurface
@@ -297,6 +316,7 @@ export function AgentCanvasNodeCard({
             mediaType={generatingMediaType}
             nodeId={node.node_id}
             overMedia={hasPriorMediaOutput}
+            statusLabel={activityLabel}
           />
         ) : status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
@@ -322,12 +342,16 @@ function AgentCanvasNodeRendererComponent({
   selected,
   isConnectable,
 }: AgentCanvasNodeRendererProps) {
+  const t = useTranslation();
+  const { onRendered } = data;
+  const workflowId = data.node.workflow_id;
+  const shellRef = useRef<HTMLDivElement>(null);
   const updateNodeInternals = useUpdateNodeInternals();
   const [intrinsicDimensions, setIntrinsicDimensions] = useState<(
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const [scriptContentHeight, setScriptContentHeight] = useState(0);
-  const label = creativeRoleDisplayName(data.node.creative_role);
+  const label = canvasNodeDisplayName(data.node, t);
   const workbench = data.node.node_type === "editing"
     ? null
     : data.renderWorkbench?.(data.node, data.runtime ?? null);
@@ -355,8 +379,29 @@ function AgentCanvasNodeRendererComponent({
     updateNodeInternals(id);
   }, [id, nodeSize.height, nodeSize.width, updateNodeInternals]);
 
+  useLayoutEffect(() => {
+    if (!onRendered) return;
+    // React Flow hides a mounted node until measurement finishes. Observe a
+    // visible frame, then allow its paint before retiring the chat receipt.
+    let visibleFrame = false;
+    let frame: number;
+    const acknowledgePaint = () => {
+      const shell = shellRef.current;
+      if (!shell?.isConnected) return;
+      if (window.getComputedStyle(shell).visibility === "hidden") visibleFrame = false;
+      else if (visibleFrame) {
+        onRendered(workflowId, id);
+        return;
+      } else visibleFrame = true;
+      frame = window.requestAnimationFrame(acknowledgePaint);
+    };
+    frame = window.requestAnimationFrame(acknowledgePaint);
+    return () => window.cancelAnimationFrame(frame);
+  }, [onRendered, workflowId, id]);
+
   return (
     <div
+      ref={shellRef}
       className="agent-canvas-node-shell"
       style={shellStyle}
     >
@@ -374,6 +419,7 @@ function AgentCanvasNodeRendererComponent({
         node={data.node}
         asset={data.asset}
         runtime={data.runtime}
+        runPending={data.runPending}
         selected={selected}
         onOpenVideoPreview={data.onOpenVideoPreview}
         onOpenEditing={data.onOpenEditing}

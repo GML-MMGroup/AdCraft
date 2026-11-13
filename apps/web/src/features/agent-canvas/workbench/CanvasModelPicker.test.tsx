@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe("CanvasModelPicker", () => {
-  it("omits status details from compact image controls but keeps catalog errors in the menu", () => {
+  it("shows catalog errors without opening the compact model menu", () => {
     renderPicker({
       showStatusDetails: false,
       selectionMode: "explicit",
@@ -49,9 +49,9 @@ describe("CanvasModelPicker", () => {
     const trigger = screen.getByLabelText("Choose model");
     expect(trigger.textContent).toBe("GLM Image");
     expect(trigger.querySelector("small")).toBeNull();
-    expect(screen.queryByText("Catalog could not be refreshed")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("Catalog could not be refreshed");
     fireEvent.click(trigger);
-    expect(screen.getByRole("listbox").textContent).toContain("Catalog could not be refreshed");
+    expect(screen.getByRole("listbox").textContent).not.toContain("Catalog could not be refreshed");
   });
   it("shows the current default name without using a previous node model or pinning the default", () => {
     const onChange = vi.fn();

@@ -10,3 +10,14 @@ dist/
 .codegraph/
 
 *:Zone.Identifier
+
+.vite-skill-gallery/
+
+.vite-conversation-preview/
+
+# Local promotional demo, copied media, video exports, and packaging artifacts
+/public/promo/
+/scripts/render-adcraft-promo.mjs
+
+# Local image generation artifacts, verification captures, and export archives
+/output/

@@ -48,7 +48,7 @@ describe("ImageResolutionControls", () => {
       />,
     );
     const select = screen.getByLabelText("Size");
-    expect(select.textContent).toContain("2048x2048");
+    expect(select.textContent).toContain("auto");
     fireEvent.click(select);
     fireEvent.click(screen.getByRole("option", { name: "2560x1440 (16:9)" }));
     expect(onChange).toHaveBeenLastCalledWith({ size: "2560x1440" });
@@ -64,7 +64,7 @@ describe("ImageResolutionControls", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.click(screen.getByLabelText("Resolution"));
+    fireEvent.click(screen.getByLabelText("Resolution setting"));
     fireEvent.click(screen.getByRole("option", { name: "2K" }));
     expect(onChange).toHaveBeenLastCalledWith({ resolution: "2K", aspect_ratio: "1:1" });
 
@@ -81,7 +81,7 @@ describe("ImageResolutionControls", () => {
     expect(onChange).toHaveBeenLastCalledWith({ resolution: "2K", aspect_ratio: "16:9" });
   });
 
-  it("shows default parameters as the initial selection without writing them", () => {
+  it("shows auto instead of model dimension defaults without writing them", () => {
     const onChange = vi.fn();
     render(
       <ImageResolutionControls
@@ -91,8 +91,8 @@ describe("ImageResolutionControls", () => {
         onChange={onChange}
       />,
     );
-    expect(screen.getByLabelText("Resolution").textContent).toContain("2K");
-    expect(screen.getByLabelText("Ratio").textContent).toContain("16:9");
+    expect(screen.getByLabelText("Resolution setting").textContent).toContain("auto");
+    expect(screen.getByLabelText("Ratio").textContent).toContain("auto");
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -112,7 +112,7 @@ describe("ImageResolutionControls", () => {
         onChange={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("Resolution").textContent).toContain("8K (unsupported)");
+    expect(screen.getByLabelText("Resolution setting").textContent).toContain("8K (unsupported)");
     expect(screen.getByText("8K (unsupported)")).toBeTruthy();
     expect(screen.getByText("Choose an aspect ratio to send with the resolution.")).toBeTruthy();
   });
@@ -130,4 +130,24 @@ describe("ImageResolutionControls", () => {
     })).toEqual(["size"]);
     expect(staleImageResolutionParameters(sizeCapabilities, { quality: "high" })).toEqual([]);
   });
+});
+
+
+it("clears every dimension when auto is selected and preserves other parameters", () => {
+  const onChange = vi.fn();
+  render(<ImageResolutionControls capabilities={sizeCapabilities}
+    parameters={{ size: "2560x1440", quality: "high" }} disabled={false} onChange={onChange} />);
+  expect(screen.getByLabelText("Size").textContent).toContain("2560x1440");
+  fireEvent.click(screen.getByLabelText("Size"));
+  fireEvent.click(screen.getByRole("option", { name: "auto" }));
+  expect(onChange).toHaveBeenLastCalledWith({ quality: "high" });
+});
+
+it("clears both members of a resolution pair when either returns to auto", () => {
+  const onChange = vi.fn();
+  render(<ImageResolutionControls capabilities={pairCapabilities}
+    parameters={{ resolution: "2K", aspect_ratio: "16:9", quality: "high" }} disabled={false} onChange={onChange} />);
+  fireEvent.click(screen.getByLabelText("Ratio"));
+  fireEvent.click(screen.getByRole("option", { name: "auto" }));
+  expect(onChange).toHaveBeenLastCalledWith({ quality: "high" });
 });

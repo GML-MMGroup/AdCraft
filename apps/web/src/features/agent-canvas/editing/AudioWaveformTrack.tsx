@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
+import { useEditingText } from "./editingMessages.ts";
 import type { EditingBgmEntryV2 } from "../../../types-v2.ts";
 import {
   bgmPlayedRatioForTimeline,
@@ -12,6 +13,10 @@ export interface AudioWaveformTrackProps {
   audioUrl: string | null;
   durationSeconds: number;
   name: string;
+  displayName?: string;
+  enabled?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   onSetBgm: (patch: Partial<EditingBgmEntryV2>) => void;
   renderedWidth: number;
   trimEndSeconds: number | null;
@@ -50,6 +55,10 @@ export function AudioWaveformTrack({
   disabled = false,
   durationSeconds,
   name,
+  displayName,
+  enabled = true,
+  selected = false,
+  onSelect,
   onSetBgm,
   playheadSeconds = 0,
   renderedWidth,
@@ -57,7 +66,9 @@ export function AudioWaveformTrack({
   trimEndSeconds,
   trimStartSeconds,
 }: AudioWaveformTrackProps) {
-  const waveform = useAudioWaveform({ audioUrl, renderedWidth });
+  const t = useEditingText();
+  const barCount = Math.max(1, Math.min(1024, Math.round(renderedWidth / 6)));
+  const waveform = useAudioWaveform({ audioUrl, renderedWidth: barCount });
   const laneRef = useRef<HTMLDivElement>(null);
   const dragCancelRef = useRef<(() => void) | null>(null);
   const duration = Math.max(0, Number.isFinite(durationSeconds) ? durationSeconds : 0);
@@ -85,9 +96,12 @@ export function AudioWaveformTrack({
     duration,
     trimRange.start,
     trimRange.end,
-    Math.max(1, Math.round(renderedWidth)),
+    Math.max(1, Math.round(barCount * trimRatio)),
   );
-  const sourcePeaks = normalizePeakCount(waveform.peaks, Math.max(1, Math.round(renderedWidth)));
+  // Compress only the display's dynamic range so quiet passages remain legible.
+  const peakScale = Math.max(.001, ...waveform.peaks);
+  const peakHeight = (peak: number) => `${Math.max(8, Math.round(Math.sqrt(peak / peakScale) * 88))}%`;
+  const sourcePeaks = normalizePeakCount(waveform.peaks, barCount);
 
   const persistTrim = (edge: "start" | "end", range: TrimRange) => {
     onSetBgm(edge === "start"
@@ -200,15 +214,25 @@ export function AudioWaveformTrack({
     </div>
   );
 
+  const sourceTime = (value: number) => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}.${Math.floor(value * 10) % 10}`;
+  const header = <>
+    <span className="editing-audio-clip-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 8v4m3-7v10m4-13v16m4-13v10m3-7v4"/></svg></span>
+    <strong title={displayName || name}>{displayName || name}</strong>
+    <span className="editing-audio-clip-kind">{t(!enabled ? "Disabled" : waveform.status === "loading" ? "Loading waveform" : waveform.status === "fallback" ? "Waveform unavailable" : "Background music")}</span>
+    <span className="editing-audio-clip-duration">{playableDuration.toFixed(1)}s</span>
+  </>;
+
   return (
-    <section className="audio-waveform-track" aria-label="BGM track">
+    <section className={`audio-waveform-track${selected ? " is-selected" : ""}${!enabled ? " is-muted" : ""}`} aria-label="BGM track">
+      {onSelect ? <button type="button" className="editing-audio-clip-header" onClick={onSelect} aria-pressed={selected}>{header}</button> : <div className="editing-audio-clip-header">{header}</div>}
+
       <div ref={laneRef} className="audio-waveform-track__lane" role="group" aria-label={`Audio waveform, ${waveform.status}`}>
         <div className="audio-waveform-track__source" aria-hidden="true">
           {sourcePeaks.map((peak, index) => (
             <i
               key={`source-${index}`}
               className="audio-waveform-track__bar audio-waveform-track__bar--source"
-              style={{ height: `${Math.max(8, Math.round(peak * 100))}%` }}
+              style={{ height: peakHeight(peak) }}
             />
           ))}
         </div>
@@ -223,13 +247,14 @@ export function AudioWaveformTrack({
               className={index / Math.max(1, visiblePeaks.length) < playedRatio
                 ? "audio-waveform-track__bar audio-waveform-track__bar--played"
                 : "audio-waveform-track__bar"}
-              style={{ height: `${Math.max(8, Math.round(peak * 100))}%` }}
+              style={{ height: peakHeight(peak) }}
             />
           ))}
         </div>
         {duration ? renderHandle("start") : null}
         {duration ? renderHandle("end") : null}
       </div>
+      <div className="editing-audio-clip-footer" aria-hidden="true"><span>{t("Source range")} {sourceTime(trimRange.start)} → {sourceTime(trimRange.end)}</span><span>{t(trimEndSeconds === null ? "Loop" : "Trimmed audio")}</span></div>
     </section>
   );
 }

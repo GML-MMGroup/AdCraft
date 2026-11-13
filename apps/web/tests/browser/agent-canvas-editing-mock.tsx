@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { LocaleProvider } from "../../src/i18n/locale.tsx";
 import { createRoot } from "react-dom/client";
 
 import { agentCanvasApi } from "../../src/api/agentCanvasApi.ts";
@@ -13,7 +14,6 @@ import { AgentCanvasNodeCard } from "../../src/features/agent-canvas/canvas/Agen
 import { AgentCanvasEditingPanel } from "../../src/features/agent-canvas/editing/AgentCanvasEditingPanel.tsx";
 import { AgentCanvasInlineWorkbench } from "../../src/features/agent-canvas/workbench/AgentCanvasInlineWorkbench.tsx";
 import {
-  mergeAgentCanvasEditingExportImport,
   mergeAgentCanvasWorkflow,
 } from "../../src/features/agent-canvas/session/workflowMerge.ts";
 import "../../src/styles/base.css";
@@ -48,6 +48,9 @@ function node(
     parameter_provenance: {},
     prompt_context_snapshot_id: null,
     output_asset_id: outputAssetId,
+    output_asset_version_id: outputAssetId ? `version-${outputAssetId}` : null,
+    latest_attempt: null,
+    prompt_presentation: null,
     position,
     revision: 1,
     error: null,
@@ -75,8 +78,8 @@ function asset(
     status: "ready",
     size_bytes: 1024,
     storage_key: null,
-    preview_url: mediaType === "video" ? "/assets/home-product-film.mp4" : null,
-    media_url: "/assets/home-product-film.mp4",
+    preview_url: null,
+    media_url: `/api/v2/assets/${assetId}/content`,
     width: mediaType === "video" ? 1920 : null,
     height: mediaType === "video" ? 1080 : null,
     duration_seconds: 30,
@@ -166,7 +169,7 @@ const editing = {
         asset_id: "asset-video-source",
         status: "ready",
         display_order: 0,
-        preview_url: "/assets/home-product-film.mp4",
+        preview_url: "/api/v2/assets/asset-video-source/content",
         duration_seconds: 30,
         warning: null,
       }],
@@ -179,20 +182,6 @@ const editing = {
     last_successful_export: null,
     active_export: null,
   },
-};
-
-const completedExport = {
-  export_id: "export-30s",
-  status: "completed" as const,
-  manifest_revision: 5,
-  fingerprint: "fingerprint-export-30s",
-  ready_video_node_ids: ["video-source"],
-  skipped_inputs: [],
-  bgm_node_id: "audio-source",
-  output_asset_id: "asset-export",
-  error: null,
-  started_at: timestamp,
-  finished_at: timestamp,
 };
 
 const initialWorkflow: AgentCanvasWorkflowV2 = {
@@ -218,6 +207,18 @@ v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:8"');
 
 function workflowForScenario(): AgentCanvasWorkflowV2 {
   const scenario = new URLSearchParams(window.location.search).get("manifest");
+  if (scenario === "short") {
+    const result = structuredClone(initialWorkflow);
+    const manifest = result.nodes.find(node => node.node_id === "editing-1")!.structured_content.manifest as typeof editing.structured_content.manifest;
+    manifest.timeline_duration_seconds = 2;
+    manifest.video_entries[0].trim_end_seconds = 2;
+    manifest.bgm.trim_end_seconds = 2;
+    manifest.output.resolution = "320x180";
+    manifest.output.fps = 10;
+    result.assets.push(asset("asset-extra-shot", "video", "Extra shot"));
+    result.assets = result.assets.map(asset => ({ ...asset, duration_seconds: 2, width: asset.media_type === "video" ? 320 : null, height: asset.media_type === "video" ? 180 : null, mime_type: asset.media_type === "video" ? "video/mp4" : "audio/wav" }));
+    return result;
+  }
   if (scenario !== "nullable" && scenario !== "invalid") return initialWorkflow;
   const videoEntry = editing.structured_content.manifest.video_entries[0]!;
   const nullableNode: CanvasNodeV2 = {
@@ -273,49 +274,13 @@ function AcceptanceHarness() {
     [workflow.nodes],
   );
 
-  useEffect(() => {
-    const completeExport = () => {
-      v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:9"');
-      setWorkflow((current) => ({
-        ...current,
-        revision: 9,
-        nodes: current.nodes.map((candidate) => candidate.node_id === "editing-1"
-          ? {
-              ...candidate,
-              status: "ready",
-              output_asset_id: "asset-export",
-              revision: candidate.revision + 1,
-              structured_content: {
-                ...candidate.structured_content,
-                dirty: false,
-                last_successful_export: completedExport,
-                active_export: null,
-              },
-            }
-          : candidate),
-        assets: current.assets.some((candidate) => candidate.asset_id === "asset-export")
-          ? current.assets
-          : [...current.assets, asset("asset-export", "video", "AdCraft Final 30s")],
-      }));
-    };
-    window.addEventListener("mock-editing-export-completed", completeExport);
-    return () => window.removeEventListener("mock-editing-export-completed", completeExport);
-  }, []);
-
-  const addToCanvas = async (exportId: string) => {
-    setIssue(null);
-    try {
-      const response = await agentCanvasApi.importAgentCanvasEditingExport(
-        workflow.workflow_id,
-        editingNode.node_id,
-        { export_id: exportId, title: "Exported video", position: { x: 900, y: 160 } },
-        "mock-editing-export-import",
-      );
-      setWorkflow((current) => mergeAgentCanvasEditingExportImport(current, response.value));
-      setEditingPanelOpen(false);
-    } catch (error) {
-      setIssue(error instanceof Error ? error.message : "Import failed");
-    }
+  const addToCanvas = async (asset: ProjectAssetSummaryV2) => {
+    const response = await agentCanvasApi.createAgentCanvasNode(workflow.workflow_id, {
+      node_type: "video", creative_role: "general_video", role_contract_version: "ad-media-role-v2",
+      source_asset_id: asset.asset_id, title: "Exported video", position: { x: 900, y: 160 },
+    });
+    setWorkflow(current => mergeAgentCanvasWorkflow(current, response.value.workflow));
+    setEditingPanelOpen(false);
   };
 
   const connectDownstream = async () => {
@@ -341,11 +306,17 @@ function AcceptanceHarness() {
         <AgentCanvasEditingPanel
           workflow={workflow}
           node={editingNode}
-          patchNode={async () => undefined}
+          patchNode={async (nodeId, patch) => {
+            const response = await agentCanvasApi.patchAgentCanvasNode(workflow.workflow_id, nodeId, patch);
+            setWorkflow(current => mergeAgentCanvasWorkflow(current, response.value.workflow));
+          }}
           onClose={() => setEditingPanelOpen(false)}
-          onAddExportToCanvas={addToCanvas}
+          onAddRenderedAssetToCanvas={addToCanvas}
+          onAssetsChanged={async () => { const result = await agentCanvasApi.listAgentCanvasProjectAssets(workflow.workflow_id); setWorkflow(current => ({ ...current, assets: result.assets })); }}
         />
       ) : null}
+      <button type="button" onClick={() => setEditingPanelOpen(true)}>Reopen editor</button>
+      <output data-testid="workflow-state" hidden>{JSON.stringify(workflow)}</output>
       {issue ? <p role="alert">{issue}</p> : null}
       {importedNode && importedAsset ? (
         <section aria-label="Authoritative imported canvas result" style={{ marginTop: 24 }}>
@@ -362,8 +333,6 @@ function AcceptanceHarness() {
               node={importedNode}
               patchNode={async () => undefined}
               onRun={async () => undefined}
-              onDiscardVariation={async () => undefined}
-              onMaterializeVariation={async () => null}
               onSaveImageToLibrary={async () => undefined}
               onDelete={async () => undefined}
               onOpenEditing={() => undefined}
@@ -396,4 +365,4 @@ function AcceptanceHarness() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<AcceptanceHarness />);
+createRoot(document.getElementById("root")!).render(<LocaleProvider><AcceptanceHarness /></LocaleProvider>);

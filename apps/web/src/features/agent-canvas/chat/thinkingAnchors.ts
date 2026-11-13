@@ -33,6 +33,11 @@ function itemIdentities(item: ChatTimelineItemV2): { authoritative: string[]; tu
   }
 }
 
+export function streamHasTimelineTarget(stream: Pick<PresentationStreamView, "authoritative_id">, items: readonly ChatTimelineItemV2[]): boolean {
+  return stream.authoritative_id !== null
+    && items.some(item => itemIdentities(item).authoritative.includes(stream.authoritative_id!));
+}
+
 export function thinkingAnchorForItem(
   streams: readonly StreamLike[],
   item: ChatTimelineItemV2,

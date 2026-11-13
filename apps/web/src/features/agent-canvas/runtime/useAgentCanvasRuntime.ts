@@ -26,6 +26,7 @@ import {
 } from "./inputManifestAudit.ts";
 import { resolvePublishedAssets } from "./publishedAssets.ts";
 import { nodeRunRequest } from "./runRequest.ts";
+import { useNodeRunFeedback } from "./useNodeRunFeedback.ts";
 import { modelResolutionFromEvent } from "./modelResolution.ts";
 import type { AgentCanvasRuntimeRefreshPolicy } from "./runtimeEventPolicy.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
@@ -62,6 +63,7 @@ export function useAgentCanvasRuntime(
   const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "live" | "reconnecting" | "unavailable">("idle");
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runPending, setRunPending] = useState(false);
+  const { beginRun, beginPreparation, pendingNodeIds, awaitingAcknowledgement } = useNodeRunFeedback(workflow);
   const [chatRevision, setChatRevision] = useState(0);
   const [chatEvents, setChatEvents] = useState<CanvasRuntimeEventV2[]>([]);
   const [settingsRevision, setSettingsRevision] = useState(0);
@@ -224,6 +226,16 @@ export function useAgentCanvasRuntime(
     }, 250);
     terminalReconcileTimersRef.current.set(key, timer);
   }, [refreshRuntime, refreshWorkflow]);
+
+  useEffect(() => {
+    if (!awaitingAcknowledgement) return;
+    // A delayed/lost SSE event must not leave local Run feedback stuck forever.
+    const timer = window.setInterval(() => {
+      void refreshRuntime();
+      void refreshWorkflow();
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [awaitingAcknowledgement, refreshRuntime, refreshWorkflow]);
 
   const refreshAssets = useCallback(async (event?: CanvasRuntimeEventV2) => {
     if (!workflowId) return;
@@ -557,28 +569,35 @@ export function useAgentCanvasRuntime(
     if (!["text", "script", "image", "video", "audio"].includes(node.node_type)) return;
     if (isSourceOnlyNode(node)) return;
     if (!new Set(["draft", "failed", "ready"]).has(node.status)) return;
-    setRunPending(true);
+    const feedback = beginRun(node);
+    if (!feedback) return;
     try {
       const request = nodeRunRequest(node, options.retryFailed);
-      await agentCanvasApi.runAgentCanvas(
+      const accepted = await agentCanvasApi.runAgentCanvas(
         workflowId,
         request,
         createOperationKey(request.retry_failed ? "retry-node" : "run-node"),
       );
+      if (!feedback.isCurrent()) return;
+      if (!accepted.accepted_node_ids.includes(node.node_id) && !accepted.joined_node_ids.includes(node.node_id)) {
+        throw new Error("The node could not be queued. Refresh the workflow and try again.");
+      }
+      feedback.accept(accepted.execution_id);
       setInputReadinessIssue((current) => (
         current?.target_node_id === node.node_id ? null : current
       ));
-      await refreshRuntime();
+      await Promise.all([refreshRuntime(), refreshWorkflow()]);
     } catch (error) {
+      const current = feedback.isCurrent();
+      feedback.finish();
+      if (!current) return;
       if (isV2ApiError(error) && error.code === "upstream_inputs_not_ready") {
         const issue = upstreamInputReadinessIssueFromDetails(node.node_id, error.details);
         if (issue) setInputReadinessIssue(issue);
       }
       throw error;
-    } finally {
-      setRunPending(false);
     }
-  }, [refreshRuntime, workflowId]);
+  }, [beginRun, refreshRuntime, refreshWorkflow, workflowId]);
 
   const cancelRun = useCallback(async () => {
     if (!workflowId || !runtime?.active_execution_id) return;
@@ -595,7 +614,8 @@ export function useAgentCanvasRuntime(
       runtime,
       connectionState,
       runtimeError,
-      runPending,
+      runPending: runPending || pendingNodeIds.size > 0,
+      pendingNodeIds,
       chatRevision,
       chatEvents,
       settingsRevision,
@@ -614,6 +634,7 @@ export function useAgentCanvasRuntime(
       refreshAssets,
       runAll,
       runNode,
+      beginNodeRun: beginPreparation,
       cancelRun,
       clearAutoRunNotice: () => setAutoRunNotice(null),
     },

@@ -5,6 +5,7 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
+import { canvasNodeDisplayName } from "./canvasNodeDisplayName.ts";
 
 type AgentCanvasNodeRendererProps = NodeProps<AgentCanvasFlowNode>;
 
@@ -61,6 +62,7 @@ export function areAgentCanvasNodePropsEqual(
     && previousData.node.prompt_preparation?.occurrence_id === nextData.node.prompt_preparation?.occurrence_id
     && previousData.node.prompt_preparation?.character_phase === nextData.node.prompt_preparation?.character_phase
     && previousData.node.prompt_preparation?.role_variant === nextData.node.prompt_preparation?.role_variant
+    && canvasNodeDisplayName(previousData.node) === canvasNodeDisplayName(nextData.node)
   );
   const sameWorkbench = previousData.workbenchActive === nextData.workbenchActive
     && (!nextData.workbenchActive
@@ -73,9 +75,11 @@ export function areAgentCanvasNodePropsEqual(
     && previous.selected === next.selected
     && previous.isConnectable === next.isConnectable
     && sameNode
+    && previousData.runPending === nextData.runPending
     && sameAgentCanvasAssetPresentation(previousData.asset, nextData.asset)
     && sameRuntime
     && sameWorkbench
+    && previousData.onRendered === nextData.onRendered
     && previousData.onOpenVideoPreview === nextData.onOpenVideoPreview
     && previousData.onOpenEditing === nextData.onOpenEditing
     && previousData.showInputHandle === nextData.showInputHandle

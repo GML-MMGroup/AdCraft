@@ -16,3 +16,12 @@ it("locks treatment through the explicit confirmation endpoint", async () => {
   expect(fetchMock.mock.calls[0][0]).toContain("/brand/decisions/workflow-1/lock-treatment");
   expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ confirm: true, content_digest: "a".repeat(64) });
 });
+
+it("keeps automatic advancement distinct from an explicit failed-step retry", async () => {
+  const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+  vi.stubGlobal("fetch", fetchMock);
+  await v2Api.brandNextQuestion("workflow-1");
+  expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
+  await v2Api.brandNextQuestion("workflow-1", { retryFailed: true });
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ retry_failed: true });
+});

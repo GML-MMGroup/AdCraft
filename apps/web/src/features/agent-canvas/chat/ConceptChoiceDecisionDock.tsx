@@ -1,7 +1,10 @@
 import { useTranslation } from "../../../i18n/useTranslation";
+import { guidedInteractionCopy } from "./guidedInteractionCopy.ts";
 import { useEffect, useRef, useState } from "react";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
+import { BRAND_STAGE_LABELS } from "../brand/brandStageLabels.ts";
+import { TREATMENT_STEP_SELECTION_PROMPTS } from "../brand/treatmentStepLabels.ts";
 import { isBrandCustomInputCard } from "../model/brandCustomInput.ts";
 import { DecisionDockFrame } from "./DecisionDockFrame.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
@@ -14,10 +17,12 @@ export interface ConceptChoiceDecisionDockProps {
   issue: DecisionDockIssue | null;
   selectedOptionId: string | null;
   onSelectOption: (optionId: string) => void;
+  onConfirmOption?: () => void;
   onSelectCustom?: () => void;
   onSubmitCustom?: (text: string) => Promise<boolean>;
   /** Display name of the role that proposed the options, used when the context is not user-facing. */
   roleName?: string | null;
+  treatmentSubstep?: string | null;
 }
 
 // Production proposals carry an internal purpose such as "... Preserve Treatment <sha256>." as
@@ -37,9 +42,11 @@ export function ConceptChoiceDecisionDock({
   issue,
   selectedOptionId,
   onSelectOption,
+  onConfirmOption,
   onSelectCustom,
   onSubmitCustom,
   roleName = null,
+  treatmentSubstep = null,
 }: ConceptChoiceDecisionDockProps) {
   const t = useTranslation("en-US");
   const [customSelected, setCustomSelected] = useState(false);
@@ -57,6 +64,13 @@ export function ConceptChoiceDecisionDock({
 
   if (!content) return null;
 
+  // Brand cards use the generic guided stage; their capability identifies the Brand stage.
+  const stageLabel = Object.entries(BRAND_STAGE_LABELS).find(([stage]) => (
+    content.capability_id === `brand_${stage}` || content.capability_id.startsWith(`brand_${stage}_`)
+  ))?.[1] ?? "Creative direction";
+  const treatmentPrompt = treatmentSubstep && (content.capability_id === "brand_treatment"
+    || content.capability_id.startsWith("brand_treatment_"))
+    ? TREATMENT_STEP_SELECTION_PROMPTS[treatmentSubstep] : null;
   const brandCustomInput = isBrandCustomInputCard(interaction);
   const baselineOptionIds = firstOptionIdsByActionRef.current.get(content.action_id) ?? new Set<string>();
   for (const option of content.options) {
@@ -67,6 +81,9 @@ export function ConceptChoiceDecisionDock({
   const customPending = pending || customSubmitting;
   const hasSelection = selectedOptionId !== null || customSelected;
   const canSubmitCustom = Boolean(customText.trim()) && !customPending && !disabled && Boolean(onSubmitCustom);
+  const canConfirmOption = !disabled && Boolean(onConfirmOption)
+    && interaction.allowed_actions.includes("select")
+    && content.options.some((option) => option.option_id === selectedOptionId);
 
   const submitCustom = async () => {
     const text = customText.trim();
@@ -85,19 +102,28 @@ export function ConceptChoiceDecisionDock({
 
   return (
     <DecisionDockFrame
-      className={brandCustomInput
-        ? `agent-chat__decision-dock--brand-custom-input${content.options.length > 3 ? " is-expanded" : ""}`
-        : undefined}
-      title={content.capability_id === "brand_adspec"
+      className={`agent-chat__decision-dock--concept${brandCustomInput ? ` agent-chat__decision-dock--brand-custom-input${content.options.length > 3 ? " is-expanded" : ""}` : ""}`}
+      eyebrow={t(stageLabel)}
+      meta={t("{count} directions", { count: content.options.length })}
+      title={treatmentPrompt
+        ? t(treatmentPrompt)
+        : content.capability_id === "brand_adspec"
         ? t("Please choose from the following options")
         : isUserFacingContext(interaction.context)
         ? interaction.context
         : roleName
           ? t("{role}: choose a direction", { role: roleName })
           : t("Choose a direction")}
+      context={content.capability_id.startsWith("brand_")
+        ? t("You can view your selected options in the left panel.") : undefined}
       pending={customPending}
       issue={issue}
-      showSubmitBar={false}
+      submitLabel={t("Confirm direction")}
+      submitDisabled={customSelected ? !canSubmitCustom : !canConfirmOption}
+      onSubmit={() => {
+        if (customSelected) void submitCustom();
+        else onConfirmOption?.();
+      }}
     >
       <div className="agent-chat__decision-dock-options" role="radiogroup" aria-label={t("Creative direction options")}>
         {content.options.map((option, index) => (
@@ -107,8 +133,8 @@ export function ConceptChoiceDecisionDock({
             marker={optionMarker(index)}
             selectionRole="radio"
             optionId={option.option_id}
-            title={option.title}
-            summary={option.summary}
+            title={content.capability_id.startsWith("brand_skill-stack") ? guidedInteractionCopy(option.title, t) : option.title}
+            summary={content.capability_id.startsWith("brand_skill-stack") ? guidedInteractionCopy(option.summary, t) : option.summary}
             recommended={option.recommended}
             selected={selectedOptionId === option.option_id}
             disabled={customPending || disabled}
@@ -127,6 +153,7 @@ export function ConceptChoiceDecisionDock({
             marker={optionMarker(content.options.length)}
             selectionRole="radio"
             optionId="custom"
+            custom
             title={t("Other (custom)")}
             summary={t("Write your own idea, or ask for more options")}
             selected={customSelected}
@@ -151,13 +178,6 @@ export function ConceptChoiceDecisionDock({
               onChange={(event) => setCustomText(event.target.value)}
             />
           </label>
-          <button
-            type="button"
-            disabled={!canSubmitCustom}
-            onClick={() => void submitCustom()}
-          >
-            {customPending ? t("Submitting") : t("Submit")}
-          </button>
         </div>
       ) : null}
     </DecisionDockFrame>

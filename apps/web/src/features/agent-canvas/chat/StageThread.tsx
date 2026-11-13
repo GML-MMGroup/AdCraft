@@ -7,6 +7,7 @@ import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
 import type { AgentRoleMotionState } from "./agent-role-animation/types.ts";
 import { useAgentRoleVisual } from "./agent-role-animation/useAgentRoleVisual.ts";
 import { retryRoleVisual } from "./agent-role-animation/agentRoleVisualResource.ts";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 
 export function StageThread({
   unit,
@@ -19,6 +20,7 @@ export function StageThread({
   children?: ReactNode;
   result?: ReactNode;
 }) {
+  const t = useTranslation();
   const visual = useAgentRoleVisual(unit.capability_id, motionState);
   const workingArtworkReady = motionState !== "working"
     || (visual.status === "ready" && visual.Artwork !== null);
@@ -38,7 +40,7 @@ export function StageThread({
     return (
       <section
         className={`agent-chat__stage-thread agent-chat__stage-thread--loading is-${unit.status}`}
-        aria-label="Working"
+        aria-label={t("Working")}
         role="status"
       >
         <div className="agent-chat__role-loading">
@@ -47,7 +49,7 @@ export function StageThread({
             size={20}
             className="agent-chat__role-loading-loader"
           />
-          <span>Working</span>
+          <span>{t("Working")}</span>
         </div>
       </section>
     );

@@ -1,3 +1,4 @@
+import { NodeWorkbenchFieldError } from "./NodeWorkbenchFeedback.tsx";
 import type { ModelParameterDescriptorV1 } from "../../../api/providerRegistry.ts";
 import { InlineParameterSelect } from "./InlineParameterSelect.tsx";
 import {
@@ -40,9 +41,6 @@ export function ModelParameterControls({
     <div className={`agent-node-workbench__model-parameters${layout === "inline" ? " agent-node-workbench__model-parameters--inline" : ""}`} aria-label={t("Model parameters")}>
       {descriptors.map((descriptor) => {
         const label = modelParameterLabel(descriptor.name);
-        const displayLabel = layout === "inline"
-          ? descriptor.name === "duration_seconds" ? "Duration (s)" : descriptor.name === "aspect_ratio" ? "Ratio" : label
-          : label;
         const value = parameters[descriptor.name];
         const issue = issueByName.get(descriptor.name);
         if (descriptor.value_type === "boolean") {
@@ -73,28 +71,54 @@ export function ModelParameterControls({
                     {t("Clear")}
                 </button>
               ) : null}
-              {issue ? <p className="agent-node-workbench__field-error">{issue}</p> : null}
+              {issue ? <NodeWorkbenchFieldError><span>{label}: </span><span>{issue}</span></NodeWorkbenchFieldError> : null}
             </div>
           );
         }
         if (layout === "inline" && descriptor.value_type === "enum") {
           return (
             <div className="agent-node-workbench__parameter" key={descriptor.name}>
-              <span title={label}>{displayLabel}</span>
               <InlineParameterSelect
                 label={label}
                 value={typeof value === "string" ? value : ""}
                 options={descriptor.allowed_values}
+                valueSuffix={descriptor.name === "duration_seconds" ? "s" : undefined}
                 disabled={disabled}
                 onChange={(next) => onChange(updateParameter(parameters, descriptor.name, next))}
               />
-              {issue ? <p className="agent-node-workbench__field-error">{issue}</p> : null}
+              {issue ? <NodeWorkbenchFieldError><span>{label}: </span><span>{issue}</span></NodeWorkbenchFieldError> : null}
             </div>
+          );
+        }
+        if (layout === "inline" && descriptor.name === "duration_seconds"
+          && (descriptor.value_type === "integer" || descriptor.value_type === "number")) {
+          return (
+            <label className="agent-node-workbench__parameter" key={descriptor.name}>
+              <span className="agent-node-workbench__duration-control" title={t("Duration (s)")}>
+                <input
+                  aria-label={label}
+                  type="number"
+                  min={descriptor.minimum ?? undefined}
+                  max={descriptor.maximum ?? undefined}
+                  step={descriptor.value_type === "integer" ? 1 : "any"}
+                  value={typeof value === "number" ? value : ""}
+                  placeholder="auto"
+                  style={{ width: `${typeof value === "number" ? Math.max(1, String(value).length) : 4}ch` }}
+                  disabled={disabled}
+                  onChange={(event) => onChange(updateParameter(
+                    parameters, descriptor.name,
+                    event.currentTarget.value === "" ? undefined : event.currentTarget.valueAsNumber,
+                  ))}
+                />
+                {typeof value === "number" ? <span aria-hidden="true">s</span> : null}
+              </span>
+              {issue ? <NodeWorkbenchFieldError><span>{label}: </span><span>{issue}</span></NodeWorkbenchFieldError> : null}
+            </label>
           );
         }
         return (
           <label className="agent-node-workbench__parameter" key={descriptor.name}>
-            <span title={label}>{displayLabel}</span>
+            {layout === "grid" ? <span title={label}>{label}</span> : null}
             {descriptor.value_type === "enum" ? (
               <select
                 aria-label={label}
@@ -146,7 +170,7 @@ export function ModelParameterControls({
                 ))}
               />
             )}
-            {issue ? <p className="agent-node-workbench__field-error">{issue}</p> : null}
+            {issue ? <NodeWorkbenchFieldError><span>{label}: </span><span>{issue}</span></NodeWorkbenchFieldError> : null}
           </label>
         );
       })}

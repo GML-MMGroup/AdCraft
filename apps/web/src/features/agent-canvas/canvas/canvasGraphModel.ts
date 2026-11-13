@@ -320,6 +320,7 @@ function canReuseFlowNode(
     && previousData.workbenchActive === workbenchActive
     && (!workbenchActive || previousData.renderWorkbench === callbacks.renderWorkbench)
     && previousData.onOpenVideoPreview === callbacks.onOpenVideoPreview
+    && previousData.onRendered === callbacks.onRendered
     && previousData.onOpenEditing === callbacks.onOpenEditing
     && previousStyle?.width === style?.width
     && previousStyle?.height === style?.height;

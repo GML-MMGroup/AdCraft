@@ -14,6 +14,7 @@ type Options = {
   readWorkflow: () => AgentCanvasWorkflowV2 | null;
   applyWorkflow: (workflow: AgentCanvasWorkflowV2) => void;
   authoringQueue: AgentCanvasAuthoringQueue;
+  prepareNodePositionUpdate: (positions: CanvasLayoutPositionV2[]) => { save: () => Promise<CanvasLayoutPositionV2[]>; cancel: () => void };
   updateNodePositions: (positions: CanvasLayoutPositionV2[]) => Promise<void>;
   rollbackNodePositions: (workflowId: string, positions: CanvasLayoutPositionV2[]) => void;
 };
@@ -23,7 +24,7 @@ class AgentPromptWritingError extends Error {}
 class InactiveHistoryError extends Error {}
 const caller = { conflictHandling: "caller" } as const;
 
-export function useAgentCanvasHistory({ workflowId, readWorkflow, applyWorkflow, authoringQueue, updateNodePositions, rollbackNodePositions }: Options) {
+export function useAgentCanvasHistory({ workflowId, readWorkflow, applyWorkflow, authoringQueue, prepareNodePositionUpdate, updateNodePositions, rollbackNodePositions }: Options) {
   const t = useTranslation();
   const [, render] = useReducer((value: number) => value + 1, 0);
   const scope = useMemo(() => ({
@@ -223,17 +224,18 @@ export function useAgentCanvasHistory({ workflowId, readWorkflow, applyWorkflow,
   const moveNodes = useCallback((before: CanvasLayoutPositionV2[], after: CanvasLayoutPositionV2[]) => {
     const changed = after.filter((position) => before.some((previous) => previous.node_id === position.node_id && (previous.x !== position.x || previous.y !== position.y)));
     if (!changed.length || !isCurrent()) return Promise.resolve();
+    // Protect the drop before waiting for earlier semantic edits to finish.
+    const pending = prepareNodePositionUpdate(changed);
     return authoringQueue.enqueue(createOperationKey("move-canvas-nodes"), async () => {
+      if (!isCurrent()) { pending.cancel(); return; }
+      const committed = await pending.save();
       if (!isCurrent()) return;
-      await updateNodePositions(changed);
-      if (!isCurrent()) return;
-      const committed = readWorkflow()!.nodes
-        .filter((node) => changed.some((position) => position.node_id === node.node_id))
-        .map((node) => ({ node_id: node.node_id, ...node.position }));
-      if (committed.length !== changed.length) return;
+      const liveIds = new Set(readWorkflow()!.nodes.map((node) => node.node_id));
+      if (changed.some((position) => !liveIds.has(position.node_id))) return;
+      // A later queued drag may already be visible. Record this saved operation.
       record({ kind: "move", before: before.filter((position) => changed.some((item) => item.node_id === position.node_id)), after: committed });
     });
-  }, [authoringQueue, isCurrent, readWorkflow, record, updateNodePositions]);
+  }, [authoringQueue, isCurrent, prepareNodePositionUpdate, readWorkflow, record]);
   const undo = useCallback(() => replay("undo"), [replay]);
   const redo = useCallback(() => replay("redo"), [replay]);
   return { state: scope.state, get busy() { return scope.busy; }, notice: scope.notice, clearNotice, record, deleteEntities, moveNodes, undo, redo };

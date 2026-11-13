@@ -130,6 +130,23 @@ describe("Agent Canvas client", () => {
     );
   });
 
+  it("forwards cancellation for review and presentation discovery reads", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const review = v2Api.brandDecisions("workflow-1", { signal: controller.signal });
+    const discovery = v2Api.listAgentCanvasPresentationStreams("workflow-1", 20, { signal: controller.signal });
+    expect(fetchMock.mock.calls.every(([, init]) => init?.signal === controller.signal)).toBe(true);
+    const cancelledReads = Promise.all([
+      expect(review).rejects.toMatchObject({ name: "V2NetworkError", cause: { name: "AbortError" } }),
+      expect(discovery).rejects.toMatchObject({ name: "V2NetworkError", cause: { name: "AbortError" } }),
+    ]);
+    controller.abort();
+    await cancelledReads;
+  });
+
   it("creates and reads canonical Agent Canvas workflows while retaining real ETags", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

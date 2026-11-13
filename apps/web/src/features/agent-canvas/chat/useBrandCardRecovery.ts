@@ -56,7 +56,7 @@ export function useBrandCardRecovery(options: Options) {
     const current = () => scope.active && latest.current.workflowId === workflowId;
     try {
       if (next.needsQuestion) {
-        await agentCanvasApi.brandNextQuestion(workflowId);
+        await agentCanvasApi.brandNextQuestion(workflowId, { retryFailed: true });
         if (!current()) return;
         // Once generation succeeds (including 204), a failed read retries GETs only.
         next = { ...next, needsQuestion: false };
