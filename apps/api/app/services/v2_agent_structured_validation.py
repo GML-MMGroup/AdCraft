@@ -20,7 +20,9 @@ from app.schemas.agent_runtime import (
 )
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthorityPlanV2,
+    StoryboardSequenceWindowV2,
 )
+from app.services.agent_canvas_storyboard_sequence_windows import StoryboardSequenceWindowPlanner
 from app.services.agent_canvas_role_prompt_compiler import role_prompt_text_violation
 from app.services.v2_agent_contract_registry import (
     AgentStructuredContractRegistryError,
@@ -743,7 +745,7 @@ def _storyboard_sequence_window_violations(
     segments = value.get("segments")
     if not isinstance(segments, list):
         return tuple(violations)
-    if len(segments) != len(authority.windows):
+    if authority.timing_mode != "narrative" and len(segments) != len(authority.windows):
         violations.append(
             StructuredViolation(
                 code="storyboard_sequence_count_mismatch",
@@ -753,6 +755,36 @@ def _storyboard_sequence_window_violations(
                 actual=len(segments),
             )
         )
+
+    if authority.timing_mode != "fixed":
+        try:
+            StoryboardSequenceWindowPlanner.accept_authored_windows(
+                authority,
+                tuple(
+                    StoryboardSequenceWindowV2.model_validate(
+                        {
+                            field: segment.get(field)
+                            for field in ("order", "start_seconds", "end_seconds")
+                        }
+                    )
+                    for segment in segments
+                    if isinstance(segment, dict)
+                ),
+            )
+        except ValueError:
+            violations.append(
+                StructuredViolation(
+                    code="storyboard_sequence_timing_mismatch",
+                    message=(
+                        "Use ordered, contiguous positive windows within the 15-second cap "
+                        "that cover the confirmed total and honor any explicit count. "
+                        "Narrative allocations of whole-second totals require whole-second "
+                        "generation durations."
+                    ),
+                    field_path="segments",
+                )
+            )
+        return tuple(violations)
 
     for index, (segment, window) in enumerate(zip(segments, authority.windows)):
         if not isinstance(segment, dict):

@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import Connection, delete, insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
+from app.persistence.agent_canvas_presentation_reconciliation import prompt_terminal_event
 from app.persistence.errors import V2PersistenceError
-from app.persistence.models import PresentationStreamChunkRow, PresentationStreamRow
+from app.persistence.models import (
+    AgentCanvasNodeRow,
+    PresentationStreamChunkRow,
+    PresentationStreamRow,
+)
 from app.schemas.agent_canvas_presentation import (
     PresentationStreamEventV1,
     PresentationStreamListItemV1,
@@ -91,7 +98,9 @@ class PresentationStreamRepository:
             ) from exc
         return metadata
 
-    def get(self, workflow_id: str, stream_id: str) -> PresentationStreamMetadataV1:
+    def get(
+        self, workflow_id: str, stream_id: str, *, reconcile_prompt: bool = False
+    ) -> PresentationStreamMetadataV1:
         """Load a stream only when it belongs to the requested workflow."""
 
         try:
@@ -106,6 +115,12 @@ class PresentationStreamRepository:
                     .mappings()
                     .one_or_none()
                 )
+            if (
+                reconcile_prompt
+                and row is not None
+                and self._reconcile_prompt_rows(workflow_id, (row,))
+            ):
+                return self.get(workflow_id, stream_id)
         except SQLAlchemyError as exc:
             raise _error(
                 "presentation_stream_unavailable", "Presentation stream storage failed."
@@ -120,21 +135,20 @@ class PresentationStreamRepository:
     def list_recent(self, workflow_id: str, limit: int) -> tuple[PresentationStreamListItemV1, ...]:
         """List workflow-owned streams newest first within a bounded limit."""
 
+        statement = (
+            select(PresentationStreamRow)
+            .where(PresentationStreamRow.workflow_id == workflow_id)
+            .order_by(
+                PresentationStreamRow.created_at.desc(), PresentationStreamRow.stream_id.desc()
+            )
+            .limit(limit)
+        )
         try:
             with self._database.engine.connect() as connection:
-                rows = (
-                    connection.execute(
-                        select(PresentationStreamRow)
-                        .where(PresentationStreamRow.workflow_id == workflow_id)
-                        .order_by(
-                            PresentationStreamRow.created_at.desc(),
-                            PresentationStreamRow.stream_id.desc(),
-                        )
-                        .limit(limit)
-                    )
-                    .mappings()
-                    .all()
-                )
+                rows = connection.execute(statement).mappings().all()
+            if self._reconcile_prompt_rows(workflow_id, rows):
+                with self._database.engine.connect() as connection:
+                    rows = connection.execute(statement).mappings().all()
         except SQLAlchemyError as exc:
             raise _error(
                 "presentation_stream_unavailable", "Presentation stream storage failed."
@@ -153,6 +167,58 @@ class PresentationStreamRepository:
             )
             for row in rows
         )
+
+    def _reconcile_prompt_rows(self, workflow_id: str, rows: Sequence[Mapping[str, Any]]) -> bool:
+        stream_ids = [
+            row["stream_id"]
+            for row in rows
+            if row["stream_kind"] == "node_prompt" and row["status"] == "open"
+        ]
+        if not stream_ids:
+            return False
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            streams = (
+                connection.execute(
+                    select(PresentationStreamRow).where(
+                        PresentationStreamRow.workflow_id == workflow_id,
+                        PresentationStreamRow.stream_id.in_(stream_ids),
+                        PresentationStreamRow.stream_kind == "node_prompt",
+                        PresentationStreamRow.status == "open",
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            timestamp = datetime.now(timezone.utc)
+            for stream in streams:
+                node = (
+                    connection.execute(
+                        select(AgentCanvasNodeRow).where(
+                            AgentCanvasNodeRow.workflow_id == workflow_id,
+                            AgentCanvasNodeRow.node_id == stream["node_id"],
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if node is None:
+                    continue
+                event = prompt_terminal_event(stream, node)
+                if event is None:
+                    continue
+                status = "completed" if event.event_type == "committed" else event.event_type
+                self._append_in_transaction(
+                    connection,
+                    event,
+                    event_key=f"terminal:{status}",
+                    event_json=event.model_dump_json(),
+                    byte_size=0,
+                    timestamp=timestamp,
+                )
+            connection.commit()
+        # Another reader or publisher may have closed a stream first.
+        return True
 
     def append_event(
         self,
@@ -343,7 +409,7 @@ class PresentationStreamRepository:
     ) -> tuple[PresentationStreamEventV1, ...]:
         """Replay retained events in stream-local sequence order."""
 
-        metadata = self.get(workflow_id, stream_id)
+        metadata = self.get(workflow_id, stream_id, reconcile_prompt=True)
         try:
             with self._database.engine.connect() as connection:
                 rows = (
@@ -467,73 +533,92 @@ class PresentationStreamRepository:
         try:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
-                stream = _stream_for_event(connection, event)
-                existing = (
-                    connection.execute(
-                        select(PresentationStreamChunkRow).where(
-                            PresentationStreamChunkRow.stream_id == event.stream_id,
-                            PresentationStreamChunkRow.event_key == event_key,
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-                if existing is not None:
-                    connection.commit()
-                    return PresentationStreamEventV1.model_validate_json(existing["event_json"])
-                _ensure_open_generation(stream, event.generation_id)
-                # Retention limits bound text only; lifecycle events must always
-                # land so a full stream can still commit, fail, or reset.
-                count, total = (
-                    _chunk_limits(connection, event.stream_id)
-                    if event.event_type == "delta"
-                    else (0, 0)
-                )
-                if count >= MAX_PRESENTATION_CHUNKS or total + byte_size > MAX_PRESENTATION_BYTES:
-                    raise _error(
-                        "presentation_stream_backpressure_exceeded",
-                        "Presentation stream retention limits were reached.",
-                    )
-                sequence_no = int(stream["last_sequence_no"]) + 1
-                if sequence_no != event.sequence_no:
-                    event = event.model_copy(update={"sequence_no": sequence_no})
-                    event_json = event.model_dump_json()
-                connection.execute(
-                    insert(PresentationStreamChunkRow).values(
-                        stream_id=event.stream_id,
-                        sequence_no=sequence_no,
-                        event_key=event_key,
-                        event_json=event_json,
-                        byte_size=byte_size,
-                        created_at=timestamp.isoformat(),
-                    )
-                )
-                values = {"last_sequence_no": sequence_no, "updated_at": timestamp.isoformat()}
-                if event.event_type in {"committed", "failed", "superseded"}:
-                    values.update(
-                        status={
-                            "committed": "completed",
-                            "failed": "failed",
-                            "superseded": "superseded",
-                        }[event.event_type],
-                        authoritative_id=event.authoritative_id,
-                        content_digest=event.content_digest,
-                        error_code=event.error_code,
-                        terminal_at=timestamp.isoformat(),
-                    )
-                connection.execute(
-                    update(PresentationStreamRow)
-                    .where(PresentationStreamRow.stream_id == event.stream_id)
-                    .values(**values)
+                result = self._append_in_transaction(
+                    connection,
+                    event,
+                    event_key=event_key,
+                    event_json=event_json,
+                    byte_size=byte_size,
+                    timestamp=timestamp,
                 )
                 connection.commit()
-                return event
+                return result
         except V2PersistenceError:
             raise
         except SQLAlchemyError as exc:
             raise _error(
                 "presentation_stream_unavailable", "Presentation stream storage failed."
             ) from exc
+
+    def _append_in_transaction(
+        self,
+        connection: Connection,
+        event: PresentationStreamEventV1,
+        *,
+        event_key: str,
+        event_json: str,
+        byte_size: int,
+        timestamp: datetime,
+    ) -> PresentationStreamEventV1:
+        """Share generation fencing and event publication with source-proof repair."""
+
+        stream = _stream_for_event(connection, event)
+        existing = (
+            connection.execute(
+                select(PresentationStreamChunkRow).where(
+                    PresentationStreamChunkRow.stream_id == event.stream_id,
+                    PresentationStreamChunkRow.event_key == event_key,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if existing is not None:
+            return PresentationStreamEventV1.model_validate_json(existing["event_json"])
+        _ensure_open_generation(stream, event.generation_id)
+        # Retention limits bound text only; lifecycle events must always
+        # land so a full stream can still commit, fail, or reset.
+        count, total = (
+            _chunk_limits(connection, event.stream_id) if event.event_type == "delta" else (0, 0)
+        )
+        if count >= MAX_PRESENTATION_CHUNKS or total + byte_size > MAX_PRESENTATION_BYTES:
+            raise _error(
+                "presentation_stream_backpressure_exceeded",
+                "Presentation stream retention limits were reached.",
+            )
+        sequence_no = int(stream["last_sequence_no"]) + 1
+        if sequence_no != event.sequence_no:
+            event = event.model_copy(update={"sequence_no": sequence_no})
+            event_json = event.model_dump_json()
+        connection.execute(
+            insert(PresentationStreamChunkRow).values(
+                stream_id=event.stream_id,
+                sequence_no=sequence_no,
+                event_key=event_key,
+                event_json=event_json,
+                byte_size=byte_size,
+                created_at=timestamp.isoformat(),
+            )
+        )
+        values = {"last_sequence_no": sequence_no, "updated_at": timestamp.isoformat()}
+        if event.event_type in {"committed", "failed", "superseded"}:
+            values.update(
+                status={
+                    "committed": "completed",
+                    "failed": "failed",
+                    "superseded": "superseded",
+                }[event.event_type],
+                authoritative_id=event.authoritative_id,
+                content_digest=event.content_digest,
+                error_code=event.error_code,
+                terminal_at=timestamp.isoformat(),
+            )
+        connection.execute(
+            update(PresentationStreamRow)
+            .where(PresentationStreamRow.stream_id == event.stream_id)
+            .values(**values)
+        )
+        return event
 
     def _terminal(
         self,

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime, timedelta, timezone
 from threading import Event, Lock, Thread
 from typing import TypeVar
@@ -125,16 +125,39 @@ class NodeLeaseGuard(AbstractContextManager["NodeLeaseGuard"]):
 
     def __enter__(self) -> "NodeLeaseGuard":
         self.assert_current()
+        # Preparation may have consumed most of the original TTL. Renew now,
+        # before waiting one full interval for the background heartbeat.
+        self.heartbeat()
         self._thread = Thread(target=self._renew_loop, daemon=True)
         self._thread.start()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+        if exc_type is None:
+            self.assert_current()
+
+    def close(self) -> None:
+        """Stop heartbeats after a fenced terminal commit or durable handoff."""
+
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=self._service.renewal_interval_seconds + 1)
-        if exc_type is None:
-            self.assert_current()
+
+    @contextmanager
+    def keepalive(self) -> Iterator["NodeLeaseGuard"]:
+        """Maintain a scheduler claim through its fenced terminal publication.
+
+        The terminal transaction may complete the lease before scope exit, so
+        this scope stops renewal without asserting ownership after that handoff.
+        Side effects must still use their ordinary generation/owner fences.
+        """
+
+        self.__enter__()
+        try:
+            yield self
+        finally:
+            self.close()
 
     def _renew_loop(self) -> None:
         while not self._stop.wait(self._service.renewal_interval_seconds):

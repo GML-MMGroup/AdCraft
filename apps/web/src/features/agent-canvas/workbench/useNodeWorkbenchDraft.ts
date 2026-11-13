@@ -14,6 +14,7 @@ import { nodeRunActivity } from "../model/nodeRunActivity.ts";
 import { canvasAuthoringErrorMessage } from "../canvas/canvasErrorMessage.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
 import { useNodePromptAutosave } from "./useNodePromptAutosave.ts";
+import { nodeDraftExpectedRevision } from "./nodeDraftRevision.ts";
 
 function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCategoryV2 {
   const role = node.creative_role.toLocaleLowerCase();
@@ -104,10 +105,12 @@ export function useNodeWorkbenchDraft({
   const [dirty, setDirty] = useState(false);
   const draftNodeIdRef = useRef(node.node_id);
   const draftBaseRef = useRef(node);
+  const currentNodeRef = useRef(node);
+  useEffect(() => { currentNodeRef.current = node; }, [node]);
   const patchNode = useCallback<typeof persistNode>((nodeId, patch, options = {}) => (
     persistNode(nodeId, patch, {
       ...options,
-      expectedNodeRevision: draftBaseRef.current.revision,
+      expectedNodeRevision: nodeDraftExpectedRevision(draftBaseRef.current, currentNodeRef.current),
       onSaved: (saved) => {
         if (draftBaseRef.current.node_id === saved.node_id) draftBaseRef.current = saved;
         options.onSaved?.(saved);

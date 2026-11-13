@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_video_subtitles import with_managed_video_subtitles
+from app.services.agent_canvas_character_reference_prompt_policy import (
+    CHARACTER_IDENTITY_SCOPE,
+    CHARACTER_TURNAROUND_FRAMING,
+)
+
 from app.services.agent_canvas_image_presentation import (
     DEFAULT_REFERENCE_PRESENTATION,
     DEFAULT_IMAGE_OVERLAYS,
@@ -464,6 +470,8 @@ class AgentCanvasRolePromptCompiler:
             prompt = saved_prompt
             brief_digest = presentation.brief_digest
             compaction_decisions = ()
+        if context.role_variant in {"video_segment", "free_video"} and preserved_node is None:
+            prompt = with_managed_video_subtitles(prompt, context.node_parameters)
         context_payload = context.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
@@ -625,9 +633,20 @@ def _semantic_projections(
             for name, expected in protected.items():
                 actual = getattr(brief, name)
                 if actual not in {"", "unspecified"} and actual != expected:
-                    raise _error(
-                        "character_turnaround_identity_conflict",
-                        "Turnaround identity differs from the bound Character Main authority.",
+                    logger.warning(
+                        "%s",
+                        json.dumps(
+                            {
+                                "event": "role_prompt_soft_violation",
+                                "call_site": "compiler",
+                                "role_variant": context.role_variant,
+                                "violation_category": "character_identity_difference",
+                                "field_path": name,
+                                "node_id": context.node_id,
+                                "workflow_id": context.workflow_id,
+                            },
+                            sort_keys=True,
+                        ),
                     )
             return projection, None, None
         return None, None, None
@@ -784,6 +803,12 @@ def _render(
             "character in the selected visual style, matching the bound Main's rendering "
             "treatment, in front, side, and back "
             f"full-body views. {DEFAULT_REFERENCE_PRESENTATION} Preserve all distinguishing details. "
+            "Show the complete head-to-toe extent in every view, with the entire head, lower "
+            "body and feet fully inside the frame and clear margins (or the complete silhouette "
+            "and extremities for a nonhuman character). If the Main is cropped, do not reproduce "
+            "its crop: extend the view consistently with the confirmed proportions and wardrobe. "
+            "Film close-ups and dialogue poses do not define this reference sheet's crop. "
+            f"{CHARACTER_TURNAROUND_FRAMING} {CHARACTER_IDENTITY_SCOPE} "
             f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
             f"{silhouette}. Wardrobe: {wardrobe}."
             f"{_optional_labeled_fragment('Accessories', accessories)}",
@@ -794,6 +819,10 @@ def _render(
         return (
             "Create exactly one full-body character reference in the selected visual style. "
             f"{DEFAULT_REFERENCE_PRESENTATION} "
+            "Show the complete head-to-toe extent, with the entire head, lower body and feet fully "
+            "inside the frame and clear margins (or the complete silhouette and extremities for "
+            "a nonhuman character). Film close-ups and dialogue poses do not define this "
+            "reference image's crop. "
             "Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "

@@ -13,14 +13,12 @@ export function InlineParameterSelect({
   disabled,
   onChange,
   unsetLabel,
-  valueSuffix = "",
 }: {
   label: string;
   value: string;
   options: readonly string[];
   disabled: boolean;
   unsetLabel?: string;
-  valueSuffix?: string;
   onChange: (value: string | undefined) => void;
 }) {
   const t = useTranslation("en-US");
@@ -32,7 +30,7 @@ export function InlineParameterSelect({
   };
   const emptyLabel = unsetLabel ?? t("Not set");
   const unsupported = Boolean(value) && !options.includes(value);
-  const selectedLabel = unsupported ? t("{value} (unsupported)", { value: optionLabel(value) }) : value ? optionLabel(value) : emptyLabel;
+  const selectedLabel = unsupported ? t("{value} (unsupported)", { value }) : value ? optionLabel(value) : emptyLabel;
   const select = (next: string | undefined) => {
     if (disabled) return;
     onChange(next);

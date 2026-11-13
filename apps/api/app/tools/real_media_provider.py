@@ -523,8 +523,12 @@ class RealMediaProvider:
             omit_sequential_image_generation=(
                 request.get("omit_sequential_image_generation") is True
             ),
-            size=_normalize_image_generation_size(
-                request.get("size") or self._settings.image_generation_size
+            # Seedream's tier-only size lets the model choose dimensions from
+            # the prompt and references without locking the image to a square.
+            size=(
+                _normalize_image_generation_size(request["size"])
+                if request.get("size") not in (None, "", "auto")
+                else "2K"
             ),
             references=reference_assets,
             required_reference_asset_ids=list(request.get("submitted_reference_asset_ids") or []),
@@ -775,7 +779,9 @@ class RealMediaProvider:
             method="POST",
         )
         try:
-            with urllib_request.urlopen(request, timeout=120) as response:
+            with urllib_request.urlopen(
+                request, timeout=self._settings.image_generation_timeout_seconds
+            ) as response:
                 response_body = response.read().decode("utf-8")
         except urllib_error.HTTPError as exc:
             raise _media_api_error(

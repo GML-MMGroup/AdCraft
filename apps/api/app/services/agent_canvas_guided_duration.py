@@ -20,10 +20,12 @@ from app.schemas.agent_canvas_guided_interactions import (
 from app.schemas.agent_canvas_requirements import (
     DurationSecondsValueV1,
     RequirementLedgerRevisionV1,
+    RequirementControlV1,
 )
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthorityPlanV2,
+    StoryboardSequenceWindowV2,
 )
 from app.schemas.agent_working_documents import (
     StoryboardProductionPlanContentV2,
@@ -183,7 +185,11 @@ class GuidedDurationAuthorityPolicy:
         return StoryboardSequenceWindowPlanner.plan(
             total_duration_seconds=self.require_duration(requirements),
             aspect_ratio=aspect_ratio,
-            explicit_sequence_count=explicit_sequence_count,
+            explicit_sequence_count=(
+                self.explicit_sequence_count(requirements)
+                if explicit_sequence_count is None
+                else explicit_sequence_count
+            ),
         )
 
     def validate_plan(
@@ -193,26 +199,47 @@ class GuidedDurationAuthorityPolicy:
     ) -> float:
         duration = self.require_duration(requirements)
         try:
-            expected = StoryboardSequenceWindowPlanner.plan(
+            expected = StoryboardSequenceAuthorityPlanV2(
                 total_duration_seconds=duration,
                 aspect_ratio=plan.global_parameters.aspect_ratio,
-                explicit_sequence_count=plan.global_parameters.segment_count,
+                windows=tuple(
+                    StoryboardSequenceWindowV2(
+                        order=segment.order,
+                        start_seconds=segment.start_seconds,
+                        end_seconds=segment.end_seconds,
+                    )
+                    for segment in plan.segments
+                ),
             )
-        except V2PersistenceError as error:
+            explicit_count = self.explicit_sequence_count(requirements)
+        except (ValueError, V2PersistenceError) as error:
             raise _duration_contract_error() from error
-        actual_windows = tuple(
-            (segment.order, segment.start_seconds, segment.end_seconds) for segment in plan.segments
-        )
-        expected_windows = tuple(
-            (window.order, window.start_seconds, window.end_seconds) for window in expected.windows
-        )
         if (
             plan.global_parameters.total_duration_seconds != duration
-            or len(plan.segments) != plan.global_parameters.segment_count
-            or actual_windows != expected_windows
+            or len(expected.windows) != plan.global_parameters.segment_count
+            or (
+                explicit_count is not None
+                and explicit_count != plan.global_parameters.segment_count
+            )
         ):
             raise _duration_contract_error()
         return duration
+
+    @staticmethod
+    def explicit_sequence_count(requirements: RequirementLedgerRevisionV1) -> int | None:
+        counts = {
+            int(control.value)
+            for control in requirements.ledger.hard_controls
+            if control.control in {"storyboard_sequence_count", "video_segment_count"}
+            and not is_derived_brand_sequence_count(control)
+            and not (control.control == "video_segment_count" and control.value == 0)
+        }
+        if len(counts) > 1:
+            raise _error(
+                "storyboard_sequence_plan_invalid",
+                "Explicit Grid and Video segment counts must agree.",
+            )
+        return next(iter(counts), None)
 
     @staticmethod
     def duration_or_none(requirements: RequirementLedgerRevisionV1) -> float | None:
@@ -224,6 +251,16 @@ class GuidedDurationAuthorityPolicy:
             ),
             None,
         )
+
+
+def is_derived_brand_sequence_count(control: RequirementControlV1) -> bool:
+    """Historical Brand handoffs computed counts from duration, not user intent."""
+
+    return (
+        control.control in {"storyboard_sequence_count", "video_segment_count"}
+        and control.source_kind == "user_message"
+        and (control.source_turn_id or "").startswith("brand-handoff:")
+    )
 
 
 def _duration_error() -> V2PersistenceError:

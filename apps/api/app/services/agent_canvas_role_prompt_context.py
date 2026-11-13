@@ -35,6 +35,11 @@ from app.services.brand_production_context import (
     project_brand_production_context,
 )
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
+from app.services.agent_canvas_role_stage_context import (
+    StyleSnapshotLoader,
+    scope_role_stage_context,
+)
+from app.services.agent_canvas_video_subtitles import without_managed_video_subtitles
 
 
 _GLOBAL_REQUIREMENT_FIELDS = frozenset(
@@ -140,6 +145,9 @@ def resolve_role_prompt_variant(node: CanvasNodeV2) -> RolePromptVariantV2:
 class RolePromptContextProjector:
     """Project only current, role-compatible authority into prompt preparation."""
 
+    def __init__(self, *, style_snapshot_loader: StyleSnapshotLoader | None = None) -> None:
+        self._style_snapshot_loader = style_snapshot_loader
+
     def project(
         self,
         node: CanvasNodeV2,
@@ -176,6 +184,9 @@ class RolePromptContextProjector:
                 "A bound Node reference is missing its exact revision.",
             )
         role_variant = resolve_role_prompt_variant(node)
+        stage_context = scope_role_stage_context(
+            stage_context, role_variant, snapshot_loader=self._style_snapshot_loader
+        )
         occurrence_id: str | None = None
         character_phase = None
         if role_variant in {"character_main", "character_turnaround"}:
@@ -327,6 +338,7 @@ class RolePromptContextProjector:
             selected_direction=selected_direction,
             user_prompt=user_prompt,
             response_locale=(response_locale if isinstance(response_locale, str) else "und"),
+            prior_editable_prompt=_prior_image_prompt(node, role_variant),
             internal_skill_ref=stage_context.internal_skill_ref,
             style_projection=projected_style,
             global_style_guidance=(
@@ -347,6 +359,7 @@ class RolePromptContextProjector:
             explicit_controls=explicit_controls or {},
             bound_text_controls=bound_text_controls,
             node_parameters={
+                **({"generate_subtitles": True} if is_video_role else {}),
                 **{
                     key: value
                     for key, value in node.parameters.items()
@@ -445,6 +458,21 @@ class RolePromptParameterResolver:
             ),
         )
         for name in recipe.parameter_names:
+            if "size" in recipe.parameter_names and name in {"size", "aspect_ratio"}:
+                # Image dimensions default to auto. Only a saved node selection
+                # sets output dimensions; campaign, style and shot ratios remain
+                # prompt context and must not silently replace the size control.
+                if name in context.node_parameters:
+                    resolved[name] = ResolvedNodeParameterV2(
+                        name=name,
+                        value=_validate_parameter(
+                            name, context.node_parameters[name], context.role_variant
+                        ),
+                        source_kind="node_parameter",
+                        source_id=context.node_id,
+                        source_revision=context.node_revision,
+                    )
+                continue
             if name == "video_representation_mode" and context.video_representation_mode:
                 source_kind = (
                     "explicit_user"
@@ -500,7 +528,11 @@ class RolePromptParameterResolver:
                     source_revision=source_revision,
                 )
                 break
-        if "size" in recipe.parameter_names and "aspect_ratio" in resolved:
+        if (
+            "size" in recipe.parameter_names
+            and "aspect_ratio" in resolved
+            and "size" not in resolved
+        ):
             resolved["size"] = _resolve_image_size(
                 resolved["aspect_ratio"],
                 model_capability or {},
@@ -583,7 +615,12 @@ def _aesthetic_style_projection(
     retained = []
     for line in value.splitlines():
         lowered = line.casefold()
-        if any(re.search(rf"\b{re.escape(field)}\b", lowered) for field in _STYLE_CONTROL_FIELDS):
+        # Strip explicit parameter assignments, not prose such as "ordinary-size".
+        # Removing one line of multiline advice can invert its remaining condition.
+        if any(
+            re.match(rf"\s*(?:[-*]\s*)?{re.escape(field)}\s*[:=]", lowered)
+            for field in _STYLE_CONTROL_FIELDS
+        ):
             continue
         if role_variant in {"character_main", "character_turnaround"} and any(
             term in lowered
@@ -604,14 +641,34 @@ def _aesthetic_style_projection(
     return "\n".join(retained) or None
 
 
+def _prior_image_prompt(node: CanvasNodeV2, role_variant: RolePromptVariantV2) -> str | None:
+    """Expose only the same Node's verified creative presentation as baseline data."""
+
+    if node.node_type != "image" or role_variant == "storyboard_grid":
+        return None
+    presentation = node.prompt_presentation
+    if (
+        presentation is None
+        or presentation.source == "deterministic_projection"
+        or presentation.revision > node.revision
+        or presentation.prompt_digest
+        != f"sha256:{sha256(presentation.text.encode('utf-8')).hexdigest()}"
+    ):
+        return None
+    return presentation.text
+
+
 def _authoring_user_prompt(node: CanvasNodeV2) -> str | None:
     prompt = node.generation_prompt
     if not prompt:
         return None
+    authored_prompt = (
+        without_managed_video_subtitles(prompt) if node.node_type == "video" else prompt
+    )
     presentation = node.prompt_presentation
     if presentation is not None:
         if presentation.source == "user_edited":
-            return prompt
+            return authored_prompt or None
         if (
             presentation.text == prompt
             and presentation.prompt_digest == f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}"
@@ -624,7 +681,7 @@ def _authoring_user_prompt(node: CanvasNodeV2) -> str | None:
         and prepared_digest == sha256(prompt.encode("utf-8")).hexdigest()
     ):
         return None
-    return prompt
+    return authored_prompt or None
 
 
 def character_identity_projection_from_node(
@@ -823,6 +880,8 @@ def _validate_parameter(
             raise _parameter_error()
         return value.strip()
     if name == "size":
+        if value == "auto":
+            return value
         if not isinstance(value, str) or _SIZE.fullmatch(value) is None:
             raise _parameter_error()
         return value

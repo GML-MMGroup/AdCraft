@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_generation_capacity import has_generation_capacity
 from app.persistence.models import (
     AgentCanvasBindingRow,
     AgentCanvasExecutionAdmissionRow,
@@ -1011,7 +1012,11 @@ class AgentCanvasRuntimeRepository:
         owner_id: str,
         now: datetime,
         ttl: timedelta,
+        generation_limits: dict[str, int] | None = None,
+        total_limit: int | None = None,
     ) -> NodeExecutionLeaseV2 | None:
+        if (generation_limits is None) != (total_limit is None):
+            raise ValueError("Generation limits and total capacity must be supplied together.")
         timestamp = now.isoformat()
         expires_at = (now + ttl).isoformat()
         try:
@@ -1019,6 +1024,20 @@ class AgentCanvasRuntimeRepository:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
                     execution = self._execution_in_transaction(connection, execution_id)
+                    if generation_limits is not None and (
+                        execution.status not in _ACTIVE_EXECUTION_STATES
+                        or execution.cancel_requested
+                        or not has_generation_capacity(
+                            connection,
+                            execution_id=execution_id,
+                            node_id=node_id,
+                            now=now,
+                            limits=generation_limits,
+                            total_limit=cast(int, total_limit),
+                        )
+                    ):
+                        connection.rollback()
+                        return None
                     row = (
                         connection.execute(
                             select(AgentCanvasNodeLeaseRow).where(

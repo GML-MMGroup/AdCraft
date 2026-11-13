@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel
 
+from app.schemas.agent_canvas_capabilities import CapabilityInvocationContextV2
 from app.schemas.agent_operation_recovery import (
     AgentOperationPolicyClassV2,
     AgentOperationPolicyV2,
 )
 from app.schemas.agent_runtime import AgentName, AgentRunPolicy, AgentRunRequest
+from app.schemas.brand_production_context import BrandProductionContextV1
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
 from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
@@ -39,21 +42,41 @@ _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
     "materialization": _OperationBudget(480, 270, 180, 30, 4_096, 3_072),
     "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
+# Selected details need room for both reasoning and the complete JSON response.
+_BRAND_TREATMENT_DETAIL_BUDGET = _OperationBudget(480, 270, 180, 30, 8_192, 3_072)
 _BRAND_SLOT_BUDGET = _OperationBudget(240, 180, 40, 20, 1_024, None)
 _BRAND_FORM_BUDGET = _OperationBudget(420, 270, 120, 30, 4_096, None)
-# A hypothesis batch contains three rich candidates.  Keeping this operation
-# on the routing deadline is appropriate for its bounded decision step, but
-# the generic routing output ceiling truncates the required candidate fields
-# before the structured validator can inspect them.
-_BRAND_HYPOTHESIS_BUDGET = _OperationBudget(240, 180, 40, 20, 4_096, None)
+# Creative directions reason about the mechanism before emitting a compact schema.
+# Allow reasoning time without adding submissions or enlarging visible output.
+_BRAND_HYPOTHESIS_BUDGET = _OperationBudget(360, 300, 40, 20, 4_096, 2_048)
 # Role briefs include structured production details and a complete editable prompt.
 # A nine-panel storyboard cannot reliably fit the generic proposal output ceiling.
 _ROLE_BRIEF_BUDGET = _OperationBudget(410, 190, 190, 30, 8_192, None)
+_CHARACTER_OPTIONS_BUDGET = _OperationBudget(360, 190, 140, 30, 8_192, 2_048)
+_CHARACTER_OPTIONS_OPERATIONS = {"propose_character_options", "revise_character_options"}
 _STORYBOARD_SEGMENT_BUDGET = _OperationBudget(570, 270, 270, 30, 4_096, None)
-# These operations execute an approved plan; planning retains deep reasoning.
-_APPROVED_PLAN_EXECUTION_OPERATIONS = {"author_role_brief", "materialize_storyboard_segment"}
+_SCRIPT_AUTHORING_OPERATIONS = {
+    "propose_script_options",
+    "revise_script_options",
+    "execute_canvas_script",
+    "script_writer",
+    "script_edit_normalization",
+}
+_LOW_REASONING_OBJECT_OPTIONS = {
+    "propose_product_options",
+    "revise_product_options",
+    "revise_prop_options",
+}
+# Catalog selection, object/music options and approved-plan execution use low reasoning.
+_NON_THINKING_AUTHORING_OPERATIONS = {
+    *_LOW_REASONING_OBJECT_OPTIONS,
+    "brand_skill_recommendation",
+    "author_role_brief",
+    "materialize_storyboard_segment",
+    "propose_bgm_options",
+    "revise_bgm_options",
+}
 _ROUTING_OPERATIONS = {
-    "brand_hypothesis",
     "brand_slot_form",
     "brand_slot_question",
     "command_replan",
@@ -67,6 +90,7 @@ _ROUTING_OPERATIONS = {
     "workflow_creation",
 }
 _PROPOSAL_OPERATIONS = {
+    "brand_hypothesis",
     "brand_skill_recommendation",
     "author_decision_bundle",
     "author_role_brief",
@@ -112,6 +136,7 @@ _MATERIALIZATION_OPERATIONS = {
     "materialize_quick_media",
 }
 _LONG_FORM_OPERATIONS = {
+    "brand_full_script",
     "author_guided_script_checkpoint",
     "execute_canvas_script",
     "script_edit_normalization",
@@ -119,6 +144,30 @@ _LONG_FORM_OPERATIONS = {
     "storyboard_detail",
     "plan_storyboard_sequence_outline",
 }
+_BRAND_AUTHORING_OPERATIONS = {
+    "brand_slot_form",
+    "brand_slot_question",
+    "brand_skill_recommendation",
+    "brand_treatment_step",
+    "brand_treatment_review",
+    "brand_full_script",
+}
+
+
+def _uses_brand_authoring_policy(
+    operation: str, context: BaseModel | None, *, story_summary: bool
+) -> bool:
+    # Creative directions and story summaries intentionally retain their existing policy.
+    if operation == "brand_hypothesis" or story_summary:
+        return False
+    if operation in _BRAND_AUTHORING_OPERATIONS:
+        return True
+    if operation in _ROUTING_OPERATIONS:
+        return False
+    if isinstance(context, CapabilityInvocationContextV2):
+        brand = context.capability_context.get("brand_decisions")
+        return isinstance(brand, dict) and brand.get("projection_version") == "brand_role_v1"
+    return isinstance(getattr(context, "brand_decisions", None), BrandProductionContextV1)
 
 
 class AgentOperationPolicyError(ValueError):
@@ -160,6 +209,7 @@ class AgentOperationPolicyRegistryV2:
         agent_name: str,
         operation: str,
         contract_id: str,
+        context: BaseModel | None = None,
     ) -> AgentOperationPolicyV2:
         capability = next(
             (item for item in self._capabilities.agents if item.name == agent_name),
@@ -196,19 +246,91 @@ class AgentOperationPolicyRegistryV2:
         budget = (
             _ROLE_BRIEF_BUDGET
             if operation == "author_role_brief"
+            else _CHARACTER_OPTIONS_BUDGET
+            if operation in _CHARACTER_OPTIONS_OPERATIONS
             else _STORYBOARD_SEGMENT_BUDGET
             if operation == "materialize_storyboard_segment"
             else _BRAND_FORM_BUDGET
             if operation == "brand_slot_form"
             else _BRAND_HYPOTHESIS_BUDGET
             if operation == "brand_hypothesis"
+            else _BRAND_TREATMENT_DETAIL_BUDGET
+            if operation == "brand_treatment_step"
+            and contract_id == "CreativeTreatmentDetailOutputV1"
             else _BRAND_SLOT_BUDGET
             if operation == "brand_slot_question"
             else self._budgets[policy_class]
         )
+        sound_treatment = False
+        summary_treatment = False
+        story_summary = False
+        if operation == "brand_treatment_step" and isinstance(
+            getattr(context, "user_input", None), str
+        ):
+            try:
+                payload = json.loads(context.user_input)
+            except (ValueError, TypeError):
+                payload = None
+            sound_treatment = isinstance(payload, dict) and payload.get("substep") == "sound"
+            summary_treatment = (
+                isinstance(payload, dict) and payload.get("authoring_mode") == "summary"
+            )
+            story_summary = summary_treatment and payload.get("substep") == "story"
+        enable_thinking = (
+            policy_class != "routing"
+            and operation not in _NON_THINKING_AUTHORING_OPERATIONS
+            and not sound_treatment
+            and (not summary_treatment or story_summary)
+        )
+        storyboard_plan = (
+            operation == "author_guided_script_checkpoint"
+            and isinstance(context, CapabilityInvocationContextV2)
+            and context.capability_context.get("journey_stage") == "storyboard_plan"
+        )
+        style_lock = (
+            operation == "author_guided_script_checkpoint"
+            and isinstance(context, CapabilityInvocationContextV2)
+            and context.capability_context.get("journey_stage") == "style_lock"
+        )
+        narrative_direction = (
+            operation == "author_guided_script_checkpoint"
+            and isinstance(context, CapabilityInvocationContextV2)
+            and context.capability_context.get("journey_stage") == "narrative_direction"
+        )
+        brand_authoring = _uses_brand_authoring_policy(
+            operation, context, story_summary=story_summary
+        )
         return AgentOperationPolicyV2(
             policy_id=(
-                "agent.author_role_brief.v3"
+                "agent.brand_authoring.v1"
+                if brand_authoring
+                else "agent.guided_storyboard_plan.v1"
+                if storyboard_plan
+                else "agent.guided_style_lock.v1"
+                if style_lock
+                else "agent.guided_narrative_direction.v1"
+                if narrative_direction
+                else f"agent.{operation}.v1"
+                if operation in _SCRIPT_AUTHORING_OPERATIONS
+                else "agent.brand_hypothesis.v2"
+                if operation == "brand_hypothesis"
+                else "agent.brand_treatment_sound.v1"
+                if sound_treatment
+                else "agent.brand_treatment_story_summary.v1"
+                if story_summary
+                else "agent.brand_treatment_summary.v1"
+                if summary_treatment
+                else "agent.brand_skill_recommendation.v2"
+                if operation == "brand_skill_recommendation"
+                else "agent.bgm_options.v1"
+                if operation in {"propose_bgm_options", "revise_bgm_options"}
+                else "agent.character_options.v1"
+                if operation in _CHARACTER_OPTIONS_OPERATIONS
+                else "agent.prop_recommendation.v3"
+                if operation == "propose_prop_options"
+                else "agent.product_prop_options.v1"
+                if operation in _LOW_REASONING_OBJECT_OPTIONS
+                else "agent.author_role_brief.v3"
                 if operation == "author_role_brief"
                 else "agent.materialize_storyboard_segment.v2"
                 if operation == "materialize_storyboard_segment"
@@ -224,16 +346,10 @@ class AgentOperationPolicyRegistryV2:
             primary_timeout_seconds=budget.primary_timeout_seconds,
             recovery_timeout_seconds=budget.recovery_timeout_seconds,
             persistence_reserve_seconds=budget.persistence_reserve_seconds,
-            max_output_tokens=budget.max_output_tokens,
-            reasoning_mode=(
-                "low"
-                if policy_class == "routing" or operation in _APPROVED_PLAN_EXECUTION_OPERATIONS
-                else "deep"
-            ),
-            enable_thinking=(
-                policy_class != "routing" and operation not in _APPROVED_PLAN_EXECUTION_OPERATIONS
-            ),
-            thinking_budget_tokens=budget.thinking_budget_tokens,
+            max_output_tokens=8_192 if brand_authoring else budget.max_output_tokens,
+            reasoning_mode="deep" if enable_thinking else "low",
+            enable_thinking=enable_thinking,
+            thinking_budget_tokens=budget.thinking_budget_tokens if enable_thinking else None,
             max_model_submissions=2,
             recovery_mode="transport_retry_or_structured_repair",
             fallback_class="none",
@@ -299,6 +415,7 @@ class AgentRunRequestFactory:
             agent_name=agent_name,
             operation=operation,
             contract_id=contract_name,
+            context=context,
         )
         operation_policy = apply_agent_thinking_mode(operation_policy, thinking_mode)
         run_policy = AgentRunPolicy(
@@ -366,6 +483,7 @@ def validate_agent_run_operation_policy(
         agent_name=request.agent_name,
         operation=request.operation,
         contract_id=contract_name,
+        context=request.context,
     )
     expected_run_policy = AgentRunRequestFactory(
         policy_registry=registry,

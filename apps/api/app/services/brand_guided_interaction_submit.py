@@ -69,7 +69,9 @@ class BrandGuidedInteractionSubmitter:
                     result,
                 )
             else:
-                self._bridge.close_current_interaction(workflow_id)
+                self._bridge.close_current_interaction(
+                    workflow_id, interaction_id=interaction.interaction_id
+                )
             revision = self._session_revision(workflow_id) or 1
             return GuidedInteractionAcceptedV1(
                 workflow_id=workflow_id,
@@ -89,7 +91,19 @@ class BrandGuidedInteractionSubmitter:
         custom_text = request.custom_text or ""
         action_id = content.action_id
 
-        if "skill-stack" in content.capability_id:
+        if content.capability_id == "brand_creative-route":
+            if request.action != "select" or custom_text:
+                raise V2PersistenceError(
+                    "guided_interaction_action_not_allowed", "Choose one creative route."
+                )
+            from app.services.brand_script_route import BrandScriptRouteService
+
+            BrandScriptRouteService(self._brand_service._database).select(
+                brand_id,
+                card_id=action_id,
+                option_id=option_id,
+            )
+        elif "skill-stack" in content.capability_id:
             if custom_text or request.action not in {"select", "delegate"}:
                 raise V2PersistenceError(
                     "brand_skill_selection_required",
@@ -187,8 +201,10 @@ class BrandGuidedInteractionSubmitter:
                 value_text=value_text,
                 provenance="user_confirmed",
             )
-        self._bridge.close_current_interaction(workflow_id)
-        submission_identity = f"submission_{sha256(submission_id.encode()).hexdigest()[:32]}"
+        self._bridge.close_current_interaction(
+            workflow_id, interaction_id=interaction.interaction_id
+        )
+        submission_identity = submission_id
         revision = self._session_revision(workflow_id) or 1
         accepted = GuidedInteractionAcceptedV1(
             workflow_id=workflow_id,
@@ -234,6 +250,7 @@ class BrandGuidedInteractionSubmitter:
             stage,  # type: ignore[arg-type]
             stage_revision,
             generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
+            lease_seconds=900 if stage == "treatment" else 600,
         )
         if claim.role == "ready":
             return True, False
@@ -246,6 +263,7 @@ class BrandGuidedInteractionSubmitter:
                 stage,  # type: ignore[arg-type]
                 stage_revision,
                 generation_scope=f"custom:{card_id}:{digest}:{submission_id}",
+                lease_seconds=900 if stage == "treatment" else 600,
             )
             if claim.role == "ready":
                 return True, False

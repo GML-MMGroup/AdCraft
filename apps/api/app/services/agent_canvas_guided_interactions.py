@@ -329,13 +329,22 @@ class GuidedInteractionService:
                     "guided_interaction_action_not_allowed",
                     "Brand guided interaction actions are unavailable.",
                 )
-            return self._brand_submit(
+            accepted = self._brand_submit(
                 workflow_id,
                 interaction,
                 request,
                 submission_id=submission_id,
                 idempotency_key=idempotency_key,
             )
+            self._interactions.record_external_submission(
+                workflow_id=workflow_id,
+                interaction_id=interaction_id,
+                idempotency_key=idempotency_key,
+                request=request,
+                result=accepted,
+            )
+            return accepted
+
         if not isinstance(request, GuidedConceptSubmitV2) or not isinstance(
             interaction.content, GuidedConceptChoiceV2
         ):

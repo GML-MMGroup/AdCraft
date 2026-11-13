@@ -608,6 +608,8 @@ class StructuredGenerationRuntime:
         return sanitize_context_for_llm_text(metadata)
 
     def _generic_error_code(self, error: V2StructuredLLMError) -> str:
+        if error.code == "agent_run_budget_exceeded":
+            return error.code
         if error.code == "structured_llm_unavailable":
             return "structured_generation_unavailable"
         if error.code in {
@@ -634,7 +636,9 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         operation=operation,
         user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
         workflow_id=workflow_id,
-        input_payload=payload,
+        # Treatment uses the lossless user_input projection. Do not send the same
+        # growing confirmed context twice inside the bounded runtime envelope.
+        input_payload={} if operation in {"brand_treatment_step", "brand_full_script"} else payload,
         contract_schema=spec.output_model.model_json_schema(),
     )
     validate_video_agent_operation_context(operation, context)

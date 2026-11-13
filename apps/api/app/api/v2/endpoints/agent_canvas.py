@@ -31,7 +31,12 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.services.agent_runtime_recovery import require_agent_runtime_ready
+from app.services.agent_canvas_run_preflight import AgentCanvasRunPreflight
+from app.services.local_runtime_statistics import LocalRuntimeStatisticsService
+from app.services.project_permanent_deletion import ProjectPermanentDeletionService
+from app.schemas.local_runtime_statistics import LocalRuntimeStatisticsV1
 
+from app.api.v2.asset_reads import get_agent_canvas_asset_reads
 from app.api.v2.etag import (
     V2PreconditionError,
     parse_project_if_match,
@@ -1447,6 +1452,7 @@ def create_agent_canvas_runtime(
         runtime_repository,
         event_repository,
         run_snapshots=run_snapshots,
+        eligibility_validator=AgentCanvasRunPreflight(model_resolution).validate,
         blank_prompt_eligibility_validator=lambda node: _validate_reference_only_run(
             node,
             bindings=binding_service,
@@ -1630,9 +1636,10 @@ def create_agent_canvas_runtime(
 
         del response_locale
         from app.api.v2.endpoints.brand_mode import post_next_question
+        from app.schemas.brand_professional_mode import BrandContinuationRequestV1
 
         try:
-            post_next_question(workflow_id, database)
+            post_next_question(workflow_id, database, BrandContinuationRequestV1(retry_failed=True))
         except Exception:  # noqa: BLE001 - the gate remains durable and retryable.
             logger.exception(
                 "Brand guided interaction projection failed.",
@@ -2061,6 +2068,7 @@ def create_agent_canvas_runtime(
             asset_service,
             conversation_repository,
             style_activation,
+            deletion=ProjectPermanentDeletionService(database, settings.media_data_dir),
         ),
         workflows=workflow_repository,
         requirements=requirement_service,
@@ -2248,6 +2256,21 @@ def trash_project(
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = project_etag(project_id, project.project_version)
+
+
+@router.delete("/projects/{project_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+def permanently_delete_project(
+    project_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> None:
+    try:
+        runtime.projects.permanently_delete_project(
+            project_id,
+            expected_version=_expected_project_version(if_match, project_id),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
 
 
 @router.post("/projects/{project_id}/restore", response_model=ProjectV2)
@@ -3000,13 +3023,13 @@ def list_my_assets(
 def get_asset_rendition(
     asset_id: str,
     request: Request,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    assets: Annotated[AgentCanvasAssetService, Depends(get_agent_canvas_asset_reads)],
     version_id: Annotated[str, Query(alias="v", min_length=1, max_length=160)],
     size: Annotated[int | None, Query(ge=320, le=640, multiple_of=320)] = None,
 ) -> Response:
     kind = request.url.path.rsplit("/", 1)[-1]
     try:
-        rendition = runtime.assets.open_rendition(
+        rendition = assets.open_rendition(
             asset_id,
             version_id,
             kind=kind,
@@ -3026,13 +3049,13 @@ def get_asset_rendition(
 def get_asset_content(
     asset_id: str,
     response: Response,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    assets: Annotated[AgentCanvasAssetService, Depends(get_agent_canvas_asset_reads)],
     version_id: Annotated[str | None, Query(alias="v", min_length=1, max_length=160)] = None,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
     download: Annotated[bool, Query()] = False,
 ) -> Response:
     try:
-        content = runtime.assets.open_content(
+        content = assets.open_content(
             asset_id,
             version_id=version_id,
             range_header=range_header,
@@ -4269,36 +4292,22 @@ def _publish_next_brand_interaction_after_form_submit(
     workflow_id: str,
     submission_id: str | None = None,
 ) -> None:
-    """Continue the Brand journey after an atomic foundation-form commit.
+    """Wake durable Brand work; duplicate callbacks never retry a failed attempt."""
+    from app.services.brand_continuation import BrandContinuationWorker
 
-    Foundation forms are submitted through the generic interaction endpoint.  A
-    form commit must not depend on a second user message or on the generic
-    continuation outbox (which is reserved for Agent turns).  The Brand
-    endpoint owns the deterministic next-stage projection and is idempotent:
-    if the client refreshes or requests it concurrently, the existing open
-    interaction is reused.  A publication error is recorded in the chat
-    timeline so the committed Brand action remains visibly retryable.
-    """
-
-    from app.api.v2.endpoints.brand_mode import post_next_question
-
+    del submission_id
     try:
-        post_next_question(workflow_id, runtime.database)
-    except Exception as error:  # noqa: BLE001 - the committed form remains recoverable via next-question.
-        logger.exception(
-            "Brand foundation form committed but next interaction publication failed "
-            "workflow_id=%s",
-            workflow_id,
-        )
-        failure_code = getattr(error, "code", None)
-        if not isinstance(failure_code, str) or not failure_code:
-            failure_code = "brand_interaction_publication_failed"
-        runtime.conversation_repository.record_brand_interaction_publication_failure(
-            workflow_id,
-            failure_id=submission_id or f"workflow:{workflow_id}",
-            error_code=failure_code,
-            retryable=True,
-        )
+        BrandContinuationWorker(runtime.database).run_workflow(workflow_id)
+    except V2PersistenceError as error:
+        if error.code not in {
+            "brand_form_generation_in_progress",
+            "brand_treatment_expansion_retry_required",
+            "brand_context_stale",
+        }:
+            raise
+    except Exception:
+        # The worker records the actionable failure before returning here.
+        logger.exception("Brand continuation callback failed workflow_id=%s", workflow_id)
 
 
 def _persisted_assistant_result(
@@ -4406,6 +4415,14 @@ def _agent_settings_expected_revision(value: str | None) -> int:
     return revision
 
 
+@router.get("/local-runtime/statistics", response_model=LocalRuntimeStatisticsV1)
+def local_runtime_statistics(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+) -> LocalRuntimeStatisticsV1:
+    return LocalRuntimeStatisticsService(runtime.database).summarize(days=days)
+
+
 def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
     status_code = {
         "brand_skill_selection_required": 409,
@@ -4415,6 +4432,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "brand_handoff_conflict": 409,
         "project_not_found": 404,
         "project_not_trashed": 409,
+        "project_deletion_busy": 409,
+        "project_permanently_deleted": 410,
         "project_state_conflict": 412,
         "project_cursor_invalid": 422,
         "project_page_invalid": 422,
@@ -4517,6 +4536,13 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "model_unavailable": 409,
         "model_default_not_configured": 409,
         "model_capability_mismatch": 409,
+        "model_parameter_incompatible": 422,
+        "model_parameter_unsupported": 422,
+        "provider_credentials_missing": 409,
+        "provider_credentials_invalid": 409,
+        "model_adapter_unavailable": 409,
+        "model_conformance_required": 409,
+        "model_conformance_revoked": 409,
         "agent_model_incompatible": 409,
         "layout_revision_conflict": 409,
         "layout_node_not_found": 404,

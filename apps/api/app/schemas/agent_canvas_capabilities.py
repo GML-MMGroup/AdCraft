@@ -338,13 +338,15 @@ class ConversationQueryV1(_CapabilityModel):
                 "anchor_registry",
                 "storyboard_production_plan",
             ):
-                raise ValueError("Document selection requires the canonical two-document pair.")
+                raise ValueError("Combined explanation requires the canonical two-document pair.")
             if (
                 self.document_kind is not None
                 or self.sequence_id is not None
                 or self.anchor_aliases
             ):
-                raise ValueError("Document selection cannot carry a document selector.")
+                raise ValueError(
+                    "Combined explanation cannot carry an individual document selector."
+                )
             return self
         if self.document_kind is None:
             raise ValueError("Document explanation requires a document kind.")
@@ -370,6 +372,13 @@ class StyleSkillConsultationOrdinaryIntentV1(_CapabilityModel):
 class FreeformReplyOrdinaryIntentV1(_CapabilityModel):
     intent_kind: Literal["freeform_reply"]
     assistant_message: str = Field(min_length=1, max_length=2_000)
+    context_focus: Literal["conversation", "project"] = Field(
+        default="conversation",
+        description=(
+            "Use conversation for recalling or explaining prior messages and general chat; "
+            "use project when answering requires current advertisement records."
+        ),
+    )
 
 
 class AgentIdentityOrdinaryIntentV1(_CapabilityModel):
@@ -964,6 +973,7 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     source_turn_id: str = Field(min_length=1, max_length=160)
     capability_turn_id: str = Field(min_length=1, max_length=160)
     source_proposal_id: str | None = Field(default=None, max_length=160)
+    replace_source_options: bool = False
     session_id: str | None = Field(default=None, max_length=160)
     expected_session_revision: int | None = Field(default=None, ge=1)
     capability_id: CapabilityIdV1

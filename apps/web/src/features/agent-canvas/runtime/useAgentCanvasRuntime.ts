@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
@@ -57,6 +58,7 @@ export function useAgentCanvasRuntime(
   callbacks: RuntimeCallbacks,
   patchNode?: RuntimeNodePatcher,
 ) {
+  const t = useTranslation();
   const patchNodeRef = useRef(patchNode);
   patchNodeRef.current = patchNode;
   const [runtime, setRuntime] = useState<CanvasRuntimeSnapshotV2 | null>(null);
@@ -73,6 +75,7 @@ export function useAgentCanvasRuntime(
     { omittedNodeIds: string[]; manifestRevision: number | null }
   >>({});
   const [autoRunNotice, setAutoRunNotice] = useState<string | null>(null);
+  const [runAdmissionNotice, setRunAdmissionNotice] = useState<string | null>(null);
   const [inputManifestsByNodeId, setInputManifestsByNodeId] = useState<Record<string, ProviderInputManifestAuditV2>>({});
   const [modelResolutionsByNodeId, setModelResolutionsByNodeId] = useState<Record<string, CanvasRuntimeModelResolutionV2>>({});
   const [inputReadinessIssue, setInputReadinessIssue] = useState<UpstreamInputReadinessIssueV2 | null>(null);
@@ -120,6 +123,7 @@ export function useAgentCanvasRuntime(
     setDocumentEvents([]);
     setEditingPreparationByNodeId({});
     setAutoRunNotice(null);
+    setRunAdmissionNotice(null);
     setInputManifestsByNodeId({});
     setModelResolutionsByNodeId({});
     setInputReadinessIssue(null);
@@ -538,6 +542,7 @@ export function useAgentCanvasRuntime(
   const runAll = useCallback(async () => {
     if (!workflowId || !workflow) return;
     setRunPending(true);
+    setRunAdmissionNotice(null);
     try {
       const migrations = runnableDraftParameterMigrations(workflow);
       const patchNode = patchNodeRef.current;
@@ -549,17 +554,28 @@ export function useAgentCanvasRuntime(
           parameters: migration.parameters,
         });
       }
-      await agentCanvasApi.runAgentCanvas(workflowId, {
+      const accepted = await agentCanvasApi.runAgentCanvas(workflowId, {
         scope: "all_drafts",
         node_ids: [],
         retry_failed: false,
         source_action: "global_run",
       }, createOperationKey("run-all"));
+      const rejected = (accepted?.skipped ?? []).filter(({ reason }) => (
+        reason.startsWith("model_") || reason.startsWith("provider_credentials_")
+        || reason === "invalid_role_content" || reason === "node_parameter_unsupported"
+      ));
+      if (rejected.length) {
+        const names = rejected.slice(0, 5).map(({ node_id }) => (
+          workflow.nodes.find((node) => node.node_id === node_id)?.title || node_id
+        ));
+        if (rejected.length > names.length) names.push("…");
+        setRunAdmissionNotice(t("Global Run skipped nodes with model or parameter issues: {nodes}.", { nodes: names.join(", ") }));
+      }
       await refreshRuntime();
     } finally {
       setRunPending(false);
     }
-  }, [refreshRuntime, workflow, workflowId]);
+  }, [refreshRuntime, t, workflow, workflowId]);
 
   const runNode = useCallback(async (
     node: CanvasNodeV2,
@@ -622,6 +638,7 @@ export function useAgentCanvasRuntime(
       documentEvents,
       editingPreparationByNodeId,
       autoRunNotice,
+      runAdmissionNotice,
       inputManifestsByNodeId,
       modelResolutionsByNodeId,
       inputReadinessIssue,
@@ -637,6 +654,7 @@ export function useAgentCanvasRuntime(
       beginNodeRun: beginPreparation,
       cancelRun,
       clearAutoRunNotice: () => setAutoRunNotice(null),
+      clearRunAdmissionNotice: () => setRunAdmissionNotice(null),
     },
   };
 }

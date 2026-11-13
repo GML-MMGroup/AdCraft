@@ -6,7 +6,7 @@ export const shotCoveragePolicy = [
 ].join(" ");
 
 export const storyboardTextPolicy = [
-  "Storyboard image text policy: spoken words stay in Script/Video; depict speaking through expression, gesture and eyeline. Omit dialogue quotations, subtitles and speech bubbles from the image brief and editable_prompt.",
+  "Storyboard image text policy (image pixels only; never copy this exclusion to shared narrative_goal or Video subtitle policy): spoken words stay in Script/Video; depict speaking through expression, gesture and eyeline. Omit dialogue quotations, subtitles and speech bubbles from the image brief and editable_prompt.",
   "Text scope check before returning: ordinary environmental and packaging text remains allowed, as do approved non-dialogue graphics at their planned moment. Withholding an advertised product or brand does not prohibit unrelated room signs, original print or labels. Unless the current user explicitly requires a broader exclusion, replace inherited or drafted blanket text-free/no-lettering instructions with the dialogue-only rule in every field, including visual_language, style_description and the final negative instructions. This permission never advances a product or brand reveal.",
 ].join(" ");
 

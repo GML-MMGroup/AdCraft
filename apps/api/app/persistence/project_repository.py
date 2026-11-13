@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
-from app.persistence.models import AgentCanvasWorkflowRow, ProjectRow
+from app.persistence.models import AgentCanvasWorkflowRow, ProjectDeletionReceiptRow, ProjectRow
 from app.schemas.workflow_v2_projects import (
     ProjectCatalogRecord,
     ProjectCatalogRecordPage,
@@ -51,6 +51,16 @@ class ProjectRepository:
     def insert_in_transaction(self, connection: Connection, project: ProjectCreate) -> None:
         """Insert without committing a caller-owned transaction."""
 
+        if connection.execute(
+            select(ProjectDeletionReceiptRow.project_id).where(
+                ProjectDeletionReceiptRow.project_id == project.project_id
+            )
+        ).first():
+            raise V2PersistenceError(
+                "project_permanently_deleted",
+                "This project was permanently deleted. Create a new project instead.",
+                stage="project_repository",
+            )
         connection.execute(
             insert(ProjectRow).values(
                 project_id=project.project_id,

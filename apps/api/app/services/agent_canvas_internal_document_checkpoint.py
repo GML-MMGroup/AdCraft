@@ -353,7 +353,6 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
         authority_plan = self._duration_authority.plan_sequences(
             requirement,
             aspect_ratio=constraints.get("aspect_ratio", "16:9"),
-            explicit_sequence_count=constraints.get("storyboard_sequence_count"),
         )
         segments = timing_seed_segments(authority_plan)
         try:

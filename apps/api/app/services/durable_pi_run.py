@@ -99,6 +99,10 @@ _SAFE_FAILURE_MESSAGES = {
     ),
     "agent_run_cancelled": "Agent run was cancelled.",
     "agent_run_in_progress": "The matching Agent action is already running.",
+    "agent_run_interrupted": (
+        "Agent execution was interrupted before a complete result was saved. "
+        "Retry the current step with a fresh attempt."
+    ),
     "agent_runtime_unavailable": (
         "Agent runtime is unavailable. Please retry after the Agent runtime service is restored."
     ),
@@ -288,6 +292,7 @@ class DurablePiRunService:
             )
             owns_lease = created
             lease_generation = record.lease_generation
+            reopen = False
             if not created:
                 reopen = record.status == "failed" and _unsubmitted_runtime_failure(
                     record.safe_failure
@@ -347,6 +352,36 @@ class DurablePiRunService:
                     )
                     owns_lease = False
                     return replayed
+
+            if not created and not reopen:
+                # An orphaned lease is not proof that the previous model request
+                # was never submitted. Only staged results or proven pre-submit
+                # outages may recover automatically under the same identity.
+                code = (
+                    "agent_deadline_exceeded"
+                    if request.deadline_at <= datetime.now(timezone.utc)
+                    else "agent_run_interrupted"
+                )
+                raise PiAgentRuntimeError(
+                    code,
+                    _safe_error_message_for_code(code),
+                    retryable=True,
+                    details={
+                        "attempt_stage": "runtime_recovery",
+                        "failure_boundary": "runtime_recovery",
+                    },
+                )
+            if request.deadline_at <= datetime.now(timezone.utc):
+                raise PiAgentRuntimeError(
+                    "agent_deadline_exceeded",
+                    _safe_error_message_for_code("agent_deadline_exceeded"),
+                    retryable=True,
+                    details={
+                        "attempt_stage": "runtime_preflight",
+                        "failure_boundary": "runtime_control",
+                        "model_submission_count": 0,
+                    },
+                )
 
             if on_dispatch_owned is not None:
                 on_dispatch_owned(request)

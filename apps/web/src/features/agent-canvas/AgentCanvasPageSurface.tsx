@@ -1741,6 +1741,17 @@ export function AgentCanvasPage() {
           </button>
         ) : null}
 
+        {live.state.runAdmissionNotice ? (
+          <button
+            type="button"
+            className="agent-canvas-notice agent-canvas-notice--info"
+            aria-label={t("Dismiss run notice")}
+            onClick={live.actions.clearRunAdmissionNotice}
+          >
+            {live.state.runAdmissionNotice}
+          </button>
+        ) : null}
+
         {canvasMediaUpload.uploading ? (
           <div className="agent-canvas-notice agent-canvas-notice--info" role="status">
             {t("Uploading media and adding it to the canvas…")}

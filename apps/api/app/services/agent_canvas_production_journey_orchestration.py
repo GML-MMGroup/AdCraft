@@ -169,7 +169,11 @@ class GuidedProductionJourneyService:
         idempotency_key: str,
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
-        self._require_stage_duration(workflow_id, session.journey.stage)
+        duration_wait = self._ensure_stage_duration(
+            session, turn_id=turn_id, expected_session_revision=expected_session_revision
+        )
+        if duration_wait is not None:
+            return duration_wait
         if session.journey.stage == "editing" and session.journey.stage_status == "failed":
             raise V2PersistenceError(
                 "guided_editing_not_retryable",
@@ -282,7 +286,11 @@ class GuidedProductionJourneyService:
                 },
             )
             expected_session_revision = session.revision
-            self._require_stage_duration(workflow_id, session.journey.stage)
+            duration_wait = self._ensure_stage_duration(
+                session, turn_id=turn_id, expected_session_revision=expected_session_revision
+            )
+            if duration_wait is not None:
+                return duration_wait
             result = self._policy.evaluate(self._context(session))
         if result.action not in {
             "invoke_capability",
@@ -370,6 +378,67 @@ class GuidedProductionJourneyService:
         )
         return self._conversations.get_guidance_session(session.workflow_id)
 
+    def _ensure_stage_duration(
+        self,
+        session: GuidedSessionStateV2,
+        *,
+        turn_id: str,
+        expected_session_revision: int,
+    ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2] | None:
+        """Recover a historical missing duration before reserving any timed work."""
+
+        requirements = self._requirements.get_current(session.workflow_id)
+        try:
+            self._duration_authority.require_for_stage(requirements, session.journey.stage)
+            return None
+        except V2PersistenceError as error:
+            if (
+                error.code != "production_duration_required"
+                or session.journey.active_action is not None
+                or session.journey.suspended_action is not None
+            ):
+                raise
+        if session.awaiting is None and session.interaction is None:
+            evidence = JourneyEvidenceV2(
+                evidence_id=f"duration-required:{turn_id}",
+                evidence_kind="clarification_completed",
+                source_id=turn_id,
+                source_revision=requirements.revision_no,
+            )
+            journey = session.journey.model_copy(
+                update={
+                    "stage_status": "waiting_user",
+                    "stage_revision": session.journey.stage_revision + 1,
+                    "transition_evidence": (
+                        *session.journey.transition_evidence,
+                        evidence.as_transition(
+                            stage=session.journey.stage,
+                            stage_revision=session.journey.stage_revision,
+                        ),
+                    ),
+                }
+            )
+            self._conversations.complete_turn_with_clarification(
+                turn_id,
+                expected_session_revision=expected_session_revision,
+                journey=journey,
+                assistant_message="Choose the total advertisement duration to continue.",
+                transition_key=f"stage-duration:{turn_id}:requirements:{requirements.revision_id}",
+                questionnaire=self._duration_authority.questionnaire(
+                    requirements, response_locale=session.response_locale
+                ),
+                checkpoint_id=f"duration:{turn_id}",
+                interaction_title="Choose production duration",
+                interaction_context="Confirm the screenplay duration to resume this creative step.",
+                expected_requirement_revision=requirements.revision_no,
+            )
+            session = self._conversations.get_guidance_session(session.workflow_id)
+        return session, JourneyPolicyResultV2(
+            action="wait_for_user",
+            expected_stage_revision=session.journey.stage_revision,
+            requires_model_call=False,
+        )
+
     def _require_stage_duration(self, workflow_id: str, stage) -> None:
         self._duration_authority.require_for_stage(
             self._requirements.get_current(workflow_id),
@@ -384,7 +453,7 @@ class GuidedProductionJourneyService:
     ) -> JourneyPolicyContextV2:
         revision = self._requirements.get_current(session.workflow_id)
         authority = character_occurrence_authority_for_authoring(revision)
-        return _context(
+        context = _context(
             session,
             clarification_required=clarification_required,
             included_character_occurrence_ids=(
@@ -393,6 +462,20 @@ class GuidedProductionJourneyService:
                 else None
             ),
         )
+        controls = {item.control: item.value for item in revision.ledger.hard_controls}
+        bgm_presence = (
+            "exclude"
+            if controls.get("audio_mode") == "none"
+            else next(
+                (
+                    item.presence
+                    for item in revision.ledger.element_presence
+                    if item.element_kind == "audio"
+                ),
+                "unspecified",
+            )
+        )
+        return context.model_copy(update={"bgm_presence": bgm_presence})
 
     def sync_character_occurrences(
         self,

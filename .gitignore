@@ -21,6 +21,8 @@ apps/web/coverage/
 !/docs/recommended-assets_zh.md
 !/docs/getting-started.md
 !/docs/getting-started_zh.md
+!/docs/local-maintenance.md
+!/docs/local-maintenance_zh.md
 
 # Frontend local docs, tests, and agent workspace files
 apps/web/.codex/

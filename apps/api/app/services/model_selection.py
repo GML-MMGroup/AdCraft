@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import math
 
 from app.persistence.errors import V2PersistenceError
 from app.persistence.provider_model_repository import ProviderModelRecord
@@ -297,6 +298,8 @@ class ModelSelectionService:
 
 def _parameter_value_matches(descriptor: object, value: object) -> bool:
     value_type = getattr(descriptor, "value_type")
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
     if value_type == "integer":
         # Accept integral floats (e.g. 15.0) produced by clamping helpers;
         # reject non-integral floats and booleans.

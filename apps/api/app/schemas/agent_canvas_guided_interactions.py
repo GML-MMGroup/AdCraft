@@ -138,12 +138,21 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     occurrence_count: int | None = Field(default=None, ge=1, le=32)
     character_phase: Literal["main"] | None = None
     capability_id: str = Field(min_length=1, max_length=80)
-    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=12)
-    allow_custom: Literal[True] = True
+    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=2, max_length=12)
+    allow_custom: bool = True
     allow_exclusion: bool
 
     @model_validator(mode="after")
     def validate_option_ids(self) -> "GuidedConceptChoiceV2":
+        if self.capability_id == "brand_creative-route":
+            if (
+                tuple(option.option_id for option in self.options) != ("guided", "full-script")
+                or self.allow_custom
+                or self.allow_exclusion
+            ):
+                raise ValueError("Creative route exposes exactly two ordered explicit choices.")
+        elif len(self.options) < 3 or not self.allow_custom:
+            raise ValueError("Creative concepts require at least three choices and custom input.")
         if len({option.option_id for option in self.options}) != len(self.options):
             raise ValueError("Guided concept option IDs must be unique.")
         if (

@@ -18,6 +18,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceOutlineDraftV2,
     StoryboardSequencePlanDraftV2,
     StoryboardSequenceRowDraftV2,
+    StoryboardSequenceWindowV2,
     StoryboardVideoAuthoringContextV2,
 )
 from app.schemas.agent_canvas_creative_session import (
@@ -56,6 +57,7 @@ from app.schemas.agent_working_documents import (
 from app.schemas.brand_production_context import BrandProductionContextV1
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.agent_canvas_storyboard_sequence_windows import StoryboardSequenceWindowPlanner
 
 
 class _WorkingDocumentReader(Protocol):
@@ -243,27 +245,22 @@ class StoryboardSequenceAuthoringService:
             draft.total_duration_seconds != authority_plan.total_duration_seconds
         ):
             raise _storyboard_error("Storyboard outline parameters do not match authority.")
-        if len(draft.segments) != len(authority_plan.windows):
-            raise _storyboard_error("Storyboard outline count does not match authority.")
-        if authority_plan.timing_mode == "adaptive":
-            try:
-                authority_plan = StoryboardSequenceAuthorityPlanV2.model_validate(
-                    {
-                        **authority_plan.model_dump(mode="json"),
-                        "windows": [
-                            {
-                                "order": item.order,
-                                "start_seconds": item.start_seconds,
-                                "end_seconds": item.end_seconds,
-                            }
-                            for item in draft.segments
-                        ],
-                    }
-                )
-            except ValueError as error:
-                raise _storyboard_error(
-                    "Storyboard outline timing must cover the duration contiguously within the segment duration limit."
-                ) from error
+        try:
+            authority_plan = StoryboardSequenceWindowPlanner.accept_authored_windows(
+                authority_plan,
+                tuple(
+                    StoryboardSequenceWindowV2(
+                        order=item.order,
+                        start_seconds=item.start_seconds,
+                        end_seconds=item.end_seconds,
+                    )
+                    for item in draft.segments
+                ),
+            )
+        except ValueError as error:
+            raise _storyboard_error(
+                "Storyboard outline timing must cover the duration contiguously within the segment duration limit and any explicit count."
+            ) from error
         segments: list[StoryboardNarrativeSegmentV2] = []
         for index, (item, window) in enumerate(zip(draft.segments, authority_plan.windows)):
             if item.order != window.order:

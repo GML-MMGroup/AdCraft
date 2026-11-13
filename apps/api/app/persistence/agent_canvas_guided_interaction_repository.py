@@ -1044,6 +1044,9 @@ class AgentCanvasGuidedInteractionRepository:
                     created_at=datetime.now(timezone.utc).isoformat(),
                 )
             )
+            from app.persistence.brand_continuation_repository import BrandContinuationRepository
+
+            BrandContinuationRepository.enqueue_for_workflow_in_transaction(connection, workflow_id)
 
     def ensure_media_resume_delivery(
         self,
@@ -1260,7 +1263,26 @@ class AgentCanvasGuidedInteractionRepository:
                     advance_session_revision=False,
                 )
                 journey = _journey(session)
-                if character_answer is not None and character_answer.count > 0:
+                if duration_answer is not None and journey.stage != "intake":
+                    evidence = JourneyEvidenceV2(
+                        evidence_id=f"questionnaire-submitted:{submission_id}",
+                        evidence_kind="clarification_completed",
+                        source_id=submission_id,
+                        source_revision=requirement_revision.revision_no,
+                    )
+                    next_journey = journey.model_copy(
+                        update={
+                            "stage_status": "ready",
+                            "stage_revision": journey.stage_revision + 1,
+                            "transition_evidence": (
+                                *journey.transition_evidence,
+                                evidence.as_transition(
+                                    stage=journey.stage, stage_revision=journey.stage_revision
+                                ),
+                            ),
+                        }
+                    )
+                elif character_answer is not None and character_answer.count > 0:
                     assert reconciliation is not None
                     next_journey = reconcile_character_occurrences(
                         journey,

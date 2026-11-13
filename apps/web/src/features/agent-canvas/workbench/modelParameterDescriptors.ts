@@ -3,6 +3,7 @@ import type { ModelParameterDescriptorV1 } from "../../../api/providerRegistry.t
 export interface ModelParameterIssue {
   name: string;
   message: string;
+  code?: "unsupported_combination";
 }
 
 function isUnset(value: unknown): boolean {
@@ -45,12 +46,25 @@ function issueForValue(
 export function validateModelParameters(
   descriptors: readonly ModelParameterDescriptorV1[],
   parameters: Readonly<Record<string, unknown>>,
+  legalCombinations: readonly Readonly<Record<string, unknown>>[] = [],
 ): ModelParameterIssue[] {
   const issues: ModelParameterIssue[] = [];
   descriptors.forEach((descriptor) => {
     const message = issueForValue(descriptor, parameters[descriptor.name]);
     if (message) issues.push({ name: descriptor.name, message });
   });
+  if (!issues.length && legalCombinations.length) {
+    const constrained = new Set(legalCombinations.flatMap((combination) => Object.keys(combination)));
+    const supplied = Object.keys(parameters).filter((name) => constrained.has(name) && !isUnset(parameters[name]));
+    const compatible = legalCombinations.some((combination) => (
+      supplied.every((name) => combination[name] === parameters[name])
+    ));
+    if (!compatible) supplied.forEach((name) => issues.push({
+      name,
+      code: "unsupported_combination",
+      message: "This combination of model parameters is not supported.",
+    }));
+  }
   return issues;
 }
 

@@ -3,12 +3,63 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1
 from app.services.video_agent_operation_registry import (
     VideoAgentOperationRegistry,
     VideoAgentOperationRegistryError,
+)
+
+
+# Only explicitly selected model/policy pairs opt in; older frozen policies retain defaults.
+_ARK_REASONING_EFFORT_OVERRIDES: Mapping[tuple[str, str], Literal["high"]] = {
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.brand_hypothesis.v2"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.brand_authoring.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.character_options.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.prop_recommendation.v3"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.guided_storyboard_plan.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.guided_style_lock.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.guided_narrative_direction.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.propose_script_options.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.revise_script_options.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.execute_canvas_script.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.script_writer.v1"): "high",
+    ("volcengine_ark:glm-5-3-flash-260828", "agent.script_edit_normalization.v1"): "high",
+}
+
+# These independent entrypoints share generic policy IDs with unrelated stages.
+# Select their effort by operation without changing the shared policy or budgets.
+_GLM53_HIGH_OPERATION_OVERRIDES: frozenset[str] = frozenset(
+    {
+        "propose_world_setting_options",
+        "revise_world_setting_options",
+        "propose_video_options",
+        "revise_video_options",
+        "plan_storyboard_sequence_outline",
+        "propose_storyboard_options",
+        "revise_storyboard_options",
+        "execute_canvas_text",
+        "free_image",
+        "free_video",
+        "free_audio",
+        "materialize_quick_media",
+        "product_expert_brief",
+        "character_expert_brief",
+        "scene_expert_brief",
+        "bgm_expert_brief",
+        "product_prompt",
+        "character_prompt",
+        "scene_prompt",
+        "storyboard_prompt",
+        "shot_video_prompt",
+        "bgm_prompt",
+        "storyboard_detail",
+        "revise_character_asset",
+        "revise_scene_asset",
+        "author_decision_bundle",
+    }
 )
 
 
@@ -106,6 +157,25 @@ def resolve_agent_model_execution_policy(
     reasoning_effort = None
     if reasoning_control == "reasoning_effort":
         reasoning_effort = "minimal" if operation_policy.reasoning_mode == "low" else "medium"
+    elif reasoning_control == "ark_thinking" and enable_thinking:
+        reasoning_effort = _ARK_REASONING_EFFORT_OVERRIDES.get(
+            (model_ref, operation_policy.policy_id)
+        )
+        if (
+            model_ref == "volcengine_ark:glm-5-3-flash-260828"
+            and operation_policy.operation in _GLM53_HIGH_OPERATION_OVERRIDES
+        ):
+            reasoning_effort = "high"
+    if (
+        model_ref == "volcengine_ark:glm-5-3-flash-260828"
+        and reasoning_control == "ark_thinking"
+        and not enable_thinking
+    ):
+        # GLM 5.3 cannot disable thinking. Use a declared effort instead of an
+        # unsupported toggle, including installation-level disabled defaults.
+        enable_thinking = True
+        reasoning_mode = "deep"
+        reasoning_effort = "high"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,

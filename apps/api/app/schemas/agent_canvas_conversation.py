@@ -391,6 +391,7 @@ class CustomDirectionActionV2(_ProposalActionBaseV2):
 class ReviseOptionsActionV2(_ProposalActionBaseV2):
     action: Literal["revise_options"]
     instruction: str = Field(min_length=1, max_length=8_192)
+    replace_options: bool = False
 
 
 class DeferTopicActionV2(_ProposalActionBaseV2):

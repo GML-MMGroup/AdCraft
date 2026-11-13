@@ -148,7 +148,7 @@ class AgentCanvasCapabilityProposalRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                if envelope.source_proposal_id is not None:
+                if envelope.source_proposal_id is not None and not envelope.replace_source_options:
                     source_option_rows = tuple(
                         connection.execute(
                             select(

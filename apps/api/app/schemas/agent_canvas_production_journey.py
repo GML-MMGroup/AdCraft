@@ -197,6 +197,7 @@ class GuidedProductionJourneyV2(_JourneyModel):
 class JourneyPolicyContextV2(_JourneyModel):
     journey: GuidedProductionJourneyV2
     clarification_required: bool = False
+    bgm_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
     included_character_occurrence_ids: tuple[str, ...] | None = Field(
         default=None,
         max_length=32,

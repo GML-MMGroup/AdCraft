@@ -6,13 +6,90 @@ import hashlib
 import json
 import os
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_persistence import DatabaseBackupReport
 
 _PRE_AUTHORING_REVISION = "20260720_01"
+
+
+def ensure_schema_upgrade_backup(
+    data_dir: Path, database_path: Path, target_revision: str
+) -> DatabaseBackupReport:
+    """Snapshot each pending schema upgrade before Alembic can modify user data."""
+
+    source_revision = _current_revision(database_path) if database_path.is_file() else None
+    if source_revision is None or source_revision == target_revision:
+        return DatabaseBackupReport(status="not_required", database_path=database_path)
+    return create_database_backup(data_dir, database_path, target_revision=target_revision)
+
+
+def create_database_backup(
+    data_dir: Path, database_path: Path, *, target_revision: str | None = None
+) -> DatabaseBackupReport:
+    """Create an immutable local database snapshot using the SQLite Backup API."""
+
+    source_revision = _current_revision(database_path) if database_path.is_file() else None
+    if source_revision is None:
+        raise _backup_error()
+    directory = data_dir / "v2" / "migration-backups" / "database"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    name = f"adcraft.pre-upgrade-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid4().hex[:12]}"
+    backup_path = directory / f"{name}.sqlite3"
+    manifest_path = directory / f"{name}.manifest.json"
+    temporary = directory / f".{name}.tmp"
+    try:
+        _create_sqlite_backup(database_path, temporary)
+        temporary.chmod(0o600)
+        _verify_sqlite_backup(temporary)
+        digest = _sha256(temporary)
+        manifest = {
+            "source_revision": source_revision,
+            "target_revision": target_revision or source_revision,
+            "backup_sha256": digest,
+            "created_at": _utc_now(),
+            "media_included": False,
+        }
+        _fsync_file(temporary)
+        os.replace(temporary, backup_path)
+        with manifest_path.open("x", encoding="utf-8") as stream:
+            json.dump(manifest, stream, sort_keys=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        manifest_path.chmod(0o600)
+        return verify_database_backup(
+            backup_path, manifest_path, database_path=database_path
+        ).model_copy(update={"status": "created"})
+    except (OSError, sqlite3.Error, ValueError) as error:
+        raise _backup_error() from error
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def verify_database_backup(
+    backup_path: Path, manifest_path: Path, *, database_path: Path | None = None
+) -> DatabaseBackupReport:
+    """Verify integrity and the recorded checksum without modifying a snapshot."""
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        digest = _sha256(backup_path)
+        if not isinstance(manifest, dict) or manifest.get("backup_sha256") != digest:
+            raise _backup_error()
+        _verify_sqlite_backup(backup_path)
+    except (OSError, sqlite3.Error, ValueError) as error:
+        raise _backup_error() from error
+    return DatabaseBackupReport(
+        status="existing",
+        database_path=database_path or backup_path,
+        backup_path=backup_path,
+        manifest_path=manifest_path,
+        backup_sha256=digest,
+    )
 
 
 def ensure_pre_authoring_database_backup(
@@ -102,7 +179,9 @@ def _existing_backup_report(
 
 def _current_revision(database_path: Path) -> str | None:
     try:
-        with sqlite3.connect(f"file:{database_path}?mode=ro", uri=True) as connection:
+        with closing(
+            sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
+        ) as connection:
             row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
     except sqlite3.Error:
         return None
@@ -110,13 +189,15 @@ def _current_revision(database_path: Path) -> str | None:
 
 
 def _create_sqlite_backup(source_path: Path, destination_path: Path) -> None:
-    with sqlite3.connect(f"file:{source_path}?mode=ro", uri=True) as source:
-        with sqlite3.connect(destination_path) as destination:
+    with closing(sqlite3.connect(f"{source_path.resolve().as_uri()}?mode=ro", uri=True)) as source:
+        with closing(sqlite3.connect(destination_path)) as destination:
             source.backup(destination)
 
 
 def _verify_sqlite_backup(backup_path: Path) -> None:
-    with sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True) as connection:
+    with closing(
+        sqlite3.connect(f"{backup_path.resolve().as_uri()}?mode=ro", uri=True)
+    ) as connection:
         result = connection.execute("PRAGMA quick_check").fetchone()
     if result is None or str(result[0]).lower() != "ok":
         raise _backup_error()

@@ -104,6 +104,19 @@ class ProjectRow(Base):
     deleted_at: Mapped[str | None] = mapped_column(Text)
 
 
+class ProjectDeletionReceiptRow(Base):
+    """Deletion tombstone and recoverable cleanup intent; never references deleted rows."""
+
+    __tablename__ = "project_deletion_receipts"
+
+    project_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    cleanup_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class BrandRow(Base):
     """One brand memory envelope, one-to-one with a project in phase 1."""
 
@@ -1639,6 +1652,34 @@ class AgentCanvasGuidedInteractionRow(Base):
     content_json: Mapped[str] = mapped_column(Text, nullable=False)
     allowed_actions_json: Mapped[str] = mapped_column(Text, nullable=False)
     submit_path: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BrandContinuationRow(Base):
+    """Delivery state is independent of immutable Brand choices and context."""
+
+    __tablename__ = "brand_continuations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','failed','completed','superseded')",
+            name="ck_brand_continuations_status",
+        ),
+        Index("ix_brand_continuations_due", "status", "lease_until"),
+        Index("ix_brand_continuations_workflow", "workflow_id", "current_revision"),
+    )
+
+    work_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recovery_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_token: Mapped[str | None] = mapped_column(Text)
+    lease_until: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 

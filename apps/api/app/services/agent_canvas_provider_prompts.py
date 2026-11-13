@@ -41,6 +41,8 @@ from app.schemas.agent_canvas_reference_conditioning import ReferenceConditionin
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_prompt_projection_lag import projection_consistency
 from app.services.agent_canvas_character_reference_prompt_policy import (
+    CHARACTER_IDENTITY_SCOPE,
+    CHARACTER_TURNAROUND_FRAMING,
     CharacterReferencePromptPolicy,
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
@@ -362,6 +364,9 @@ class AgentCanvasProviderPromptCompiler:
             else None
         )
         creative_prompt = node.generation_prompt or node.summary_prompt or ""
+        character_boundary = character_policy.positive_boundary if character_policy else ""
+        if CHARACTER_TURNAROUND_FRAMING in creative_prompt:
+            character_boundary = character_boundary.replace(CHARACTER_TURNAROUND_FRAMING, "")
         is_product = node.semantic_role == "product"
         product_multiview = (
             is_product
@@ -415,10 +420,12 @@ class AgentCanvasProviderPromptCompiler:
             if is_video
             else f"Visual style ({style.source}):\n{style.style_prompt}"
         )
-        if is_product and _contains_text(creative_prompt, style.style_prompt):
+        if (is_product or isinstance(structured, CharacterDesignAssetContentV2)) and _contains_text(
+            creative_prompt, style.style_prompt
+        ):
             style_clause = ""
         prompt_parts = (
-            character_policy.positive_boundary if character_policy is not None else "",
+            character_boundary,
             registration.boundary,
             AUTHORED_IMAGE_PRESENTATION if node.node_type == "image" else "",
             f"Creative prompt:\n{creative_prompt}",
@@ -821,6 +828,8 @@ def _render_product_identity(structured: DesignAssetContentV2, prompt: str) -> s
 
 
 def _render_content(structured: object, *, generation_prompt: str = "") -> str:
+    if isinstance(structured, CharacterDesignAssetContentV2):
+        return _render_character_identity(structured, generation_prompt)
     if isinstance(structured, SceneDesignBoardContentV2):
         if structured.scene_asset_kind == "main":
             primary = structured.panels[0]
@@ -902,6 +911,26 @@ def _render_content(structured: object, *, generation_prompt: str = "") -> str:
     if structured is None:
         return ""
     return json.dumps(structured.model_dump(mode="json"), sort_keys=True)
+
+
+def _render_character_identity(content: CharacterDesignAssetContentV2, prompt: str) -> str:
+    """Keep identity facets, without repeating their exact display aggregation."""
+    facets = (
+        ("Face and hair", content.face_and_hair),
+        ("Proportions", content.silhouette_and_proportions),
+        ("Wardrobe", content.wardrobe),
+        ("Accessories", content.accessories),
+    )
+    fields = [("Identity", content.subject_identity), *facets]
+    # Only the compiler's exact aggregate is redundant. Retain other summaries
+    # as authored facts; do not semantically filter or rewrite legacy prose.
+    if content.design_summary != "; ".join(value or "" for _, value in facets):
+        fields.append(("Additional design facts", content.design_summary))
+    lines: list[str] = []
+    for label, value in fields:
+        if value and not _contains_text(prompt + "\n" + "\n".join(lines), value):
+            lines.append(f"{label}: {value}")
+    return "\n".join((CHARACTER_IDENTITY_SCOPE, *lines)) if lines else ""
 
 
 def _render_storyboard_panel(panel: StoryboardPanelV2, *, generation_prompt: str) -> str:

@@ -7,7 +7,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.brand_screenplay import BrandScreenplayV1
 from app.schemas.brand_treatment_detail import TreatmentDetailV1, TreatmentSectionV1
+from app.schemas.brand_treatment_inventory import (
+    BrandTreatmentSubstep as BrandTreatmentSubstep,
+    BrandTreatmentSourceV1 as BrandTreatmentSourceV1,
+    BrandProductionElementV1 as BrandProductionElementV1,
+    BrandProductionRequirementsV1 as BrandProductionRequirementsV1,
+)
 
 BrandMode = Literal["creation", "brand"]
 BrandStage = Literal[
@@ -16,19 +23,10 @@ BrandStage = Literal[
     "skill-stack-early",
     "hypothesis",
     "adspec",
+    "creative-route",
     "skill-stack",
     "treatment",
     "production",
-]
-BrandTreatmentSubstep = Literal[
-    "hook",
-    "story",
-    "character",
-    "scene",
-    "visual",
-    "camera",
-    "editing",
-    "sound",
 ]
 BrandCapabilityId = Literal[
     "brand-strategy",
@@ -62,6 +60,7 @@ class BrandShortOptionV1(_BrandModel):
     label: str = Field(min_length=1, max_length=48)
     why: str | None = Field(default=None, max_length=240)
     detail: TreatmentDetailV1 | None = None
+    authoring_mode: Literal["detailed", "summary"] = "detailed"
 
 
 class BrandOptionCardV1(_BrandModel):
@@ -76,14 +75,22 @@ class BrandOptionCardV1(_BrandModel):
     # stays 3..3. Only persisted hypothesis/Treatment cards grow (to 12) when
     # the user asks for more options through the "Other" input.
     options: tuple[BrandShortOptionV1, ...] = Field(
-        min_length=3,
+        min_length=2,
         max_length=12,
         json_schema_extra={"maxItems": 3},
     )
 
     @model_validator(mode="after")
     def validate_option_count(self) -> "BrandOptionCardV1":
-        if self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3:
+        if self.stage == "creative-route":
+            if tuple(option.option_id for option in self.options) != ("guided", "full-script"):
+                raise ValueError(
+                    "Creative route requires the ordered guided and full-script choices."
+                )
+            return self
+        if len(self.options) < 3 or (
+            self.stage not in {"hypothesis", "treatment"} and len(self.options) != 3
+        ):
             raise ValueError(
                 "Brand slot, AdSpec, and Skill stack cards require exactly three options."
             )
@@ -215,11 +222,11 @@ class CreativeHypothesisCandidateV1(_BrandModel):
 
     candidate_id: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=1, max_length=48)
-    insight: str = Field(min_length=1, max_length=800)
-    mechanism: str = Field(min_length=1, max_length=300)
+    insight: str = Field(default="", max_length=800)
+    mechanism: str = Field(default="", max_length=300)
     hypothesis: str = Field(min_length=1, max_length=1200)
-    product_role: str = Field(min_length=1, max_length=300)
-    hook_mechanism: str = Field(min_length=1, max_length=300)
+    product_role: str = Field(default="", max_length=300)
+    hook_mechanism: str = Field(default="", max_length=300)
     why: str | None = Field(default=None, max_length=240)
 
 
@@ -235,19 +242,34 @@ class TreatmentCandidateV1(BrandShortOptionV1):
     detail: TreatmentDetailV1
 
 
+class TreatmentSummaryCandidateV1(BrandShortOptionV1):
+    """A concrete choice summary, without pre-authored sections or rationale."""
+
+    authoring_mode: Literal["summary"] = "summary"
+    why: str = Field(
+        min_length=1,
+        max_length=180,
+        description="Concrete plan summary, not a recommendation reason.",
+    )
+    detail: None = None
+
+
 class CreativeTreatmentStepOutputV1(_BrandModel):
     """Three options for one treatment sub-step."""
 
     step_key: BrandTreatmentSubstep
     question: str = Field(min_length=1, max_length=400)
-    options: tuple[TreatmentCandidateV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[TreatmentCandidateV1 | TreatmentSummaryCandidateV1, ...] = Field(
+        min_length=3, max_length=3
+    )
 
     @model_validator(mode="after")
     def complete_candidates(self) -> "CreativeTreatmentStepOutputV1":
         if len({option.option_id for option in self.options}) != len(self.options):
             raise ValueError("Treatment option IDs must be unique.")
         for option in self.options:
-            option.detail.validate_step(self.step_key)
+            if option.detail is not None:
+                option.detail.validate_step(self.step_key)
         return self
 
 
@@ -375,45 +397,6 @@ class BrandAssetReferenceV1(_BrandModel):
     input_role: str
 
 
-class BrandTreatmentSourceV1(_BrandModel):
-    step_key: BrandTreatmentSubstep
-    section_key: str = Field(min_length=1, max_length=80)
-    quote: str = Field(min_length=1, max_length=400)
-
-
-class BrandProductionElementV1(_BrandModel):
-    label: str = Field(min_length=1, max_length=80)
-    summary: str = Field(min_length=1, max_length=400)
-    sources: tuple[BrandTreatmentSourceV1, ...] = Field(min_length=1, max_length=4)
-
-
-class BrandProductionRequirementsV1(_BrandModel):
-    character_count: int | None = Field(default=None, ge=0, le=32)
-    characters: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
-    character_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
-    prop_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
-    prop_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
-    scene_presence: Literal["include", "exclude", "unspecified"] = "unspecified"
-    scenes: tuple[BrandProductionElementV1, ...] = Field(default=(), max_length=32)
-    scene_sources: tuple[BrandTreatmentSourceV1, ...] = Field(default=(), max_length=4)
-
-    @model_validator(mode="after")
-    def grounded_inventory(self) -> "BrandProductionRequirementsV1":
-        if self.character_count is not None and (
-            self.character_count != len(self.characters) or not self.character_sources
-        ):
-            raise ValueError("Resolved character count requires matching inventory and sources.")
-        if self.prop_presence != "unspecified" and not self.prop_sources:
-            raise ValueError("Resolved prop presence requires sources.")
-        if self.scene_presence != "unspecified" and not self.scene_sources:
-            raise ValueError("Resolved scene presence requires sources.")
-        if (self.scene_presence == "include" and not self.scenes) or (
-            self.scene_presence == "exclude" and self.scenes
-        ):
-            raise ValueError("Scene inventory must agree with its presence decision.")
-        return self
-
-
 class BrandTreatmentFindingV1(_BrandModel):
     code: Literal[
         "lighting_consistency",
@@ -439,6 +422,9 @@ class BrandTreatmentReviewV1(BrandTreatmentReviewOutputV1):
 
 class BrandTreatmentDocumentV1(_BrandModel):
     schema_version: Literal["2"] = "2"
+    full_script: BrandScreenplayV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     brand_profile: BrandBriefSummaryV1
     campaign_brief: BrandBriefSummaryV1
     selected_hypothesis: CreativeHypothesisCandidateV1 | None = None
@@ -454,10 +440,23 @@ class BrandTreatmentDocumentV1(_BrandModel):
     review: BrandTreatmentReviewV1 | None = None
 
 
+class BrandContinuationRequestV1(_BrandModel):
+    retry_failed: bool = Field(default=False, strict=True)
+
+
+class BrandContinuationProgressV1(_BrandModel):
+    status: Literal["queued", "running", "failed"]
+    attempt_count: int = Field(ge=0)
+    error_code: str | None = None
+    retryable: bool = False
+
+
 class BrandDecisionPanelV1(_BrandModel):
     """Read model behind the frontend decision panel."""
 
+    script_route_enabled: bool = False
     early_skills_confirmed: bool = False
+    continuation: BrandContinuationProgressV1 | None = None
 
     project_id: str
     workflow_id: str

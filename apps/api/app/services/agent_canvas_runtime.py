@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import replace
 from collections.abc import Callable
+from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -85,7 +86,7 @@ from app.services.agent_canvas_execution_state import (
     AgentCanvasExecutionStateMachine,
     safe_execution_error,
 )
-from app.services.agent_canvas_fenced_lease import NodeLeaseService
+from app.services.agent_canvas_fenced_lease import NodeLeaseGuard, NodeLeaseService
 from app.services.agent_canvas_execution_result_commit import (
     AgentCanvasExecutionResultCommitService,
 )
@@ -427,148 +428,177 @@ class DynamicCanvasScheduler:
             if not ready_wave:
                 self._finish_if_quiescent(execution_id)
                 return
-            leases = []
-            now = self._clock()
-            for node_id in ready_wave:
-                if self._run_snapshots is not None:
-                    member = next(
-                        (
-                            item
-                            for item in self._runtime.list_members(execution_id)
-                            if item.node_id == node_id
-                        ),
-                        None,
-                    )
-                    if member is not None and member.run_intent_snapshot is not None:
-                        workflow = self._workflows.get_workflow(current.workflow_id)
-                        nodes_by_id = {node.node_id: node for node in workflow.nodes}
-                        refresh_required = any(
-                            binding.source_kind == "node_output"
-                            and binding.source_asset_version_id is None
-                            and (source_node := nodes_by_id.get(binding.source_id)) is not None
-                            and source_node.status == "ready"
-                            and source_node.output_asset_version_id is not None
-                            for binding in member.run_intent_snapshot.binding_snapshots
+            with ExitStack() as renewals:
+                leases = []
+                guards: dict[str, NodeLeaseGuard] = {}
+                for node_id in ready_wave:
+                    if self._run_snapshots is not None:
+                        member = next(
+                            (
+                                item
+                                for item in self._runtime.list_members(execution_id)
+                                if item.node_id == node_id
+                            ),
+                            None,
                         )
-                        if refresh_required:
-                            self._run_snapshots.refresh_member_intent(
-                                execution_id,
-                                node_id,
-                                now=self._clock(),
+                        if member is not None and member.run_intent_snapshot is not None:
+                            workflow = self._workflows.get_workflow(current.workflow_id)
+                            nodes_by_id = {node.node_id: node for node in workflow.nodes}
+                            refresh_required = any(
+                                binding.source_kind == "node_output"
+                                and binding.source_asset_version_id is None
+                                and (source_node := nodes_by_id.get(binding.source_id)) is not None
+                                and source_node.status == "ready"
+                                and source_node.output_asset_version_id is not None
+                                for binding in member.run_intent_snapshot.binding_snapshots
                             )
-                lease = self._runtime.claim_lease(
-                    execution_id,
-                    node_id,
-                    owner_id=self._owner_id,
-                    now=now,
-                    ttl=timedelta(seconds=60),
-                )
-                if lease is None:
-                    continue
-                leases.append(lease)
-            with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
-                dependency_barrier_seen = False
-                all_deferred_refreshed_in_place = True
-                prepared_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
-                for lease in leases:
-                    try:
-                        context = self._prepare_member(
-                            current.workflow_id,
-                            lease.execution_id,
-                            lease.node_id,
-                        )
-                    except Exception as error:
-                        if self._is_dependency_barrier(error):
-                            if not self._defer_dependency_member(current.workflow_id, lease, error):
-                                all_deferred_refreshed_in_place = False
-                            dependency_barrier_seen = True
-                            continue
-                        self._fail_member(current.workflow_id, lease, error)
-                        continue
-                    prepared_contexts.append((lease, context))
-                prepared = []
-                dispatchable_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
-                for lease, context in prepared_contexts:
-                    try:
-                        self._assert_current_dependency_fence(
-                            current.workflow_id,
-                            lease.execution_id,
-                            lease.node_id,
-                            context,
-                        )
-                    except Exception as error:
-                        if self._is_dependency_barrier(error):
-                            if not self._defer_dependency_member(current.workflow_id, lease, error):
-                                all_deferred_refreshed_in_place = False
-                            dependency_barrier_seen = True
-                            continue
-                        self._fail_member(current.workflow_id, lease, error)
-                        continue
-                    self._runtime.update_member(
-                        lease.execution_id,
-                        lease.node_id,
-                        state="running",
-                        phase="running",
+                            if refresh_required:
+                                self._run_snapshots.refresh_member_intent(
+                                    execution_id,
+                                    node_id,
+                                    now=self._clock(),
+                                )
+                    lease = self._runtime.claim_lease(
+                        execution_id,
+                        node_id,
+                        owner_id=self._owner_id,
                         now=self._clock(),
+                        ttl=timedelta(seconds=60),
+                        generation_limits=self._limits,
+                        total_limit=self._total_limit,
                     )
-                    event_payload: dict[str, object] = {}
-                    if context.seedance_input_audit is not None:
-                        event_payload["seedance_input_manifest"] = (
-                            context.seedance_input_audit.model_dump(mode="json")
-                        )
-                    if context.optional_input_omissions:
-                        event_payload["optional_input_omissions"] = list(
-                            context.optional_input_omissions
-                        )
-                    if context.model_resolution is not None:
-                        event_payload["model_resolution"] = context.model_resolution.model_dump(
-                            mode="json"
-                        )
-                    if (
-                        context.compiled_prompt is not None
-                        and context.compiled_prompt.assertion_evidence is not None
-                    ):
-                        event_payload["prompt_assertion_evidence"] = (
-                            context.compiled_prompt.assertion_evidence.model_dump(mode="json")
-                        )
-                    self._workflows.set_node_runtime_state(
-                        current.workflow_id,
-                        lease.node_id,
-                        status="working",
-                        updated_at=self._clock(),
-                        execution_id=lease.execution_id,
-                        event_type="node_generation_started",
-                        event_payload=event_payload,
-                    )
-                    dispatchable_contexts.append((lease, context))
-                for lease, context in dispatchable_contexts:
-                    prepared.append(
-                        (
-                            lease,
-                            context,
-                            executor.submit(self._execute_member_guarded, lease, context),
-                        )
-                    )
-                for lease, context, future in prepared:
+                    if lease is None:
+                        continue
                     try:
-                        outcome, latest_lease = future.result()
-                        self._complete_member(
-                            current.workflow_id,
-                            latest_lease,
-                            context,
-                            outcome,
+                        guards[node_id] = renewals.enter_context(
+                            self._leases.guard(lease).keepalive()
                         )
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
-                # A dependency barrier with an in-place evidence refresh can
-                # continue immediately, while queued successors and other
-                # barriers still wait for the preparation or recovery worker.
-                if dependency_barrier_seen:
-                    if all_deferred_refreshed_in_place and in_place_refresh_waves < 3:
-                        in_place_refresh_waves += 1
                         continue
+                    leases.append(guards[node_id].lease)
+                if not leases:
                     self._finish_if_quiescent(execution_id)
                     return
+                with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
+                    dependency_barrier_seen = False
+                    all_deferred_refreshed_in_place = True
+                    prepared_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
+                    for lease in leases:
+                        try:
+                            guards[lease.node_id].assert_current()
+                            context = self._prepare_member(
+                                current.workflow_id,
+                                lease.execution_id,
+                                lease.node_id,
+                            )
+                        except Exception as error:
+                            try:
+                                if self._is_dependency_barrier(error):
+                                    if not self._defer_dependency_member(
+                                        current.workflow_id, lease, error
+                                    ):
+                                        all_deferred_refreshed_in_place = False
+                                    dependency_barrier_seen = True
+                                    continue
+                                self._fail_member(current.workflow_id, lease, error)
+                                continue
+                            finally:
+                                guards[lease.node_id].close()
+                        prepared_contexts.append((lease, context))
+                    prepared = []
+                    dispatchable_contexts: list[
+                        tuple[NodeExecutionLeaseV2, NodeExecutionContext]
+                    ] = []
+                    for lease, context in prepared_contexts:
+                        try:
+                            guards[lease.node_id].assert_current()
+                            self._assert_current_dependency_fence(
+                                current.workflow_id,
+                                lease.execution_id,
+                                lease.node_id,
+                                context,
+                            )
+                        except Exception as error:
+                            try:
+                                if self._is_dependency_barrier(error):
+                                    if not self._defer_dependency_member(
+                                        current.workflow_id, lease, error
+                                    ):
+                                        all_deferred_refreshed_in_place = False
+                                    dependency_barrier_seen = True
+                                    continue
+                                self._fail_member(current.workflow_id, lease, error)
+                                continue
+                            finally:
+                                guards[lease.node_id].close()
+                        self._runtime.update_member(
+                            lease.execution_id,
+                            lease.node_id,
+                            state="running",
+                            phase="running",
+                            now=self._clock(),
+                        )
+                        event_payload: dict[str, object] = {}
+                        if context.seedance_input_audit is not None:
+                            event_payload["seedance_input_manifest"] = (
+                                context.seedance_input_audit.model_dump(mode="json")
+                            )
+                        if context.optional_input_omissions:
+                            event_payload["optional_input_omissions"] = list(
+                                context.optional_input_omissions
+                            )
+                        if context.model_resolution is not None:
+                            event_payload["model_resolution"] = context.model_resolution.model_dump(
+                                mode="json"
+                            )
+                        if (
+                            context.compiled_prompt is not None
+                            and context.compiled_prompt.assertion_evidence is not None
+                        ):
+                            event_payload["prompt_assertion_evidence"] = (
+                                context.compiled_prompt.assertion_evidence.model_dump(mode="json")
+                            )
+                        self._workflows.set_node_runtime_state(
+                            current.workflow_id,
+                            lease.node_id,
+                            status="working",
+                            updated_at=self._clock(),
+                            execution_id=lease.execution_id,
+                            event_type="node_generation_started",
+                            event_payload=event_payload,
+                        )
+                        dispatchable_contexts.append((lease, context))
+                    for lease, context in dispatchable_contexts:
+                        prepared.append(
+                            (
+                                lease,
+                                context,
+                                executor.submit(self._execute_member_guarded, lease, context),
+                            )
+                        )
+                    for lease, context, future in prepared:
+                        try:
+                            outcome, latest_lease = future.result()
+                            self._complete_member(
+                                current.workflow_id,
+                                latest_lease,
+                                context,
+                                outcome,
+                            )
+                        except Exception as error:
+                            self._fail_member(current.workflow_id, lease, error)
+                        finally:
+                            guards[lease.node_id].close()
+                    # A dependency barrier with an in-place evidence refresh can
+                    # continue immediately, while queued successors and other
+                    # barriers still wait for the preparation or recovery worker.
+                    if dependency_barrier_seen:
+                        if all_deferred_refreshed_in_place and in_place_refresh_waves < 3:
+                            in_place_refresh_waves += 1
+                            continue
+                        self._finish_if_quiescent(execution_id)
+                        return
 
     def compute_ready_wave(self, execution_id: str) -> tuple[str, ...]:
         execution = self._runtime.get_execution(execution_id)

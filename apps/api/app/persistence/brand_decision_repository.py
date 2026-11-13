@@ -105,13 +105,17 @@ class BrandDecisionRepository:
         *,
         project_id: str,
         name: str,
+        script_route_enabled: bool = False,
     ) -> str:
         """Create the brand and its journey once per project; return brand id."""
 
         try:
             with self._database.engine.begin() as connection:
                 return self.ensure_brand_in_transaction(
-                    connection, project_id=project_id, name=name
+                    connection,
+                    project_id=project_id,
+                    name=name,
+                    script_route_enabled=script_route_enabled,
                 )
         except SQLAlchemyError as error:
             raise _persistence_error() from error
@@ -122,6 +126,7 @@ class BrandDecisionRepository:
         *,
         project_id: str,
         name: str,
+        script_route_enabled: bool = False,
     ) -> str:
         row = connection.execute(
             select(BrandRow.brand_id).where(BrandRow.project_id == project_id)
@@ -149,7 +154,35 @@ class BrandDecisionRepository:
                 updated_at=now,
             )
         )
+        if script_route_enabled:
+            self.append_decision_log_in_transaction(
+                connection,
+                BrandDecisionLogEntryV1(
+                    log_id=f"blog_{uuid4().hex}",
+                    stage="brand-memory",
+                    action="confirm",
+                    target_type="creative_route_policy",
+                    target_id="script_route_v1",
+                    detail={},
+                    created_at=datetime.fromisoformat(now),
+                ),
+                brand_id=brand_id,
+            )
         return brand_id
+
+    def script_route_enabled_in_transaction(self, connection: Connection, brand_id: str) -> bool:
+        return (
+            connection.execute(
+                select(BrandDecisionLogRow.log_id)
+                .where(
+                    BrandDecisionLogRow.brand_id == brand_id,
+                    BrandDecisionLogRow.target_type == "creative_route_policy",
+                    BrandDecisionLogRow.target_id == "script_route_v1",
+                )
+                .limit(1)
+            ).first()
+            is not None
+        )
 
     def get_brand_id_by_project(self, project_id: str) -> str | None:
         try:

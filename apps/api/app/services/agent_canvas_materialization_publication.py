@@ -540,9 +540,6 @@ class CapabilityMaterializationPublicationService:
             authority_plan = self._duration_authority.plan_sequences(
                 requirement,
                 aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
-                explicit_sequence_count=context.explicit_constraints.get(
-                    "storyboard_sequence_count"
-                ),
             )
             segments = timing_seed_segments(authority_plan)
             try:
@@ -1546,7 +1543,6 @@ class CapabilityMaterializationPublicationService:
                 authority_plan = self._duration_authority.plan_sequences(
                     requirement,
                     aspect_ratio=content.global_parameters.aspect_ratio,
-                    explicit_sequence_count=content.global_parameters.segment_count,
                 )
                 outline_context = context.model_copy(
                     update={
@@ -1571,6 +1567,15 @@ class CapabilityMaterializationPublicationService:
                     update={
                         "global_parameters": outlined.global_parameters,
                         "segments": outlined.segments,
+                        "segment_materializations": tuple(
+                            StoryboardSegmentMaterializationV3(
+                                sequence_id=segment.sequence_id,
+                                materialization_id=_sequence_materialization_id(
+                                    envelope.materialization_id, segment.sequence_id
+                                ),
+                            )
+                            for segment in outlined.segments
+                        ),
                     }
                 )
             document_id = current.document_id
@@ -1579,9 +1584,6 @@ class CapabilityMaterializationPublicationService:
             authority_plan = self._duration_authority.plan_sequences(
                 requirement,
                 aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
-                explicit_sequence_count=context.explicit_constraints.get(
-                    "storyboard_sequence_count"
-                ),
             )
             context = context.model_copy(
                 update={
@@ -2263,7 +2265,13 @@ def _first_storyboard_sequence(content: StoryboardProductionPlanContentV3):
 def _requires_storyboard_outline(content: StoryboardProductionPlanContentV3) -> bool:
     """Recognize only the bounded engine seed, never user-authored narrative."""
 
-    if content.rows or any(item.status != "pending" for item in content.segment_materializations):
+    if (
+        content.rows
+        or content.planned_nodes
+        or content.visual_anchor is not None
+        or content.excluded_media
+        or any(item.status != "pending" for item in content.segment_materializations)
+    ):
         return False
     expected = timing_seed_segments(
         StoryboardSequenceAuthorityPlanV2(

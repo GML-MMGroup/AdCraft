@@ -68,6 +68,8 @@ from app.services.agent_canvas_derivative_prompt_reuse import (
     derivative_prompt_authority_digest,
     derivative_prompt_reuse_proof,
 )
+from app.persistence.agent_canvas_conversation_repository import AgentCanvasConversationRepository
+from app.persistence.event_repository import EventRepository
 
 
 RoleBriefAuthor = Callable[..., RoleCreativeBriefV2]
@@ -100,7 +102,11 @@ class NodePromptPreparationService:
         self._role_brief_author = role_brief_author
         self._asset_resolver = asset_resolver
         self._presentation_publisher = presentation_publisher
-        self._projector = RolePromptContextProjector()
+        self._projector = RolePromptContextProjector(
+            style_snapshot_loader=lambda snapshot_id: AgentCanvasConversationRepository(
+                workflows.database, EventRepository(workflows.database)
+            ).get_creative_direction_snapshot(snapshot_id)
+        )
         self._recipes = recipe_registry or RolePromptRecipeRegistry()
         self._locked_element_guard = locked_element_guard
         self._parameter_resolver = RolePromptParameterResolver()
@@ -178,6 +184,7 @@ class NodePromptPreparationService:
             ),
         )
         role_context: RolePromptPreparationContextV2 | None = None
+        authored_presentation: EditablePromptProjectionV1 | None = None
         streamed_answer = ""
         streamed_attempt = 1
 
@@ -269,6 +276,18 @@ class NodePromptPreparationService:
                         brief = deterministic_role_brief(role_context)
                     else:
                         raise
+                else:
+                    # Complete authored text is displayable before execution evidence is ready.
+                    authored_brief = brief.root if isinstance(brief, RoleCreativeBriefV2) else brief
+                    if authored_brief.editable_prompt:
+                        authored_text = authored_brief.editable_prompt.strip()
+                        authored_presentation = EditablePromptProjectionV1(
+                            text=authored_text,
+                            locale=role_context.response_locale,
+                            source="agent_authored",
+                            revision=working.revision + 1,
+                            prompt_digest=f"sha256:{sha256(authored_text.encode('utf-8')).hexdigest()}",
+                        )
                 compilation = self._compiler.compile_with_projections(
                     brief,
                     role_context,
@@ -531,6 +550,14 @@ class NodePromptPreparationService:
             )
             failed = working.model_copy(
                 update={
+                    **(
+                        {
+                            "generation_prompt": authored_presentation.text,
+                            "prompt_presentation": authored_presentation,
+                        }
+                        if authored_presentation is not None
+                        else {}
+                    ),
                     "revision": working.revision + 1,
                     "updated_at": _now(),
                     "prompt_preparation": NodePromptPreparationV1(
@@ -594,7 +621,11 @@ class NodePromptPreparationService:
             persisted = self._persist(working, failed, context=context)
             self._append_trace(
                 persisted,
-                prompt=current.summary_prompt or current.generation_prompt or "",
+                prompt=(
+                    authored_presentation.text
+                    if authored_presentation is not None
+                    else current.summary_prompt or current.generation_prompt or ""
+                ),
                 output=None,
                 error=error_code,
                 started_at=started_at,

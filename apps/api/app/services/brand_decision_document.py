@@ -16,6 +16,8 @@ from app.schemas.brand_professional_mode import (
     BrandTreatmentDocumentV1,
     BrandTreatmentReviewV1,
 )
+from app.schemas.brand_screenplay import BrandScreenplayV1
+from app.services.brand_script_route import BrandScriptRouteService
 from app.services.brand_journey_state import TREATMENT_SUBSTEP_ORDER
 from app.services.brand_slot_schema import slots_for_stage
 from app.services.brand_asset_summary import brand_asset_references
@@ -85,11 +87,29 @@ class BrandDecisionDocumentService:
             for step in repository.get_treatment_steps_in_transaction(connection, brand_id)
         }
         steps = tuple(steps_by_key[key] for key in TREATMENT_SUBSTEP_ORDER if key in steps_by_key)
-        missing = [
-            f"treatment.{key}"
-            for key in TREATMENT_SUBSTEP_ORDER
-            if key not in steps_by_key or steps_by_key[key].structured_detail is None
-        ]
+        script_raw = connection.execute(
+            select(BrandDecisionLogRow.detail_json)
+            .where(
+                BrandDecisionLogRow.brand_id == brand_id,
+                BrandDecisionLogRow.target_type == "brand_screenplay",
+            )
+            .order_by(BrandDecisionLogRow.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        full_script = (
+            BrandScreenplayV1.model_validate(json.loads(script_raw)["script"])
+            if script_raw and BrandScriptRouteService.full_script_selected(connection, brand_id)
+            else None
+        )
+        missing = (
+            []
+            if full_script
+            else [
+                f"treatment.{key}"
+                for key in TREATMENT_SUBSTEP_ORDER
+                if key not in steps_by_key or steps_by_key[key].structured_detail is None
+            ]
+        )
         adspec = repository.get_adspec_in_transaction(connection, brand_id)
         stack = repository.get_skill_stack_in_transaction(connection, brand_id)
         for key, value in (
@@ -97,7 +117,7 @@ class BrandDecisionDocumentService:
             ("adspec", adspec),
             ("skill_stack", stack),
         ):
-            if value is None:
+            if value is None and not (key == "skill_stack" and full_script):
                 missing.append(key)
         for stage in ("brand-memory", "campaign"):
             missing.extend(
@@ -106,6 +126,7 @@ class BrandDecisionDocumentService:
                 if slot.required and slot.slot_id in profiles[stage].unresolved_fields
             )
         document = BrandTreatmentDocumentV1(
+            full_script=full_script,
             brand_profile=profiles["brand-memory"],
             campaign_brief=profiles["campaign"],
             selected_hypothesis=hypothesis,

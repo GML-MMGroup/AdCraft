@@ -369,6 +369,7 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     conversation_summary: str = Field(default="", max_length=16_384)
+    agent_identity_and_capabilities: str = Field(default="", max_length=4_096)
     recent_messages: tuple[InteractionMessageSummary, ...] = Field(
         default=(),
         max_length=32,
@@ -383,6 +384,9 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
     source_revision: int | None = Field(default=None, ge=0)
     workflow_context: WorkflowStateCapsuleV1 | None = None
     document_excerpt: AgentDocumentContextExcerptV2 | None = None
+    supporting_document_excerpts: tuple[AgentDocumentContextExcerptV2, ...] = Field(
+        default=(), max_length=1
+    )
     style_skill_consultation: StyleSkillConsultationContextV1 | None = None
 
 

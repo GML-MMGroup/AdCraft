@@ -14,8 +14,8 @@ _ROLE_NAMES: dict[str, BrandProductionRoleV1] = {
     "product_design": "product",
     "product_main": "product",
     "product_multiview": "product",
-    "prop_design": "product",
-    "prop": "product",
+    "prop_design": "prop",
+    "prop": "prop",
     "product": "product",
     "character_design": "character",
     "character_main": "character",
@@ -37,6 +37,7 @@ _ROLE_NAMES: dict[str, BrandProductionRoleV1] = {
 }
 _ROLE_STEPS = {
     "product": frozenset({"hook", "story", "visual", "camera"}),
+    "prop": frozenset({"hook", "story", "scene", "visual", "camera"}),
     "character": frozenset({"hook", "story", "character", "visual", "camera"}),
     "scene": frozenset({"hook", "story", "scene", "visual", "camera"}),
     "bgm": frozenset({"hook", "story", "editing", "sound"}),
@@ -51,6 +52,7 @@ _ROLE_STEPS = {
 _SHARED_SECTIONS = frozenset({"boundaries", "prohibited_shots", "product_role", "product_shots"})
 _COMMON_FIELDS = frozenset(
     {
+        "full_script",
         "brand_profile",
         "campaign_brief",
         "selected_hypothesis",

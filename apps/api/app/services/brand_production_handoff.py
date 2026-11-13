@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from math import ceil
 import re
 import unicodedata
 
@@ -47,16 +46,12 @@ from app.schemas.agent_canvas_requirements import (
     RequirementElementPresencePatchV1,
     RequirementDirectivePatchV1,
     RequirementPatchV1,
-    StoryboardSequenceCountControlPatchV1,
-    VideoSegmentCountControlPatchV1,
 )
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
-from app.services.agent_canvas_storyboard_sequence_windows import (
-    StoryboardSequenceWindowPlanner,
-)
 from app.services.workflow_v2 import WorkflowV2Service
 from app.services.brand_question_context import BrandQuestionContextService
+from app.schemas.brand_treatment_inventory import BrandProductionRequirementsV1
 
 
 @dataclass(frozen=True)
@@ -68,10 +63,8 @@ class BrandHandoffResult:
 def reviewed_inventory_patch(
     document: BrandTreatmentDocumentV1,
 ) -> tuple[RequirementPatchV1, tuple[RequirementElementPresencePatchV1, ...]]:
-    """Project only reviewed typed facts; unknown historical inventory stays unresolved."""
-    if document.review is None:
-        return RequirementPatchV1(), ()
-    inventory = document.review.production_requirements
+    """Project user-approved typed facts; unknown historical inventory stays unresolved."""
+    inventory = confirmed_production_inventory(document)
     controls = []
     elements = []
     occurrences = None
@@ -115,9 +108,93 @@ def reviewed_inventory_patch(
                 source_quote=inventory.prop_sources[0].quote,
             )
         )
+    if document.full_script is not None:
+        music = document.full_script.music_requirement
+        if music.presence != "unspecified":
+            elements.append(
+                RequirementElementPresencePatchV1(
+                    element_kind="audio",
+                    presence=music.presence,
+                    source_quote=music.source_quote,
+                )
+            )
+    for step in document.treatment_steps:
+        detail = step.structured_detail
+        if step.step_key != "sound" or detail is None or detail.music_requirement is None:
+            continue
+        detail.validate_step("sound")
+        music = detail.music_requirement
+        if music.presence != "unspecified":
+            elements.append(
+                RequirementElementPresencePatchV1(
+                    element_kind="audio",
+                    presence=music.presence,
+                    source_quote=music.source_quote,
+                )
+            )
     return RequirementPatchV1(
         controls_to_set=tuple(controls), character_occurrences_to_set=occurrences
     ), tuple(elements)
+
+
+def confirmed_production_inventory(
+    document: BrandTreatmentDocumentV1,
+) -> BrandProductionRequirementsV1:
+    """Combine scoped authoring metadata, with matched historical assessment compatibility."""
+    if document.full_script is not None:
+        return _resolve_prop_inventory(document.full_script.production_requirements)
+    inventory = (
+        document.review.production_requirements
+        if document.review
+        else BrandProductionRequirementsV1()
+    )
+    fields_by_step = {
+        "character": ("character_count", "characters", "character_sources"),
+        "scene": (
+            "scene_presence",
+            "scenes",
+            "scene_sources",
+            "prop_presence",
+            "prop_sources",
+            "objects",
+        ),
+    }
+    for step in document.treatment_steps:
+        detail = step.structured_detail
+        if detail is None or detail.production_requirements is None:
+            continue
+        detail.validate_step(step.step_key)
+        authored = detail.production_requirements
+        inventory = inventory.model_copy(
+            update={key: getattr(authored, key) for key in fields_by_step[step.step_key]}
+        )
+    return _resolve_prop_inventory(inventory)
+
+
+def _resolve_prop_inventory(
+    inventory: BrandProductionRequirementsV1,
+) -> BrandProductionRequirementsV1:
+    """Classified ownership outranks the legacy presence flag without rewriting the document."""
+    if inventory.objects is None:
+        return inventory
+    props = inventory.dedicated_props()
+    sources = tuple(source for item in props for source in item.sources)[:4]
+    if not sources:
+        sources = (
+            inventory.prop_sources
+            or tuple(source for item in inventory.objects for source in item.sources)[:4]
+            or inventory.scene_sources
+            or inventory.character_sources
+        )
+    # Unresolved historical fragments without evidence retain their original decision.
+    if not sources:
+        return inventory
+    return inventory.model_copy(
+        update={
+            "prop_presence": "include" if props else "exclude",
+            "prop_sources": sources,
+        }
+    )
 
 
 class BrandProductionHandoffService:
@@ -292,22 +369,11 @@ class BrandProductionHandoffService:
         )
         current_controls = {item.control: item.value for item in current.ledger.hard_controls}
         extracted_duration = _extract_duration_seconds(duration_text)
-        duration_value = (
-            extracted_duration
-            if extracted_duration is not None
-            else int(current_controls.get("duration_seconds", 30))
-        )
         extracted_aspect = _extract_aspect_ratio(aspect_text)
-        # Brand Professional Mode never declares a Storyboard sequence or video
-        # segment count, so the handoff projects the platform duration policy
-        # instead of freezing a count the duration authority would reject.
-        segment_count = _media_segment_count(duration_value)
+        # Segment counts belong to narrative planning unless explicitly requested.
         controls_to_set = [
             AudioModeControlPatchV1(value="bgm_only", source_quote="BGM audio"),
             ProductCountControlPatchV1(value=1, source_quote="one product"),
-            StoryboardSequenceCountControlPatchV1(
-                value=segment_count, source_quote=duration_text or "30 seconds"
-            ),
         ]
         if extracted_duration is not None and extracted_duration != current_controls.get(
             "duration_seconds"
@@ -322,12 +388,6 @@ class BrandProductionHandoffService:
             controls_to_set.insert(
                 1,
                 AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
-            )
-        if current_controls.get("video_segment_count") != segment_count:
-            controls_to_set.append(
-                VideoSegmentCountControlPatchV1(
-                    value=segment_count, source_quote=duration_text or "30 seconds"
-                )
             )
         patch = RequirementPatchV1(
             controls_to_set=tuple(controls_to_set),
@@ -506,29 +566,40 @@ class BrandProductionHandoffService:
         aspect_text = slots["campaign_aspect_ratio"]
         controls = {control.control: control.value for control in current.ledger.hard_controls}
         extracted_duration = _extract_duration_seconds(duration_text)
-        duration = (
-            extracted_duration
-            if extracted_duration is not None
-            else int(controls.get("duration_seconds", 30))
-        )
+        timing = document.full_script.timing if document.full_script is not None else None
+        if timing is not None:
+            extracted_duration = timing.total_duration_seconds
+            duration_text = timing.source_quote
         extracted_aspect = _extract_aspect_ratio(aspect_text)
-        segments = _media_segment_count(duration)
         audio_mode = controls.get("audio_mode", "bgm_only")
         product_count = controls.get("product_count", 1)
         source = f"Reviewed Brand document {document.content_digest}; {duration_text}; {aspect_text}; audio {audio_mode}; product count {product_count}; storyboard; video."
         inventory_patch, inventory_elements = reviewed_inventory_patch(document)
+        audio_element = next(
+            (item for item in inventory_elements if item.element_kind == "audio"),
+            RequirementElementPresencePatchV1(
+                element_kind="audio",
+                presence="exclude" if audio_mode == "none" else "include",
+                source_quote=f"audio {audio_mode}",
+            ),
+        )
+        if audio_mode == "none":
+            audio_element = RequirementElementPresencePatchV1(
+                element_kind="audio", presence="exclude", source_quote="audio none"
+            )
         source += "\n" + "\n".join(
             section.text
             for step in document.treatment_steps
             if step.structured_detail
             for section in step.structured_detail.sections
         )
+        if document.full_script is not None:
+            source += "\n" + document.full_script.render()
         controls_to_set = [
             AudioModeControlPatchV1(value=audio_mode, source_quote=f"audio {audio_mode}"),
             ProductCountControlPatchV1(
                 value=product_count, source_quote=f"product count {product_count}"
             ),
-            StoryboardSequenceCountControlPatchV1(value=segments, source_quote=duration_text),
         ]
         if extracted_duration is not None and extracted_duration != controls.get(
             "duration_seconds"
@@ -541,10 +612,6 @@ class BrandProductionHandoffService:
             controls_to_set.insert(
                 1,
                 AspectRatioControlPatchV1(value=extracted_aspect, source_quote=aspect_text),
-            )
-        if controls.get("video_segment_count") != segments:
-            controls_to_set.append(
-                VideoSegmentCountControlPatchV1(value=segments, source_quote=duration_text)
             )
         requirements.apply_user_turn_patch_in_transaction(
             connection,
@@ -576,12 +643,8 @@ class BrandProductionHandoffService:
                 RequirementElementPresencePatchV1(
                     element_kind="video", presence="include", source_quote="video"
                 ),
-                RequirementElementPresencePatchV1(
-                    element_kind="audio",
-                    presence="exclude" if audio_mode == "none" else "include",
-                    source_quote=f"audio {audio_mode}",
-                ),
-                *inventory_elements,
+                audio_element,
+                *(item for item in inventory_elements if item.element_kind != "audio"),
             ),
         )
 
@@ -681,15 +744,6 @@ def _extract_duration_seconds(text: str) -> int | None:
     if len(values) != 1:
         return None
     return max(1, min(values.pop(), 300))
-
-
-def _media_segment_count(duration_seconds: int) -> int:
-    """Split a duration into the platform's bounded media segment count."""
-
-    return max(
-        1,
-        ceil(duration_seconds / StoryboardSequenceWindowPlanner.MAX_SEQUENCE_DURATION_SECONDS),
-    )
 
 
 def _extract_aspect_ratio(value: str) -> str | None:

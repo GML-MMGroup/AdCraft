@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import lru_cache
+from importlib.resources import files
+from types import MappingProxyType
 from typing import Literal, cast, get_args
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -32,6 +35,29 @@ PresentationMessageKey = Literal[
 PRESENTATION_MESSAGE_KEYS: frozenset[str] = frozenset(get_args(PresentationMessageKey))
 _MESSAGE_ARGS_ADAPTER = TypeAdapter(dict[str, JsonValue])
 _TRUSTED_STORED_KEY_PREFIXES = ("planning:", "receipt:")
+
+
+def capability_failure_message(code: str, *, retryable: bool, response_locale: str) -> str:
+    """Explain a failed creative step using the stored product response locale."""
+
+    primary_language = _safe_locale(response_locale).split("-", 1)[0].lower()
+    language = "zh" if primary_language == "zh" else "en"
+    messages = _capability_failure_messages(language)
+    return messages["template"].format(
+        explanation=messages.get(code, messages["unknown"]),
+        recovery=messages["retry" if retryable else "review"],
+    )
+
+
+@lru_cache(maxsize=2)
+def _capability_failure_messages(language: str) -> Mapping[str, str]:
+    """Load product translations separately from system text and business rules."""
+
+    source = files("app").joinpath("localization/agent_canvas_failure_messages.json")
+    catalog = TypeAdapter(dict[str, dict[str, str]]).validate_json(
+        source.read_text(encoding="utf-8")
+    )
+    return MappingProxyType(catalog[language])
 
 
 class AgentCanvasTimelinePresentation:

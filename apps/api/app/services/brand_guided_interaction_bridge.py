@@ -301,7 +301,14 @@ class BrandGuidedInteractionBridge:
     def claim_card_generation(
         self,
         workflow_id: str,
-        stage: Literal["hypothesis", "adspec", "skill-stack", "skill-stack-early", "treatment"],
+        stage: Literal[
+            "hypothesis",
+            "adspec",
+            "creative-route",
+            "skill-stack",
+            "skill-stack-early",
+            "treatment",
+        ],
         stage_revision: int,
         *,
         generation_scope: str | None = None,
@@ -443,13 +450,15 @@ class BrandGuidedInteractionBridge:
                     .mappings()
                     .one_or_none()
                 )
-            if row is None or int(row["lease_until"]) <= int(time.time()):
+            if row is None:
                 return None
             if str(row["status"]) == "published" and row["form_json"]:
                 try:
                     return BrandOptionCardV1.model_validate_json(str(row["form_json"]))
                 except ValueError:
                     return None
+            if int(row["lease_until"]) <= int(time.time()):
+                return None
             time.sleep(0.05)
         return None
 
@@ -536,7 +545,11 @@ class BrandGuidedInteractionBridge:
         now = datetime.now(timezone.utc).astimezone(timezone.utc)
         now_iso = now.isoformat()
         title = card.question[:160]
-        context = _brand_interaction_context(card.stage, response_locale)
+        context = (
+            card.question
+            if card.stage == "creative-route"
+            else _brand_interaction_context(card.stage, response_locale)
+        )
         options = tuple(
             GuidedChoiceOptionV1(
                 option_id=option.option_id,
@@ -556,6 +569,7 @@ class BrandGuidedInteractionBridge:
             action_id=card.card_id[:160],
             capability_id=capability_id[:80],
             options=options,
+            allow_custom=card.stage != "creative-route",
             allow_exclusion=False,
         )
         awaiting_id = f"awaiting_{sha256(interaction_id.encode()).hexdigest()[:32]}"
@@ -621,7 +635,9 @@ class BrandGuidedInteractionBridge:
                 "title": title,
                 "context": context,
                 "content_json": content.model_dump_json(),
-                "allowed_actions_json": json.dumps(["select", "custom"]),
+                "allowed_actions_json": json.dumps(
+                    ["select"] if card.stage == "creative-route" else ["select", "custom"]
+                ),
                 "submit_path": (
                     f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
                 ),
@@ -831,7 +847,11 @@ class BrandGuidedInteractionBridge:
         )
 
     def close_current_interaction(
-        self, workflow_id: str, *, status: Literal["submitted", "superseded"] = "submitted"
+        self,
+        workflow_id: str,
+        *,
+        status: Literal["submitted", "superseded"] = "submitted",
+        interaction_id: str | None = None,
     ) -> None:
         """Close the open interaction and awaiting for one workflow."""
 
@@ -842,12 +862,22 @@ class BrandGuidedInteractionBridge:
                 .where(
                     AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
                     AgentCanvasGuidedInteractionRow.status == "open",
+                    *(
+                        [AgentCanvasGuidedInteractionRow.interaction_id == interaction_id]
+                        if interaction_id
+                        else []
+                    ),
                 )
                 .values(status=status, updated_at=now_iso)
             )
             connection.execute(
                 AgentCanvasGuidanceAwaitingRow.__table__.delete().where(
-                    AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                    AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                    *(
+                        [AgentCanvasGuidanceAwaitingRow.interaction_id == interaction_id]
+                        if interaction_id
+                        else []
+                    ),
                 )
             )
 

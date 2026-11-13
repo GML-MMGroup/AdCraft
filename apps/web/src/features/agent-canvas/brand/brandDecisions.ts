@@ -102,14 +102,12 @@ export interface BrandTreatmentStepResultV1 {
 }
 
 export interface BrandDecisionPanelV1 {
-  script_route_enabled?: boolean;
   continuation?: {
     status: "queued" | "running" | "failed";
     attempt_count: number;
     error_code: string | null;
     retryable: boolean;
   } | null;
-  early_skills_confirmed?: boolean;
   brand_profile?: BrandBriefSummary | null;
   campaign_brief?: BrandBriefSummary | null;
   treatment_document?: BrandTreatmentDocument | null;

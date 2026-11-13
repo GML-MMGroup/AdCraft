@@ -32,6 +32,7 @@ def append_brand_answer_in_transaction(
         ("select", "option"),
         ("select", "hypothesis"),
         ("select", "treatment_step"),
+        ("select", "treatment_expansion"),
         ("confirm", "adspec"),
         ("edit", "adspec"),
         ("confirm", "skill_stack"),
@@ -60,7 +61,9 @@ def append_brand_answer_in_transaction(
     if entry.target_type == "skill_stack" and not card_id:
         card_id = entry.target_id
     option_id = (
-        entry.detail.get("option_id") if entry.target_type == "treatment_step" else entry.target_id
+        entry.detail.get("option_id")
+        if entry.target_type in {"treatment_step", "treatment_expansion"}
+        else entry.target_id
     )
     interactions = (
         connection.execute(

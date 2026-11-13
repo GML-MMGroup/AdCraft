@@ -209,7 +209,8 @@ export function promptInputForRequest(
     Object.entries(request.context).filter(([key]) => key !== "contract_schema"),
   );
   return [
-    `User request:\n${primaryInput}`,
+    `${projection.sourceLabel?.(context) ?? "Operation context"}:\n${primaryInput}`,
+    "Source attribution: upstream creative directions, operation objectives, summaries and reference descriptions may be Agent-authored. They are not verbatim user instructions. Attribute a requirement to the user only when its recorded user source supports that attribution. Keep each constraint scoped to its source deliverable; image lettering restrictions do not control Video subtitles.",
     `Validated typed operation context:\n${JSON.stringify(typedContext)}`,
   ].join("\n\n");
 }

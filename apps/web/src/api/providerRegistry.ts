@@ -104,6 +104,7 @@ export interface ProviderModelSummaryV1 {
   accepted_input_modes?: string[];
   parameter_schema_id?: string | null;
   parameter_descriptors?: ModelParameterDescriptorV1[];
+  parameter_legal_combinations?: Record<string, unknown>[];
   image_resolution_capabilities?: ImageResolutionCapabilitiesV1 | null;
   reference_policy?: ReferenceInputPolicyV1 | null;
 }

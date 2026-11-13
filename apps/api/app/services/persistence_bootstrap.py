@@ -5,13 +5,16 @@ from __future__ import annotations
 from filelock import FileLock, Timeout
 
 from app.core.config import Settings
-from app.persistence.backup import ensure_pre_authoring_database_backup
+from app.persistence.backup import (
+    ensure_pre_authoring_database_backup,
+    ensure_schema_upgrade_backup,
+)
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database, resolve_v2_database_path
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.provider_model_repository import ProviderModelRepository
-from app.persistence.schema import upgrade_v2_schema
+from app.persistence.schema import upgrade_v2_schema, v2_schema_head_revision
 from app.schemas.v2_persistence import PersistenceBootstrapState
 from app.services.v2_event_import import V2EventImportService
 from app.services.v2_asset_metadata_import import V2AssetMetadataImportService
@@ -58,6 +61,13 @@ class PersistenceBootstrapService:
                 self._settings.media_data_dir,
                 resolve_v2_database_path(self._settings.media_data_dir),
             )
+            upgrade_backup = ensure_schema_upgrade_backup(
+                self._settings.media_data_dir,
+                resolve_v2_database_path(self._settings.media_data_dir),
+                v2_schema_head_revision(),
+            )
+            if upgrade_backup.status == "created":
+                database_backup = upgrade_backup
             schema_revision = upgrade_v2_schema(database)
             event_repository = EventRepository(database)
             project_catalog_repair_report = V2ProjectCatalogRepairService(

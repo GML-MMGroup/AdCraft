@@ -4280,7 +4280,7 @@
           "default": null
         },
         "user_input": {
-          "maxLength": 65536,
+          "maxLength": 4194304,
           "minLength": 1,
           "title": "User Input",
           "type": "string"
@@ -4346,7 +4346,7 @@
           "type": "integer"
         },
         "max_input_bytes": {
-          "default": 131072,
+          "default": 4194304,
           "maximum": 4194304,
           "minimum": 1,
           "title": "Max Input Bytes",
@@ -7961,7 +7961,7 @@
             "$ref": "#/$defs/BrandShortOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 2,
           "title": "Options",
           "type": "array"
         },
@@ -7976,6 +7976,7 @@
             "adspec",
             "brand-memory",
             "campaign",
+            "creative-route",
             "hypothesis",
             "production",
             "skill-stack",
@@ -8054,6 +8055,17 @@
           "title": "Execution Limitations",
           "type": "array"
         },
+        "full_script": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandScreenplayV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "missing_sections": {
           "default": [],
           "items": {
@@ -8093,6 +8105,7 @@
             "character",
             "general",
             "product",
+            "prop",
             "scene",
             "script",
             "storyboard",
@@ -8180,6 +8193,55 @@
       "title": "BrandProductionElementV1",
       "type": "object"
     },
+    "BrandProductionObjectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "ownership": {
+          "enum": [
+            "product",
+            "set_dressing",
+            "supporting_prop"
+          ],
+          "title": "Ownership",
+          "type": "string"
+        },
+        "requires_separate_reference": {
+          "description": "Whether this supporting prop needs its own reusable design reference.",
+          "title": "Requires Separate Reference",
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/BrandTreatmentSourceV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "ownership",
+        "requires_separate_reference",
+        "sources",
+        "summary"
+      ],
+      "title": "BrandProductionObjectV1",
+      "type": "object"
+    },
     "BrandProductionRequirementsV1": {
       "additionalProperties": false,
       "properties": {
@@ -8214,6 +8276,23 @@
           "maxItems": 32,
           "title": "Characters",
           "type": "array"
+        },
+        "objects": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/BrandProductionObjectV1"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classified physical objects; null is historical unclassified metadata, [] declares no objects.",
+          "title": "Objects"
         },
         "prop_presence": {
           "default": "unspecified",
@@ -8356,6 +8435,71 @@
         "reason"
       ],
       "title": "BrandQuestionImpactV1",
+      "type": "object"
+    },
+    "BrandScreenplayTimingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "total_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Total Duration Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_quote",
+        "total_duration_seconds"
+      ],
+      "title": "BrandScreenplayTimingV1",
+      "type": "object"
+    },
+    "BrandScreenplayV1": {
+      "additionalProperties": false,
+      "properties": {
+        "music_requirement": {
+          "$ref": "#/$defs/TreatmentMusicRequirementV1"
+        },
+        "production_requirements": {
+          "$ref": "#/$defs/BrandProductionRequirementsV1"
+        },
+        "screenplay": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "title": "Screenplay",
+          "type": "string"
+        },
+        "timing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandScreenplayTimingV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "music_requirement",
+        "production_requirements",
+        "screenplay",
+        "title"
+      ],
+      "title": "BrandScreenplayV1",
       "type": "object"
     },
     "BrandSelectedCreativeMethodV1": {
@@ -8522,6 +8666,15 @@
       "additionalProperties": false,
       "description": "One short option label with an optional collapsed explanation.",
       "properties": {
+        "authoring_mode": {
+          "default": "detailed",
+          "enum": [
+            "detailed",
+            "summary"
+          ],
+          "title": "Authoring Mode",
+          "type": "string"
+        },
         "detail": {
           "anyOf": [
             {
@@ -8712,6 +8865,7 @@
             "adspec",
             "brand-memory",
             "campaign",
+            "creative-route",
             "hypothesis",
             "production",
             "skill-stack",
@@ -8870,6 +9024,17 @@
           },
           "title": "Execution Limitations",
           "type": "array"
+        },
+        "full_script": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandScreenplayV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "missing_sections": {
           "default": [],
@@ -10015,6 +10180,11 @@
         },
         "reference_plan": {
           "$ref": "#/$defs/CapabilityReferencePlanV1"
+        },
+        "replace_source_options": {
+          "default": false,
+          "title": "Replace Source Options",
+          "type": "boolean"
         },
         "requirement_digest": {
           "pattern": "^[a-f0-9]{64}$",
@@ -14628,8 +14798,8 @@
           "type": "string"
         },
         "hook_mechanism": {
+          "default": "",
           "maxLength": 300,
-          "minLength": 1,
           "title": "Hook Mechanism",
           "type": "string"
         },
@@ -14640,8 +14810,8 @@
           "type": "string"
         },
         "insight": {
+          "default": "",
           "maxLength": 800,
-          "minLength": 1,
           "title": "Insight",
           "type": "string"
         },
@@ -14652,14 +14822,14 @@
           "type": "string"
         },
         "mechanism": {
+          "default": "",
           "maxLength": 300,
-          "minLength": 1,
           "title": "Mechanism",
           "type": "string"
         },
         "product_role": {
+          "default": "",
           "maxLength": 300,
-          "minLength": 1,
           "title": "Product Role",
           "type": "string"
         },
@@ -14679,12 +14849,8 @@
       },
       "required": [
         "candidate_id",
-        "hook_mechanism",
         "hypothesis",
-        "insight",
-        "label",
-        "mechanism",
-        "product_role"
+        "label"
       ],
       "title": "CreativeHypothesisCandidateV1",
       "type": "object"
@@ -14842,6 +15008,19 @@
       "title": "CreativeStrategyOutputV1",
       "type": "object"
     },
+    "CreativeTreatmentDetailOutputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "$ref": "#/$defs/SelectedTreatmentStepV1"
+        }
+      },
+      "required": [
+        "step"
+      ],
+      "title": "CreativeTreatmentDetailOutputV1",
+      "type": "object"
+    },
     "CreativeTreatmentOutputV1": {
       "additionalProperties": false,
       "description": "Structured output of the creative-treatment capability.",
@@ -14862,7 +15041,14 @@
       "properties": {
         "options": {
           "items": {
-            "$ref": "#/$defs/TreatmentCandidateV1"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TreatmentCandidateV1"
+              },
+              {
+                "$ref": "#/$defs/TreatmentSummaryCandidateV1"
+              }
+            ]
           },
           "maxItems": 3,
           "minItems": 3,
@@ -16756,6 +16942,16 @@
           "title": "Assistant Message",
           "type": "string"
         },
+        "context_focus": {
+          "default": "conversation",
+          "description": "Use conversation for recalling or explaining prior messages and general chat; use project when answering requires current advertisement records.",
+          "enum": [
+            "conversation",
+            "project"
+          ],
+          "title": "Context Focus",
+          "type": "string"
+        },
         "intent_kind": {
           "const": "freeform_reply",
           "title": "Intent Kind",
@@ -18006,7 +18202,6 @@
           "type": "string"
         },
         "allow_custom": {
-          "const": true,
           "default": true,
           "title": "Allow Custom",
           "type": "boolean"
@@ -18087,7 +18282,7 @@
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
           "maxItems": 12,
-          "minItems": 3,
+          "minItems": 2,
           "title": "Options",
           "type": "array"
         },
@@ -21762,6 +21957,16 @@
     "JourneyPolicyContextV2": {
       "additionalProperties": false,
       "properties": {
+        "bgm_presence": {
+          "default": "unspecified",
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Bgm Presence",
+          "type": "string"
+        },
         "clarification_required": {
           "default": false,
           "title": "Clarification Required",
@@ -27827,6 +28032,15 @@
           "title": "Parameter Descriptors",
           "type": "array"
         },
+        "parameter_legal_combinations": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 256,
+          "title": "Parameter Legal Combinations",
+          "type": "array"
+        },
         "parameter_schema_id": {
           "anyOf": [
             {
@@ -30821,6 +31035,19 @@
           "default": null,
           "title": "Occurrence Id"
         },
+        "prior_editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Editable Prompt"
+        },
         "product_identity_projection": {
           "anyOf": [
             {
@@ -32451,6 +32678,47 @@
       "title": "SelectedProposalCardV2",
       "type": "object"
     },
+    "SelectedTreatmentStepV1": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/TreatmentCandidateV1"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "step_key": {
+          "enum": [
+            "camera",
+            "character",
+            "editing",
+            "hook",
+            "scene",
+            "sound",
+            "story",
+            "visual"
+          ],
+          "title": "Step Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "options",
+        "question",
+        "step_key"
+      ],
+      "title": "SelectedTreatmentStepV1",
+      "type": "object"
+    },
     "SetAspectRatioDecisionEffectV1": {
       "additionalProperties": false,
       "properties": {
@@ -33238,6 +33506,56 @@
         "value"
       ],
       "title": "SpokenLanguageControlV1",
+      "type": "object"
+    },
+    "StoryDirectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "hypothesis": {
+          "description": "One sentence telling the complete story, including the turn or ending.",
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "hypothesis",
+        "label"
+      ],
+      "title": "StoryDirectionV1",
+      "type": "object"
+    },
+    "StoryDirectionsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/StoryDirectionV1"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "StoryDirectionsV1",
       "type": "object"
     },
     "StoryboardExcludedMediaV3": {
@@ -35410,6 +35728,15 @@
     "TreatmentCandidateV1": {
       "additionalProperties": false,
       "properties": {
+        "authoring_mode": {
+          "default": "detailed",
+          "enum": [
+            "detailed",
+            "summary"
+          ],
+          "title": "Authoring Mode",
+          "type": "string"
+        },
         "detail": {
           "$ref": "#/$defs/TreatmentDetailV1"
         },
@@ -35450,6 +35777,28 @@
     "TreatmentDetailV1": {
       "additionalProperties": false,
       "properties": {
+        "music_requirement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TreatmentMusicRequirementV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "production_requirements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandProductionRequirementsV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "sections": {
           "items": {
             "$ref": "#/$defs/TreatmentSectionV1"
@@ -35464,6 +35813,33 @@
         "sections"
       ],
       "title": "TreatmentDetailV1",
+      "type": "object"
+    },
+    "TreatmentMusicRequirementV1": {
+      "additionalProperties": false,
+      "description": "Music intent copied from the selected sound text, independent of speech.",
+      "properties": {
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "presence",
+        "source_quote"
+      ],
+      "title": "TreatmentMusicRequirementV1",
       "type": "object"
     },
     "TreatmentSectionV1": {
@@ -35571,6 +35947,49 @@
         "step_key"
       ],
       "title": "TreatmentStepResultV1",
+      "type": "object"
+    },
+    "TreatmentSummaryCandidateV1": {
+      "additionalProperties": false,
+      "description": "A concrete choice summary, without pre-authored sections or rationale.",
+      "properties": {
+        "authoring_mode": {
+          "const": "summary",
+          "default": "summary",
+          "title": "Authoring Mode",
+          "type": "string"
+        },
+        "detail": {
+          "default": null,
+          "title": "Detail",
+          "type": "null"
+        },
+        "label": {
+          "maxLength": 48,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "why": {
+          "description": "Concrete plan summary, not a recommendation reason.",
+          "maxLength": 180,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "option_id",
+        "why"
+      ],
+      "title": "TreatmentSummaryCandidateV1",
       "type": "object"
     },
     "TurnIntentContextV2": {
@@ -38646,6 +39065,12 @@
     "WorkflowConversationAgentContext": {
       "additionalProperties": false,
       "properties": {
+        "agent_identity_and_capabilities": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Agent Identity And Capabilities",
+          "type": "string"
+        },
         "awaiting_action": {
           "anyOf": [
             {
@@ -38761,6 +39186,15 @@
             }
           ],
           "default": null
+        },
+        "supporting_document_excerpts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentDocumentContextExcerptV2"
+          },
+          "maxItems": 1,
+          "title": "Supporting Document Excerpts",
+          "type": "array"
         },
         "user_input": {
           "maxLength": 65536,
@@ -40051,6 +40485,8 @@
     "RolePromptPreparationContextV2"
   ],
   "x-agent-structured-contracts": [
+    "CreativeTreatmentDetailOutputV1",
+    "StoryDirectionsV1",
     "SpecialistDraft",
     "AgentActionEnvelopeV2",
     "AgentCanvasScriptOutput",
@@ -40109,6 +40545,7 @@
     "BrandStrategyOutputV1",
     "CreativeStrategyOutputV1",
     "CreativeTreatmentOutputV1",
+    "BrandScreenplayV1",
     "BrandTreatmentReviewOutputV1",
     "GuidedScriptCheckpointDraftV1",
     "BrandSkillRecommendationsV1",
@@ -40625,6 +41062,18 @@
       "max_skill_context_bytes": 8192,
       "operation": "brand_treatment_review",
       "result_contract_name": "BrandTreatmentReviewOutputV1",
+      "style_projection_role": null,
+      "validation_profile": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": "brand_agent_full_script",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "brand_full_script",
+      "result_contract_name": "BrandScreenplayV1",
       "style_projection_role": null,
       "validation_profile": null
     },

@@ -43,6 +43,7 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
     publish_expert_activity_terminal_in_transaction,
 )
 from app.persistence.agent_canvas_guided_interaction_repository import (
+    _is_duration_questionnaire,
     _awaiting_for_workflow,
     current_guided_interaction_row,
     project_guided_interaction,
@@ -137,7 +138,10 @@ from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
-from app.services.agent_canvas_user_presentation import build_presentation_metadata
+from app.services.agent_canvas_user_presentation import (
+    build_presentation_metadata,
+    capability_failure_message,
+)
 from app.services.agent_canvas_retry_fingerprint import journey_fingerprint_from_rows
 from app.services.agent_canvas_production_journey import (
     CURRENT_GUIDED_JOURNEY_POLICY_REVISION,
@@ -352,6 +356,42 @@ class AgentCanvasConversationRepository:
                 ),
             )
         return True
+
+    def publish_brand_screenplay_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        content: str,
+        digest: str,
+    ) -> None:
+        """Publish the persisted screenplay once before production admission."""
+        now = _now()
+        entry_id = f"msg_brand_script_{workflow_id}_{digest}"
+        if (
+            connection.execute(
+                select(AgentCanvasChatEntryRow.entry_id).where(
+                    AgentCanvasChatEntryRow.entry_id == entry_id,
+                )
+            ).first()
+            is not None
+        ):
+            return
+        conversation_id = _ensure_conversation(connection, workflow_id, now)
+        _publish_assistant_message_in_transaction(
+            connection,
+            events=self._events,
+            turn={
+                "turn_id": f"brand_script_{digest}",
+                "workflow_id": workflow_id,
+                "conversation_id": conversation_id,
+            },
+            assistant_message=content,
+            now=now,
+            entry_id=entry_id,
+            metadata={"content_kind": "brand_screenplay", "content_digest": digest},
+            publication_key=f"brand-screenplay:{workflow_id}:{digest}",
+        )
 
     def record_brand_interaction_publication_failure(
         self,
@@ -713,10 +753,17 @@ class AgentCanvasConversationRepository:
                 "journey_evidence_invalid",
                 "Clarification transition identity is invalid.",
             )
-        if journey.stage not in {"intake", "character"} or journey.stage_status != "waiting_user":
+        duration_clarification = (
+            questionnaire is not None
+            and _is_duration_questionnaire(questionnaire)
+            and checkpoint_id == f"duration:{turn_id}"
+        )
+        if (
+            journey.stage not in {"intake", "character"} and not duration_clarification
+        ) or journey.stage_status != "waiting_user":
             raise _error(
                 "journey_transition_invalid",
-                "Clarification completion requires a waiting intake or Character journey.",
+                "Clarification requires intake, Character, or a typed duration wait.",
             )
         now = _now()
         journey_payload = journey.model_dump(mode="json")
@@ -790,6 +837,7 @@ class AgentCanvasConversationRepository:
                         current=current_journey,
                         target=journey,
                         turn_id=turn_id,
+                        duration_clarification=duration_clarification,
                     )
                     next_revision = expected_session_revision + 1
                     updated = connection.execute(
@@ -5191,7 +5239,7 @@ class AgentCanvasConversationRepository:
             ) from error
 
     def consultation_messages(
-        self, source_turn_id: str, *, required: bool = True
+        self, source_turn_id: str, *, required: bool = True, include_progress: bool = True
     ) -> tuple[dict[str, object], ...]:
         """Read bounded visible history strictly before the source user message."""
         with self._database.engine.connect() as connection:
@@ -5237,6 +5285,12 @@ class AgentCanvasConversationRepository:
         messages: list[dict[str, object]] = []
         remaining_bytes = 16_384
         for row in rows:
+            if (
+                not include_progress
+                and row["speaker"] == "adcraft_video_agent"
+                and json.loads(str(row["metadata_json"])).get("answer_kind") == "progress"
+            ):
+                continue
             content = str(row["content"])[:4_096]
             if not content:
                 continue
@@ -5727,8 +5781,20 @@ def _validate_clarification_target(
     current: GuidedProductionJourneyV2,
     target: GuidedProductionJourneyV2,
     turn_id: str,
+    duration_clarification: bool = False,
 ) -> None:
-    if current.stage in {"intake", "character"} and current.stage_status == "waiting_user":
+    if duration_clarification and (
+        target.stage != current.stage
+        or current.active_action is not None
+        or current.suspended_action is not None
+        or target.active_action is not None
+        or target.suspended_action is not None
+    ):
+        raise _error(
+            "journey_transition_invalid", "Duration clarification must retain an idle stage."
+        )
+    eligible = current.stage in {"intake", "character"} or duration_clarification
+    if eligible and current.stage_status == "waiting_user":
         expected = current.model_copy(update={"stage_status": "waiting_user"})
         if target != expected:
             raise _error(
@@ -5736,7 +5802,7 @@ def _validate_clarification_target(
                 "Repeated clarification may only retain the current waiting journey.",
             )
         return
-    if current.stage in {"intake", "character"}:
+    if eligible:
         evidence = target.transition_evidence[-1] if target.transition_evidence else None
         expected_evidence_kind = (
             "creative_goal_validated" if current.stage == "intake" else "clarification_completed"
@@ -6019,11 +6085,13 @@ def publish_capability_failure_in_transaction(
 
     if turn["turn_kind"] != "capability":
         return
+    response_locale = _guidance_response_locale(connection, str(turn["workflow_id"]))
     metadata = {
         "status": "failed",
         "error_code": code,
         "retryable": actionable_failure.retryable,
         "actionable_failure": actionable_failure.model_dump(mode="json"),
+        "response_locale": response_locale,
     }
     activities = connection.execute(
         select(AgentCanvasChatEntryRow).where(
@@ -6055,21 +6123,15 @@ def publish_capability_failure_in_transaction(
         is not None
     ):
         return
-    explanation = (
-        "Agent provider request timed out. The current creative step stopped."
-        if code in {"agent_provider_timeout", "agent_deadline_exceeded"}
-        else "The current creative step failed."
-    )
-    recovery = (
-        "Please retry this failed response to continue."
-        if actionable_failure.retry_scope == "turn" and actionable_failure.retryable
-        else "Please review the failure details before continuing."
-    )
     _publish_assistant_message_in_transaction(
         connection,
         events=events,
         turn=turn,
-        assistant_message=f"{explanation} {recovery}",
+        assistant_message=capability_failure_message(
+            code,
+            retryable=actionable_failure.retry_scope == "turn" and actionable_failure.retryable,
+            response_locale=response_locale,
+        ),
         now=now,
         entry_id=entry_id,
         metadata=metadata,
