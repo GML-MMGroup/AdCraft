@@ -279,6 +279,19 @@ def _compile_prompt(
         None,
     )
     if storyboard_grid is not None:
+        segments.insert(
+            0,
+            "Storyboard reference use (from the first frame): "
+            "The storyboard is an off-screen guide to narrative order. "
+            "At time 0, begin directly with the first authored shot as one full-frame scene "
+            "in the requested Video medium. Its panels represent successive story moments, "
+            "not simultaneous regions of the output. Image labels describe reference order, "
+            "not first-frame or last-frame bindings. Never open on the sheet and zoom into a panel, "
+            "animate its cells, pan across it, or dissolve from or back to the grid. "
+            "No reference-sheet flash, hold, collage, panel borders, or contact-sheet layout "
+            "at the beginning, transitions, or ending. A frozen-time shot freezes subjects "
+            "inside the depicted scene; it does not freeze or display the reference sheet.",
+        )
         segments.append(
             f"{storyboard_grid.label} is a loose storyboard reference for broad narrative context. "
             "The written action beats and target Video style take priority. "

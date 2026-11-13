@@ -687,6 +687,9 @@ def _reference_description(
                 "Storyboard grid for this segment: use as loose narrative guidance. "
                 "Follow the written action beats and target Video style. Do not match panels "
                 "one-to-one or copy their exact framing, camera moves, or timing. "
+                "Use it only as an off-screen sequence guide, never as the opening or closing frame. "
+                "Begin directly with the first authored full-frame scene; never show the sheet "
+                "and zoom into a cell, animate its panels, or transition through its layout. "
                 "Do not show the grid itself."
             )
         return (
