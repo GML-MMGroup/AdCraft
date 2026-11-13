@@ -1,61 +1,65 @@
 ---
 name: Accident Bullet-Time Commercial
-description: Recreate an accidental bullet-time commercial: footwear-to-face tracking, visible contact, several carried items frozen together, a continuous camera tour of each item, then a pullback and resumed fall. One advertised product still requires supporting belongings.
+description: Recreate an accidental bullet-time commercial: footwear-to-face tracking, visible contact, several carried items frozen together, a continuous camera tour of each item, then a pullback and resumed motion. Keep collision through freeze completion in one video segment, even in long ads; that segment may end airborne. One advertised product still requires supporting belongings.
 ---
 
 # Accident Bullet-Time Commercial
 
 Reproduce the reference camera choreography. Casting, advertised product,
 supporting belongings, wardrobe, location and visual medium are replaceable;
-the multi-item tour and its shot order are fixed. One advertised product does
-not mean one airborne object. Use three distinct carried or worn items by
-default: the advertised product plus two context-appropriate supporting props.
-Establish them in the approved story and references before video authoring.
+the multi-item route is fixed. One advertised product still needs three distinct
+carried/worn items by default: the product plus two supporting props, established
+in the story and references before Video authoring.
 
-## Required whole-film choreography
+## Required choreography
 
-1. Normal speed: track backward at footwear height, then rise to a front view
-that reveals the wearer, all belongings and the passing route.
-2. Show a passerby's shoulder brushing the wearer, then recoil, hands opening
-or attachment support slipping, then release. Keep the passerby moving away.
-3. Use a contact-triggered speed ramp. All established items freeze together in
-one space in front of the wearer. Lock their positions, orientations, openings,
-liquid and droplets. The background reaction remains frozen too.
-4. Use parallax-led product inspection: camera pushes from the front medium
-view into the frozen space and travels successively past item A, item B and
-item C. Each receives its own sharp close-up and readable material detail,
-with a small lateral or partial arc move showing depth. Other items remain
-present, possibly defocused or outside frame. Preserve continuous screen
-movement between them; products do not rotate to substitute for camera travel.
-5. Pull the camera back to the wearer's front three-quarter medium view while
-time is still frozen. Return to gravity only after this spatial reconnection:
-follow the same items to visible ground contact, settling and a readable face
-reaction. This finishes the original accident.
+1. At normal speed, track backward at footwear height and rise to a front view
+of the wearer, all belongings and the passing route.
+2. Show shoulder contact, then recoil, grip/support loss and release. The
+passerby continues away. Items never fly before their support changes.
+3. Use a contact-triggered speed ramp: all items freeze together in front of
+the wearer. Lock positions, orientations, openings, liquid and droplets, with
+the background reaction frozen too.
+4. Use parallax-led product inspection: push from front medium into that space
+and travel successively past A, B and C. Each receives a sharp material close-up
+with a small lateral or partial arc move. Other items remain in the same space,
+possibly offscreen or defocused. Camera travel creates the viewpoint change;
+objects do not spin, duplicate or take turns existing. Give the advertised item
+the longest or most detailed visit.
+5. Pull back to the wearer's front three-quarter medium view and complete the
+freeze sequence. Return to gravity follows according to the approved story;
+landing and reaction can occur in this segment or a later one. Complete the
+original incident rather than inserting an unrelated studio packshot.
 
-All five stages and the separate item visits are required. Several angles of
-one product do not replace the tour. A digital zoom, static focus switch,
-disconnected studio inserts or a single-item fallback do not meet this Skill.
-The advertised item gets the most detail or dwell time; supporting belongings
-remain story props without competing brands or invented product claims.
+A single-item fallback, three surfaces of one item, digital zoom-only movement
+or disconnected macro inserts do not reproduce this route. Supporting props
+remain story belongings without competing brands or invented selling claims.
 
-## Appearance and continuity
+## One indivisible video segment
 
-Use crisp commercial material detail, directional highlights and sufficient
-focus during the frozen tour, with natural brief blur before and after it.
-Preserve an explicitly selected animation medium. Keep the same geometry,
-scale, light and background landmarks throughout. Every item exists once;
-a new viewpoint never resets a fall, reopens a cap or creates another copy.
-Use actual release mechanics and reference-backed surfaces. A sealed container
-stays sealed unless a credible opening action has already occurred.
+Visible collision/release through simultaneous freeze, visits A/B/C and final
+pullback/freeze completion MUST belong to ONE video generation segment, even
+inside long ads. No node boundary belongs inside that interval. Freeze completion
+is not touchdown: its ending may retain all items airborne. Later movement,
+landing or other story can start in a separate segment from that exact state.
 
-Apply choreography to Script, Storyboard and Video. Static asset roles prepare
-reusable appearance and geometry in their own formats, without staging the
-accident. Write the inventory, visit order, camera path, timing and handoff in
-visible prompts. Preserve accepted durations, grids and provider capabilities.
-A four-second segment can carry part of the full sequence; never restart the
-accident in each segment. If the whole-film window is tight, retain all stages
-and item visits, explain the pacing limit and propose more time without silently
-changing approved timing or withholding the written prompt.
+Reserve the protected interval before allocating other beats. Fit it within the
+actual single-generation limit, currently at most fifteen seconds, while keeping
+the confirmed total. Move extra setup and later payoff outside it. Never split
+it to fill four-second windows or equalize durations. If fixed timing prevents
+a valid allocation, state the conflict rather than silently splitting it.
+Record the protected action and its actual airborne/grounded endpoint in script,
+outline narrative_goal, start_state/end_state and Video prompt. These are state
+descriptions, not native first/last-frame API controls.
+
+## Appearance and role scope
+
+Use crisp commercial detail and sufficient focus during freeze, brief natural
+blur outside it, and the selected medium. Preserve geometry, scale, light and
+landmarks. Real reference mechanics govern openings: a sealed vessel stays
+sealed unless it credibly opens before freeze. Each item exists once.
+Static asset roles retain reusable-reference formats without staging the
+accident. Preserve current grids, provider contracts, speech and subtitle choices.
 
 Read only the current role: [script](references/script.md),
 [product](references/product.md), [prop](references/prop.md),

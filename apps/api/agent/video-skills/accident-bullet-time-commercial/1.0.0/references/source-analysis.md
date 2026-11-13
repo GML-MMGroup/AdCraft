@@ -106,3 +106,13 @@ a longer sequence. Confirmed whole-film timing stays authoritative; a tight
 budget must be acknowledged without silently dropping visits or blocking text.
 The teaching interfaces, source brands, exact wardrobe and provider settings
 remain provenance rather than platform policy.
+
+## Later user correction: segment boundary at freeze completion
+
+Collision/release, simultaneous freeze, all item visits and the final pullback
+through freeze completion now form one indivisible video-generation segment,
+even within a longer advertisement. The endpoint need not be grounded: objects
+may remain airborne and later motion/landing may belong to another segment.
+This supersedes the earlier permission to distribute the freeze tour across
+segments or let a four-second node carry an unfinished part of that interval.
+First/last-frame state descriptions are not native provider frame controls.

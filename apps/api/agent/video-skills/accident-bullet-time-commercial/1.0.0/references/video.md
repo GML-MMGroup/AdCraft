@@ -1,11 +1,8 @@
 # Reproduce the reference camera choreography
 
-Require distinct items A, B and C from the approved inventory, normally one
-advertised product plus two supporting belongings. A brief naming one product
-still uses all three slots. Each item gets a separate close-up; extra surfaces
-of A cannot replace B or C. Establish all three as carried/worn before impact.
-Use existing references; unresolved supporting identities go through normal
-prop authoring, not spontaneous invention inside a generated video.
+Use the approved three-item inventory: advertised product plus two supporting
+belongings. Establish all before contact; each needs a separate close-up and
+stable reference. Three views of one product cannot fill these slots.
 
 Specify local timing and these ordered camera states:
 - Track backward from footwear height, rise to a front view of the wearer/items.
@@ -16,29 +13,29 @@ Specify local timing and these ordered camera states:
   changing parallax and occlusion while each object stays still. Keep screen
   direction coherent through transitions; a focus switch alone is insufficient.
 - Pull back to the same front three-quarter medium view before unfreezing.
-- Resume ordinary time, follow the same objects to ground contact/settling,
-  and finish on the wearer's front-facing startled response.
+- End the protected interval when the freeze sequence completes. Continue the
+  same trajectories to landing/reaction only if assigned to this video segment.
 
 Lock world positions, orientations, component openings and droplets throughout
 the frozen interval. Only camera viewpoint and resulting reflections change.
 Objects do not spin, vanish, duplicate or take turns existing. Preserve a
 continuous traversing-camera impression instead of unrelated macro cuts.
-Separate generation segments may join at matched states and camera positions;
-segment boundaries never restart the accident or substitute a studio insert.
+Collision/release through the complete freeze tour and pullback belong to ONE
+video generation node, even in long ads. No inter-node boundary may fall inside
+that interval. End at freeze completion; touchdown is not required. Objects may
+remain airborne for the next segment. Landing may occur later in the story.
 The advertised item receives the longest or most detailed close view.
 
-TEN-SECOND EXAMPLE, when that total is approved:
-'Use the same referenced wearer, glasses, open cup and bag in one walkway.
-0-2s: track backward at footwear height, rise to the front and establish the
-three supported items plus the passerby's route. 2-2.5s: shoulder brushes upper
-arm; show recoil, opened grip, glasses slipping and loose strap losing support.
-2.5-4.5s: freeze all items; push toward the advertised glasses and move past
-the rim to the hinge. 4.5-5.9s: continue through the same space to the cup's rim.
-5.9-7.3s: travel to the bag's seam and hardware. Give each its own sharp detail
-and parallax; keep all positions, orientations and openings fixed. 7.3-8s:
-pull back to the front medium view while still frozen. 8-10s: restore normal
-time; the same three items fall, contact the pavement and settle; reveal the
-wearer's surprised face. Remove liquid effects if the actual cup is sealed.'
+LONG-AD EXAMPLE: one twelve-second protected node inside a thirty-second ad.
+'Use the established wearer and three reference-backed belongings. Local 0-1.5s:
+show shoulder contact, recoil, grip/support loss and release; freeze them together.
+1.5-4.5s: push toward advertised A and inspect its real detail with parallax.
+4.5-7.5s: traverse to B; 7.5-10.5s: traverse to C, keeping all objects' frozen
+positions and states. 10.5-12s: pull back to the front medium view and complete
+the freeze tour. End with all three items still airborne in their mapped
+positions; this node does not show landing. The following node continues here.'
+The preceding eight seconds may establish the scene; the following ten seconds
+may resume movement and finish the story. Those are separate generation nodes.
 
 FIFTEEN-SECOND EXAMPLE, when approved:
 '0-3s footwear-to-face tracking establishes the wearer and three belongings.
@@ -48,10 +45,16 @@ stays rigid in its mapped position while the camera moves. 11-12s pull back
 to the same front medium view, still frozen. 12-13.5s resume time and follow
 all items to the ground. 13.5-15s settle and show the owner's face reaction.'
 
-Change identities/materials/location, not the multi-item route. The timings
-are internal shots, not separate short generation nodes. A four-second node
-can carry a portion of this route; follow its assigned incoming/outgoing state.
-Preserve the accepted total even when tight, retain all visits and state the
-pacing limit rather than silently falling back to one object. Preserve speech
-and subtitle settings. Use contact and landing foley; BGM remains separate.
-Check all visits and state continuity in text, then return the written prompt.
+The fifteen-second example is a complete single-video ad; landing is optional
+within the protected node. In a long ad, end this node after freeze completion
+with the actual airborne or grounded state. Other nodes may contain setup or
+later movement/payoff. Never distribute the A/B/C tour across four-second nodes.
+Fit the complete protected interval within the provider's segment limit and
+preserve the confirmed total; disclose incompatible timing instead of splitting.
+
+Specify start and end states, including camera pose, item positions, orientations,
+openings and motion phase. A later node continues that state. If a previous
+video's actual final frame is supplied, use it according to the supported input
+mode; do not invent a frame binding or claim native first/last-frame locking
+from prose or ordinary reference images. Preserve speech/subtitle settings.
+Contact and motion foley belong here; BGM is separate.

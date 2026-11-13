@@ -24,13 +24,24 @@ the concrete materials, identities and justified physical details. If a supplied
 constraint prevents the multi-item incident, state the conflict rather than
 quietly turning this into a single-object beauty film.
 
-When no total is confirmed, propose enough time for the reference pacing, often
-ten to fifteen seconds. Keep confirmed totals intact. Allocate roughly a quarter
-to approach/contact, over half to the three-item tour and the rest to return,
-fall and reaction; give the advertised item the longest visit. Short internal
-shots share legal generation windows. Each continuation executes only its
-allocated phase with an explicit incoming/outgoing state. A four-second segment
-must not erase the other belongings from the whole film.
+Treat visible collision/release through the end of the freeze tour and its
+pullback as one indivisible generation interval, even in a long advertisement.
+Reserve one video segment for it before allocating the rest of the story.
+No cut between generation nodes may occur inside contact, freeze or the A/B/C
+visits. The protected interval ends when the freeze sequence finishes; it does
+not require touchdown. Its end state may be the same belongings still airborne.
+Post-freeze falling, landing, reactions or a brand ending can occupy later nodes.
+
+Prefer enough time for the full tour, commonly ten to fifteen seconds when no
+length is fixed, while respecting actual model limits and the confirmed total.
+Move extra setup or later payoff outside the protected segment, not part of the
+freeze tour. Four-second nodes may serve those surrounding beats; never split
+the protected interval to obtain them. If explicit timing/count cannot fit the
+interval, identify the conflict without silently repartitioning or hiding text.
+Record start_state before contact, the complete protected action in narrative_goal,
+and exact end_state at freeze completion. Include camera pose, each item's
+position/orientation/opening, airborne or grounded status, reaction and motion
+phase. A later segment continues that state rather than assuming a landing.
 
 Keep approved speech and claims intact; brief speech may accompany the opening.
 Neither a drop nor an intact landing proves durability. Review that A, B and C
