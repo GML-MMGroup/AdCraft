@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "../../../i18n/useTranslation.ts";
+import { productSourceCopy } from "./productSourceCopy.ts";
 
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
@@ -43,6 +45,7 @@ export function ProductSourceDecisionDock({
   onClearProductMainHandoff,
   onProjectsRefresh,
 }: ProductSourceDecisionDockProps) {
+  const t = useTranslation("en-US");
   const content = interaction.content.content_kind === "product_source"
     ? interaction.content
     : null;
@@ -91,8 +94,10 @@ export function ProductSourceDecisionDock({
     && (choice === "generate" || countValid);
   const busy = pending || preparing || assets.uploading;
   const selectionSummary = content.input_kind === "main"
-    ? `${selected.length} of 1 image selected`
-    : `${selected.length} of ${content.min_asset_count}-${content.max_asset_count} images selected`;
+    ? t("{count} of 1 image selected", { count: selected.length })
+    : t("{count} of {min}-{max} images selected", {
+        count: selected.length, min: content.min_asset_count, max: content.max_asset_count,
+      });
   const effectiveIssue = localIssue ?? issue;
 
   const submit = async () => {
@@ -223,17 +228,21 @@ export function ProductSourceDecisionDock({
 
   return (
     <DecisionDockFrame
-      title={interaction.title}
-      context={interaction.context}
+      title={productSourceCopy(interaction.title, t)}
+      context={productSourceCopy(interaction.context, t)}
       pending={busy}
-      issue={effectiveIssue}
-      footerSummary={choice === "upload" ? selectionSummary : "The Agent will prepare a Product source"}
-      submitLabel={choice === "upload" ? "Use selected Product" : "Generate Product"}
+      issue={effectiveIssue ? {
+        ...effectiveIssue,
+        summary: productSourceCopy(effectiveIssue.summary, t),
+        detail: effectiveIssue.detail ? productSourceCopy(effectiveIssue.detail, t) : null,
+      } : null}
+      footerSummary={choice === "upload" ? selectionSummary : t("The Agent will prepare a Product source")}
+      submitLabel={t(choice === "upload" ? "Use selected Product" : "Generate Product")}
       submitDisabled={!canSubmit}
       onSubmit={() => { void submit(); }}
     >
       <fieldset className="agent-chat__product-source" disabled={busy}>
-        <legend>{content.prompt}</legend>
+        <legend>{productSourceCopy(content.prompt, t)}</legend>
         <div className="agent-chat__product-source-choices">
           <label>
             <input
@@ -242,17 +251,17 @@ export function ProductSourceDecisionDock({
               checked={choice === "upload"}
               onChange={() => setChoice("upload")}
             />
-            <span>Use uploaded Product source</span>
+            <span>{t("Use uploaded Product source")}</span>
           </label>
           <label>
             <input
               type="radio"
               name={`${interaction.interaction_id}-source-choice`}
-              aria-label="Generate Product source"
+              aria-label={t("Generate Product source")}
               checked={choice === "generate"}
               onChange={() => setChoice("generate")}
             />
-            <span>Generate Product source</span>
+            <span>{t("Generate Product source")}</span>
           </label>
         </div>
         {choice === "upload" ? (

@@ -3,10 +3,13 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { ChevronDownIcon, ChevronRightIcon } from "../../../icons.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
+import { guidedInteractionCopy } from "./guidedInteractionCopy.ts";
 
 export interface DecisionDockFrameProps {
   title: string;
   context?: string;
+  eyebrow?: string;
+  meta?: string;
   pending: boolean;
   issue: DecisionDockIssue | null;
   footerSummary?: ReactNode;
@@ -21,6 +24,8 @@ export interface DecisionDockFrameProps {
 export function DecisionDockFrame({
   title,
   context,
+  eyebrow,
+  meta,
   pending,
   issue,
   footerSummary = "",
@@ -35,6 +40,7 @@ export function DecisionDockFrame({
   // tests); the application-level LocaleProvider still overrides this
   // fallback when the dock is rendered inside the product.
   const t = useTranslation("en-US");
+  const copy = (text: string) => guidedInteractionCopy(text, t);
   const issueRef = useRef<HTMLDivElement>(null);
   const actionLocked = pending || submitDisabled;
 
@@ -43,10 +49,11 @@ export function DecisionDockFrame({
   }, [issue]);
 
   return (
-    <article className={`agent-chat__decision-dock${className ? ` ${className}` : ""}`} aria-label={title} aria-busy={pending}>
+    <article className={`agent-chat__decision-dock${className ? ` ${className}` : ""}`} aria-label={copy(title)} aria-busy={pending}>
       <header className="agent-chat__decision-dock-header">
-        <strong>{title}</strong>
-        {context ? <p>{context}</p> : null}
+        {eyebrow ? <div className="agent-chat__decision-dock-eyebrow"><span>{eyebrow}</span>{meta ? <span>{meta}</span> : null}</div> : null}
+        <strong>{copy(title)}</strong>
+        {context ? <p>{copy(context)}</p> : null}
       </header>
       <div className="agent-chat__decision-dock-body">{children}</div>
       {issue && !issue.fieldId ? (
@@ -56,7 +63,7 @@ export function DecisionDockFrame({
           className="agent-chat__decision-dock-issue"
           role="alert"
         >
-          <strong>{issue.summary}</strong>
+          <strong>{copy(issue.summary)}</strong>
           {issue.detail ? (
             <details>
               <summary>{t("Technical details")}</summary>

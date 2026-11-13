@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 import { MediaReviewDecisionDock } from "./MediaReviewDecisionDock.tsx";
 
 const interaction: GuidedInteractionV1 = {
@@ -30,9 +31,33 @@ const interaction: GuidedInteractionV1 = {
   updated_at: "2026-08-27T10:00:00Z",
 };
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); window.localStorage.removeItem("adcraft.locale"); });
 
 describe("MediaReviewDecisionDock", () => {
+  it("localizes review controls while preserving generated content and replacement instructions", () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    function LanguageToggle() {
+      const { toggleLocale } = useLocale();
+      return <button onClick={toggleLocale}>Switch language</button>;
+    }
+    render(<LocaleProvider initialLocale="zh-CN"><LanguageToggle />
+      <MediaReviewDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={submit} />
+    </LocaleProvider>);
+    expect(screen.getByText("The generated video is ready for review.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "采用" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("button", { name: "排除此素材" }));
+    expect(screen.getByText("请确认排除此素材后再继续。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "替换素材" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "描述替换要求" }), { target: { value: "镜头慢一点" } });
+    fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+    expect((screen.getByRole("textbox", { name: "Describe the replacement" }) as HTMLTextAreaElement).value).toBe("镜头慢一点");
+    fireEvent.click(screen.getByRole("button", { name: "Submit replacement" }));
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ action: "replace", instruction: "镜头慢一点" }));
+  });
+
   it("defaults to Accept and submits the existing media review payload", () => {
     const submit = vi.fn().mockResolvedValue(true);
     render(<MediaReviewDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={submit} />);

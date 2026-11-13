@@ -1,3 +1,4 @@
+import { NodeWorkbenchFieldError } from "./NodeWorkbenchFeedback.tsx";
 import type { ImageResolutionCapabilitiesV1 } from "../../../api/providerRegistry.ts";
 import {
   defaultImageResolutionParameter,
@@ -117,7 +118,9 @@ export function ImageResolutionControls({
               onChange: (value) => selectPair(name, value ?? ""),
             })}
             {issueByName.get(name) ? (
-              <p className="agent-node-workbench__field-error">{issueByName.get(name)}</p>
+              <NodeWorkbenchFieldError>
+                <span>{name === IMAGE_RESOLUTION_PARAMETER ? t("Resolution setting") : t("Ratio")}: </span><span>{issueByName.get(name)}</span>
+              </NodeWorkbenchFieldError>
             ) : null}
           </div>
         ))

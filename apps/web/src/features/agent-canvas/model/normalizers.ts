@@ -1,3 +1,4 @@
+import { conceptProposalQuestion } from "./conceptProposalQuestion.ts";
 import type {
   ActionableFailureV1,
   AgentActionReceiptV2,
@@ -3586,7 +3587,7 @@ function normalizeChatProposalCardV2(value: unknown, path: string): ChatProposal
 function normalizeChatCapabilityActivityV2(value: unknown, path: string): ChatCapabilityActivityV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, [
-    "item_type", "activity_id", "turn_id", "capability_id", "capability_display_name", "operation", "status",
+    "item_type", "activity_id", "turn_id", "journey_stage", "capability_id", "capability_display_name", "operation", "status",
     "sequence", "started_at", "finished_at", "message", "error_code", "elapsed_ms", "attempt_stage",
     "retryable", "validation_paths", "operation_policy_id", "suggested_actions", "completion_mode", "warning_code",
     "actionable_failure",
@@ -3601,6 +3602,9 @@ function normalizeChatCapabilityActivityV2(value: unknown, path: string): ChatCa
     item_type: expectLiteral(record.item_type, new Set<ChatCapabilityActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
     activity_id: expectNonEmptyString(record.activity_id, `${path}.activity_id`),
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    ...(record.journey_stage == null ? {} : {
+      journey_stage: expectNonEmptyString(record.journey_stage, `${path}.journey_stage`),
+    }),
     capability_id: expectLiteral(record.capability_id, AGENT_CAPABILITY_IDS, `${path}.capability_id`),
     capability_display_name: expectNonEmptyString(
       record.capability_display_name,
@@ -3932,6 +3936,8 @@ function normalizeAgentCanvasContinuationV2(
     "delivery_status",
     "status",
     "attempt_count",
+    "runtime_wait_started_at",
+    "runtime_wait_count",
     "next_attempt_at",
     "max_attempts",
     "lease_owner",
@@ -3942,6 +3948,15 @@ function normalizeAgentCanvasContinuationV2(
     "created_at",
     "updated_at",
   ], path);
+  // Runtime availability waits are backend scheduling metadata, separate from
+  // delivery attempts. Validate them without projecting them into retry UI state.
+  if (record.runtime_wait_started_at !== undefined && record.runtime_wait_started_at !== null) {
+    const startedAt = expectIsoDateTimeString(record.runtime_wait_started_at, `${path}.runtime_wait_started_at`);
+    if (!Number.isFinite(Date.parse(startedAt))) fail(`${path}.runtime_wait_started_at`, "expected datetime");
+  }
+  if (record.runtime_wait_count !== undefined) {
+    expectNonNegativeInteger(record.runtime_wait_count, `${path}.runtime_wait_count`);
+  }
   const deliveryStatus = record.delivery_status ?? record.status;
   return {
     continuation_id: expectNonEmptyString(record.continuation_id, `${path}.continuation_id`),
@@ -4243,9 +4258,16 @@ export function normalizeAgentCanvasChatTimelineV2(
           ? entry.metadata.proposal_id
           : "";
         if (!proposalId) fail(`${path}.items.metadata.proposal_id`, "proposal entry requires proposal identity");
+        const optionTitles = Array.isArray(entry.metadata.options)
+          ? entry.metadata.options.flatMap((option) => (
+              isRecord(option) && typeof option.title === "string" ? [{ title: option.title }] : []
+            ))
+          : [];
+        const question = conceptProposalQuestion(optionTitles);
         return [{
           item_type: "proposal_pointer",
           proposal_id: proposalId,
+          ...(question ? { question } : {}),
           sequence: entry.sequence_no,
           created_at: entry.created_at,
         }];
@@ -4321,6 +4343,9 @@ export function normalizeAgentCanvasChatTimelineV2(
             : entry.entry_id,
           capability_id: capabilityId,
           capability_display_name: capabilityDisplayName,
+          ...(entry.metadata.journey_stage == null ? {} : {
+            journey_stage: expectNonEmptyString(entry.metadata.journey_stage, `${path}.items.metadata.journey_stage`),
+          }),
           status,
           sequence: entry.sequence_no,
           started_at: typeof entry.metadata.started_at === "string"
@@ -5431,7 +5456,10 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     ], path);
     const options = expectArray(record.options, `${path}.options`).map((item, index) => normalizeGuidedChoiceOptionV1(item, `${path}.options[${index}]`));
     const capabilityId = expectNonEmptyString(record.capability_id, `${path}.capability_id`);
-    const optionCountIsValid = isBrandCustomInputCapabilityId(capabilityId)
+    const isCreativeRoute = capabilityId === "brand_creative-route";
+    const optionCountIsValid = isCreativeRoute
+      ? options.length === 2 && options[0].option_id === "guided" && options[1].option_id === "full-script"
+      : isBrandCustomInputCapabilityId(capabilityId)
       ? options.length >= 3 && options.length <= 12
       : options.length === 3;
     if (kind !== "concept_choice" || !optionCountIsValid) {
@@ -5447,7 +5475,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     }
     const stage = expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`);
     const allowCustom = expectBoolean(record.allow_custom, `${path}.allow_custom`);
-    if (!allowCustom) fail(`${path}.allow_custom`, "expected true");
+    if (allowCustom === isCreativeRoute) fail(`${path}.allow_custom`, "invalid custom-input policy");
     const allowExclusion = expectBoolean(record.allow_exclusion, `${path}.allow_exclusion`);
     if (allowExclusion && !new Set<GuidedJourneyStageV2>(["world_view", "props", "character", "bgm"]).has(stage)) {
       fail(`${path}.allow_exclusion`, "exclusion is not allowed for this journey stage");
@@ -5475,7 +5503,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       character_phase: characterPhase,
       capability_id: capabilityId,
       options,
-      allow_custom: true,
+      allow_custom: allowCustom,
       allow_exclusion: allowExclusion,
     };
   }

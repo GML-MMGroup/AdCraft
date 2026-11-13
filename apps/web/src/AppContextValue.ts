@@ -41,6 +41,7 @@ export interface AppContextValue {
   openProject: (projectId: string, workflowId?: string) => Promise<boolean>;
   moveProjectToTrash: (projectId: string) => Promise<boolean>;
   restoreTrashedProject: (projectId: string) => Promise<boolean>;
+  permanentlyDeleteTrashedProject: (projectId: string, projectVersion: number) => Promise<boolean>;
   renameProject: (projectId: string, name: string) => Promise<boolean>;
   toggleProjectFavorite: (project: ProjectV2Summary) => Promise<boolean>;
   toggleAssetSelection: (asset: UploadedAsset) => void;

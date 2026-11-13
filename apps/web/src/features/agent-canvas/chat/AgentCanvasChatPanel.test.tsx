@@ -66,9 +66,13 @@ import {
   resizeChatComposerTextarea,
   snapChatComposerScroll,
 } from "./chatComposerTextarea.ts";
+import type { PresentationStreamView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import type { BrandDecisionPanelV1 } from "../brand/brandDecisions.ts";
 import { normalizeBrandDecisionPanelV1 } from "../brand/brandDecisionNormalizers.ts";
 import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
+import { LocaleProvider } from "../../../i18n/locale.tsx";
+import { LanguageSwitcher } from "../../../components/LanguageSwitcher.tsx";
+import { normalizeAgentCanvasChatTimelineV2 } from "../model/normalizers.ts";
 
 function mockChatResult(
   items: ChatTimelineItemV2[] = [],
@@ -184,14 +188,98 @@ describe("chat composer textarea", () => {
   });
 });
 
+describe("AgentCanvasChatPanel optimistic composer", () => {
+  afterEach(cleanup);
+
+  function renderPendingSubmission(retry = false) {
+    const chat = mockChatResult();
+    let accept!: (accepted: boolean) => void;
+    chat.actions.submit.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
+    panelMocks.useAgentCanvasChat.mockReturnValue({
+      ...chat,
+      state: {
+        ...chat.state,
+        failedDraft: retry ? { text: "Create a product launch video", mentionedNodeIds: [], mentionedImageAssetIds: [] } : null,
+        composerRecovery: retry ? {
+          scope: "composer", title: "Response could not be submitted", message: "Try again.", action: "retry", technicalDetail: null,
+        } : null,
+      },
+    });
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
+    const composer = screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement;
+    return { chat, composer, accept };
+  }
+
+  it.each(["click", "enter"])("clears the first message immediately on %s while submission is pending", async (trigger) => {
+    const { chat, composer, accept } = renderPendingSubmission();
+    fireEvent.change(composer, { target: { value: "Create a product launch video" } });
+
+    if (trigger === "enter") fireEvent.keyDown(composer, { key: "Enter" });
+    else fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(chat.actions.submit).toHaveBeenCalledOnce();
+    expect(chat.actions.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "Create a product launch video" }));
+    expect(composer.value).toBe("");
+    await act(async () => { accept(true); });
+    expect(composer.value).toBe("");
+  });
+
+  it.each(["Send message", "Retry"])("restores the exact draft if %s fails after clearing it immediately", async (button) => {
+    const { composer, accept } = renderPendingSubmission(button === "Retry");
+    const draft = "  Create a product launch video\n";
+    fireEvent.change(composer, { target: { value: draft } });
+    fireEvent.click(screen.getByRole("button", { name: button }));
+    expect(composer.value).toBe("");
+
+    await act(async () => { accept(false); });
+    expect(composer.value).toBe(draft);
+  });
+
+  it.each([
+    { button: "Send message", accepted: true },
+    { button: "Send message", accepted: false },
+    { button: "Retry", accepted: true },
+    { button: "Retry", accepted: false },
+  ])("preserves a new draft when $button settles with accepted=$accepted", async ({ button, accepted }) => {
+    const { composer, accept } = renderPendingSubmission(button === "Retry");
+    fireEvent.change(composer, { target: { value: "Create a product launch video" } });
+    fireEvent.click(screen.getByRole("button", { name: button }));
+    expect(composer.value).toBe("");
+    // Re-entering the same text is still a new draft and must survive acceptance.
+    const nextDraft = accepted ? "Create a product launch video" : "Make the next video shorter";
+    fireEvent.change(composer, { target: { value: nextDraft } });
+
+    await act(async () => { accept(accepted); });
+    expect(composer.value).toBe(nextDraft);
+  });
+
+  it("leaves an unrelated draft untouched when retrying a failed message", async () => {
+    const { chat, composer, accept } = renderPendingSubmission(true);
+    fireEvent.change(composer, { target: { value: "A different request" } });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(chat.actions.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "Create a product launch video" }));
+    expect(composer.value).toBe("A different request");
+    await act(async () => { accept(true); });
+    expect(composer.value).toBe("A different request");
+  });
+
+  it("keeps whitespace-only input without submitting it", () => {
+    const { chat, composer } = renderPendingSubmission();
+    fireEvent.change(composer, { target: { value: "  \n" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(chat.actions.submit).not.toHaveBeenCalled();
+    expect(composer.value).toBe("  \n");
+  });
+});
+
 describe("AgentWorkingRow", () => {
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); localStorage.removeItem("adcraft.locale"); });
 
   it("announces that the Agent is working and renders a loading indicator", () => {
     render(<AgentWorkingRow />);
 
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
-    expect(screen.getByText("Working")).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-text")?.textContent).toBe("Agent is working...");
     const loader = document.querySelector<HTMLElement>('.agent-chat__working-loader[data-variant="halo"]');
     expect(loader).toBeTruthy();
     expect(loader?.style.getPropertyValue("--il-size")).toBe("20px");
@@ -199,17 +287,132 @@ describe("AgentWorkingRow", () => {
   });
 
   it("announces model waiting as a non-terminal Agent activity", () => {
-    render(<AgentWorkingRow waitingForModel />);
+    const chat = mockChatResult([], true);
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: { ...chat.state, agentWorking: true } });
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
 
-    expect(screen.getByRole("status", { name: "AdCraft Video Agent is waiting for the model" })).toBeTruthy();
-    expect(screen.getByText("Waiting for model")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-text")?.textContent).toBe("Agent is working...");
     expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
     expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
+  });
+
+  it("updates the loading text when the active role or UI language changes", () => {
+    localStorage.removeItem("adcraft.locale");
+    const chat = mockChatResult([capabilityActivity({ capability_id: "script_authoring", capability_display_name: "Script Writer" })]);
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const panel = () => <LocaleProvider initialLocale="en-US"><LanguageSwitcher />
+      <AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />
+    </LocaleProvider>;
+    const view = render(panel());
+    expect(document.querySelector(".agent-chat__working-text")?.textContent).toBe("Script Writer is working...");
+    fireEvent.click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(screen.getByRole("status", { name: "编剧正在工作..." })).toBeTruthy();
+    chat.state.turnsById["turn-world"].status = "completed";
+    chat.state.items = [capabilityActivity({ turn_id: "turn-character", sequence: 2,
+      capability_id: "character_design", capability_display_name: "Character Designer" })];
+    view.rerender(panel());
+    expect(document.querySelector(".agent-chat__working-text")?.textContent).toBe("角色设计师正在工作...");
+    expect(screen.queryByRole("status", { name: "编剧正在工作..." })).toBeNull();
+  });
+
+  it("shows the persisted script checkpoints as named steps rather than separate scripts", () => {
+    const stages = ["narrative_direction", "style_lock", "storyboard_plan"];
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: roleMotionWorkflow.workflow_id, conversation_id: "conversation-1",
+      guidance_session: null, continuations: [], current_session_actions: [], next_cursor: 3,
+      items: stages.map((stage, index) => ({
+        entry_id: `script-entry-${index}`, workflow_id: roleMotionWorkflow.workflow_id,
+        conversation_id: "conversation-1", sequence_no: index + 1, entry_type: "expert_activity",
+        speaker: null, content: "Script Writer", command_plan: null, action_receipt: null,
+        created_at: "2026-11-13T02:40:45Z",
+        metadata: { activity_id: `script-activity-${index}`, turn_id: `script-turn-${index}`,
+          capability_id: "script_authoring", capability_display_name: "Script Writer",
+          journey_stage: stage, status: "completed" },
+      })),
+    });
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(timeline.items));
+    render(<LocaleProvider initialLocale="zh-CN">
+      <AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />
+    </LocaleProvider>);
+
+    for (const name of ["叙事设计已完成", "风格设定已完成", "分镜规划已完成"]) {
+      expect(screen.getByRole("status", { name })).toBeTruthy();
+      expect(screen.getByText(name)).toBeTruthy();
+    }
+    expect(screen.queryByText(/脚本 [123]/)).toBeNull();
   });
 });
 
 describe("assistant presentation streams", () => {
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+  const reply = {
+    item_type: "message" as const, message_kind: "conversation" as const,
+    message_id: "new-reply", conversation_id: "conversation-1", speaker: "adcraft_video_agent" as const,
+    text: "新的回复会逐字出现，并且在刷新数据时继续显示，不从头重复播放。".repeat(3),
+    sequence: 11, linked_node_ids: [], script_node_id: null, proposal_id: null, capability_id: null,
+    created_at: "2026-11-11T00:00:00Z",
+  };
+  const view: PresentationStreamView = {
+    stream_id: "stream-1", status: "open", generation_id: "generation-1", reasoning_text: "",
+    text: reply.text, reasoning_started_at: null, answer_started_at: 0, terminal_at_ms: null,
+    last_sequence_no: 1, stream_kind: "assistant", turn_id: "turn-1", node_id: null,
+    authoritative_id: null, error_code: null, protocol_error: null, last_event_type: "delta", last_event: null,
+  };
+  function setChat(items: ChatTimelineItemV2[], streams: Record<string, PresentationStreamView> = {}) {
+    const chat = mockChatResult(items);
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: {
+      ...chat.state, initialTimelineSequence: 10, presentationStreams: streams,
+    } });
+  }
+  const panel = () => <AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />;
+
+  it("shows history immediately and types only a newly received Agent reply", () => {
+    vi.useFakeTimers();
+    const history = { ...reply, message_id: "history", sequence: 10, text: "Existing history" };
+    setChat([history]);
+    const { rerender } = render(panel());
+    expect(screen.getByText(history.text)).toBeTruthy();
+    expect(document.querySelector('[data-typing="true"]')).toBeNull();
+    const user = { ...reply, message_id: "user", speaker: "user" as const, text: "My request" };
+    setChat([history, user, reply]);
+    rerender(panel());
+    expect(screen.getByText(user.text)).toBeTruthy();
+    const animated = document.querySelector('[data-typing="true"]')!;
+    expect(animated.textContent).toBe("");
+    act(() => vi.advanceTimersByTime(240));
+    const partial = animated.textContent!;
+    expect(partial.length).toBeGreaterThan(0);
+    expect(partial.length).toBeLessThan(reply.text.length);
+    setChat([history, user, { ...reply }]);
+    rerender(panel());
+    expect(animated.textContent).toBe(partial);
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(animated.textContent).toBe(reply.text);
+    expect(animated.getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("keeps a completed stream visible until commit arrives, then continues at the same character", () => {
+    vi.useFakeTimers();
+    setChat([], { stream: view });
+    const { rerender } = render(panel());
+    act(() => vi.advanceTimersByTime(240));
+    const partial = document.querySelector(".agent-chat__message-text")!.textContent;
+    expect(partial!.length).toBeGreaterThan(0);
+    const completed = { ...view, status: "completed" as const, authoritative_id: reply.message_id };
+    setChat([], { stream: completed });
+    rerender(panel());
+    expect(document.querySelector(".agent-chat__live-turn")).toBeTruthy();
+    expect(document.querySelector(".agent-chat__message-text")!.textContent).toBe(partial);
+    setChat([reply], { stream: completed });
+    rerender(panel());
+    expect(document.querySelector(".agent-chat__live-turn")).toBeNull();
+    expect(screen.getAllByRole("article", { name: "Agent message" })).toHaveLength(1);
+    expect(document.querySelector(".agent-chat__message-text")!.textContent).toBe(partial);
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(document.querySelector(".agent-chat__message-text")!.textContent).toBe(reply.text);
+  });
 
   it("does not project assistant presentation streams into the visible timeline", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
@@ -309,6 +512,88 @@ const roleMotionWorkflow: AgentCanvasWorkflowV2 = {
   bindings: [],
   assets: [],
 };
+
+describe("Draft receipt canvas handoff", () => {
+  afterEach(cleanup);
+
+  function createdReceipt(status: "applied" | "applied_with_run_error" = "applied"): ChatActionReceiptCardV2 {
+    return {
+      item_type: "action_receipt", sequence: 5, created_at: proposalCard.created_at,
+      action_receipt: {
+        receipt_id: "receipt-created", workflow_id: roleMotionWorkflow.workflow_id,
+        plan_id: null, action_id: "turn-1", proposal_id: "proposal-1", proposal_option_id: "option-1",
+        proposal_action: "select_option", actor_kind: "user", idempotency_key: "created-1",
+        status, summary: "已创建 2 个草稿节点。", created_node_ids: ["draft-a", "draft-b"],
+        updated_node_ids: [], deleted_node_ids: [], created_binding_ids: [], deleted_binding_ids: [],
+        queued_execution_ids: [], run_queue_errors: status === "applied" ? [] : ["Queue unavailable"],
+        operation_results: [], workflow_revision: 2, before_workflow_revision: 1,
+        placement_hints: [], continuation_turn_id: null, superseded_by: null,
+        error_code: null, error_message: null, created_at: proposalCard.created_at,
+      },
+    };
+  }
+
+  it("keeps an absorbed receipt until every created card has painted, even after the timeline replaces it", () => {
+    const receipt = createdReceipt();
+    const applied: ChatProposalCardV2 = { ...proposalCard, proposal: { ...proposalCard.proposal,
+      availability: "applied", latest_application: {
+        application_id: "application-1", option_id: "option-1", action: "select_option",
+        receipt_id: receipt.action_receipt.receipt_id, created_node_ids: ["draft-a", "draft-b"],
+        queued_execution_ids: [], created_at: proposalCard.created_at,
+      } } };
+    const chat = mockChatResult([applied, receipt]);
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const panel = (ids: string[], workflow = roleMotionWorkflow) => <AgentCanvasChatPanel
+      workflow={workflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
+      renderedCanvasNodeIds={new Set(ids)} />;
+    const view = render(panel([]));
+    expect(screen.getByText("已创建 2 个草稿节点。")).toBeTruthy();
+    chat.state.items = [applied];
+    view.rerender(panel(["unrelated", "draft-a"]));
+    expect(screen.getByText("已创建 2 个草稿节点。")).toBeTruthy();
+    view.rerender(panel(["draft-a", "draft-b"]));
+    expect(screen.queryByText("已创建 2 个草稿节点。")).toBeNull();
+    expect(screen.getByText("A focused campaign hero")).toBeTruthy();
+  });
+
+  it("removes a standalone creation receipt only after canvas rendering", () => {
+    const queued: ChatTimelineItemV2 = {
+      item_type: "message", message_id: "draft-queued", message_kind: "planning_progress",
+      conversation_id: "conversation-1", speaker: "adcraft_video_agent", text: "Creating draft nodes",
+      linked_node_ids: [], script_node_id: null, proposal_id: null, sequence: 3,
+      capability_id: "character_design", created_at: proposalCard.created_at,
+      metadata: { materialization_id: "materialization-1", proposal_id: "proposal-1", status: "queued" },
+    };
+    const chat = mockChatResult([queued, createdReceipt()]);
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const panel = (ids: string[]) => <AgentCanvasChatPanel workflow={roleMotionWorkflow}
+      chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} renderedCanvasNodeIds={new Set(ids)} />;
+    const view = render(panel([]));
+    expect(screen.getByText("已创建 2 个草稿节点。")).toBeTruthy();
+    view.rerender(panel(["draft-a", "draft-b"]));
+    expect(screen.queryByText("已创建 2 个草稿节点。")).toBeNull();
+    expect(screen.queryByText("Creating draft nodes")).toBeNull();
+  });
+
+  it("keeps receipt errors visible after all created nodes render", () => {
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult([createdReceipt("applied_with_run_error")]));
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]}
+      onFocusNode={vi.fn()} renderedCanvasNodeIds={new Set(["draft-a", "draft-b"])} />);
+    expect(screen.getByText("Queue unavailable")).toBeTruthy();
+  });
+
+  it("does not carry a pending receipt into another workflow", () => {
+    const chat = mockChatResult([createdReceipt()]);
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const panel = (workflow = roleMotionWorkflow) => <AgentCanvasChatPanel workflow={workflow}
+      chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />;
+    const view = render(panel());
+    expect(screen.getByText("已创建 2 个草稿节点。")).toBeTruthy();
+    chat.state.items = [];
+    view.rerender(panel({ ...roleMotionWorkflow, workflow_id: "workflow-next" }));
+    expect(screen.queryByText("已创建 2 个草稿节点。")).toBeNull();
+  });
+});
 
 function capabilityActivity(
   overrides: Partial<ChatCapabilityActivityV2> = {},
@@ -1387,7 +1672,7 @@ describe("command and receipt cards", () => {
     )?.dataset.capabilityId).toBe("character_design");
   });
 
-  it("renders nested proposal history without repeating the capability identity icon", () => {
+  it("renders nested proposal history without repeating the capability identity icon or name", () => {
     render(
       <ProposalCard
         card={proposalCard}
@@ -1398,8 +1683,7 @@ describe("command and receipt cards", () => {
     );
 
     expect(document.querySelector('[data-testid="agent-capability-icon"]')).toBeNull();
-    expect(document.querySelector(".agent-chat__compact-capability-heading")?.textContent)
-      .toContain("Character Designer");
+    expect(document.querySelector(".agent-chat__compact-capability-heading")).toBeNull();
   });
 
   it.each([
@@ -1461,7 +1745,7 @@ describe("command and receipt cards", () => {
     expect(screen.getByText("Visual language locked for the next production stage.")).toBeTruthy();
   });
 
-  it("shows text generation feedback only while capability work is active", () => {
+  it("uses the activity heading for work status without a second loading message", () => {
     const activity: ChatCapabilityActivityV2 = {
       item_type: "expert_activity",
       activity_id: "activity-loader",
@@ -1485,7 +1769,9 @@ describe("command and receipt cards", () => {
 
     const { rerender } = render(<CapabilityActivityRow activity={activity} />);
 
-    expect(screen.getByText("Preparing the next response...")).toBeTruthy();
+    expect(screen.getByText("Working")).toBeTruthy();
+    expect(screen.queryByText("Preparing the next response...")).toBeNull();
+    expect(document.querySelector(".agent-chat__activity-content")).toBeNull();
 
     rerender(<CapabilityActivityRow activity={{
       ...activity,
@@ -1741,7 +2027,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(composerIndex).toBeGreaterThan(overlayInteractionIndex);
   });
 
-  it("uses the approved monochrome fixed chat rail with plain Agent replies", () => {
+  it("uses neutral surfaces with blue outlines in the fixed chat rail with plain Agent replies", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const panelRule = css.match(/^\.agent-chat\s*\{([\s\S]*?)\n\}/m)?.[1];
@@ -1753,14 +2039,14 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(panelRule).toContain("right: 0");
     expect(panelRule).toContain("bottom: 0");
     expect(panelRule).toContain("max-width: min(720px, calc(100vw - 24px));");
-    expect(panelRule).toContain("--agent-chat-canvas: #0a0a0a");
-    expect(panelRule).toContain("--agent-chat-panel: #151515");
-    expect(panelRule).toContain("--agent-chat-raised: #202020");
-    expect(panelRule).toContain("--agent-chat-border: #353535");
-    expect(panelRule).toContain("--agent-chat-strong-line: #4a4a4a");
-    expect(panelRule).toContain("--agent-chat-primary: #f5f5f5");
-    expect(panelRule).toContain("--agent-chat-secondary: #a3a3a3");
-    expect(panelRule).toContain("--agent-chat-muted: #707070");
+    expect(panelRule).toContain("--agent-chat-canvas: var(--surface-input)");
+    expect(panelRule).toContain("--agent-chat-panel: var(--nav-bg)");
+    expect(panelRule).toContain("--agent-chat-raised: var(--surface-raised)");
+    expect(panelRule).toContain("--agent-chat-border: var(--border-default)");
+    expect(panelRule).toContain("--agent-chat-strong-line: var(--border-strong)");
+    expect(panelRule).toContain("--agent-chat-primary: var(--text-primary)");
+    expect(panelRule).toContain("--agent-chat-secondary: var(--text-secondary)");
+    expect(panelRule).toContain("--agent-chat-muted: var(--text-disabled)");
     expect(panelRule).toContain("background: var(--agent-chat-panel)");
     expect(panelRule).toContain("backdrop-filter: none");
     expect(panelRule).toContain("border-radius: 0");
@@ -1818,7 +2104,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(threadRule).toContain("border-top: 1px solid var(--agent-chat-border)");
     expect(threadRule).toContain("background: transparent");
     expect(css).not.toContain(".agent-chat__stage-thread-summary");
-    expect(css).toContain("--agent-chat-selected: #292929");
+    expect(css).toContain("--agent-chat-selected: var(--surface-selected)");
     expect(css).toMatch(/\.agent-chat__stage-thread > header span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
     expect(css).toMatch(/\.agent-chat__progress-groups span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
   });
@@ -1901,7 +2187,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).toMatch(/\.agent-chat__message-meta time\s*\{[^}]*opacity: 0/s);
   });
 
-  it("keeps semantic states and the Style selector inside the monochrome palette", () => {
+  it("uses the brand blue for Style selection while preserving semantic states", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const errorRule = css.match(/\.agent-chat__error\s*\{([\s\S]*?)\n\}/m)?.[1];
@@ -1911,7 +2197,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(errorRule).toContain("border-color: var(--agent-chat-strong-line)");
     expect(errorRule).toContain("color: var(--agent-chat-primary)");
     expect(noticeRule).toContain("color: var(--agent-chat-secondary)");
-    expect(selectedStyleRule).toContain("border-color: var(--agent-chat-primary)");
+    expect(selectedStyleRule).toContain("border-color: var(--brand)");
     expect(css).not.toContain("#e6a34a");
     expect(css).not.toContain("#77c9c2");
   });
@@ -1926,12 +2212,12 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(reducedMotion).toContain("animation: none !important");
   });
 
-  it("separates the fixed header from the scrolling timeline", () => {
+  it("keeps the fixed header without a divider above the scrolling timeline", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const headerRule = css.match(/\.agent-chat__header\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(headerRule).toContain("border-bottom: 1px solid var(--agent-chat-border)");
+    expect(headerRule).toContain("border-bottom: 0");
   });
 
   it("does not include the retired React Flow Mini Map chrome", () => {
@@ -2080,17 +2366,107 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
 
   function submitDirection() {
     fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Submit guided direction" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm direction" }));
   }
 
-  it("asks the campaign question before its form loads and keeps it when the confirmed answer arrives", async () => {
-    const question = "Now the campaign brief: what should this ad achieve, and where will it run?";
+  it.each(["loading", "sending", "agentWorking"] as const)(
+    "waits for backend %s state before revealing a new choice card",
+    (pendingState) => {
+      const chat = mockChatResult();
+      chat.state.guidedInteraction = directionInteraction();
+      chat.state[pendingState] = true;
+      panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+      const props = { workflow: roleMotionWorkflow, chatRevision: 0, chatEvents: [], onFocusNode: vi.fn() };
+      const { rerender } = render(<AgentCanvasChatPanel {...props} />);
+
+      expect(screen.queryByRole("radio", { name: /Quiet world/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Confirm direction" })).toBeNull();
+      expect(screen.getAllByRole("status", { name: "World Setting Designer is working..." })).toHaveLength(1);
+      expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
+
+      chat.state[pendingState] = false;
+      rerender(<AgentCanvasChatPanel {...props} />);
+      expect(screen.queryByRole("status", { name: "World Setting Designer is working..." })).toBeNull();
+      fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
+      expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(false);
+    },
+  );
+
+  it("keeps waiting until the matching proposal detail needed for confirmation arrives", () => {
+    const interaction = directionInteraction();
+    if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
+    interaction.content.proposal_id = proposalCard.proposal.proposal_id;
     const chat = mockChatResult();
+    chat.state.guidedInteraction = interaction;
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const props = { workflow: roleMotionWorkflow, chatRevision: 0, chatEvents: [], onFocusNode: vi.fn() };
+    const { rerender } = render(<AgentCanvasChatPanel {...props} />);
+    expect(screen.queryByRole("radio", { name: /Quiet world/ })).toBeNull();
+    expect(screen.getByRole("status", { name: "World Setting Designer is working..." })).toBeTruthy();
+
+    chat.state.items = [proposalCard];
+    rerender(<AgentCanvasChatPanel {...props} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
+    expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("status", { name: "World Setting Designer is working..." })).toBeNull();
+  });
+
+  it("waits for initial Brand state without discarding a choice during later refreshes", () => {
+    const chat = mockChatResult();
+    chat.state.guidedInteraction = directionInteraction();
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const props = { workflow: roleMotionWorkflow, chatRevision: 0, chatEvents: [], onFocusNode: vi.fn() };
+    const { rerender } = render(<AgentCanvasChatPanel {...props} brandContextReady={false} />);
+    expect(screen.queryByRole("radio", { name: /Quiet world/ })).toBeNull();
+    expect(screen.getByRole("status", { name: "World Setting Designer is working..." })).toBeTruthy();
+
+    rerender(<AgentCanvasChatPanel {...props} brandContextReady />);
+    const option = screen.getByRole("radio", { name: /Quiet world/ });
+    fireEvent.click(option);
+    chat.state.loading = true;
+    chat.state.sending = true;
+    rerender(<AgentCanvasChatPanel {...props} brandContextReady />);
+    expect(screen.getByRole("radio", { name: /Quiet world/ })).toBe(option);
+    expect(option.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("confirms a selected direction from the card instead of the empty composer", async () => {
+    const { chat } = renderPanelWithInteraction(directionInteraction());
     chat.actions.submitGuidedInteraction.mockResolvedValue(true);
+    const confirm = screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
+    expect(confirm.disabled).toBe(false);
+    const send = screen.getByRole("button", { name: "Submit guided direction" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    fireEvent.click(send);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }), { key: "Enter" });
+    expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining({ action: "select", option_id: "option-world", custom_text: null }),
+    ));
+    expect(chat.actions.submit).not.toHaveBeenCalled();
+  });
+
+  it.each(["brand-memory", "campaign"] as const)("keeps the real Agent reply and confirmed %s summary without synthetic questions", async (stage) => {
+    const title = stage === "brand-memory" ? "Brand details" : "Campaign details";
+    const value = stage === "brand-memory" ? "Volt" : "Launch";
+    const slotId = stage === "brand-memory" ? "brand_name" : "campaign_goal";
+    const agentReply = "What are this cup's selling points, target audience, and advertising goals?";
+    const chat = mockChatResult([{
+      item_type: "message", message_kind: "conversation", message_id: "agent-reply",
+      conversation_id: "conversation-1", speaker: "adcraft_video_agent", text: agentReply,
+      linked_node_ids: [], script_node_id: null, proposal_id: null, capability_id: null,
+      sequence: 2, created_at: "2026-10-23T02:59:00Z",
+      metadata: { intent_mode: "guided_production", production_readiness: "not_ready" },
+    }]);
+    let accept!: (accepted: boolean) => void;
+    chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     let decisions: BrandDecisionPanelV1 = {
       project_id: "project-1", workflow_id: roleMotionWorkflow.workflow_id, mode: "brand",
-      journey: { policy_version: "brand_professional_v1", stage: "campaign", stage_revision: 2,
+      journey: { policy_version: "brand_professional_v1", stage, stage_revision: 2,
         treatment_substep: null, stage_status: "ready" },
       brand_name: "Volt", slot_values: [], open_card: null, hypotheses: [],
       selected_hypothesis_id: null, adspec: null, skill_stack: null, treatment_steps: [],
@@ -2100,71 +2476,122 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
       chatEvents={[]} onFocusNode={vi.fn()} brandMode brandStage={decisions.journey.stage}
       brandDecisions={decisions} />;
     const view = render(panel());
-    expect(screen.queryByText(question)).toBeNull();
+    expect(screen.getByText(agentReply)).toBeTruthy();
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
     chat.state.hasGuidedProductionIntent = true;
     view.rerender(panel());
-    const questionBubble = screen.getByText(question).closest("article");
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
     expect(screen.queryByRole("article", { name: "Your selections" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Confirm entire form" })).toBeNull();
 
     chat.state.guidedInteraction = {
-      ...openInteraction(), kind: "brand_form", title: "Campaign details",
+      ...openInteraction(), kind: "brand_form", title,
       allowed_actions: ["select", "custom"],
       content: {
-        content_kind: "brand_form", form_id: "campaign-form", stage: "campaign", revision: 2,
-        response_locale: "en-US", context_digest: "a".repeat(64), title: "Campaign details",
-        instructions: "Choose the campaign goal.",
-        rows: [{ question_id: "goal", slot_id: "campaign_goal", prompt: "Campaign goal",
-          options: [{ option_id: "launch", label: "Launch", why: null },
+        content_kind: "brand_form", form_id: `${stage}-form`, stage, revision: 2,
+        response_locale: "en-US", context_digest: "a".repeat(64), title,
+        instructions: "Confirm the details below.",
+        rows: [{ question_id: slotId, slot_id: slotId, prompt: "Choose a value",
+          options: [{ option_id: "choice", label: value, why: null },
             { option_id: "custom", label: "Custom", why: null }],
           custom_option_id: "custom", required: true }],
       },
     };
     view.rerender(panel());
-    expect(screen.getAllByText(question)).toHaveLength(1);
-    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
-    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
-    fireEvent.click(screen.getByRole("button", { name: /Campaign details/ }));
-    fireEvent.click(screen.getByRole("radio", { name: /Launch/ }));
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(title) }));
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(value) }));
     expect(screen.queryByRole("article", { name: "Your selections" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Confirm entire form" }));
     await waitFor(() => expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledOnce());
-    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
+    const confirmation = screen.getByRole("status", { name: "Information confirmed" });
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
+    await act(async () => { accept(true); });
+    expect(screen.getByRole("status", { name: "Information confirmed" })).toBe(confirmation);
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
     expect(screen.queryByRole("article", { name: "Your selections" })).toBeNull();
 
     chat.state.guidedInteraction = null;
-    decisions = { ...decisions, journey: { ...decisions.journey, stage: "hypothesis" },
-      campaign_brief: { values: [{ slot_id: "campaign_goal", stage: "campaign", value: "Launch",
+    decisions = { ...decisions, journey: { ...decisions.journey, stage: stage === "brand-memory" ? "campaign" : "hypothesis" },
+      [stage === "brand-memory" ? "brand_profile" : "campaign_brief"]: { values: [{ slot_id: slotId, stage, value,
         kind: "fact", provenance: "user_confirmed", confirmed_at: "2026-10-23T03:00:00Z" }],
       inherited_values: [], unresolved_fields: [] } };
     view.rerender(panel());
-    expect(screen.getAllByText(question)).toHaveLength(1);
-    expect(screen.getByText(question).closest("article")).toBe(questionBubble);
-    expect(screen.getByRole("article", { name: "Your selections" }).textContent).toContain("Launch");
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
+    expect(screen.getAllByText(agentReply)).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "Your selections" }).textContent).toContain(value);
 
+    expect(screen.getByRole("status", { name: "Information confirmed" })).toBe(confirmation);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse AdCraft Bot panel" }));
+    expect(screen.getByRole("status", { name: "Information confirmed" })).toBe(confirmation);
     view.unmount();
     render(panel());
-    expect(screen.getAllByText(question)).toHaveLength(1);
-    expect(screen.getByRole("article", { name: "Your selections" }).textContent).toContain("Launch");
+    expect(screen.queryByRole("status", { name: "Information confirmed" })).toBeNull();
+    expect(screen.queryByRole("article", { name: "Agent question" })).toBeNull();
+    expect(screen.getAllByText(agentReply)).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "Your selections" }).textContent).toContain(value);
   });
 
-  it("opens brand Skill adjustment without submitting the old chat choice", () => {
+  it.each(["rejected", "throws"])("rolls back immediate confirmation and restores the filled form when submission %s", async (outcome) => {
+    const interaction: GuidedInteractionV1 = {
+      ...openInteraction(), kind: "brand_form", allowed_actions: ["select", "custom"],
+      content: { content_kind: "brand_form", form_id: "brand-form", stage: "brand-memory", revision: 2,
+        response_locale: "en-US", context_digest: "a".repeat(64), title: "Brand details", instructions: "Choose the brand.",
+        rows: [{ question_id: "brand", slot_id: "brand_name", prompt: "Brand name", required: true,
+          custom_option_id: "custom", options: [{ option_id: "volt", label: "Volt", why: null }] }] },
+    };
+    const { chat } = renderPanelWithInteraction(interaction);
+    let settle!: () => void;
+    chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>((resolve, reject) => {
+      settle = () => outcome === "throws" ? reject(new Error("Submission failed")) : resolve(false);
+    }));
+    fireEvent.click(screen.getByRole("radio", { name: /Volt/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm entire form" }));
+    expect(screen.getByRole("status", { name: "Information confirmed" })).toBeTruthy();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
+    await act(async () => { settle(); });
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("status", { name: "Information confirmed" })).toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(false);
+    expect((screen.getByRole("radio", { name: /Volt/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("button", { name: "Confirm entire form" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it.each(["skill-stack", "skill-stack-early"] as const)("opens %s adjustment without submitting the old chat choice", (stage) => {
     const interaction = directionInteraction();
     if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
-    interaction.content = { ...interaction.content, capability_id: "brand_skill-stack", options: [{ ...interaction.content.options[0], option_id: "adjust", title: "调整 Skills" }] };
+    interaction.content = { ...interaction.content, capability_id: `brand_${stage}`, options: [{ ...interaction.content.options[0], option_id: "adjust", title: "调整 Skills" }] };
     const chat = mockChatResult();
     chat.state.guidedInteraction = interaction;
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     const onOpen = vi.fn();
     render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
-      brandMode brandStage="skill-stack" onBrandSkillPickerOpen={onOpen} />);
+      brandMode brandStage={stage} onBrandSkillPickerOpen={onOpen} />);
     fireEvent.click(screen.getByRole("radio", { name: /调整 Skills/ }));
     expect(onOpen).toHaveBeenCalledOnce();
     expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
   });
 
-  it("removes the submitted card and overlay during acceptance without a replacement notice", async () => {
+  it("submits early skip as an explicit choice without opening or confirming the picker", async () => {
+    const interaction = directionInteraction();
+    if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
+    interaction.content = { ...interaction.content, capability_id: "brand_skill-stack-early", options: [{ ...interaction.content.options[0], option_id: "skip", title: "Skip for now, choose later" }] };
+    const chat = mockChatResult();
+    chat.state.guidedInteraction = interaction;
+    chat.actions.submitGuidedInteraction.mockResolvedValue(true);
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const onOpen = vi.fn();
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()}
+      brandMode brandStage="skill-stack-early" onBrandSkillPickerOpen={onOpen} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Skip for now, choose later/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm direction" }));
+    await waitFor(() => expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledWith(interaction, expect.objectContaining({ action: "select", option_id: "skip" })));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("immediately collapses a submitted choice, retains its card and prevents resubmission", async () => {
     const { chat, rerender } = renderPanelWithInteraction(directionInteraction());
     let accept!: (accepted: boolean) => void;
     chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
@@ -2173,14 +2600,70 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "select", option_id: "option-world" }));
     expect(screen.queryByRole("status", { name: "Guided interaction submitted" })).toBeNull();
     expect(screen.queryByText("Generating nodes…")).toBeNull();
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    const overlay = document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay");
+    expect(overlay?.hidden).toBe(true);
+    expect(overlay?.querySelector('[role="radio"]')).toBeTruthy();
     expect(screen.queryByRole("radio", { name: /Quiet world/ })).toBeNull();
+    const chip = screen.getByRole("button", { name: /Choose duration.*Working/ });
+    fireEvent.click(chip);
+    expect(overlay?.hidden).toBe(false);
+    expect((screen.getByRole("radio", { name: /Quiet world/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Submitting" }));
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledOnce();
+    expect((screen.getByRole("button", { name: "Submit guided direction" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
     await act(async () => { accept(true); });
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBe(overlay);
+    expect(overlay?.hidden).toBe(true);
+    chat.state.guidedInteraction = { ...directionInteraction(), revision: 3, status: "submitted" };
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(overlay?.hidden).toBe(true);
+    expect(screen.getByRole("button", { name: /Choose duration.*Working/ })).toBeTruthy();
     chat.state.guidedInteraction = { ...openInteraction(), interaction_id: "next-interaction" };
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it.each(["composer", "card"])("submits a custom Brand direction from the %s and opens the refreshed options", async (source) => {
+    const interaction = directionInteraction();
+    if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
+    interaction.content = { ...interaction.content, capability_id: "brand_hypothesis" };
+    const { chat, rerender } = renderPanelWithInteraction(interaction);
+    let accept!: (accepted: boolean) => void;
+    chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
+    if (source === "card") fireEvent.click(screen.getByRole("radio", { name: /Other \(custom\)/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: source === "card" ? "Custom content" : "Message AdCraft Video Agent" }), {
+      target: { value: "Give me more directions" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: source === "card" ? "Confirm direction" : "Submit guided direction" }));
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledWith(interaction, expect.objectContaining({ action: "custom" }));
+    expect((screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement).value).toBe("");
+
+    chat.state.guidedInteraction = { ...interaction, revision: interaction.revision + 1 };
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    rerender(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(false);
+    fireEvent.click(screen.getByRole("radio", { name: /Quiet world/ }));
+    await act(async () => { accept(true); });
+    expect(screen.getByRole("radio", { name: /Quiet world/ }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it.each([true, false])("clears custom direction text immediately and settles with accepted=%s", async (accepted) => {
+    const { chat } = renderPanelWithInteraction(directionInteraction());
+    let accept!: (accepted: boolean) => void;
+    chat.actions.submitGuidedInteraction.mockReturnValue(new Promise<boolean>(resolve => { accept = resolve; }));
+    const composer = screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement;
+    const draft = "  Use a sunny world instead  ";
+    fireEvent.change(composer, { target: { value: draft } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit guided direction" }));
+    expect(chat.actions.submitGuidedInteraction).toHaveBeenCalledOnce();
+    expect(composer.value).toBe("");
+    await act(async () => { accept(accepted); });
+    expect(composer.value).toBe(accepted ? "" : draft);
   });
 
   it.each(["rejected", "throws"])("restores the original choices after submission %s", async outcome => {
@@ -2189,6 +2672,8 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     else chat.actions.submitGuidedInteraction.mockResolvedValue(false);
     submitDirection();
     await waitFor(() => expect(screen.getByRole("radio", { name: /Quiet world/ })).toBeTruthy());
+    expect(screen.getByRole("radio", { name: /Quiet world/ }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
     expect(screen.queryByText("Generating nodes…")).toBeNull();
   });
@@ -2199,7 +2684,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     chat.actions.submitGuidedInteraction.mockResolvedValue(true);
     submitDirection();
     await act(async () => {});
-    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay")?.hidden).toBe(true);
     const event: CanvasRuntimeEventV2 = {
       seq: 1, workflow_id: roleMotionWorkflow.workflow_id, event_type: "proposal_materialization_failed",
       project_id: null, execution_id: null, node_id: null, asset_id: null, binding_id: null,
@@ -2263,8 +2748,9 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     expect(screen.getByRole("article", { name: "Agent question" }).textContent).toContain(interaction.title);
   });
 
-  it("keeps one question across submit, hydration and rollback, then appends the next question", () => {
+  it.each(["ordinary", "hypothesis", "adspec", "treatment", "creative-route"])("retains answered %s Agent questions through confirmation, reload, rollback and the next question", (stage) => {
     const interaction = directionInteraction();
+    if (stage !== "ordinary") interaction.interaction_id = `interaction_workflow_brand_${stage}_4_choice`;
     const { chat, rerender } = renderPanelWithInteraction(interaction);
     const answer = {
       bubble_id: "optimistic-answer", interaction_id: interaction.interaction_id,
@@ -2280,15 +2766,152 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     refresh(interaction, [answer]);
     expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
     expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "Your guided answer" }).querySelector("details")?.open).toBe(false);
+    expect(screen.getAllByRole("article", { name: "Agent question" })[0]!.textContent).toContain(interaction.title);
     refresh(null, [{ ...answer, bubble_id: "persisted-answer" }]);
     expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
+    expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(1);
     refresh(interaction, []);
     expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
     expect(screen.queryByRole("article", { name: "Your guided answer" })).toBeNull();
     refresh({ ...interaction, interaction_id: "next", title: "Choose the next direction" }, [answer]);
-    expect(screen.getAllByRole("article", { name: "Agent question" }).map((el) => el.textContent)).toEqual([
-      `AdCraft Video Agent${interaction.title}`, "AdCraft Video AgentChoose the next direction",
+    expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(2);
+    expect(screen.getAllByRole("article", { name: "Agent question" })[1]!.textContent).toContain("Choose the next direction");
+    expect(screen.getAllByRole("article", { name: "Agent question" })[0]!.textContent).toContain(interaction.title);
+  });
+
+  it.each(["skill-stack", "skill-stack-early"] as const)("retains the %s question beside its confirmed summary after reload", (stage) => {
+    const interaction = directionInteraction();
+    interaction.interaction_id = `interaction_workflow_brand_${stage}_4_choice`;
+    interaction.title = "Choose a creative method and audiovisual style";
+    const answer = {
+      bubble_id: "skill-answer", interaction_id: interaction.interaction_id,
+      question_id: "action-world", label: interaction.title, value: "Metaphor / Quiet", sequence: 5,
+    };
+    const decisions = normalizeBrandDecisionPanelV1({
+      project_id: roleMotionWorkflow.project_id, workflow_id: roleMotionWorkflow.workflow_id,
+      mode: "brand", brand_name: "Brand", journey: { stage: "treatment", stage_revision: 6, stage_status: "ready" },
+      early_skills_confirmed: stage === "skill-stack-early",
+      skill_stack: { entries: [
+        { skill_id: "metaphor", version: "1.0.0", skill_kind: "creative_method", title: "Metaphor", selected: true },
+        { skill_id: "quiet", version: "1.0.0", skill_kind: "audiovisual_style", title: "Quiet", selected: true },
+      ] },
+    });
+    const chat = mockChatResult();
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: {
+      ...chat.state, guidedInteraction: interaction, guidedAnswerBubbles: [answer],
+    } });
+    const panel = (confirmed = false) => <AgentCanvasChatPanel workflow={roleMotionWorkflow}
+      chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} brandMode brandStage="treatment"
+      brandDecisions={confirmed ? decisions : null} />;
+    const view = render(panel());
+    expect(screen.getAllByRole("article", { name: "Agent question" })).toHaveLength(1);
+    expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(1);
+    const expectExchange = () => {
+      const question = screen.getByRole("article", { name: "Agent question" });
+      expect(question.textContent).toContain(interaction.title);
+      const receipt = screen.getByRole("article", { name: "Your selections" });
+      expect(question.compareDocumentPosition(receipt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(receipt.textContent).toContain("Metaphor");
+      expect(receipt.textContent).toContain("Quiet");
+      expect(receipt.querySelector("details")?.open).toBe(false);
+      expect(screen.queryByRole("article", { name: "Your guided answer" })).toBeNull();
+    };
+    view.rerender(panel(true));
+    expectExchange();
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: {
+      ...chat.state, guidedAnswerBubbles: [{ ...answer, bubble_id: "persisted-skill-answer" }],
+    } });
+    view.unmount();
+    const reloaded = render(panel(true));
+    expectExchange();
+
+    // Replacing the latest receipt with a summary must not erase earlier choices.
+    const earlier = { ...answer, bubble_id: "earlier-skill-answer", sequence: 4,
+      interaction_id: `interaction_workflow_brand_${stage}_3_choice`, label: "Which initial styles would you like?" };
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: {
+      ...chat.state, guidedAnswerBubbles: [earlier, answer],
+      guidedInteraction: { ...interaction, interaction_id: "next-question", title: "Choose the next direction" },
+    } });
+    reloaded.rerender(panel(true));
+    expect(screen.getAllByRole("article", { name: "Agent question" }).map(question => question.textContent)).toEqual([
+      expect.stringContaining(earlier.label), expect.stringContaining(answer.label), expect.stringContaining("Choose the next direction"),
     ]);
+    expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(1);
+    expect(screen.getAllByRole("article", { name: "Your selections" })).toHaveLength(1);
+  });
+
+  it("restores a production question from timeline history before detail loads, without duplicating it after selection", () => {
+    const titles = [
+      "《续命处方》分镜与场景设计：诊所悬疑喜剧",
+      "诊所场景美术设计：冷光诊室+晨间工位",
+      "《续命处方》场景执行方案：2场景45秒反转广告",
+    ];
+    const label = titles.join(" / ");
+    const options = titles.map((title, index) => ({
+      option_id: `option-${index + 1}`, title, public_summary: `方案 ${index + 1}`, key_decisions: [],
+    }));
+    const entry = {
+      entry_id: "proposal-entry", workflow_id: roleMotionWorkflow.workflow_id,
+      conversation_id: "conversation-1", sequence_no: 4, entry_type: "concept_proposal",
+      speaker: "adcraft_video_agent", content: "Review 3 option(s).",
+      metadata: { proposal_id: "proposal-1", options },
+      command_plan: null, action_receipt: null, created_at: proposalCard.created_at,
+    };
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: roleMotionWorkflow.workflow_id, conversation_id: "conversation-1",
+      guidance_session: null, continuations: [], current_session_actions: [],
+      items: [entry], next_cursor: 4,
+      presentation_items: [{ ...entry, presentation_key: "proposal:proposal-1",
+        presentation_revision: 1, source_entry_ids: [entry.entry_id],
+        message_key: null, message_args: {}, response_locale: "zh-CN" }],
+    });
+    const pointer = timeline.presentationItems![0]!.item;
+    expect(pointer).toEqual(timeline.items[0]);
+    const interaction = directionInteraction();
+    if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
+    interaction.title = label;
+    interaction.content = { ...interaction.content, proposal_id: "proposal-1",
+      capability_id: "scene_design", options: options.map(option => ({ ...option,
+        summary: option.public_summary, difference_tags: [], recommended: false, reference_preview: [],
+      })) };
+    const answer = {
+      bubble_id: "answer-scene", proposal_id: "proposal-1", interaction_id: interaction.interaction_id,
+      question_id: "action-world", label, value: titles[0]!, sequence: 5,
+    };
+    const chat = mockChatResult([pointer]);
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: { ...chat.state, guidedInteraction: interaction } });
+    const panel = () => <AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={1} chatEvents={[]} onFocusNode={vi.fn()} />;
+    const view = render(panel());
+    const expectQuestion = () => {
+      const questions = screen.getAllByRole("article", { name: "Agent question" });
+      expect(questions).toHaveLength(1);
+      expect(questions[0]!.textContent).toContain(label);
+      expect(questions[0]!.closest("details")).toBeNull();
+    };
+    expectQuestion();
+    panelMocks.useAgentCanvasChat.mockReturnValue({ ...chat, state: {
+      ...chat.state, guidedInteraction: interaction, guidedAnswerBubbles: [answer],
+    } });
+    view.rerender(panel());
+    expectQuestion();
+    expect(screen.getAllByRole("article", { name: "Your guided answer" })).toHaveLength(1);
+
+    // A reload has neither the old interaction nor local answer state.
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    view.rerender(panel());
+    expectQuestion();
+    const applied: ChatProposalCardV2 = { ...proposalCard, proposal: {
+      ...proposalCard.proposal, capability_id: "scene_design", proposal_kind: "scene", options,
+      capability_display_name: "Scene Designer", availability: "applied",
+      latest_application: { application_id: "application-scene", receipt_id: "receipt-scene",
+        option_id: "option-1", action: "select_option", created_node_ids: [],
+        queued_execution_ids: [], created_at: proposalCard.created_at },
+    } };
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult([applied]));
+    view.rerender(panel());
+    expectQuestion();
+    expect(screen.getByRole("article", { name: `Selected option: ${titles[0]}` })).toBeTruthy();
   });
 
   it("collapses the decision dock into an in-flow chip and re-expands it on demand", () => {
@@ -2358,12 +2981,15 @@ describe("brand treatment confirmation readiness", () => {
 describe("brand Skill sending outside the modal", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-  it("keeps sending when the Skill panel closes and the chat is collapsed", async () => {
+  it.each([
+    ["skill-stack", false], ["skill-stack", true],
+    ["skill-stack-early", false], ["skill-stack-early", true],
+  ] as const)("collapses the confirmed %s chat card while generation continues (manually closed: %s)", async (stage, manuallyClosed) => {
     const decisions = normalizeBrandDecisionPanelV1({
       project_id: roleMotionWorkflow.project_id, workflow_id: roleMotionWorkflow.workflow_id,
       mode: "brand", brand_name: "Brand",
-      journey: { stage: "skill-stack", stage_revision: 5, stage_status: "waiting_user" },
-      open_card: { card_id: "skills-5", stage: "skill-stack", stage_revision: 5, question: "Choose", options: [] },
+      journey: { stage, stage_revision: 5, stage_status: "waiting_user" },
+      open_card: { card_id: "skills-5", stage, stage_revision: 5, question: "Choose", options: [] },
       skill_stack: { entries: [
         { skill_id: "metaphor", version: "1.0.0", skill_kind: "creative_method", title: "Metaphor", selected: true },
         { skill_id: "quiet", version: "1.0.0", skill_kind: "audiovisual_style", title: "Quiet", selected: true },
@@ -2375,27 +3001,64 @@ describe("brand Skill sending outside the modal", () => {
     vi.spyOn(agentCanvasApi, "brandCreativeMethodSkills").mockResolvedValue({ items: [{
       skill_id: "metaphor", version: "1.0.0", skill_kind: "creative_method", title: "Metaphor", summary: "A method",
     }] });
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue({ catalog_version: "1", categories: [], next_cursor: null,
+      items: [{ skill_id: "quiet", version: "1.0.0", title: "Quiet", summary: "A quiet style", category: "styles", tags: [], supported_use_cases: [], preview: null, display_order: 1 }] });
     vi.spyOn(agentCanvasApi, "brandSelectSkills").mockReturnValue(new Promise(resolve => { accept = resolve; }));
     vi.spyOn(agentCanvasApi, "brandNextQuestion").mockReturnValue(new Promise(resolve => { generate = resolve; }));
     vi.spyOn(agentCanvasApi, "brandDecisions").mockResolvedValue(confirmed);
     const chat = mockChatResult();
+    const interaction: GuidedInteractionV1 = {
+      interaction_id: "skills-interaction-5", workflow_id: decisions.workflow_id,
+      session_id: "session-1", checkpoint_id: "checkpoint-1", kind: "concept_choice",
+      status: "open", response_locale: "en-US", expected_session_revision: 5, revision: 5,
+      title: "Choose Skills", context: "Review the recommended Skills",
+      content: {
+        content_kind: "concept_choice", proposal_id: null, stage, stage_revision: 5,
+        action_id: "skills-5", occurrence_id: null, capability_id: `brand_${stage}`,
+        allow_custom: false, allow_exclusion: false,
+        options: [{ option_id: "adjust", title: "Adjust Skills", summary: "Change the combination",
+          difference_tags: [], recommended: false, reference_preview: [] }],
+      },
+      allowed_actions: ["select"], submit_path: "/guided-interactions/skills-interaction-5/submit",
+      created_at: "2026-09-15T00:00:00Z", updated_at: "2026-09-15T00:00:00Z",
+    };
+    chat.state.guidedInteraction = interaction;
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     const onUpdated = vi.fn();
     const onClose = vi.fn();
     const panel = (open: boolean, collapsed: boolean) => <AgentCanvasChatPanel workflow={roleMotionWorkflow}
-      chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} brandMode brandStage="skill-stack"
+      chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} brandMode brandStage={stage}
       brandDecisions={decisions} brandSkillPickerOpen={open} collapsed={collapsed}
       onBrandSkillPickerClose={onClose} onBrandDecisionsUpdated={onUpdated} />;
     const view = render(panel(true, false));
-    await screen.findByLabelText(/Metaphor/);
+    await screen.findByRole("radio", { name: "Quiet" });
+    const overlay = document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay");
+    expect(overlay?.hidden).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Save and send" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(onClose).toHaveBeenCalledOnce();
-    view.rerender(panel(false, true));
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("Proposal sent");
-    expect(screen.getByRole("button", { name: "Open AdCraft Bot panel" })).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Skills confirmed" })).toBeNull();
+    if (manuallyClosed) {
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      expect(onClose).toHaveBeenCalledOnce();
+      view.rerender(panel(false, true));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByRole("button", { name: "Open AdCraft Bot panel" })).toBeTruthy();
+    } else {
+      expect(onClose).not.toHaveBeenCalled();
+    }
     await act(async () => accept(confirmed));
+    expect(onClose).toHaveBeenCalledOnce();
+    view.rerender(panel(false, manuallyClosed));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("status", { name: "Skills confirmed" })).toBeTruthy();
+    view.rerender(panel(false, false));
+    const confirmedOverlay = document.querySelector<HTMLElement>(".agent-chat__current-interaction--overlay");
+    if (!manuallyClosed) expect(confirmedOverlay).toBe(overlay);
+    expect(confirmedOverlay?.hidden).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Choose Skills.*Working/ }));
+    expect((screen.getByRole("radio", { name: /Adjust Skills/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(chat.actions.submitGuidedInteraction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
     expect(agentCanvasApi.brandNextQuestion).toHaveBeenCalledOnce();
     expect(onUpdated).toHaveBeenCalledWith(confirmed);
     await act(async () => generate(null));
@@ -2404,6 +3067,11 @@ describe("brand Skill sending outside the modal", () => {
     view.rerender(panel(true, false));
     expect((await screen.findByRole("button", { name: "Proposal sent" })).hasAttribute("disabled")).toBe(true);
     expect(onClose).toHaveBeenCalledOnce();
+    chat.state.guidedInteraction = { ...interaction, interaction_id: "next-direction", revision: 6,
+      title: "Choose creative direction", content: { ...interaction.content,
+        capability_id: "brand_hypothesis", stage: "hypothesis", stage_revision: 6, action_id: "direction-6" } };
+    view.rerender(panel(false, false));
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
   });
 });
 

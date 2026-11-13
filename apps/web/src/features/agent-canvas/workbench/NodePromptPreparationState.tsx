@@ -1,3 +1,4 @@
+import { NodeWorkbenchFeedback } from "./NodeWorkbenchFeedback.tsx";
 import { useEffect, useRef } from "react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -67,7 +68,7 @@ export function NodePromptPreparationState({
   const userAction = failureUserAction(error?.actionable_failure);
   const activePreparation = status === "queued" || status === "working";
 
-  return (
+  const content = (
     <section
       className={`agent-node-workbench__prompt-preparation is-${status}`}
       role={status === "failed" ? "alert" : "status"}
@@ -92,4 +93,5 @@ export function NodePromptPreparationState({
       ) : null}
     </section>
   );
+  return activePreparation ? content : <NodeWorkbenchFeedback>{content}</NodeWorkbenchFeedback>;
 }

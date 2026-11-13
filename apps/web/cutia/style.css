@@ -1,0 +1,35 @@
+@import "../vendor/cutia/globals.css";
+@source "../vendor/cutia/src";
+@source "./";
+
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { font-family: Inter, "Noto Sans SC", sans-serif; font-size: 13px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+.cutia-workspace { height: 100%; display: flex; flex-direction: column; padding: 0 8px 8px; gap: 6px; background: #171717; }
+.cutia-layout { flex: 1; min-height: 0; }
+.cutia-tools, .cutia-tools > div { display: flex; align-items: center; gap: 4px; }
+.cutia-tools { justify-content: space-between; min-height: 42px; overflow-x: auto; flex-shrink: 0; }
+.cutia-tools button, .cutia-mobile-switch button { white-space: nowrap; padding: 7px 10px; border-radius: 5px; color: #aaa; font-size: 12px; }
+.cutia-tools button:hover, .cutia-tools button[aria-pressed="true"], .cutia-mobile-switch button[aria-pressed="true"] { background: #303030; color: #fafafa; }
+.cutia-tools button:disabled { opacity: .35; }
+.cutia-top { gap: 3px; }
+.cutia-output-settings { padding: 16px; display: grid; gap: 16px; }
+.cutia-output-settings h3 { font-weight: 600; }
+.cutia-output-settings label { display: grid; gap: 7px; font-size: 12px; color: #aaa; }
+.cutia-output-settings select { border: 1px solid #444; background: #262626; color: #eee; padding: 8px; border-radius: 5px; width: 100%; }
+.cutia-loading { height: 100%; display: grid; place-content: center; padding: 24px; color: #aaa; background: #171717; }
+.cutia-render-lock { position: fixed; inset: 0; z-index: 100; background: #1117; cursor: wait; }
+.cutia-mobile-switch { display: none; }
+.cutia-timeline .panel { height: 100%; }
+@media (max-width: 760px) {
+  .cutia-tools { gap: 12px; }
+  .cutia-tools button { padding: 6px 8px; }
+  .cutia-mobile-switch { display: flex; min-height: 34px; gap: 4px; }
+  .cutia-top { display: block !important; }
+  .cutia-top > [data-panel-resize-handle-id] { display: none; }
+  .cutia-top > [data-panel] { height: 100%; width: 100%; }
+  [data-mobile-pane="Preview"] .cutia-media-pane, [data-mobile-pane="Preview"] .cutia-properties-pane,
+  [data-mobile-pane="Media"] .cutia-preview-pane, [data-mobile-pane="Media"] .cutia-properties-pane,
+  [data-mobile-pane="Properties"] .cutia-media-pane, [data-mobile-pane="Properties"] .cutia-preview-pane { display: none; }
+}

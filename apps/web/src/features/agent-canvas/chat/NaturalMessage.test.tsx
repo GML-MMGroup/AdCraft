@@ -93,10 +93,11 @@ describe("NaturalMessage", () => {
     const { rerender } = render(
       <NaturalMessage message={agentMessage} presentation={presentation(true)} />,
     );
-    expect(screen.getByText("AdCraft Video Agent")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "AdCraft" })).toBeTruthy();
+    expect(screen.queryByText("AdCraft Video Agent")).toBeNull();
 
     rerender(<NaturalMessage message={agentMessage} presentation={presentation(false)} />);
-    expect(screen.queryByText("AdCraft Video Agent")).toBeNull();
+    expect(screen.queryByRole("img", { name: "AdCraft" })).toBeNull();
   });
 
   it("uses the existing markdown renderer and blocks unsafe links", () => {

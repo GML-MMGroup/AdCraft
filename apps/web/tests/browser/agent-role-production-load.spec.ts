@@ -420,7 +420,7 @@ test("keeps one real chat role healthy under representative Workflow load", asyn
     serverPhase = "waiting";
     await advance();
     await expect.poll(async () => (await snapshot()).phase).toBe("waiting");
-    await expect(page.getByText("Waiting for model", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("status", { name: "AdCraft Video Agent is working", exact: true }).first()).toBeVisible();
     await expect.poll(async () => (await motionSnapshot()).roleAnimationCount).toBeGreaterThan(0);
     await expect.poll(async () => (await motionSnapshot()).loopAnimationCount).toBeGreaterThan(0);
     const waiting = await motionSnapshot();

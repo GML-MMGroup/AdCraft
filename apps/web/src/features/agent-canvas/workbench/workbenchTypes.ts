@@ -40,6 +40,9 @@ export interface AgentCanvasInlineWorkbenchProps {
   modelResolution?: CanvasRuntimeModelResolutionV2 | null;
   inputReadinessIssue?: UpstreamInputReadinessIssueV2 | null;
   onRun: (node: CanvasNodeV2) => Promise<void>;
+  /** Starts local feedback before prompt/parameter saves; null rejects a duplicate intent. */
+  onRunStart?: (node: CanvasNodeV2) => (() => void) | null;
+  runPending?: boolean;
   onSaveImageToLibrary: (
     assetId: string,
     request: SaveAgentCanvasImageToLibraryRequestV2,

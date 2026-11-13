@@ -4,6 +4,7 @@ import { ChevronDownIcon, ChevronUpIcon } from "../../../icons.tsx";
 import { useWorkbenchMenu } from "./useWorkbenchMenu.ts";
 import { useTranslation } from "../../../i18n/useTranslation.ts";
 import { resolutionAspectRatio } from "./resolutionAspectRatio.ts";
+import { AspectRatioIcon } from "./AspectRatioIcon.tsx";
 
 export function InlineParameterSelect({
   label,
@@ -25,7 +26,7 @@ export function InlineParameterSelect({
   const { open, setOpen, menuStyle, triggerRef, menuRef } = useWorkbenchMenu(disabled, options.length);
   const optionLabel = (option: string) => {
     const ratio = resolutionAspectRatio(option);
-    return ratio ? t("{value} ({ratio})", { value: option, ratio }) : option;
+    return ratio ? t("{value} ({ratio})", { value: option, ratio }) : `${option}${valueSuffix}`;
   };
   const emptyLabel = unsetLabel ?? t("Not set");
   const unsupported = Boolean(value) && !options.includes(value);
@@ -53,7 +54,10 @@ export function InlineParameterSelect({
             if (!disabled) setOpen((current) => !current);
           }}
         >
-          <span>{selectedLabel}</span>
+          <span className="agent-node-workbench__parameter-value">
+            <AspectRatioIcon value={value} />
+            <span className="agent-node-workbench__model-name-text">{selectedLabel}</span>
+          </span>
           <span className="agent-node-workbench__model-chevron" aria-hidden="true">
             {open ? <ChevronDownIcon /> : <ChevronUpIcon />}
           </span>
@@ -73,7 +77,9 @@ export function InlineParameterSelect({
           </button>
           {unsupported ? (
             <button type="button" role="option" aria-selected disabled>
-              <strong>{selectedLabel}</strong>
+              <span className="agent-node-workbench__model-option-name">
+                <AspectRatioIcon value={value} /><strong>{selectedLabel}</strong>
+              </span>
             </button>
           ) : null}
           {options.map((option) => (
@@ -85,7 +91,9 @@ export function InlineParameterSelect({
               disabled={disabled}
               onClick={() => select(option)}
             >
-              <strong>{optionLabel(option)}</strong>
+              <span className="agent-node-workbench__model-option-name">
+                <AspectRatioIcon value={option} /><strong>{optionLabel(option)}</strong>
+              </span>
             </button>
           ))}
         </div>,

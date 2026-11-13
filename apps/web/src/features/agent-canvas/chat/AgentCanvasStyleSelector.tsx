@@ -1,16 +1,18 @@
+import { useUiLocale } from "../../../i18n/locale.tsx";
+import { skillDisplayTitle, skillDisplaySummary, skillCategoryTitle } from "../skills/skillDisplayCopy.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
-import { CloseIcon, ConfirmIcon } from "../../../icons.tsx";
+import { CloseIcon } from "../../../icons.tsx";
 import type {
   ActiveStyleSkillSummaryV2,
   VideoSkillCatalogResponseV2,
-  VideoSkillCategoryV2,
   VideoSkillPublicDetailV2,
 } from "../../../types-v2.ts";
-import { SkillPreview } from "./SkillPreview.tsx";
+import { SkillCardContent } from "./SkillCardContent.tsx";
+import { loadVideoSkillCatalog } from "../skills/loadVideoSkillCatalog.ts";
 
 type StyleSelectorProps = {
   workflowId: string;
@@ -24,15 +26,6 @@ type StyleSelectorProps = {
   triggerLabel?: string;
   responseLocale?: string;
 };
-
-const STYLE_CATALOG_PAGE_SIZE = 100;
-
-function compareDisplayOrder(
-  left: { display_order: number; title: string },
-  right: { display_order: number; title: string },
-) {
-  return left.display_order - right.display_order;
-}
 
 function StyleLoadingState({ chinese = false }: { chinese?: boolean }) {
   return (
@@ -72,38 +65,11 @@ function StyleCard({ skill, selected, activating, disabled, onSelect, chinese = 
       disabled={disabled}
       onClick={onSelect}
     >
-      <span className="agent-chat__style-preview">
-        <SkillPreview preview={skill.preview} />
-        {selected ? (
-          <span className="agent-chat__style-selected-mark" aria-label={chinese ? "已选择" : "Selected"}>
-            <ConfirmIcon />
-          </span>
-        ) : null}
-        {activating ? (
-          <span className="agent-chat__style-applying" role="status">Applying…</span>
-        ) : null}
-      </span>
-      <span className="agent-chat__style-option-copy">
-        <strong>{skill.title}</strong>
-        <small>{skill.summary}</small>
-      </span>
+      <SkillCardContent title={skillDisplayTitle(skill, chinese ? "zh-CN" : "en-US")}
+        summary={skillDisplaySummary(skill, chinese ? "zh-CN" : "en-US")}
+        preview={skill.preview} selected={selected} activating={activating} chinese={chinese} />
     </button>
   );
-}
-
-function mergeCatalogPages(pages: VideoSkillCatalogResponseV2[]): VideoSkillCatalogResponseV2 {
-  const categories = new Map<string, VideoSkillCategoryV2>();
-  const items = new Map<string, VideoSkillPublicDetailV2>();
-  pages.forEach((page) => {
-    page.categories.forEach((category) => categories.set(category.category_id, category));
-    page.items.forEach((skill) => items.set(`${skill.skill_id}@${skill.version}`, skill));
-  });
-  return {
-    catalog_version: pages.at(-1)?.catalog_version ?? "unknown",
-    categories: [...categories.values()].sort(compareDisplayOrder),
-    items: [...items.values()].sort(compareDisplayOrder),
-    next_cursor: null,
-  };
 }
 
 export function AgentCanvasStyleSelector({
@@ -115,7 +81,8 @@ export function AgentCanvasStyleSelector({
   triggerLabel,
   responseLocale = "en",
 }: StyleSelectorProps) {
-  const chinese = responseLocale.startsWith("zh");
+  const locale = useUiLocale(responseLocale);
+  const chinese = locale.startsWith("zh");
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<VideoSkillCatalogResponseV2 | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -132,23 +99,7 @@ export function AgentCanvasStyleSelector({
     setLoading(true);
     setError(null);
     try {
-      const pages: VideoSkillCatalogResponseV2[] = [];
-      const seenCursors = new Set<string>();
-      let cursor: string | null = null;
-      do {
-        const page = await agentCanvasApi.listVideoSkills({
-          limit: STYLE_CATALOG_PAGE_SIZE,
-          ...(cursor ? { cursor } : {}),
-        });
-        pages.push(page);
-        cursor = page.next_cursor;
-        if (cursor && seenCursors.has(cursor)) {
-          throw new Error("The Style catalog returned a repeated page cursor.");
-        }
-        if (cursor) seenCursors.add(cursor);
-      } while (cursor);
-
-      const nextCatalog = mergeCatalogPages(pages);
+      const nextCatalog = await loadVideoSkillCatalog();
       setCatalog(nextCatalog);
       setActiveCategoryId((current) => {
         if (current && nextCatalog.categories.some((category) => category.category_id === current)) {
@@ -225,7 +176,7 @@ export function AgentCanvasStyleSelector({
       return;
     }
     if (activatingSkillId) return;
-    onSkillSelected?.(skill.title);
+    onSkillSelected?.(skillDisplayTitle(skill, locale));
     setActivatingSkillId(skill.skill_id);
     setError(null);
     try {
@@ -244,7 +195,7 @@ export function AgentCanvasStyleSelector({
       await onWorkflowRefresh();
       setOpen(false);
     } catch (activationError) {
-      onSkillSelected?.(activeStyle?.title ?? null);
+      onSkillSelected?.(activeStyle ? skillDisplayTitle(activeStyle, locale) : null);
       if (isV2ApiError(activationError)) {
         if (activationError.code === "style_skill_activation_conflict") {
           try {
@@ -272,8 +223,8 @@ export function AgentCanvasStyleSelector({
         type="button"
         ref={triggerRef}
         className={`agent-chat__style-trigger${open ? " is-active" : ""}`}
-        aria-label={triggerLabel ?? "Skill"}
-        title={triggerLabel ?? "Skill"}
+        aria-label={triggerLabel ?? (chinese ? "技能" : "Skill")}
+        title={triggerLabel ?? (chinese ? "技能" : "Skill")}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => void togglePicker()}
@@ -327,7 +278,7 @@ export function AgentCanvasStyleSelector({
 
           {catalog ? (
             <>
-              <div className="agent-chat__style-categories" role="tablist" aria-label="Style categories">
+              <div className="agent-chat__style-categories" role="tablist" aria-label={chinese ? "风格分类" : "Style categories"}>
                 {categories.map((category) => (
                   <button
                     type="button"
@@ -336,7 +287,7 @@ export function AgentCanvasStyleSelector({
                     key={category.category_id}
                     onClick={() => setActiveCategoryId(category.category_id)}
                   >
-                    {category.title}
+                    {skillCategoryTitle(category, locale)}
                   </button>
                 ))}
               </div>

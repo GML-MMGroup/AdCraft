@@ -11,4 +11,4 @@ The application serves these Latin subsets locally so the interface works withou
 - `barlow-condensed-black-italic.woff2`: Barlow Condensed, black italic.
 - `literata-latin-italic-700.woff2`: Literata, bold italic.
 
-The font binaries were retrieved from the Google Fonts CSS API and are distributed under the SIL Open Font License 1.1. Chinese content uses the operating-system fallback stacks defined by the relevant page styles, avoiding a large bundled CJK font payload.
+The font binaries were retrieved from the Google Fonts CSS API and are distributed under the SIL Open Font License 1.1. Most Chinese content uses operating-system fallback stacks. The brand decision panel uses locally hosted, Unicode-subsetted Noto Sans SC; see `noto-sans-sc/README.md` and `noto-sans-sc/OFL.txt`.

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { V2ApiError } from "../../../api/v2Client.ts";
 import type { AgentCanvasWorkflowV2, CanvasBindingV2, CanvasNodeV2 } from "../../../types-v2.ts";
 import { normalizeAgentCanvasWorkflowV2, normalizeCanvasNodeV2 } from "../model/normalizers.ts";
+import { beginNodeDrag, finishNodeDrag, deferNodeSnapshotDuringDrag } from "../canvas/draggingNodeState.ts";
 import { useAgentCanvasSession } from "../session/useAgentCanvasSession.ts";
 import { useAgentCanvasHistoryKeyboard } from "./useAgentCanvasHistoryKeyboard.ts";
 
@@ -115,6 +116,60 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("canvas history through the session and keyboard", () => {
+  it.each([false, true])("keeps dropped coordinates with pending edit=%s", async (blocked) => {
+    const pendingEdit = deferred<{value: {workflow: AgentCanvasWorkflowV2; node: CanvasNodeV2}; etag: string}>();
+    api.patchAgentCanvasNode.mockReturnValueOnce(pendingEdit.promise);
+    const h = renderHook(() => useCanvas(server));
+    const project = () => h.result.current.state.workflow!.nodes.map(n => ({id: n.node_id, position: n.position}));
+    const initial = project();
+    const active = new Set<string>();
+    beginNodeDrag(active, "a", ["a"]);
+    const stopped = [{...initial[0], position: {x: 400, y: 500}}];
+    const dropped = finishNodeDrag(initial, initial, active, stopped);
+    let edit!: Promise<unknown>;
+    let move!: Promise<unknown>;
+    edit = Promise.resolve();
+    if (blocked) act(() => { edit = h.result.current.actions.patchNode("b", {title: "Pending edit"}); });
+    act(() => { move = h.result.current.actions.moveNodes([{node_id: "a", x: 10, y: 20}], dropped.positions); });
+    act(() => { h.result.current.actions.applyWorkflow({...server, revision: server.revision + 1}); });
+    const refreshed = deferNodeSnapshotDuringDrag(project(), dropped.nodes, active);
+    const observed = refreshed.nodes!.find(n => n.id === "a")!.position;
+    if (blocked) expect(api.patchAgentCanvasLayout).not.toHaveBeenCalled();
+    await act(async () => {
+      pendingEdit.resolve({value: {workflow: server, node: server.nodes[1]}, etag: '"r1"'});
+      await edit;
+      await move;
+    });
+    expect(observed).toEqual({x: 400, y: 500});
+  });
+
+  it("preserves the latest queued drop and records each move for undo", async () => {
+    const firstSave = deferred<void>();
+    const secondSave = deferred<void>();
+    const commit = api.patchAgentCanvasLayout.getMockImplementation()!;
+    api.patchAgentCanvasLayout
+      .mockImplementationOnce(async (...args) => { await firstSave.promise; return commit(...args); })
+      .mockImplementationOnce(async (...args) => { await secondSave.promise; return commit(...args); });
+    const h = renderHook(() => useCanvas(server));
+    const start = [{ node_id: "a", x: 10, y: 20 }];
+    const first = [{ node_id: "a", x: 400, y: 500 }];
+    const second = [{ node_id: "a", x: 600, y: 700 }];
+    let one!: Promise<void>;
+    let two!: Promise<void>;
+    act(() => { one = h.result.current.actions.moveNodes(start, first); });
+    act(() => { two = h.result.current.actions.moveNodes(first, second); });
+    await act(async () => { firstSave.resolve(); await one; });
+    act(() => { h.result.current.actions.applyWorkflow({ ...server, revision: server.revision + 1 }); });
+    expect(h.result.current.state.workflow!.nodes[0].position).toEqual({ x: 600, y: 700 });
+    expect(h.result.current.history.state.undo[0]).toMatchObject({ kind: "move", after: first });
+    await act(async () => { secondSave.resolve(); await two; });
+    expect(h.result.current.history.state.undo[1]).toMatchObject({ kind: "move", after: second });
+    await step(h.result.current.history.undo);
+    expect(h.result.current.state.workflow!.nodes[0].position).toEqual({ x: 400, y: 500 });
+    await step(h.result.current.history.undo);
+    expect(h.result.current.state.workflow!.nodes[0].position).toEqual({ x: 10, y: 20 });
+  });
+
   it("groups keyboard edge-first node deletion, then restores the prompt, output and missing binding", async () => {
     let current!: ReturnType<typeof useCanvas>;
     function Canvas() {

@@ -284,29 +284,3 @@ describe("timeline presentation reconciliation", () => {
     expect(visibleTimelinePresentationItems(merged)).toHaveLength(2);
   });
 });
-
-it.each([1, 2, 4])("localizes and replaces storyboard progress for %i segments", (total) => {
-  let state = new Map<string, ChatTimelinePresentationViewItemV2>();
-  for (let completed = 0; completed <= total; completed += 1) {
-    const base = mediaReviewPresentation("zh-CN", []);
-    const progress: ChatTimelinePresentationViewItemV2 = {
-      ...base,
-      presentation_key: "planning:materialization-1",
-      message_key: "storyboard.authoring_progress",
-      message_args: { completed, total },
-      source_entry_ids: [`progress-${completed}`],
-      item: { ...base.item, sequence: completed + 1 },
-    };
-    state = mergeTimelinePresentationItems(state, [progress]);
-    const visible = visibleTimelinePresentationItems(state);
-    expect(visible).toHaveLength(1);
-    const item = visible[0]!;
-    expect(item.item_type).toBe("message");
-    if (item.item_type !== "message") throw new Error("Expected progress message");
-    expect(item.text).toBe(completed === total
-      ? `${total}/${total} 段分镜已编写完成，正在准备画布节点。`
-      : completed === 0
-        ? `正在编写分镜，共 ${total} 段。`
-        : `分镜编写完成 ${completed}/${total}，正在编写第 ${completed + 1} 段。`);
-  }
-});

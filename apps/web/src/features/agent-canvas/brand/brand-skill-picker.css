@@ -1,70 +1,72 @@
 .brand-skill-picker-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 99;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgb(5 5 5 / 72%);
+  --agent-chat-primary: var(--style-text);
+  --agent-chat-panel: var(--style-panel);
+  font-family: var(--font-workflow-ui, "Manrope", "PingFang SC", "Microsoft YaHei", sans-serif);
 }
-
-.brand-skill-picker {
-  box-sizing: border-box;
-  width: min(680px, 100%);
-  max-height: calc(100dvh - 32px);
-  overflow-y: auto;
-  padding: 20px;
-  border: 1px solid #383838;
-  border-radius: 8px;
-  background: #181818;
-  color: #f2f2f2;
-  font: inherit;
+.brand-skill-picker { height: min(790px, calc(100dvh - 48px)); }
+.brand-skill-picker .agent-chat__style-menu-header { flex: none; padding: 20px 22px 18px; }
+.brand-skill-picker h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+.brand-skill-picker__feedback { flex: none; }
+.brand-skill-picker__feedback:empty { display: none; }
+.brand-skill-picker__feedback > p { margin: 10px 22px; font-size: 13px; line-height: 1.6; color: var(--style-secondary); }
+.brand-skill-picker__feedback [role="alert"] { color: var(--error); }
+.brand-skill-picker__feedback > button { margin: 8px 22px 12px; }
+.brand-skill-picker__feedback > button,
+.brand-skill-picker__footer button,
+.brand-skill-gallery__empty button {
+  align-items: center; justify-content: center; padding: 9px 15px; border: 1px solid var(--style-border); border-radius: 6px;
+  background: var(--style-surface); color: var(--style-text); font: inherit; font-size: 13px; cursor: pointer;
 }
-
-.brand-skill-picker header,
-.brand-skill-picker footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.brand-skill-picker button:disabled { cursor: default; opacity: .45; }
+.brand-skill-picker :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.brand-skill-gallery__tabs { display: flex; flex: none; gap: 6px; padding: 14px 22px; }
+.brand-skill-gallery__tabs button {
+  align-items: center; justify-content: center; flex: 1; min-height: 40px; gap: 8px; padding: 9px 10px;
+  border: 1px solid transparent; background: transparent; color: var(--style-secondary); font: inherit; font-size: 13px; cursor: pointer;
 }
-
-.brand-skill-picker h2 { margin: 0; font-size: 18px; }
-.brand-skill-picker p { font-size: 13px; line-height: 1.6; }
-.brand-skill-picker fieldset { margin: 16px 0; padding: 12px; border: 1px solid #383838; min-width: 0; }
-.brand-skill-picker legend { font-size: 14px; padding: 0 6px; }
-.brand-skill-picker__choice { display: flex; align-items: start; gap: 10px; padding: 10px 0; cursor: pointer; }
-.brand-skill-picker__choice span { display: grid; gap: 4px; overflow-wrap: anywhere; }
-.brand-skill-picker__choice strong { font-size: 13px; }
-.brand-skill-picker__choice small { color: #a0a0a0; line-height: 1.5; }
-.brand-skill-picker__choice .brand-skill-picker__reason { color: #9cc9e8; }
-.brand-skill-picker [role="alert"] { color: #e89c9c; }
-.brand-skill-picker button { padding: 8px 12px; border: 1px solid #383838; border-radius: 6px; background: #222; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
-.brand-skill-picker button:disabled { opacity: 0.5; cursor: default; }
-.brand-skill-picker :focus-visible { outline: 2px solid #9cc9e8; outline-offset: 3px; }
-.brand-skill-picker .agent-chat__style-trigger { width: auto; height: auto; gap: 8px; }
-.brand-skill-picker footer { justify-content: flex-end; }
-.brand-skill-picker footer button:last-child { background: #e7e7e7; color: #111; }
-
-.brand-skill-picker-notice {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 98;
-  box-sizing: border-box;
-  width: min(360px, calc(100vw - 40px));
-  padding: 16px;
-  border: 1px solid #383838;
-  border-radius: 8px;
-  background: #181818;
-  color: #f2f2f2;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
-  font: inherit;
-  font-size: 13px;
+.brand-skill-gallery__tabs button:hover { background: var(--style-surface); color: var(--style-text); }
+.brand-skill-gallery__tabs button[aria-selected="true"] { border-color: var(--brand); background: var(--surface-selected); color: var(--text-primary); }
+.brand-skill-gallery__tabs button > span { display: grid; min-width: 21px; height: 21px; padding: 0 5px; place-items: center; border-radius: 5px; background: rgb(128 128 128 / 18%); font-size: 11px; font-variant-numeric: tabular-nums; }
+.brand-skill-gallery__panel { display: flex; flex: 1; flex-direction: column; min-height: 0; padding-top: 14px; }
+.brand-skill-gallery__categories { padding: 0 22px 12px; border: 0; background: transparent; }
+.brand-skill-gallery__categories button[aria-pressed="true"] { border-color: var(--brand); background: var(--surface-selected); color: var(--text-primary); }
+.brand-skill-gallery__scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 22px 22px; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--style-panel); }
+.brand-skill-gallery__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: 14px; }
+.brand-skill-gallery__group + .brand-skill-gallery__group { margin-top: 24px; }
+.brand-skill-gallery__group h3 { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; color: var(--style-secondary); font-size: 12px; font-weight: 500; }
+.brand-skill-gallery__group h3 span { color: var(--style-muted); font-variant-numeric: tabular-nums; }
+.brand-skill-gallery__card { position: relative; cursor: pointer; }
+.brand-skill-gallery__card > input { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.brand-skill-gallery__card:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.brand-skill-picker .brand-skill-gallery__card.is-disabled { opacity: .5; cursor: default; transform: none; }
+.brand-skill-gallery__card .agent-chat__style-option-copy { box-sizing: border-box; padding: 12px; }
+.brand-skill-gallery__card .agent-chat__style-option-copy strong { font-size: 13px; line-height: 1.5; font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
+.brand-skill-gallery__card .agent-chat__style-option-secondary-title { color: var(--style-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.brand-skill-gallery__card .agent-chat__style-selected-mark { width: 23px; height: 23px; top: 8px; right: 8px; }
+.brand-skill-gallery__unavailable { padding: 0 12px 10px; color: var(--warning); font-size: 11px; }
+.brand-skill-gallery__preview-media { position: absolute; inset: 0; }
+.brand-skill-gallery__preview-skeleton { display: flex; box-sizing: border-box; width: 100%; height: 100%; flex-direction: column; justify-content: center; align-items: center; gap: 7px; background: var(--surface-raised); }
+.brand-skill-gallery__preview-skeleton > span { width: 45%; height: 31%; margin-bottom: 4px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--surface-raised); }
+.brand-skill-gallery__preview-skeleton > i { width: 34%; height: 5px; border-radius: 3px; background: var(--border-strong); }
+.brand-skill-gallery__preview-skeleton > i:last-child { width: 22%; }
+.brand-skill-gallery__empty { display: grid; min-height: 200px; place-content: center; justify-items: center; gap: 10px; color: var(--style-secondary); font-size: 13px; }
+.brand-skill-picker__footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 22px; border-top: 1px solid var(--style-divider); background: var(--style-header); }
+.brand-skill-picker__footer p { margin: 0; color: var(--style-secondary); font-size: 12px; line-height: 1.6; }
+.brand-skill-picker__footer > div { display: flex; gap: 8px; flex: none; }
+.brand-skill-picker__footer .brand-skill-picker__confirm { background: var(--surface-raised); border-color: var(--brand); color: var(--text-primary); }
+@media (hover: hover) and (pointer: fine) {
+  .brand-skill-picker__footer .brand-skill-picker__confirm:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--brand-hover); }
 }
-
-.brand-skill-picker-notice p { margin: 0 0 12px; line-height: 1.6; }
-.brand-skill-picker-notice [role="alert"] { color: #e89c9c; }
-.brand-skill-picker-notice > div { display: flex; flex-wrap: wrap; gap: 8px; }
-.brand-skill-picker-notice button { padding: 6px 10px; border: 1px solid #383838; border-radius: 6px; background: #222; color: inherit; font: inherit; cursor: pointer; }
-.brand-skill-picker-notice :focus-visible { outline: 2px solid #9cc9e8; outline-offset: 3px; }
+@media (max-width: 700px) {
+  .brand-skill-gallery__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .brand-skill-picker .agent-chat__style-menu-header { padding: 16px; }
+  .brand-skill-gallery__tabs { padding: 10px 12px; gap: 2px; }
+  .brand-skill-gallery__tabs button { padding: 8px 6px; font-size: 12px; gap: 4px; }
+  .brand-skill-gallery__panel { padding-top: 12px; }
+  .brand-skill-gallery__categories { padding: 0 12px 12px; }
+  .brand-skill-gallery__scroll { padding: 4px 12px 16px; }
+  .brand-skill-picker__footer { padding: 12px; flex-wrap: wrap; }
+  .brand-skill-picker__footer > div { margin-left: auto; }
+}
+@media (max-width: 560px) { .brand-skill-picker { height: calc(100dvh - 28px); } }
+@media (prefers-reduced-motion: reduce) { .brand-skill-gallery__card { transition: none; } }

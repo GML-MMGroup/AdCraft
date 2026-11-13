@@ -64,6 +64,8 @@
   --radius-shell: 32px;
   --radius-card: 24px;
   --font-ui: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-cjk-ui: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "AdCraft Brand Sans SC";
+  --font-workflow-ui: "Manrope", var(--font-cjk-ui), sans-serif;
   --font-brand: "Instrument Serif", "Songti SC", "STSong", serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
   --font-display: var(--font-ui);

@@ -1,3 +1,4 @@
+import { useEditingText } from "./editingMessages.ts";
 import type { CSSProperties } from "react";
 import type { EditingBgmEntryV2 } from "../../../types-v2.ts";
 
@@ -16,6 +17,7 @@ export function AudioTrackControls({
   onSetBgmVolume,
   volume,
 }: AudioTrackControlsProps) {
+  const t = useEditingText();
   return (
     <div className="agent-editing-timeline__audio-controls agent-editing-timeline__audio-controls--under-label" role="region" aria-label="Audio track controls">
       <label className="agent-editing-timeline__audio-enabled">
@@ -26,8 +28,9 @@ export function AudioTrackControls({
           disabled={disabled}
           onChange={(event) => onSetBgm({ enabled: event.currentTarget.checked })}
         />
-        <span>Enabled</span>
+        <span>{t("Enabled")}</span>
       </label>
+      <span className="editing-audio-volume-value" aria-hidden="true">{Math.round(volume * 100)}%</span>
       <label className="agent-editing-timeline__audio-volume">
         <img
           src="/icon/ant-design--audio-filled.svg"
@@ -40,6 +43,7 @@ export function AudioTrackControls({
           max="1"
           step="0.05"
           aria-label="BGM volume"
+          aria-valuetext={`${Math.round(volume * 100)}%`}
           value={volume}
           disabled={disabled}
           style={{ "--audio-volume": `${volume * 100}%` } as CSSProperties}

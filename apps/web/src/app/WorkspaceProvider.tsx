@@ -368,12 +368,35 @@ export function WorkspaceProvider({
     return true;
   }, [refreshProjects]);
 
+  const permanentlyDeleteTrashedProject = useCallback(async (projectId: string, projectVersion: number) => {
+    const { v2Api } = await import("../api/v2Client");
+    await v2Api.permanentlyDeleteProject(projectId, projectVersion);
+    if (projectTrashClearsActiveWorkflow(projectId, activeProjectId)) {
+      invalidateWorkspaceRestoreRequests();
+      activeWorkflowIdRef.current = null;
+      setWorkflowState(null);
+      setAgentCanvasWorkflow(null);
+      saveActiveProjectId(window.localStorage, null);
+      setActiveProjectId(null);
+    }
+    return true;
+  }, [activeProjectId, invalidateWorkspaceRestoreRequests, setWorkflowState]);
+
   const renameProject = useCallback(async (projectId: string, name: string) => {
     const { v2Api } = await import("../api/v2Client");
     const { value: updatedProject } = await v2Api.updateProject(projectId, { name });
-    const nextProjects = savedProjectsRef.current.map((project) => (
-      project.project_id === updatedProject.project_id ? updatedProject : project
-    ));
+    const nextProjects = savedProjectsRef.current.map((project) => {
+      if (project.project_id !== updatedProject.project_id) return project;
+      // Project detail responses omit the catalog's resolved cover URLs.
+      const sameCover = updatedProject.cover_state === "ready"
+        && updatedProject.cover_asset_id === project.cover_asset_id
+        && updatedProject.cover_version_id === project.cover_version_id;
+      return {
+        ...project,
+        ...updatedProject,
+        cover: updatedProject.cover === undefined && sameCover ? project.cover : updatedProject.cover,
+      };
+    });
     savedProjectsRef.current = nextProjects;
     setSavedProjects(nextProjects);
     const now = Date.now();
@@ -388,8 +411,11 @@ export function WorkspaceProvider({
     };
     projectCatalogCacheRef.current = nextCache;
     saveProjectCatalogCache(nextCache);
+    if (nextProjects.some((project) => project.project_id === projectId && project.cover_state === "ready" && !project.cover)) {
+      await refreshProjects();
+    }
     return true;
-  }, []);
+  }, [refreshProjects]);
 
   const toggleProjectFavorite = useCallback(async (project: ProjectV2Summary) => {
     const { v2Api } = await import("../api/v2Client");
@@ -587,6 +613,7 @@ export function WorkspaceProvider({
       openProject,
       moveProjectToTrash,
       restoreTrashedProject,
+      permanentlyDeleteTrashedProject,
       renameProject,
       toggleProjectFavorite,
       toggleAssetSelection,
@@ -616,6 +643,7 @@ export function WorkspaceProvider({
       refreshWorkflowNodes,
       renameProject,
       restoreTrashedProject,
+      permanentlyDeleteTrashedProject,
       saveProject,
       savedProjects,
       selectedAssets,

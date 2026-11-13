@@ -1,8 +1,12 @@
+import { renderMarkdownAwareText } from "../canvas/AgentCanvasMarkdown.tsx";
+import { useUiLocale } from "../../../i18n/locale.tsx";
+import { skillDisplayTitle } from "../skills/skillDisplayCopy.ts";
 import { useTranslation } from "../../../i18n/useTranslation";
 import type { UiMessageKey } from "../../../i18n/uiMessages";
 import type { ReactNode } from "react";
 import type { BrandDecisionPanelV1, BrandHypothesisCandidateV1, BrandStageV2 } from "./brandDecisions.ts";
 import { TreatmentSections } from "./TreatmentSections.tsx";
+import { TREATMENT_STEP_LABELS } from "./treatmentStepLabels.ts";
 import { DecisionChevron } from "./DecisionChevron.tsx";
 import type { PresentationStreamView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import { AgentThinkingBlock } from "../chat/AgentThinkingBlock.tsx";
@@ -11,8 +15,12 @@ import { brandThinkingAnchor } from "../chat/thinkingAnchors.ts";
 const SLOT_LABELS: Record<string, UiMessageKey> = {
   brand_name: "Brand name", brand_audience: "Audience", brand_tone: "Brand tone",
   brand_product_focus: "Product focus", brand_product_identity: "Product",
-  campaign_aspect_ratio: "Format", campaign_duration: "Duration",
-  campaign_goal: "Goal", campaign_platform: "Channel",
+  brand_personality: "Brand personality", brand_positioning: "Positioning",
+  brand_price_band: "Price band", brand_product_visual: "Product visual",
+  brand_avoid: "Avoid", brand_required_elements: "Required elements", brand_assets: "Brand assets",
+  campaign_name: "Campaign name", campaign_aspect_ratio: "Format", campaign_duration: "Duration",
+  campaign_goal: "Goal", campaign_platform: "Channel", campaign_audience: "Audience",
+  campaign_core_message: "Core message", campaign_cta: "Call to action", campaign_non_goals: "Non-goals",
 };
 const HYPOTHESIS_FIELDS = [
   ["insight", "Insight"], ["mechanism", "Mechanism"], ["hypothesis", "Creative direction"],
@@ -21,10 +29,10 @@ const HYPOTHESIS_FIELDS = [
 const TREATMENT_ORDER = ["hook", "story", "character", "scene", "visual", "camera", "editing", "sound"] as const;
 
 /** Native disclosures keep long copy reachable without hiding it behind a line clamp. */
-function DecisionDetail({ title, label, children, open = false }: {
-  title: string; label?: string; children: ReactNode; open?: boolean;
+function DecisionDetail({ title, label, children, open = false, variant }: {
+  title: string; label?: string; children: ReactNode; open?: boolean; variant?: "selected" | "collection";
 }) {
-  return <details className="brand-decision-detail" open={open}>
+  return <details className={`brand-decision-detail${variant ? ` is-${variant}` : ""}`} open={open}>
     <summary>{label ? <small>{label}</small> : null}<span>{title}</span><DecisionChevron /></summary>
     <div className="brand-decision-detail__body">{children}</div>
   </details>;
@@ -32,7 +40,7 @@ function DecisionDetail({ title, label, children, open = false }: {
 
 function HypothesisDetail({ candidate, selected }: { candidate: BrandHypothesisCandidateV1; selected: boolean }) {
   const t = useTranslation();
-  return <DecisionDetail title={candidate.label} label={t(selected ? "Selected direction" : "Alternative")} open={selected}>
+  return <DecisionDetail title={candidate.label} label={t(selected ? "Selected direction" : "Alternative")} open={selected} variant={selected ? "selected" : undefined}>
     <dl className="brand-decision-fields">
       {HYPOTHESIS_FIELDS.map(([key, label]) => candidate[key] ? <div key={key}>
         <dt>{t(label)}</dt><dd>{candidate[key]}</dd>
@@ -51,6 +59,7 @@ export function BrandDecisionContent({
   presentationStreams?: readonly PresentationStreamView[];
 }) {
   const t = useTranslation();
+  const locale = useUiLocale();
   const slots = decisions.slot_values.filter(slot => slot.stage === stage);
   const card = decisions.open_card?.stage === stage ? decisions.open_card : null;
   const selected = decisions.hypotheses.find(candidate => candidate.candidate_id === decisions.selected_hypothesis_id);
@@ -80,7 +89,7 @@ export function BrandDecisionContent({
     </> : null}
     {stage === "hypothesis" ? <>
       {selected ? <HypothesisDetail key={selected.candidate_id} candidate={selected} selected/> : null}
-      {alternatives.length ? <DecisionDetail title={t(selected ? "Other directions ({count})" : "Candidate directions ({count})", { count: alternatives.length })}>
+      {alternatives.length ? <DecisionDetail variant="collection" title={t(selected ? "Other directions ({count})" : "Candidate directions ({count})", { count: alternatives.length })}>
         {alternatives.map(candidate => <HypothesisDetail key={candidate.candidate_id} candidate={candidate} selected={false}/>)}
       </DecisionDetail> : null}
     </> : null}
@@ -94,25 +103,28 @@ export function BrandDecisionContent({
         </section>;
       })}
     </div> : null}
-    {stage === "skill-stack" && decisions.skill_stack ? <div className="brand-decision-skills">
+    {(stage === "skill-stack" || stage === "skill-stack-early") && decisions.skill_stack ? <div className="brand-decision-skills">
       {(["creative_method", "audiovisual_style"] as const).map(kind => {
         const entries = decisions.skill_stack!.entries.filter(entry => entry.skill_kind === kind);
         if (!entries.length) return null;
         const chosen = entries.filter(entry => entry.selected);
         const other = entries.filter(entry => !entry.selected);
-        const renderSkill = (entry: typeof entries[number]) => <DecisionDetail key={entry.skill_id} title={entry.title} label={t(entry.selected ? "Selected" : "Alternative")}>
+        const renderSkill = (entry: typeof entries[number]) => <DecisionDetail key={entry.skill_id} title={skillDisplayTitle(entry, locale)} label={t(entry.selected ? "Selected" : "Alternative")} variant={entry.selected ? "selected" : undefined}>
           {entry.reason ? <p>{entry.reason}</p> : <p>{t("No rationale provided.")}</p>}
         </DecisionDetail>;
         return <section key={kind}><h3>{t(kind === "creative_method" ? "Creative method" : "Audiovisual style")}</h3>
           {chosen.map(renderSkill)}
-          {other.length ? <DecisionDetail title={t("Other options ({count})", { count: other.length })}>{other.map(renderSkill)}</DecisionDetail> : null}
+          {other.length ? <DecisionDetail variant="collection" title={t("Other options ({count})", { count: other.length })}>{other.map(renderSkill)}</DecisionDetail> : null}
         </section>;
       })}
     </div> : null}
     {stage === "treatment" ? <div className="brand-decision-treatment">
+      {decisions.treatment_document?.full_script ? <DecisionDetail title={decisions.treatment_document.full_script.title} open>
+        {renderMarkdownAwareText(decisions.treatment_document.full_script.screenplay)}
+      </DecisionDetail> : null}
       {TREATMENT_ORDER.flatMap((key, index) => {
         const step = decisions.treatment_steps.find(item => item.step_key === key);
-        return step ? [<DecisionDetail key={key} title={step.selected_label} label={`${String(index + 1).padStart(2, "0")} / ${key}`} open={decisions.journey.treatment_substep === key}>
+        return step ? [<DecisionDetail key={key} title={step.selected_label} label={`${String(index + 1).padStart(2, "0")} / ${TREATMENT_STEP_LABELS[key] ? t(TREATMENT_STEP_LABELS[key]!) : key}`} open={decisions.journey.treatment_substep === key}>
           <TreatmentSections detail={step.structured_detail}/>
           {!step.structured_detail?.sections.length && step.detail ? <p>{step.detail}</p> : null}
         </DecisionDetail>] : [];

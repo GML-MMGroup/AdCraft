@@ -65,6 +65,34 @@ const anchor: CanvasNodeV2 = {
 afterEach(() => cleanup());
 
 describe("AgentCanvasConnectedNodeMenu", () => {
+  it("lists upstream sources and returns the role on the anchor's input", () => {
+    const onSelect = vi.fn();
+    render(
+      <AgentCanvasConnectedNodeMenu
+        anchorNode={{ ...anchor, node_type: "video", creative_role: "general_video" }}
+        direction="upstream"
+        point={{ x: 120, y: 160 }}
+        policy={policy}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("menuitem", { name: "Create connected Editing node" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Create connected Image node" }));
+    expect(onSelect).toHaveBeenCalledWith("image", "image_reference");
+  });
+
+  it("focuses the menu and dismisses with Escape", () => {
+    const onClose = vi.fn();
+    render(
+      <AgentCanvasConnectedNodeMenu anchorNode={anchor} direction="downstream"
+        point={{ x: 120, y: 160 }} policy={policy} onSelect={vi.fn()} onClose={onClose} />,
+    );
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Create connected Video node" }));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("lists only policy-compatible node types and returns the persisted role", () => {
     const onSelect = vi.fn();
     render(

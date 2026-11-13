@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   CanvasBindingInputRoleV2,
   CanvasConnectionPolicyV2,
@@ -36,6 +36,19 @@ export function AgentCanvasConnectedNodeMenu({
   onClose,
 }: AgentCanvasConnectedNodeMenuProps) {
   const t = useTranslation("en-US");
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const focusTarget = menuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]") ?? menuRef.current;
+    focusTarget?.focus({ preventScroll: true });
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", dismiss, true);
+    return () => document.removeEventListener("keydown", dismiss, true);
+  }, [onClose]);
   const [selectedRoles, setSelectedRoles] = useState<
     Partial<Record<CanvasNodeTypeV2, CanvasBindingInputRoleV2>>
   >({});
@@ -44,6 +57,14 @@ export function AgentCanvasConnectedNodeMenu({
     anchorNode.node_type,
     direction,
   ).filter(isAgentCanvasVisibleNodeType);
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const bounds = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(12, Math.min(point.x, window.innerWidth - bounds.width - 12))}px`;
+    menu.style.top = `${Math.max(12, Math.min(point.y, window.innerHeight - bounds.height - 12))}px`;
+  }, [point.x, point.y, compatibleTypes.length]);
 
   return (
     <>
@@ -54,17 +75,16 @@ export function AgentCanvasConnectedNodeMenu({
         onClick={onClose}
       />
       <div
+        ref={menuRef}
         className="agent-canvas-connected-menu"
         role="menu"
+        tabIndex={-1}
         aria-label={t("Add {direction} node", { direction })}
         style={{
-          left: `min(${Math.max(12, point.x)}px, calc(100vw - 228px))`,
-          top: `min(${Math.max(12, point.y)}px, calc(100vh - 320px))`,
+          left: point.x,
+          top: point.y,
         }}
       >
-        <span className="agent-canvas-connected-menu__eyebrow">
-          {direction === "upstream" ? t("Add input") : t("Add output")}
-        </span>
         {compatibleTypes.length ? compatibleTypes.map((nodeType) => {
           const sourceType = direction === "downstream" ? anchorNode.node_type : nodeType;
           const targetType = direction === "downstream" ? nodeType : anchorNode.node_type;
@@ -82,7 +102,6 @@ export function AgentCanvasConnectedNodeMenu({
                 <AgentCanvasNodeIcon nodeType={nodeType} />
                 <span>
                   <strong>{AGENT_CANVAS_NODE_LABELS[nodeType]}</strong>
-                  <small>{selectedRole.replaceAll("_", " ")}</small>
                 </span>
               </button>
               {rule.roles.length > 1 ? (

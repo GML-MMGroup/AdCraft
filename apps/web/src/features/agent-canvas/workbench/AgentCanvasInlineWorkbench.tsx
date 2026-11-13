@@ -8,6 +8,7 @@ import { NodeWorkbenchShell } from "./NodeWorkbenchShell.tsx";
 import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
 import { TextWorkbench } from "./TextWorkbench.tsx";
 import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
+import { useRejectedReference } from "./useRejectedReference.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import "./agent-canvas-inline-workbench.css";
@@ -34,6 +35,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     onOpenEditing,
   } = props;
   const draft = useNodeWorkbenchDraft(props);
+  const rejectedBindingId = useRejectedReference(workflow, node, runtime, props.inputManifest ?? null, draft.running);
   const promptEditorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     <NodeReferenceStrip
       workflow={workflow}
       node={node}
+      rejectedBindingId={rejectedBindingId}
       deleteBinding={deleteBinding}
       pending={draft.pending}
       perform={draft.perform}
@@ -101,6 +104,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       ) : null}
       {node.node_type === "script" ? (
         <ScriptWorkbench
+          defaultModelRef={providerDefaultModelRef}
           node={node}
           status={node.status}
           draft={draft}

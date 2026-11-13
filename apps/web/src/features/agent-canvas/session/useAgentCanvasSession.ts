@@ -86,6 +86,8 @@ export function useAgentCanvasSession() {
   const pendingLayoutPositionsRef = useRef(
     new Map<string, Map<string, CanvasLayoutPositionV2>>(),
   );
+  // Keep each save receipt separate from newer optimistic positions for undo.
+  const layoutAcknowledgementsRef = useRef(new WeakMap<CanvasLayoutPositionV2, CanvasLayoutPositionV2>());
   const editingExportImportKeysRef = useRef(new Map<string, string>());
   // Queue tasks can finish before React commits a render. Keep the session read
   // reference current immediately, while retaining functional state merges for
@@ -133,9 +135,12 @@ export function useAgentCanvasSession() {
     committedPositions: CanvasLayoutPositionV2[],
   ) => {
     const pendingByNode = pendingLayoutPositionsRef.current.get(response.workflow_id);
+    const acknowledgedByNode = new Map(response.positions.map((position) => [position.node_id, position]));
     committedPositions.forEach((committed) => {
+      const acknowledged = acknowledgedByNode.get(committed.node_id);
+      if (acknowledged) layoutAcknowledgementsRef.current.set(committed, acknowledged);
       const pending = pendingByNode?.get(committed.node_id);
-      if (pending && pending.x === committed.x && pending.y === committed.y) {
+      if (pending === committed) {
         pendingByNode?.delete(committed.node_id);
       }
     });
@@ -215,10 +220,9 @@ export function useAgentCanvasSession() {
     );
   }, [agentCanvasWorkflow, applyWorkflow, updateWorkflow]);
 
-  const updateNodePositions = useCallback((positions: CanvasLayoutPositionV2[]) => {
-    if (!positions.length) return Promise.resolve();
+  const prepareNodePositionUpdate = useCallback((positions: CanvasLayoutPositionV2[]) => {
     const active = workflowRef.current;
-    if (!active) return Promise.reject(new Error("No active Agent Canvas workflow."));
+    if (!active) throw new Error("No active Agent Canvas workflow.");
     const workflowId = active.workflow_id;
     const pendingByNode = pendingLayoutPositionsRef.current.get(workflowId)
       ?? new Map<string, CanvasLayoutPositionV2>();
@@ -226,25 +230,37 @@ export function useAgentCanvasSession() {
     pendingLayoutPositionsRef.current.set(workflowId, pendingByNode);
     updateWorkflow((current) => {
       if (!current || current.workflow_id !== workflowId) return current;
-      const next = overlayAgentCanvasPositions(current, positions);
-      return next;
+      return overlayAgentCanvasPositions(current, positions);
     });
-    const layoutQueue = layoutQueueForWorkflow(workflowId);
-    return layoutQueue.enqueue(positions).catch((error) => {
+    const cancel = () => {
       const currentPending = pendingLayoutPositionsRef.current.get(workflowId);
       positions.forEach((position) => {
         const pending = currentPending?.get(position.node_id);
-        if (pending && pending.x === position.x && pending.y === position.y) {
-          currentPending?.delete(position.node_id);
-        }
+        if (pending === position) currentPending?.delete(position.node_id);
       });
       if (currentPending && !currentPending.size) {
         pendingLayoutPositionsRef.current.delete(workflowId);
       }
-      setAuthoringError(error instanceof Error ? error.message : "Canvas layout could not be saved.");
-      throw error;
-    });
+    };
+    return {
+      cancel,
+      save: () => layoutQueueForWorkflow(workflowId).enqueue(positions)
+        .then(() => positions.map((position) => layoutAcknowledgementsRef.current.get(position) ?? position))
+        .catch((error) => {
+          cancel();
+          if (workflowRef.current?.workflow_id === workflowId) {
+            setAuthoringError(error instanceof Error ? error.message : "Canvas layout could not be saved.");
+          }
+          throw error;
+        }),
+    };
   }, [layoutQueueForWorkflow, updateWorkflow]);
+
+  const updateNodePositions = useCallback((positions: CanvasLayoutPositionV2[]) => {
+    if (!positions.length) return Promise.resolve();
+    if (!workflowRef.current) return Promise.reject(new Error("No active Agent Canvas workflow."));
+    return prepareNodePositionUpdate(positions).save().then(() => undefined);
+  }, [prepareNodePositionUpdate]);
 
   const updateNodePosition = useCallback((nodeId: string, position: CanvasPositionV2) => (
     updateNodePositions([{ node_id: nodeId, ...position }])
@@ -302,6 +318,7 @@ export function useAgentCanvasSession() {
     readWorkflow,
     applyWorkflow,
     authoringQueue: queueRef.current,
+    prepareNodePositionUpdate,
     updateNodePositions,
     rollbackNodePositions,
   });

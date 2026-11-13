@@ -1,0 +1,21 @@
+body { margin: 0; background: #111; color: #e9e4dc; }
+.confirmation-preview__header { min-height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 24px; box-sizing: border-box; background: #1b1b1a; border-bottom: 1px solid #35322b; font-family: "AdCraft Brand Sans SC", sans-serif; }
+.confirmation-preview__identity { display: flex; gap: 16px; align-items: center; color: #eee9df; text-decoration: none; font-size: 16px; font-weight: 600; }
+.confirmation-preview__identity span { color: #99938a; font-size: 12px; font-weight: 400; }
+.confirmation-preview__header nav { display: flex; gap: 8px; align-items: center; }
+.confirmation-preview__header nav :is(a, button) { padding: 7px 12px; border: 1px solid #3d3831; border-radius: 6px; background: transparent; color: #bbb3a6; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.confirmation-preview__header nav a[aria-current] { color: #e5d3ad; background: #302b22; border-color: #756245; }
+.confirmation-preview__workspace { position: relative; display: flex; height: calc(100dvh - 60px); overflow: hidden; }
+.confirmation-preview__workspace > .brand-decision-panel { flex: 0 0 310px; }
+.confirmation-preview__workspace > .agent-chat { width: 410px; }
+.confirmation-preview__canvas { flex: 1; padding: 30px; background-color: #101010; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 22px 22px; }
+.confirmation-preview__canvas p { margin: 0; color: #aaa296; font: 14px "AdCraft Brand Sans SC", sans-serif; }
+.confirmation-preview__canvas span { display: block; margin-top: 12px; color: #777168; font-size: 11px; }
+@media (max-width: 700px) {
+  .confirmation-preview__header { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px; }
+  .confirmation-preview__identity span { font-size: 11px; }
+  .confirmation-preview__header nav :is(a, button) { padding: 6px 10px; }
+  .confirmation-preview__workspace { height: calc(100dvh - 95px); }
+  .confirmation-preview__workspace > .brand-decision-panel { display: none; }
+  .confirmation-preview__workspace > .agent-chat { width: 100%; max-width: 100%; }
+}

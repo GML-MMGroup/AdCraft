@@ -1,3 +1,4 @@
+import { useEditingText } from "./editingMessages.ts";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import { VideoIcon } from "../../../icons.tsx";
@@ -35,7 +36,7 @@ interface TrimRange {
 }
 
 function statusOf(input: EditingBoundInput<EditingVideoEntryV2>): CanvasNodeStatusV2 | "unavailable" {
-  return input.node?.status ?? input.asset?.status ?? "unavailable";
+  return input.asset?.status ?? input.node?.status ?? "unavailable";
 }
 
 function seconds(value: number): string {
@@ -64,6 +65,7 @@ export function VideoTimelineClip({
   segment,
   selected,
 }: VideoTimelineClipProps) {
+  const t = useEditingText();
   const sourceDuration = Math.max(0, input.asset?.duration_seconds ?? segment.sourceEnd);
   const label = input.node?.title || input.asset?.display_name || `Shot ${index + 1}`;
   const [trimRange, setTrimRange] = useState<TrimRange>({ start: segment.sourceStart, end: segment.sourceEnd });
@@ -239,9 +241,11 @@ export function VideoTimelineClip({
         </span>
         <span className="agent-editing-timeline__clip-scrim" />
         <span className="agent-editing-timeline__clip-copy">
-          <strong>{String(index + 1).padStart(2, "0")}</strong>
+          <span className="agent-editing-timeline__clip-index">{String(index + 1).padStart(2, "0")}</span>
+          <strong title={label}>{label}</strong>
           <small>{seconds(segment.timelineEnd - segment.timelineStart)}</small>
         </span>
+        <span className="editing-clip-source-range" aria-hidden="true">{t("Source range")} {seconds(segment.sourceStart)} → {seconds(segment.sourceEnd)}</span>
       </button>
       {selected ? renderHandle("start") : null}
       {selected ? renderHandle("end") : null}

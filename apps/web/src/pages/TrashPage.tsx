@@ -1,15 +1,17 @@
 import { CatalogToolbar, CatalogFilterButton, CatalogSearch } from "../components/CatalogToolbar";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { EmptyState, PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
 import type { RouteName } from "../types";
 import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
 import "./projects.css";
 import { useLocale, localeText } from "../i18n/locale.tsx";
+import { TrashIcon } from "../icons";
 
 type TrashListItem = {
   key: string;
   projectId: string;
+  projectVersion: number;
   name: string;
   meta: string;
 };
@@ -17,14 +19,16 @@ type TrashListItem = {
 export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void } = {}) {
   const { locale } = useLocale();
   const labels = locale === "zh-CN" ? localeText.zh.trashPage : localeText.en.trashPage;
+  const deletionInFlight = useRef(false);
   const [search, setSearch] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
   const [selectionError, setSelectionError] = useState<string | null>(null);
-  const [batchAction, setBatchAction] = useState<"restore" | null>(null);
+  const [batchAction, setBatchAction] = useState<"restore" | "delete" | null>(null);
   const {
     trashedProjects,
     restoreTrashedProject,
+    permanentlyDeleteTrashedProject,
     projectCatalogError,
     projectCatalogRefreshing,
     refreshProjects,
@@ -34,6 +38,7 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
     () => trashedProjects.map((project) => ({
       key: project.project_id,
       projectId: project.project_id,
+      projectVersion: project.project_version,
       name: project.name,
       meta: labels.deletedMeta.replace("{date}", new Date(project.updated_at).toLocaleDateString()),
     })),
@@ -123,8 +128,39 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
     setSelectionMode(false);
   }, [labels, restoreTrashedProject, selectedProjects, selectionBusy]);
 
+  const runPermanentDelete = useCallback(async (items: TrashListItem[]) => {
+    if (selectionBusy || deletionInFlight.current || items.length === 0) return;
+    const snapshot = [...items];
+    if (!window.confirm(`${labels.confirmDelete.replace("{count}", String(snapshot.length))}\n\n${snapshot.slice(0, 10).map((item) => item.name).join("\n")}`)) return;
+    deletionInFlight.current = true;
+    setBatchAction("delete");
+    setSelectionError(null);
+    const failed = new Set<string>();
+    const reasons: string[] = [];
+    try {
+      for (const item of snapshot) {
+        try {
+          if (!await permanentlyDeleteTrashedProject(item.projectId, item.projectVersion)) throw new Error(labels.deleteFailed.replace("{count}", "1"));
+        } catch (error) {
+          failed.add(item.projectId);
+          const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+          reasons.push(code === "project_deletion_busy" ? labels.deleteBusy
+            : code === "project_state_conflict" || code === "project_not_trashed" ? labels.deleteStale
+            : error instanceof Error ? error.message : labels.deleteFailed.replace("{count}", "1"));
+        }
+      }
+      setSelectedProjectIds(failed);
+      if (failed.size === 0) setSelectionMode(false);
+      else setSelectionError(`${labels.deleteFailed.replace("{count}", String(failed.size))} ${[...new Set(reasons)].join(" ")}`);
+      await refreshProjects();
+    } finally {
+      deletionInFlight.current = false;
+      setBatchAction(null);
+    }
+  }, [labels, permanentlyDeleteTrashedProject, refreshProjects, selectionBusy]);
+
   return (
-    <section className="content-wrap">
+    <section className="content-wrap trash-page">
       <PageHeader title={labels.title} editorial />
       <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">
@@ -133,9 +169,9 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
           </CatalogFilterButton>
         </div>
         <div className="catalog-toolbar-actions">
-          <CatalogSearch aria-label={labels.search} placeholder={labels.search} value={search} onChange={(event) => changeSearch(event.target.value)} />
+          <CatalogSearch aria-label={labels.search} placeholder={labels.search} value={search} disabled={selectionBusy} onChange={(event) => changeSearch(event.target.value)} />
           {!selectionMode ? (
-            <CatalogFilterButton  type="button" onClick={enterSelectionMode}>
+            <CatalogFilterButton  type="button" disabled={selectionBusy} onClick={enterSelectionMode}>
               {labels.select}
             </CatalogFilterButton>
           ) : (
@@ -155,17 +191,33 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
               </CatalogFilterButton>
             </>
           )}
+          <CatalogFilterButton
+            className="trash-delete-action"
+            disabled={selectionBusy || localTrashItems.length === 0}
+            onClick={() => void runPermanentDelete(localTrashItems)}
+          >
+            <TrashIcon />
+            {batchAction === "delete" ? labels.deleting : labels.emptyTrash}
+          </CatalogFilterButton>
         </div>
       </CatalogToolbar>
+      {selectionError ? <p className="project-selection-error" role="alert">{selectionError}</p> : null}
       {selectionMode ? (
         <div className="project-selection-toolbar" aria-busy={selectionBusy}>
           <div className="project-selection-summary">
             <strong>{`${selectedProjects.length} ${labels.selected}`}</strong>
-            {selectionError ? <span className="project-selection-error" role="alert">{selectionError}</span> : null}
           </div>
           <div className="project-selection-actions">
             <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchRestore()}>
               {selectionBusy ? labels.restoring : labels.restoreSelected}
+            </CatalogFilterButton>
+            <CatalogFilterButton
+              className="trash-delete-action"
+              disabled={selectionBusy || selectedProjects.length === 0}
+              onClick={() => void runPermanentDelete(selectedProjects)}
+            >
+              <TrashIcon />
+              {labels.deleteSelected}
             </CatalogFilterButton>
           </div>
         </div>
@@ -218,12 +270,22 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
                   <button
                     className="small-action"
                     title={labels.restore}
+                    disabled={selectionBusy}
                     onClick={(event) => {
                       event.stopPropagation();
                       void restoreTrashedProject(item.projectId);
                     }}
                   >
                     {labels.restore}
+                  </button>
+                  <button
+                    type="button"
+                    className="small-action trash-delete-action"
+                    disabled={selectionBusy}
+                    onClick={() => void runPermanentDelete([item])}
+                  >
+                    <TrashIcon />
+                    {labels.deletePermanently}
                   </button>
                 </div>
               )}

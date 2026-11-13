@@ -1,6 +1,12 @@
+import { createRequestQueue } from "../collections/requestQueue.ts";
+
 const MEDIA_CACHE_NAME = "adcraft-media-v1";
 const MAX_MEMORY_ENTRIES = 300;
 const MAX_PERSISTED_ENTRIES = 300;
+
+// Cold canvas previews share the origin with lazy-loaded UI modules and APIs.
+// Reserve connection capacity for those requests, including on HTTP/1.1 dev servers.
+const mediaDownloads = createRequestQueue(2);
 
 type MemoryMediaEntry = {
   objectUrl: string | null;
@@ -127,14 +133,18 @@ async function loadStableMediaBlob(sourceUrl: string, signal?: AbortSignal): Pro
     if (cached?.ok) return cached.blob();
   }
 
-  const response = await fetch(sourceUrl, {
-    credentials: "same-origin",
-    cache: "force-cache",
-    signal,
-  });
-  if (!response.ok) throw new Error(`Media request failed with ${response.status}.`);
-  const cacheResponse = response.clone();
-  const blob = await response.blob();
+  const { blob, cacheResponse } = await mediaDownloads.schedule(async () => {
+    const response = await fetch(sourceUrl, {
+      credentials: "same-origin",
+      cache: "force-cache",
+      signal,
+    });
+    if (!response.ok) throw new Error(`Media request failed with ${response.status}.`);
+    const cacheResponse = response.clone();
+    // A response still occupies its connection until the body is consumed.
+    const blob = await response.blob();
+    return { blob, cacheResponse };
+  }, { signal });
   if (cache) {
     try {
       await cache.put(sourceUrl, cacheResponse);

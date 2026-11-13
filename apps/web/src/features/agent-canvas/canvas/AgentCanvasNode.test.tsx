@@ -136,6 +136,63 @@ afterEach(() => {
 });
 
 describe("AgentCanvasNodeCard", () => {
+  it("keeps the media animation mounted from persisted queue through waiting and generation", () => {
+    const node = makeNode("video");
+    const attempt = {
+      execution_id: "execution-queued", member_id: "member-queued", run_intent_snapshot_id: null,
+      status: "queued" as const, error: null, created_at: node.created_at, updated_at: node.updated_at,
+    };
+    const view = render(<AgentCanvasNodeCard node={{ ...node, latest_attempt: attempt }} />);
+    const loader = screen.getByRole("status", { name: "Queued" });
+    expect(screen.getByTestId("agent-canvas-node-video-node").dataset.nodeStatus).toBe("working");
+    expect(screen.getByText("Queued")).toBeTruthy();
+    view.rerender(<AgentCanvasNodeCard node={{ ...node, latest_attempt: { ...attempt, status: "waiting" } }} />);
+    expect(screen.getByRole("status", { name: "Waiting to generate" })).toBe(loader);
+    view.rerender(<AgentCanvasNodeCard node={{ ...node, status: "working", latest_attempt: { ...attempt, status: "running" } }} />);
+    expect(screen.getByRole("status", { name: "Generating video" })).toBe(loader);
+    expect(node.status).toBe("draft");
+  });
+
+  it.each(["succeeded", "failed", "cancelled", "blocked", "skipped_dependency"] as const)(
+    "stops queued animation when the attempt becomes %s",
+    (terminal) => {
+      const node = makeNode("video");
+      const attempt = {
+        execution_id: "execution-queued", member_id: "member-queued", run_intent_snapshot_id: null,
+        status: "queued" as const, error: null, created_at: node.created_at, updated_at: node.updated_at,
+      };
+      const view = render(<AgentCanvasNodeCard node={{ ...node, latest_attempt: attempt }} />);
+      expect(view.container.querySelector(".agent-canvas-node__working--media")).not.toBeNull();
+      const status = terminal === "succeeded" ? "ready" : terminal === "failed" ? "failed" : "draft";
+      view.rerender(<AgentCanvasNodeCard node={{ ...node, status, latest_attempt: { ...attempt, status: terminal } }} />);
+      expect(view.container.querySelector(".agent-canvas-node__working--media")).toBeNull();
+      expect(screen.getByTestId("agent-canvas-node-video-node").dataset.nodeStatus).toBe(status);
+    },
+  );
+
+  it("restores the prior image immediately after a rejected optimistic regeneration", () => {
+    const node = makeNode("image", "ready");
+    const view = render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} runPending />);
+    expect(view.container.querySelector(".agent-canvas-node__working--over-media")).not.toBeNull();
+    view.rerender(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
+    expect(screen.getByRole("img", { name: "image output" }).classList.contains("agent-canvas-node__media--awaiting-generation-reveal")).toBe(false);
+  });
+  it("reveals a new output arriving before optimistic submission completes", () => {
+    const node = makeNode("image", "ready");
+    const view = render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} runPending />);
+    const completed = { ...node, output_asset_id: "new-output" };
+    view.rerender(<AgentCanvasNodeCard node={completed} asset={makeAsset("image")} runPending />);
+    view.rerender(<AgentCanvasNodeCard node={completed} asset={makeAsset("image")} />);
+    expect(screen.getByRole("img", { name: "image output" }).classList.contains("agent-canvas-node__media--awaiting-generation-reveal")).toBe(true);
+  });
+  it.each(["image", "video", "audio", "text", "script"] as const)("immediately displays a pending %s run without changing canonical node state", (type) => {
+    const node = makeNode(type);
+    const { rerender } = render(<AgentCanvasNodeCard node={node} runPending />);
+    expect(screen.getByTestId(`agent-canvas-node-${node.node_id}`).dataset.nodeStatus).toBe("working");
+    expect(node.status).toBe("draft");
+    rerender(<AgentCanvasNodeCard node={node} runPending={false} />);
+    expect(screen.getByTestId(`agent-canvas-node-${node.node_id}`).dataset.nodeStatus).toBe("draft");
+  });
   it.each([
     ["product", "image", "Product"],
     ["storyboard_sequence", "image", "Storyboard Sequence"],
@@ -159,26 +216,33 @@ describe("AgentCanvasNodeCard", () => {
     },
   );
 
-  it("uses a genuinely translucent glass surface for dark audio nodes", () => {
+  it.each([
+    ["character", "image", { occurrence_id: "character-2", character_phase: "main" }, "Character 2 · Main"],
+    ["character", "image", { occurrence_id: "character-2", character_phase: "turnaround" }, "Character 2 · Turnaround"],
+    ["storyboard_sequence", "image", { sequence_index: 3 }, "Storyboard 3"],
+    ["storyboard_video", "video", { sequence_index: 3 }, "Storyboard Video 3"],
+  ] as const)("shows the same numbered %s identity in the header and accessible card label", (role, type, metadata, label) => {
+    const node = { ...makeNode(type), creative_role: role, metadata };
+    const { container, rerender } = render(<AgentCanvasNodeCard node={node} />);
+    expect(container.querySelector(".agent-canvas-node__header-name")?.textContent).toBe(label);
+    expect(screen.getByLabelText(`${label} node, Draft`)).toBeTruthy();
+    expect(screen.getByLabelText(`${label} node type`)).toBeTruthy();
+
+    rerender(<AgentCanvasNodeCard node={{ ...node, position: { x: -800, y: 300 }, status: "working" }} />);
+    expect(container.querySelector(".agent-canvas-node__header-name")?.textContent).toBe(label);
+    expect(screen.getByLabelText(`${label} node, Working`)).toBeTruthy();
+  });
+
+  it("uses the shared opaque surface for audio nodes without glass effects", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
-    const shellRule = css.match(
-      /:root \.agent-canvas-node--audio\s*\{([\s\S]*?)\n\}/,
-    )?.[1];
     const playerRule = css.match(
-      /:root \.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/,
+      /^\.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/m,
     )?.[1];
-    const glassEdgeRule = css.match(
-      /:root \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
-    )?.[1];
-    expect(shellRule).toContain("background: transparent");
-    expect(shellRule).toContain("backdrop-filter: none");
-    expect(playerRule).toContain("isolation: auto");
-    expect(playerRule).toContain("background: rgba(255, 255, 255, 0.06)");
-    expect(playerRule).toContain("backdrop-filter: none");
+    expect(playerRule).toContain("background: var(--agent-node-surface)");
+    expect(playerRule).not.toContain("backdrop-filter:");
     expect(playerRule).not.toContain("gradient");
-    expect(glassEdgeRule).toContain("background: transparent");
-    expect(glassEdgeRule).not.toContain("gradient");
+    expect(css).not.toContain(".agent-canvas-audio-player::before");
   });
 
   it("does not add a border, glow, or transform when a node is selected", () => {
@@ -188,14 +252,17 @@ describe("AgentCanvasNodeCard", () => {
     expect(css).not.toMatch(/\.agent-canvas-node--selected\s*\{/);
   });
 
-  it("uses one transparent glass shell for every visible node type", () => {
+  it("uses one opaque charcoal shell for every visible node type", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const shellRule = css.match(/^\.agent-canvas-node\s*\{([\s\S]*?)\n\}/m)?.[1];
     const surfaceRule = css.match(/^\.agent-canvas-node__surface\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(shellRule).toContain("background: transparent");
-    expect(surfaceRule).toContain("background: rgba(255, 255, 255, 0.06)");
+    expect(shellRule).toContain("--agent-node-surface: #262626");
+    expect(shellRule).toContain("background: var(--agent-node-surface)");
+    expect(shellRule).toContain("border: 1px solid #3a3a3a");
+    expect(shellRule).toContain("box-shadow: none");
+    expect(surfaceRule).toContain("background: var(--agent-node-surface)");
     expect(css).not.toContain(".agent-canvas-node__type-marker");
   });
 
@@ -494,7 +561,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByTitle("Node prompt preparation failed.")).toBeNull();
   });
 
-  it("uses the glass player title instead of audio artwork or a status pill", () => {
+  it("uses the player title instead of audio artwork or a status pill", () => {
     const node = {
       ...makeNode("audio"),
       prompt_preparation: {
@@ -866,7 +933,7 @@ describe("AgentCanvasNodeCard", () => {
       /\.agent-canvas-node__generation-dots--dynamic\s*\{([\s\S]*?)\n\}/,
     )?.[1];
 
-    expect(mediaOverlayRule).toContain("background: #1f1f1f");
+    expect(mediaOverlayRule).toContain("background: var(--agent-node-surface)");
     expect(mediaOverlayRule).toContain("contain: paint");
     expect(mediaOverlayRule).toContain("isolation: isolate");
     expect(mediaOverlayRule).toContain("container-type: size");
@@ -1220,6 +1287,38 @@ describe("AgentCanvasNodeRenderer", () => {
     } as Parameters<typeof areAgentCanvasNodePropsEqual>[0] & AgentCanvasFlowNode;
   }
 
+  it.each([false, true])("acknowledges a painted card and cancels before unmount (unmount: %s)", (unmountEarly) => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+      frames.set(++frameId, callback);
+      return frameId;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(id => { frames.delete(id); });
+    const paint = () => act(() => {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      callbacks.forEach(callback => callback(0));
+    });
+    const onRendered = vi.fn();
+    const data = { node: makeNode("text"), onRendered };
+    const view = render(<ReactFlowProvider><AgentCanvasNodeRenderer {...rendererProps(data)} /></ReactFlowProvider>);
+    const shell = view.container.querySelector<HTMLElement>(".agent-canvas-node-shell")!;
+    shell.style.visibility = "hidden";
+    paint();
+    paint();
+    expect(onRendered).not.toHaveBeenCalled();
+    shell.style.visibility = "visible";
+    expect(onRendered).not.toHaveBeenCalled();
+    paint();
+    expect(onRendered).not.toHaveBeenCalled();
+    if (unmountEarly) view.unmount();
+    paint();
+    if (unmountEarly) expect(onRendered).not.toHaveBeenCalled();
+    else expect(onRendered).toHaveBeenCalledExactlyOnceWith("workflow-1", "text-node");
+    vi.restoreAllMocks();
+  });
+
   it("skips rerendering unchanged unselected nodes after object hydration", () => {
     const runtime = makeRuntime("working");
     const previous = rendererProps({
@@ -1238,6 +1337,25 @@ describe("AgentCanvasNodeRenderer", () => {
     });
 
     expect(areAgentCanvasNodePropsEqual(previous, next)).toBe(true);
+  });
+
+  it("rerenders for optimistic Run feedback even when canonical node and runtime are unchanged", () => {
+    const previous = rendererProps({ node: makeNode("image"), runtime: null });
+    const pending = rendererProps({ ...previous.data, runPending: true });
+    expect(areAgentCanvasNodePropsEqual(previous, pending)).toBe(false);
+    expect(areAgentCanvasNodePropsEqual(pending, previous)).toBe(false);
+  });
+
+  it.each([
+    ["character", { occurrence_id: "character-3", character_phase: "main" }],
+    ["storyboard_sequence", { sequence_index: 3 }],
+  ] as const)("rerenders when %s numbering metadata hydrates without a revision change", (creative_role, metadata) => {
+    const previous = rendererProps({ node: { ...makeNode("image"), creative_role } });
+    const hydrated = rendererProps({ node: { ...previous.data.node, metadata } });
+    expect(areAgentCanvasNodePropsEqual(previous, hydrated)).toBe(false);
+    expect(areAgentCanvasNodePropsEqual(hydrated, rendererProps({
+      node: { ...hydrated.data.node, metadata: { ...metadata } },
+    }))).toBe(true);
   });
 
   it("rerenders changed node revisions and active workbench runtime", () => {
@@ -1517,7 +1635,7 @@ describe("AgentCanvasNodeRenderer", () => {
 
     expect(workbenchRule).toBeDefined();
     expect(workbenchRule).toContain("width: 638px");
-    expect(workbenchRule).toContain("min-height: 217px;");
+    expect(workbenchRule).toContain("min-height: 283px;");
     expect(workbenchRule).toContain("height: auto;");
     expect(workbenchRule).toContain("box-sizing: border-box");
 

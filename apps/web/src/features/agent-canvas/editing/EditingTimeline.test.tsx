@@ -402,7 +402,7 @@ describe("EditingTimeline retained controls", () => {
     expect(within(track).queryByRole("spinbutton", { name: "Trim end" })).toBeNull();
     expect(within(track).getByRole("slider", { name: "Trim start BGM" })).toBeTruthy();
     expect(within(track).getByRole("slider", { name: "Trim end BGM" })).toBeTruthy();
-    expect(within(track).queryByText("Campaign BGM")).toBeNull();
+    expect(within(track).getByText("Campaign BGM")).toBeTruthy();
     expect(within(track).queryByRole("button", { name: "Mute BGM" })).toBeNull();
     expect(track.querySelector(".agent-editing-timeline__track-label")?.contains(controls)).toBe(true);
     expect(track.querySelector(".agent-editing-timeline__lane")?.contains(controls)).toBe(false);
@@ -495,7 +495,7 @@ describe("EditingTimelineViewport", () => {
     fireEvent.pointerUp(window, { pointerId: 13, clientX: 524 });
     expect(onPlayheadChange).toHaveBeenLastCalledWith(10);
     fireEvent.keyDown(playhead, { key: "ArrowRight" });
-    expect(onPlayheadChange).toHaveBeenLastCalledWith(3);
+    expect(onPlayheadChange).toHaveBeenLastCalledWith(2 + 1 / 30);
   });
 
 });

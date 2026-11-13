@@ -72,7 +72,6 @@ import {
 import { structuredMessageTurnId } from "./failedTurnPresentation.ts";
 import { useBrandCardRecovery } from "./useBrandCardRecovery";
 import type { BrandDecisionPanelV1, BrandStageV2 } from "../brand/brandDecisions.ts";
-import { localeChangedEventName, useLocale } from "../../../i18n/locale.tsx";
 
 type SubmitDraft = {
   text: string;
@@ -258,7 +257,6 @@ export function useAgentCanvasChat({
   onBrandDecisionsRefresh?: () => Promise<BrandStageV2 | null> | BrandStageV2 | null;
   onBrandDecisionsUpdated?: (panel: BrandDecisionPanelV1) => void;
 }) {
-  const { locale, setLocale } = useLocale();
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
   const [guidedAnswerBubbles, setGuidedAnswerBubbles] = useState<GuidedAnswerBubbleV1[]>([]);
@@ -276,6 +274,7 @@ export function useAgentCanvasChat({
   const [continuationsById, setContinuationsById] = useState<Record<string, AgentCanvasContinuationV2>>({});
   const [loading, setLoading] = useState(false);
   const [timelineHydrated, setTimelineHydrated] = useState(false);
+  const [initialTimelineSequence, setInitialTimelineSequence] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [actingProposalId, setActingProposalId] = useState<string | null>(null);
   const [submittedProposalIds, setSubmittedProposalIds] = useState<Record<string, true>>({});
@@ -302,6 +301,8 @@ export function useAgentCanvasChat({
   const refreshAbortControllerRef = useRef<AbortController | null>(null);
   const refreshGenerationRef = useRef(0);
   const workflowGenerationRef = useRef(0);
+  const pendingAgentTurnIdsRef = useRef(new Set<string>());
+  const terminalAgentTurnIdsRef = useRef(new Set<string>());
   const pendingActionTurnIdsRef = useRef(new Set<string>());
   const submittedProposalIdsRef = useRef(new Set<string>());
   const pendingCommandPlanIdsRef = useRef(new Set<string>());
@@ -331,6 +332,8 @@ export function useAgentCanvasChat({
     replacementAttempted: boolean;
   } | null>(null);
   const workflowId = workflow?.workflow_id ?? null;
+  // Output language belongs to the task, independently of the UI preference.
+  const responseLocale = guidanceSession?.workflow_id === workflowId ? guidanceSession?.response_locale : undefined;
   const workflowRevision = workflow?.revision ?? null;
   const activeVideoSkillRunId = workflow?.active_style_skill?.skill_run_id ?? null;
   const currentInteractionId = guidanceSession?.interaction?.interaction_id ?? null;
@@ -349,16 +352,19 @@ export function useAgentCanvasChat({
   }, []);
 
   const applyTurnProjection = useCallback((turn: AgentCanvasChatTurnV2) => {
-    setTurnsById((current) => ({ ...current, [turn.turn_id]: turn }));
     const terminal = turn.status === "completed"
       || turn.status === "failed"
       || turn.status === "superseded";
-    setPendingAgentTurnIds((current) => {
-      const next = new Set(current);
-      if (terminal) next.delete(turn.turn_id);
-      else next.add(turn.turn_id);
-      return [...next];
-    });
+    // Retries have new Turn IDs. A late response cannot reopen a terminal Turn.
+    if (!terminal && terminalAgentTurnIdsRef.current.has(turn.turn_id)) return;
+    setTurnsById((current) => ({ ...current, [turn.turn_id]: turn }));
+    if (terminal) {
+      terminalAgentTurnIdsRef.current.add(turn.turn_id);
+      pendingAgentTurnIdsRef.current.delete(turn.turn_id);
+    } else {
+      pendingAgentTurnIdsRef.current.add(turn.turn_id);
+    }
+    setPendingAgentTurnIds([...pendingAgentTurnIdsRef.current]);
     if (turn.retry_of_turn_id) {
       if (terminal) {
         retryingSourceTurnIdsRef.current.delete(turn.retry_of_turn_id);
@@ -380,8 +386,10 @@ export function useAgentCanvasChat({
 
   const refreshTurn = useCallback(async (turnId: string) => {
     if (!workflowId) return;
+    const workflowGeneration = workflowGenerationRef.current;
     try {
       const turn = await agentCanvasApi.agentCanvasChatTurn(workflowId, turnId);
+      if (workflowGeneration !== workflowGenerationRef.current) return;
       applyTurnProjection(turn);
       if (turn.continuation) upsertContinuation(turn.continuation);
     } catch {
@@ -393,9 +401,10 @@ export function useAgentCanvasChat({
     accepted: Pick<ChatTurnAcceptedV2, "turn_id">
       & Partial<Pick<ChatTurnAcceptedV2, "retry_of_turn_id" | "presentation_stream_id">>,
   ) => {
-    setPendingAgentTurnIds((current) => (
-      current.includes(accepted.turn_id) ? current : [...current, accepted.turn_id]
-    ));
+    if (!terminalAgentTurnIdsRef.current.has(accepted.turn_id)) {
+      pendingAgentTurnIdsRef.current.add(accepted.turn_id);
+      setPendingAgentTurnIds([...pendingAgentTurnIdsRef.current]);
+    }
     if (accepted.presentation_stream_id) {
       setPresentationStreamIds((current) => (
         current.includes(accepted.presentation_stream_id!)
@@ -484,7 +493,12 @@ export function useAgentCanvasChat({
     const unmatchedAgentTurnIds = [...agentTurnIds].filter((turnId) => (
       !userTurnIds.has(turnId) && !terminalMessageTurnIdsRef.current.has(turnId)
     ));
-    const turnIds = [...new Set([...unresolvedUserTurnIds, ...unmatchedAgentTurnIds])];
+    // A full question/answer pair does not prove that its tracked Turn ended.
+    // Reconcile pending message Turns when stream completion refreshes the timeline.
+    const pendingMessageTurnIds = [...pendingAgentTurnIdsRef.current].filter((turnId) => (
+      userTurnIds.has(turnId) || agentTurnIds.has(turnId)
+    ));
+    const turnIds = [...new Set([...pendingMessageTurnIds, ...unresolvedUserTurnIds, ...unmatchedAgentTurnIds])];
     const hydrateTurn = async (turnId: string) => {
       const cached = messageTurnHydrationsRef.current.get(turnId);
       const hydration = cached ?? agentCanvasApi.agentCanvasChatTurn(workflowId, turnId);
@@ -660,6 +674,8 @@ export function useAgentCanvasChat({
       const items = usingPresentationProjection
         ? visibleTimelinePresentationItems(presentationItems)
         : rawItems;
+      // Capture history once, before later refreshes append new Agent replies.
+      setInitialTimelineSequence(current => current ?? Math.max(0, ...items.map(item => item.sequence)));
       if (usingPresentationProjection) {
         presentationItemsByKeyRef.current = presentationItems;
       } else {
@@ -763,23 +779,6 @@ export function useAgentCanvasChat({
     }
   }, [runRefresh]);
 
-  useEffect(() => {
-    if (!workflowId) return;
-    const onLocaleChanged = (event: Event) => {
-      const detail = (event as CustomEvent<{ workflowId?: string; session?: GuidedSessionStateV2 }>).detail;
-      if (detail?.workflowId !== workflowId) return;
-      if (detail.session) setGuidanceSession(current => mergeGuidedSessionState(current, detail.session!));
-      void refresh();
-    };
-    window.addEventListener(localeChangedEventName, onLocaleChanged);
-    return () => window.removeEventListener(localeChangedEventName, onLocaleChanged);
-  }, [refresh, workflowId]);
-
-  useEffect(() => {
-    const persisted = guidanceSession?.response_locale;
-    if (persisted === "zh-CN" || persisted === "en-US") setLocale(persisted);
-  }, [guidanceSession?.response_locale, setLocale]);
-
   const scheduleChatRevisionRefresh = useCallback(() => {
     if (chatRevisionRefreshTimerRef.current !== null) return;
     chatRevisionRefreshTimerRef.current = window.setTimeout(() => {
@@ -801,9 +800,9 @@ export function useAgentCanvasChat({
     ),
     [optimisticItems, persistedItems, projectedItems, usingTimelinePresentation],
   );
-  // A gated reply still carries intent_mode=guided_production. Consult the
-  // latest authoritative gate/production reply rather than any past intent.
-  // Ordinary conversation cannot clear a gate; a later admitted turn can.
+  // A clarification can carry guided_production while production_readiness
+  // is not_ready, without an explicit gate reason. Consult the latest
+  // authoritative production reply; ordinary conversation cannot clear it.
   const productionIntentMessage = useMemo(() => [...items].reverse().find(
     (item): item is ChatMessageV2 => item.item_type === "message"
       && item.speaker === "adcraft_video_agent"
@@ -812,9 +811,17 @@ export function useAgentCanvasChat({
           && Boolean(item.metadata.production_gate_reason.trim()))),
   ), [items]);
   const gateReason = productionIntentMessage?.metadata?.production_gate_reason;
-  const productionGateReason = typeof gateReason === "string" && gateReason.trim() ? gateReason : null;
+  const productionGateReason = typeof gateReason === "string" && gateReason.trim()
+    ? gateReason
+    : productionIntentMessage?.metadata?.production_readiness === "not_ready"
+      ? "production_not_ready"
+      : null;
   const hasGuidedProductionIntent = !productionGateReason
     && productionIntentMessage?.metadata?.intent_mode === "guided_production";
+
+  useEffect(() => {
+    if (productionGateReason) setBrandNextQuestionIssue(null);
+  }, [productionGateReason]);
 
   const brandRecoveryBusy = Boolean(productionGateReason)
     || sending || brandNextQuestionPending || Boolean(actingInteractionId)
@@ -844,6 +851,16 @@ export function useAgentCanvasChat({
     if (!interaction.content.capability_id.startsWith("brand_")) return null;
     return interaction.interaction_id;
   }, [guidanceSession?.interaction]);
+
+  const staleBrandInteractionId = brandRecovery.state?.interactionId;
+  useEffect(() => {
+    if (!staleBrandInteractionId || !openBrandInteractionId
+      || openBrandInteractionId === staleBrandInteractionId
+      || guidanceSession?.interaction?.expected_session_revision !== guidanceSession?.revision) return;
+    // A new authoritative question makes the previous card's recovery notice obsolete.
+    clearBrandCardRecovery();
+    setGuidedInteractionIssue(null);
+  }, [clearBrandCardRecovery, guidanceSession, openBrandInteractionId, staleBrandInteractionId]);
 
   const triggerBrandNextQuestion = useCallback((
     currentStage: BrandStageV2 | null,
@@ -893,12 +910,24 @@ export function useAgentCanvasChat({
   const presentationStreams = useAgentCanvasPresentationStreams(
     workflowId,
     presentationStreamIds,
+    presentationStreamSummaries,
   );
   const handledPresentationEventsRef = useRef(new Set<string>());
 
   useEffect(() => {
     Object.values(presentationStreams).forEach((view) => {
       const event = view.last_event;
+      if (["completed", "failed", "superseded"].includes(view.status)
+        && (!event || !["committed", "failed", "superseded"].includes(event.event_type))) {
+        const summaryKey = `${view.stream_id}:discovered:${view.status}`;
+        if (!handledPresentationEventsRef.current.has(summaryKey)) {
+          handledPresentationEventsRef.current.add(summaryKey);
+          // A completed summary may close a queued or stalled stream before
+          // its terminal event; still load the authoritative conversation.
+          void refresh();
+        }
+        return;
+      }
       if (!event || !["committed", "failed", "superseded", "reset"].includes(event.event_type)) return;
       const eventKey = `${event.stream_id}:${event.sequence_no}`;
       if (handledPresentationEventsRef.current.has(eventKey)) return;
@@ -920,7 +949,8 @@ export function useAgentCanvasChat({
     || brandRecovery.pending
     || Boolean(actingInteractionId)
     || Boolean(postReadyBarrier)
-    || pendingAgentTurnIds.length > 0;
+    || pendingAgentTurnIds.length > 0
+    || presentationStreamSummaries.some(summary => summary.status === "open");
 
   useEffect(() => {
     if (!workflowId) {
@@ -928,28 +958,34 @@ export function useAgentCanvasChat({
       return undefined;
     }
     let cancelled = false;
+    let loadingStreams = false;
+    const controller = new AbortController();
     const loadStreams = async () => {
-      if (typeof agentCanvasApi.listAgentCanvasPresentationStreams !== "function") return;
+      if (loadingStreams || typeof agentCanvasApi.listAgentCanvasPresentationStreams !== "function") return;
+      loadingStreams = true;
       try {
-        const response = await agentCanvasApi.listAgentCanvasPresentationStreams(workflowId, 20);
+        const response = await agentCanvasApi.listAgentCanvasPresentationStreams(workflowId, 20, { signal: controller.signal });
         if (cancelled) return;
         const summaries = response.streams.slice(0, 20);
         setPresentationStreamSummaries(summaries);
         const assistantIds = summaries
-          .filter((summary) => summary.stream_kind === "assistant")
+          .filter((summary) => summary.stream_kind === "assistant" && summary.status === "open")
           .map((summary) => summary.stream_id);
         setPresentationStreamIds((current) => (
           [...new Set([...assistantIds, ...current])].slice(0, 20)
         ));
       } catch {
         // Stream discovery is best effort and should never interrupt chat.
+      } finally {
+        loadingStreams = false;
       }
     };
     void loadStreams();
-    if (!presentationWorking) return () => { cancelled = true; };
+    if (!presentationWorking) return () => { cancelled = true; controller.abort(); };
     const timer = window.setInterval(() => { void loadStreams(); }, 2_000);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearInterval(timer);
     };
   }, [brandNextQuestionPending, brandRecovery.pending, actingInteractionId, advancingGuidance, pendingAgentTurnIds.length, postReadyBarrier, presentationWorking, sending, workflowId]);
@@ -1034,7 +1070,10 @@ export function useAgentCanvasChat({
     setGuidedAnswerBubbles([]);
     setMessageSkillTitles({});
     setPendingAgentTurnIds([]);
+    pendingAgentTurnIdsRef.current.clear();
+    terminalAgentTurnIdsRef.current.clear();
     setPresentationStreamIds([]);
+    setPresentationStreamSummaries([]);
     setUsingTimelinePresentation(false);
     setTurnsById({});
     setRetryingSourceTurnIds({});
@@ -1045,6 +1084,7 @@ export function useAgentCanvasChat({
     setContinuationsById({});
     setLoading(false);
     setTimelineHydrated(false);
+    setInitialTimelineSequence(null);
     setSending(false);
     setFailedDraft(null);
     setBrandNextQuestionPending(false);
@@ -1093,27 +1133,32 @@ export function useAgentCanvasChat({
   }, [workflowId]);
 
   useEffect(() => {
-    setPendingAgentTurnIds((current) => {
-      const next = new Set(current);
-      chatEvents.forEach((event) => {
-        if (event.workflow_id !== workflowId || !event.turn_id) return;
-        if (
-          event.event_type === "agent_turn_queued"
-          || event.event_type === "agent_turn_waiting"
-          || event.event_type === "agent_turn_started"
-        ) {
-          next.add(event.turn_id);
+    chatEvents.forEach((event) => {
+      if (event.workflow_id !== workflowId || !event.turn_id) return;
+      if (event.event_type === "agent_turn_completed" || event.event_type === "agent_turn_failed") {
+        terminalAgentTurnIdsRef.current.add(event.turn_id);
+        pendingAgentTurnIdsRef.current.delete(event.turn_id);
+      }
+    });
+    chatEvents.forEach((event) => {
+      if (event.workflow_id !== workflowId || !event.turn_id) return;
+      if (
+        event.event_type === "agent_turn_queued"
+        || event.event_type === "agent_turn_waiting"
+        || event.event_type === "agent_turn_started"
+      ) {
+        if (!terminalAgentTurnIdsRef.current.has(event.turn_id)) {
+          pendingAgentTurnIdsRef.current.add(event.turn_id);
         }
-        if (event.event_type === "agent_turn_completed" || event.event_type === "agent_turn_failed") {
-          next.delete(event.turn_id);
-        }
-      });
-      const reconciled = [...next];
-      return reconciled.length === current.length
+      }
+    });
+    const reconciled = [...pendingAgentTurnIdsRef.current];
+    setPendingAgentTurnIds((current) => (
+      reconciled.length === current.length
         && reconciled.every((turnId, index) => turnId === current[index])
         ? current
-        : reconciled;
-    });
+        : reconciled
+    ));
     chatEvents.forEach((event) => {
       if (event.workflow_id !== workflowId) return;
       if (event.event_type === "action_receipt_created") {
@@ -1483,7 +1528,7 @@ export function useAgentCanvasChat({
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
         video_skill_run_id: videoSkillRunId,
-        response_locale: locale,
+        response_locale: responseLocale,
       }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
@@ -1535,7 +1580,7 @@ export function useAgentCanvasChat({
         setSending(false);
       }
     }
-  }, [activeVideoSkillRunId, locale, trackAcceptedTurn, workflowId]);
+  }, [activeVideoSkillRunId, responseLocale, trackAcceptedTurn, workflowId]);
 
   const selectProposal = useCallback(async (
     proposal: Pick<ConceptProposalV2, "proposal_id" | "availability">,
@@ -1814,6 +1859,9 @@ export function useAgentCanvasChat({
     request: GuidedInteractionSubmitRequestV1,
   ) => {
     if (!workflowId || productionGateReason || actingInteractionId || interaction.status !== "open" || blocksSubmission(interaction.interaction_id)) return false;
+    if (brandMode && brandStage && interaction.content.content_kind === "concept_choice"
+      && ["brand_skill-stack", "brand_skill-stack-early"].includes(interaction.content.capability_id)
+      && interaction.content.capability_id !== `brand_${brandStage}`) return false;
     if (brandMode && brandStage === "treatment" && request.submission_kind === "concept_choice"
       && request.action === "delegate") {
       setGuidedInteractionIssue({ code: "guided_interaction_action_not_allowed", summary: "请先选择候选方案，再通过最终审阅中的步骤编辑器修改内容。", detail: null, fieldId: null, retryable: false });
@@ -2081,6 +2129,7 @@ export function useAgentCanvasChat({
   return {
     state: {
       items,
+      initialTimelineSequence,
       guidedAnswerBubbles,
       messageSkillTitles,
       guidanceSession,

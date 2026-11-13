@@ -43,6 +43,22 @@ function video(
 }
 
 describe("buildPlayableEditingSequence", () => {
+  it.each(["draft", "working", "failed"] as const)("keeps a retained video playable when the source is %s", (nodeStatus) => {
+    const first = video("first");
+    const retained = video("retained", { nodeStatus });
+    const third = video("third");
+    first.entry.timeline_start_seconds = 0;
+    retained.entry.timeline_start_seconds = 10;
+    third.entry.timeline_start_seconds = 20;
+
+    const result = buildPlayableEditingSequence([first, retained, third], 30);
+
+    expect(result.videos.map(input => input.referenceId)).toEqual(["first", "retained", "third"]);
+    expect(result.inactiveVideos).toEqual([]);
+    expect(result.segments.map(segment => [segment.timelineStart, segment.timelineEnd])).toEqual([[0, 10], [10, 20], [20, 30]]);
+    expect(retained.node?.status).toBe(nodeStatus);
+  });
+
   it("treats null positions and duration as automatic, preserving fractional source durations", () => {
     const first = video("first", { trimEnd: null });
     const second = video("second", { trimEnd: null });
@@ -62,6 +78,7 @@ describe("buildPlayableEditingSequence", () => {
     const first = video("first", { trimStart: 1, trimEnd: 4 });
     const disabled = video("disabled", { enabled: false });
     const sourceDraft = video("source-draft", { nodeStatus: "draft" });
+    sourceDraft.asset = null;
     const assetPending = video("asset-pending", { assetStatus: "pending" });
     const missingUrl = video("missing-url", { mediaUrl: null });
     const second = video("second", { nodeStatus: "ready", trimStart: 2, trimEnd: 6 });

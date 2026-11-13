@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GuidedProductionJourneyV2, JourneyElementDecisionV2 } from "../../../types-v2.ts";
 import { CharacterOccurrenceProgress } from "./CharacterOccurrenceProgress.tsx";
-import { projectCharacterOccurrences } from "./characterOccurrenceProjection.ts";
+import { projectCharacterDesignerNumbers, projectCharacterOccurrences } from "./characterOccurrenceProjection.ts";
 
 function decision(
   occurrenceIndex: number,
@@ -52,6 +52,46 @@ function characterEvidence(
     recorded_at: "2026-08-27T08:00:00Z",
   };
 }
+
+describe("Character Designer numbering", () => {
+  function proposal(index: number, count = 3, turnId = `turn-character-${index}`) {
+    return {
+      capability_id: "character_design" as const, turn_id: turnId,
+      occurrence_id: `occurrence:character:${index}`, occurrence_index: index,
+      occurrence_count: count, materialization: null,
+    };
+  }
+
+  it("restores the three persisted role numbers regardless of proposal arrival order", () => {
+    const numbers = projectCharacterDesignerNumbers([proposal(3), proposal(1), proposal(2)], null);
+    expect([1, 2, 3].map(index => numbers.get(`turn-character-${index}`))).toEqual([1, 2, 3]);
+    // The first role is numbered before the other roles' proposals finish loading.
+    expect(projectCharacterDesignerNumbers([proposal(1)], null).get("turn-character-1")).toBe(1);
+  });
+
+  it("keeps the same role number across Main revisions, Turnaround and retry chains", () => {
+    const value = journey([decision(1, {}), decision(2, {}), decision(3, {})]);
+    value.active_action = {
+      action_id: "turnaround-action", action_kind: "prepare_character_turnaround",
+      stage: "character", stage_revision: 5, status: "working",
+      turn_id: "turn-turnaround", occurrence_id: "occurrence:character:2", character_phase: "turnaround",
+    };
+    const numbers = projectCharacterDesignerNumbers([
+      proposal(2), proposal(2, 3, "turn-revised-main"),
+    ], value, {
+      "turn-retry-2": { retry_of_turn_id: "turn-retry-1" },
+      "turn-retry-1": { retry_of_turn_id: "turn-turnaround" },
+    });
+    for (const turnId of ["turn-character-2", "turn-revised-main", "turn-turnaround", "turn-retry-1", "turn-retry-2"]) {
+      expect(numbers.get(turnId)).toBe(2);
+    }
+  });
+
+  it("leaves single-character and unrelated design stages unnumbered", () => {
+    expect(projectCharacterDesignerNumbers([proposal(1, 1)], journey([decision(1, {})])).size).toBe(0);
+    expect(projectCharacterDesignerNumbers([{ ...proposal(3), capability_id: "scene_design" }], null).size).toBe(0);
+  });
+});
 
 describe("projectCharacterOccurrences", () => {
   it("returns no inferred Character when the journey has zero Character occurrences", () => {

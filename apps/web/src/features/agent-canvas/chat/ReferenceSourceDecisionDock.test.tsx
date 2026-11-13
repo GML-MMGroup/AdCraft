@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 import { ReferenceSourceDecisionDock } from "./ReferenceSourceDecisionDock.tsx";
 
 const fixtures = vi.hoisted(() => ({
@@ -58,11 +59,55 @@ const interaction: GuidedInteractionV1 = {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem("adcraft.locale");
   uploadFilesWithReceipts.mockReset();
   useGuidedReferenceCandidates.mockReset();
 });
 
 describe("ReferenceSourceDecisionDock", () => {
+  it.each(["character_main", "scene_main"] as const)("uses the UI locale for fixed %s copy and preserves a selection when switching", (referenceKind) => {
+    useGuidedReferenceCandidates.mockReturnValue({
+      items: [], loading: false, loadingMore: false, error: null,
+      hasMore: false, retry: vi.fn(), loadMore: vi.fn(),
+    });
+    const question = "Would you like to use a reference image for this Main draft?";
+    const current: GuidedInteractionV1 = { ...interaction, content: {
+      ...interaction.content, content_kind: "reference_source", reference_kind: referenceKind, question,
+    } };
+    function LanguageToggle() {
+      const { toggleLocale } = useLocale();
+      return <button onClick={toggleLocale}>Switch language</button>;
+    }
+    const onSubmit = vi.fn();
+    window.localStorage.removeItem("adcraft.locale");
+    render(<LocaleProvider initialLocale="zh-CN">
+      <LanguageToggle />
+      <ReferenceSourceDecisionDock interaction={current} pending={false} issue={null} onSubmit={onSubmit} />
+    </LocaleProvider>);
+
+    expect(screen.getByRole("article", { name: "是否为这张主图使用参考图片？" })).toBeTruthy();
+    expect(screen.queryByText(question)).toBeNull();
+    expect(screen.getByText(referenceKind === "character_main" ? "角色参考图 · 主图" : "场景 · 主图")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "跳过参考图" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "素材库" }));
+    expect(screen.getByRole("tab", { name: "当前项目" })).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: "搜索参考素材" })).toBeTruthy();
+    expect(screen.getByText("暂无可用的参考素材")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "上传" }));
+    fireEvent.change(screen.getByLabelText("上传参考素材"), {
+      target: { files: [new File(["image"], "reference.png", { type: "image/png" })] },
+    });
+    expect((screen.getByRole("button", { name: "使用参考图" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+    expect(screen.getByRole("article", { name: question })).toBeTruthy();
+    expect(screen.getByText("reference.png")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Use reference" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Skip reference" })).toBeTruthy();
+    expect(screen.getByText("Each reference image must be no larger than 4 MB.")).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(uploadFilesWithReceipts).not.toHaveBeenCalled();
+  });
+
   it("uploads an image and submits the returned exact AssetVersion", async () => {
     useGuidedReferenceCandidates.mockReturnValue({
       items: [], loading: false, loadingMore: false, error: null,
@@ -80,7 +125,7 @@ describe("ReferenceSourceDecisionDock", () => {
     const onSubmit = vi.fn().mockResolvedValue(true);
     render(<ReferenceSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={onSubmit} />);
 
-    expect(screen.getByText("单张参考图不应超过 4 MB。")).toBeTruthy();
+    expect(screen.getByText("Each reference image must be no larger than 4 MB.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Upload reference"), {
       target: { files: [new File(["image"], "reference.png", { type: "image/png" })] },
     });
@@ -166,7 +211,7 @@ describe("ReferenceSourceDecisionDock", () => {
     render(<ReferenceSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={onSubmit} />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Asset Library" }));
-    expect(screen.queryByText("单张参考图不应超过 4 MB。")).toBeNull();
+    expect(screen.queryByText("Each reference image must be no larger than 4 MB.")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Recommended" }));
     fireEvent.click(screen.getByRole("button", { name: "Select Recommended studio" }));
     fireEvent.click(screen.getByRole("button", { name: "Use reference" }));

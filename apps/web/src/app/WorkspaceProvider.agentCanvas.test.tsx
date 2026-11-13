@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +30,8 @@ vi.mock("../api/v2Client", () => ({
 import { useApp } from "../AppContextValue.ts";
 import { v2AuthoringConflictStore } from "../api/v2AuthoringConflictStore.ts";
 import { normalizeCanvasNodeV2 } from "../features/agent-canvas/model/normalizers.ts";
-import { saveProjectCatalogCache } from "../projects/projectCatalogCache.ts";
+import { loadProjectCatalogCache, saveProjectCatalogCache } from "../projects/projectCatalogCache.ts";
+import { resolveV2ProjectCoverSummary } from "../projects/v2ProjectCover.ts";
 import { WORKSPACE_ACTIVE_PROJECT_KEY, WORKSPACE_WORKFLOW_KEY } from "../projects/newProject.ts";
 import { WorkspaceProvider } from "./WorkspaceProvider.tsx";
 
@@ -119,6 +120,62 @@ afterEach(() => {
 });
 
 describe("WorkspaceProvider Agent Canvas authority", () => {
+  it.each(["image", "video"] as const)("keeps the %s cover visible and cached after renaming a project", async (mediaType) => {
+    const cover = {
+      asset_id: "product-image",
+      version_id: "product-image-v1",
+      media_type: mediaType,
+      preview_url: mediaType === "image" ? "/api/v2/assets/product-image/preview?v=product-image-v1&size=320" : null,
+      poster_url: mediaType === "video" ? "/api/v2/assets/product-image/poster?v=product-image-v1&size=320" : null,
+    };
+    const project = {
+      project_id: "project-1",
+      workflow_id: "workflow-1",
+      name: "Summer launch",
+      status: "active" as const,
+      is_favorite: false,
+      cover_asset_id: cover.asset_id,
+      cover_version_id: cover.version_id,
+      cover_state: "ready" as const,
+      cover_source: "manual" as const,
+      cover_updated_at: "2026-07-24T08:00:00Z",
+      project_version: 1,
+      updated_at: "2026-07-24T08:00:00Z",
+    };
+    saveProjectCatalogCache({
+      active: [{ ...project, cover }],
+      trashed: [],
+      activeEtag: '"active-v1"',
+      trashedEtag: null,
+      activeSavedAt: Date.now(),
+      trashedSavedAt: Date.now(),
+    });
+    // Project mutations return detail metadata; preview URLs belong to catalog summaries.
+    v2Api.updateProject.mockResolvedValueOnce({
+      value: { ...project, name: "Autumn campaign", project_version: 2, updated_at: "2026-07-25T08:00:00Z" },
+      etag: '"project-1-v2"',
+    });
+    const { result } = renderHook(() => useApp(), {
+      wrapper: ({ children }) => (
+        <WorkspaceProvider restoreActiveWorkflow={false} projectCatalogScope="active">
+          {children}
+        </WorkspaceProvider>
+      ),
+    });
+    await waitFor(() => expect(result.current.workspaceHydrated).toBe(true));
+    const preview = resolveV2ProjectCoverSummary(result.current.savedProjects[0].cover);
+    expect(preview).not.toBeNull();
+
+    await act(async () => {
+      await result.current.renameProject("project-1", "Autumn campaign");
+    });
+
+    expect(v2Api.updateProject).toHaveBeenCalledWith("project-1", { name: "Autumn campaign" });
+    expect(result.current.savedProjects[0].name).toBe("Autumn campaign");
+    expect(resolveV2ProjectCoverSummary(result.current.savedProjects[0].cover)).toEqual(preview);
+    expect(loadProjectCatalogCache()?.active[0].cover).toEqual(cover);
+  });
+
   it("uses a fresh persisted catalog without starting a background request", async () => {
     saveProjectCatalogCache({
       active: [{
