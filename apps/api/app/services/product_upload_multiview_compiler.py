@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 import shutil
 from uuid import uuid4
@@ -90,19 +91,45 @@ class ProductUploadMultiviewCompiler:
     def compile(
         self,
         inputs: tuple[ProductUploadMultiviewInput, ...],
+        *,
+        source_role: str = "product",
     ) -> ProductUploadMultiviewCompilation:
-        self._validate_count(inputs)
+        if source_role == "product":
+            self._validate_count(inputs)
+        elif source_role not in {"character", "scene"} or len(inputs) < 2:
+            raise ProductUploadMultiviewCompilationError(
+                "guided_product_multiview_count_invalid",
+                "Multiview compilation requires at least two images.",
+            )
+        profile_id = (
+            PRODUCT_UPLOAD_MULTIVIEW_PROFILE_ID
+            if source_role == "product"
+            else "asset-upload-multiview-v1"
+        )
         self._validate_inputs(inputs)
-        grid_rows = (
-            len(inputs) + PRODUCT_UPLOAD_MULTIVIEW_COLUMNS - 1
-        ) // PRODUCT_UPLOAD_MULTIVIEW_COLUMNS
+        grid_columns = (
+            PRODUCT_UPLOAD_MULTIVIEW_COLUMNS
+            if source_role == "product"
+            else math.ceil(math.sqrt(len(inputs)))
+        )
+        grid_rows = (len(inputs) + grid_columns - 1) // grid_columns
         cell_width = max(item.width for item in inputs)
         cell_height = max(item.height for item in inputs)
+        if (
+            source_role != "product"
+            and cell_width * grid_columns * cell_height * grid_rows > self._max_total_pixels
+        ):
+            raise ProductUploadMultiviewCompilationError(
+                "guided_product_multiview_compilation_failed",
+                "Multiview output exceeds the pixel budget.",
+            )
         command_fingerprint = self._command_fingerprint(
             inputs,
             cell_width=cell_width,
             cell_height=cell_height,
             grid_rows=grid_rows,
+            profile_id=profile_id,
+            grid_columns=grid_columns,
         )
         staging_dir = self._staging_root / f"product-upload-multiview-{uuid4().hex}"
         output_path = staging_dir / "multiview.png"
@@ -111,7 +138,7 @@ class ProductUploadMultiviewCompiler:
             result = self._ffmpeg.compose_image_grid(
                 [item.path for item in inputs],
                 output_path,
-                columns=PRODUCT_UPLOAD_MULTIVIEW_COLUMNS,
+                columns=grid_columns,
                 rows=grid_rows,
                 cell_width=cell_width,
                 cell_height=cell_height,
@@ -127,12 +154,12 @@ class ProductUploadMultiviewCompiler:
                 output_sha256=output_sha256,
                 media_facts=_media_facts(facts),
                 ordered_inputs=tuple(item.version_id for item in inputs),
-                profile_id=PRODUCT_UPLOAD_MULTIVIEW_PROFILE_ID,
+                profile_id=profile_id,
                 profile_version=PRODUCT_UPLOAD_MULTIVIEW_PROFILE_VERSION,
-                grid_columns=PRODUCT_UPLOAD_MULTIVIEW_COLUMNS,
+                grid_columns=grid_columns,
                 grid_rows=grid_rows,
                 command_fingerprint=command_fingerprint,
-                compiler_fingerprint=_compiler_fingerprint(),
+                compiler_fingerprint=_compiler_fingerprint(profile_id),
             )
         except ProductUploadMultiviewCompilationError:
             _cleanup_staging_dir(staging_dir)
@@ -232,11 +259,13 @@ class ProductUploadMultiviewCompiler:
         cell_width: int,
         cell_height: int,
         grid_rows: int,
+        profile_id: str = PRODUCT_UPLOAD_MULTIVIEW_PROFILE_ID,
+        grid_columns: int = PRODUCT_UPLOAD_MULTIVIEW_COLUMNS,
     ) -> str:
         payload = {
-            "profile_id": PRODUCT_UPLOAD_MULTIVIEW_PROFILE_ID,
+            "profile_id": profile_id,
             "profile_version": PRODUCT_UPLOAD_MULTIVIEW_PROFILE_VERSION,
-            "columns": PRODUCT_UPLOAD_MULTIVIEW_COLUMNS,
+            "columns": grid_columns,
             "rows": grid_rows,
             "cell_width": cell_width,
             "cell_height": cell_height,
@@ -254,8 +283,8 @@ class ProductUploadMultiviewCompiler:
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _compiler_fingerprint() -> str:
-    payload = f"{PRODUCT_UPLOAD_MULTIVIEW_PROFILE_ID}:{PRODUCT_UPLOAD_MULTIVIEW_PROFILE_VERSION}:scale-pad"
+def _compiler_fingerprint(profile_id: str = PRODUCT_UPLOAD_MULTIVIEW_PROFILE_ID) -> str:
+    payload = f"{profile_id}:{PRODUCT_UPLOAD_MULTIVIEW_PROFILE_VERSION}:scale-pad"
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
 
