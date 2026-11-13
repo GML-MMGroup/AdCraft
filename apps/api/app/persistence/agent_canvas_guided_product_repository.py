@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from uuid import uuid4
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.agent_canvas_repository import (
@@ -21,10 +22,15 @@ from app.persistence.agent_canvas_repository import (
     _require_workflow_revision,
     _store_idempotency,
 )
+from app.persistence.agent_canvas_conversation_repository import (
+    _creative_memory,
+    _creative_memory_values,
+)
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasBindingRow,
+    AgentCanvasCreativeMemoryRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidedInteractionRow,
@@ -33,6 +39,7 @@ from app.persistence.models import (
     AgentCanvasChatTurnRow,
     AgentCanvasNodeRow,
     WorkflowEventRow,
+    AssetVersionRow,
 )
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
@@ -328,6 +335,8 @@ class AgentCanvasGuidedProductRepository:
                     connection,
                     workflow_id=workflow_id,
                     input_kind=request.action.input_kind,
+                    source_role=request.action.source_role,
+                    occurrence_id=request.action.occurrence_id,
                     interaction_id=interaction.interaction_id,
                     expected_interaction_revision=request.expected_interaction_revision,
                     expected_session_revision=request.expected_session_revision,
@@ -515,6 +524,7 @@ class AgentCanvasGuidedProductRepository:
         provenance_digest: str | None,
         submission_id: str | None = None,
         submission_request: GuidedProductSourceSubmitV1 | None = None,
+        continuation_writer: Callable[..., None] | None = None,
     ) -> GuidedProductInputCommitResponseV1:
         operation = f"guided_product_input:{node.workflow_id}"
         database = self._workflows.database
@@ -542,7 +552,9 @@ class AgentCanvasGuidedProductRepository:
                     existing = connection.execute(
                         select(AgentCanvasNodeRow.node_id).where(
                             AgentCanvasNodeRow.workflow_id == node.workflow_id,
-                            AgentCanvasNodeRow.creative_role == "product",
+                            AgentCanvasNodeRow.creative_role == request.source_role,
+                            func.json_extract(AgentCanvasNodeRow.metadata_json, "$.occurrence_id")
+                            == request.occurrence_id,
                             AgentCanvasNodeRow.metadata_json.contains(
                                 f'"source_input_kind":"{request.input_kind}"'
                             ),
@@ -581,16 +593,36 @@ class AgentCanvasGuidedProductRepository:
                         connection,
                         workflow_id=node.workflow_id,
                         input_kind=request.input_kind,
+                        source_role=request.source_role,
+                        occurrence_id=request.occurrence_id,
                         interaction_id=request.interaction_id,
                         expected_interaction_revision=request.expected_interaction_revision,
                         expected_session_revision=request.expected_session_revision,
                     )
+                    if request.source_role != "product":
+                        for reference in request.asset_versions:
+                            version = connection.execute(
+                                select(AssetVersionRow.version_id).where(
+                                    AssetVersionRow.asset_id == reference.asset_id,
+                                    AssetVersionRow.version_id == reference.version_id,
+                                    AssetVersionRow.source_workflow_id == node.workflow_id,
+                                    AssetVersionRow.status == "ready",
+                                )
+                            ).scalar_one_or_none()
+                            if version is None:
+                                raise V2PersistenceError(
+                                    "guided_product_asset_unreadable",
+                                    "A selected image is no longer available.",
+                                    stage="guided_product_repository",
+                                )
                     handoff = self._require_pending_handoff(
                         connection,
                         workflow_id=node.workflow_id,
                         request=request,
                     )
                     connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+                    if request.source_role != "product":
+                        self._approve_source_in_memory(connection, node)
                     self._reconcile_uploaded_product_lineage(
                         connection,
                         node=node,
@@ -663,6 +695,46 @@ class AgentCanvasGuidedProductRepository:
                             "Guidance session changed before Product source commit.",
                             stage="guided_product_repository",
                         )
+                    continuation_id = None
+                    if request.source_role != "product" and continuation_writer is not None:
+                        source_turn_id = (
+                            previous_journey.active_action.turn_id
+                            if previous_journey.active_action
+                            else None
+                        )
+                        source_turn = (
+                            connection.execute(
+                                select(AgentCanvasChatTurnRow).where(
+                                    AgentCanvasChatTurnRow.workflow_id == node.workflow_id,
+                                    AgentCanvasChatTurnRow.turn_id == source_turn_id,
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        if source_turn is None:
+                            raise V2PersistenceError(
+                                "guidance_resume_evidence_missing",
+                                "Asset source Turn is unavailable.",
+                                stage="guided_product_repository",
+                            )
+                        identity = sha256(
+                            f"asset-source:{node.workflow_id}:{request.interaction_id}".encode()
+                        ).hexdigest()
+                        continuation_id = f"continuation_{identity[:24]}"
+                        continuation_writer(
+                            connection,
+                            workflow_id=node.workflow_id,
+                            conversation_id=str(source_turn["conversation_id"]),
+                            continuation=ContinuationCommitV2(
+                                continuation_id=continuation_id,
+                                continuation_turn_id=f"turn_{identity[24:56]}",
+                                source_turn_id=str(source_turn["turn_id"]),
+                                source_action_id=request.interaction_id,
+                                idempotency_key=f"asset-source:{request.interaction_id}",
+                            ),
+                            now=node.updated_at.isoformat(),
+                        )
                     operation_id = f"op_{uuid4().hex}"
                     self._events.append_in_transaction(
                         connection,
@@ -672,7 +744,7 @@ class AgentCanvasGuidedProductRepository:
                             asset_id=output_asset_id,
                             version_id=output_version_id,
                             event_type="guided_product_source_materialized",
-                            transition_key=f"guided-product:{node.workflow_id}:{request.input_kind}",
+                            transition_key=f"guided-product:{node.workflow_id}:{request.source_role}:{request.occurrence_id or '-'}:{request.input_kind}",
                             created_at=node.updated_at.isoformat(),
                             payload={
                                 "operation_id": operation_id,
@@ -742,6 +814,7 @@ class AgentCanvasGuidedProductRepository:
                         guidance_revision=next_session_revision,
                         input_kind=request.input_kind,
                         node=node,
+                        continuation_id=continuation_id,
                         compiled_asset=compiled_asset,
                         receipt=receipt,
                         events_cursor=final_event.seq,
@@ -760,6 +833,7 @@ class AgentCanvasGuidedProductRepository:
                             interaction_id=request.interaction_id,
                             submission_id=submission_id,
                             receipt_id=receipt.operation_id,
+                            continuation_id=continuation_id,
                             created_node_ids=(node.node_id,),
                             resulting_session_revision=next_session_revision,
                             events_cursor=final_event.seq,
@@ -795,6 +869,41 @@ class AgentCanvasGuidedProductRepository:
             ) from error
 
     @staticmethod
+    def _approve_source_in_memory(connection: Connection, node: CanvasNodeV2) -> None:
+        """Expose the explicit user-selected source to downstream reference planning."""
+        row = (
+            connection.execute(
+                select(AgentCanvasCreativeMemoryRow).where(
+                    AgentCanvasCreativeMemoryRow.workflow_id == node.workflow_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        memory = _creative_memory(row, node.workflow_id)
+        approved = dict(memory.approved_node_ids)
+        approved[node.creative_role] = tuple(
+            dict.fromkeys((*approved.get(node.creative_role, ()), node.node_id))
+        )
+        now = node.updated_at.isoformat()
+        values = _creative_memory_values(
+            memory.model_copy(update={"approved_node_ids": approved}),
+            memory.memory_revision + 1,
+            created_at=str(row["created_at"]) if row else now,
+            updated_at=now,
+        )
+        if row is None:
+            connection.execute(insert(AgentCanvasCreativeMemoryRow).values(**values))
+        else:
+            connection.execute(
+                update(AgentCanvasCreativeMemoryRow)
+                .where(
+                    AgentCanvasCreativeMemoryRow.workflow_id == node.workflow_id,
+                )
+                .values(**values)
+            )
+
+    @staticmethod
     def _require_product_interaction(
         connection,
         *,
@@ -803,6 +912,8 @@ class AgentCanvasGuidedProductRepository:
         interaction_id,
         expected_interaction_revision,
         expected_session_revision,
+        source_role="product",
+        occurrence_id=None,
     ):
         row = (
             connection.execute(
@@ -832,7 +943,12 @@ class AgentCanvasGuidedProductRepository:
                 stage="guided_product_repository",
             )
         content = json.loads(str(row["content_json"]))
-        if str(row["kind"]) != "product_source" or content.get("input_kind") != input_kind:
+        if (
+            str(row["kind"]) != "product_source"
+            or content.get("input_kind") != input_kind
+            or content.get("source_role", "product") != source_role
+            or content.get("occurrence_id") != occurrence_id
+        ):
             raise V2PersistenceError(
                 "guided_interaction_action_not_allowed",
                 "The Product source interaction does not match this input kind.",
@@ -859,6 +975,28 @@ class AgentCanvasGuidedProductRepository:
             raise V2PersistenceError(
                 "guided_interaction_stale",
                 "Product source session revision is stale.",
+                stage="guided_product_repository",
+            )
+        session = (
+            connection.execute(
+                select(AgentCanvasGuidanceSessionRow).where(
+                    AgentCanvasGuidanceSessionRow.workflow_id == workflow_id,
+                    AgentCanvasGuidanceSessionRow.session_id == row["session_id"],
+                )
+            )
+            .mappings()
+            .one()
+        )
+        journey = parse_production_journey(str(session["journey_state_json"]))
+        if (
+            int(session["revision"]) != expected_session_revision
+            or journey.stage != source_role
+            or (source_role == "character" and journey.active_occurrence_id != occurrence_id)
+            or journey.stage_revision != int(awaiting["stage_revision"])
+        ):
+            raise V2PersistenceError(
+                "guided_interaction_stale",
+                "Source scope no longer matches the current Journey.",
                 stage="guided_product_repository",
             )
         return row, awaiting
@@ -906,6 +1044,23 @@ class AgentCanvasGuidedProductRepository:
         journey: GuidedProductionJourneyV2,
         next_session_revision: int,
     ) -> GuidedProductionJourneyV2:
+        if request.source_role != "product":
+            advanced = GuidedProductionJourneyPolicyService().apply_evidence(
+                journey,
+                JourneyEvidenceV2(
+                    evidence_id=f"guided-source:{request.interaction_id}:{node.node_id}",
+                    evidence_kind=f"{request.source_role}_materialized",
+                    source_id=node.node_id,
+                    source_revision=node.revision,
+                    stage=request.source_role,
+                    stage_revision=journey.stage_revision,
+                    occurrence_id=request.occurrence_id,
+                    actor="user",
+                    # A source-only board completes the whole occurrence. It
+                    # does not claim that a generated Main ever existed.
+                ),
+            )
+            return advanced.model_copy(update={"stage_status": "ready", "active_action": None})
         if request.input_kind == "multiview":
             return GuidedProductionJourneyPolicyService().apply_evidence(
                 journey,
@@ -1038,7 +1193,10 @@ class AgentCanvasGuidedProductRepository:
     ) -> None:
         """Persist the single explicit Main-output -> Multiview upload edge."""
 
-        if node.metadata.get("source_input_kind") not in {"main", "multiview"}:
+        if node.creative_role != "product" or node.metadata.get("source_input_kind") not in {
+            "main",
+            "multiview",
+        }:
             return
         rows = (
             connection.execute(

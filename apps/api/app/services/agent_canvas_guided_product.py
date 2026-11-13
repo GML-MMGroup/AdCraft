@@ -14,6 +14,8 @@ from app.persistence.agent_canvas_guided_product_repository import (
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
+from app.services.agent_canvas_requirements import character_occurrences_for_authoring
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasGuidanceSessionRow
@@ -109,7 +111,9 @@ class GuidedProductInputCommitService:
             )
         action = request.action
         if (
-            action.input_kind != interaction.content.input_kind
+            action.source_role != interaction.content.source_role
+            or action.occurrence_id != interaction.content.occurrence_id
+            or action.input_kind != interaction.content.input_kind
             or action.question_id != interaction.content.question_id
             or action.expected_guidance_revision != interaction.content.expected_guidance_revision
         ):
@@ -144,6 +148,8 @@ class GuidedProductInputCommitService:
         workflow = self._workflows.get_workflow(workflow_id)
         commit_request = GuidedProductInputCommitRequestV1(
             input_kind=action.input_kind,
+            source_role=action.source_role,
+            occurrence_id=action.occurrence_id,
             asset_versions=action.asset_versions,
             interaction_id=interaction.interaction_id,
             expected_interaction_revision=request.expected_interaction_revision,
@@ -164,6 +170,7 @@ class GuidedProductInputCommitService:
             interaction_id=interaction.interaction_id,
             submission_id=submission_id,
             receipt_id=committed.receipt.operation_id,
+            continuation_id=committed.continuation_id,
             created_node_ids=(committed.node.node_id,),
             resulting_session_revision=committed.guidance_revision,
             events_cursor=committed.events_cursor,
@@ -196,7 +203,8 @@ class GuidedProductInputCommitService:
         if replay is not None:
             return replay
         if any(
-            node.creative_role == "product"
+            node.creative_role == request.source_role
+            and node.metadata.get("occurrence_id") == request.occurrence_id
             and node.metadata.get("source_input_kind") == request.input_kind
             for node in workflow.nodes
         ):
@@ -205,7 +213,7 @@ class GuidedProductInputCommitService:
                 "This Product input kind already has a canonical source Node.",
                 stage="guided_product_service",
             )
-        self._require_product_stage(workflow_id)
+        self._require_product_stage(workflow_id, request.source_role)
         if workflow.revision != expected_workflow_revision:
             raise V2PersistenceError(
                 "workflow_revision_conflict",
@@ -225,17 +233,23 @@ class GuidedProductInputCommitService:
             for reference in request.asset_versions
         )
         operation_id = f"op_{digest[:32]}"
-        node_id = f"node_product_{request.input_kind}_{digest[:24]}"
+        node_id = f"node_{request.source_role}_{request.input_kind}_{digest[:24]}"
         compiled_asset = None
         provenance_digest = None
         output_asset_id = versions[0].asset_id
         output_version_id = versions[0].version_id
         compiler_result = None
         try:
-            if request.input_kind == "multiview":
+            if request.input_kind == "multiview" and len(versions) > 1:
                 compiler_inputs = tuple(self._compiler_input(version) for version in versions)
                 try:
-                    compiler_result = self._compiler.compile(compiler_inputs)
+                    compiler_result = (
+                        self._compiler.compile(compiler_inputs)
+                        if request.source_role == "product"
+                        else self._compiler.compile(
+                            compiler_inputs, source_role=request.source_role
+                        )
+                    )
                 except ProductUploadMultiviewCompilationError as error:
                     self._append_failure_event(
                         workflow_id=workflow_id,
@@ -275,12 +289,18 @@ class GuidedProductInputCommitService:
                     workflow_id,
                     node_id=node_id,
                     execution_id=operation_id,
-                    filename="product-multiview.png",
+                    filename=f"{request.source_role}-multiview.png",
                     mime_type="image/png",
                     content=compiler_result.output_path.read_bytes(),
                     fingerprint=compiler_result.command_fingerprint,
                     source_type="derived",
-                    source_semantic_role="product_multiview",
+                    source_semantic_role=(
+                        "character_three_view"
+                        if request.source_role == "character"
+                        else "scene_multi_view_grid"
+                        if request.source_role == "scene"
+                        else "product_multiview"
+                    ),
                     publication_metadata={
                         "source_type": "derived",
                         "upload_compilation": provenance_payload,
@@ -296,9 +316,10 @@ class GuidedProductInputCommitService:
                 node_id=node_id,
                 request=request,
                 output_asset_id=output_asset_id,
+                output_version_id=output_version_id,
                 provenance=(
                     provenance_payload
-                    if request.input_kind == "multiview"
+                    if compiler_result is not None
                     else {
                         "kind": "direct_upload",
                         "asset_id": versions[0].asset_id,
@@ -306,6 +327,29 @@ class GuidedProductInputCommitService:
                     }
                 ),
             )
+            if request.source_role == "character":
+                requirement = AgentCanvasRequirementRepository(
+                    self._workflows.database
+                ).get_current(workflow_id)
+                occurrence = next(
+                    (
+                        item
+                        for item in character_occurrences_for_authoring(requirement)
+                        if item.occurrence_id == request.occurrence_id
+                    ),
+                    None,
+                )
+                if occurrence is not None:
+                    node = node.model_copy(
+                        update={
+                            "title": f"{occurrence.role} Multiview",
+                            "structured_content": {
+                                **node.structured_content,
+                                "subject_identity": occurrence.role,
+                                "design_summary": occurrence.identity_summary,
+                            },
+                        }
+                    )
             return self._commits.commit(
                 node=node,
                 request=request,
@@ -319,16 +363,18 @@ class GuidedProductInputCommitService:
                 provenance_digest=provenance_digest,
                 submission_id=submission_id,
                 submission_request=submission_request,
+                continuation_writer=self._continuation_writer,
             )
         except BaseException:
-            if compiler_result is not None:
-                compiler_result.cleanup()
             if compiled_asset is not None:
                 try:
                     self._assets.delete_asset(compiled_asset.asset_id)
                 except V2PersistenceError:
                     pass
             raise
+        finally:
+            if compiler_result is not None:
+                compiler_result.cleanup()
 
     def _append_failure_event(
         self,
@@ -431,7 +477,7 @@ class GuidedProductInputCommitService:
             ).scalar_one_or_none()
         return int(revision) if revision is not None else 1
 
-    def _require_product_stage(self, workflow_id: str) -> None:
+    def _require_product_stage(self, workflow_id: str, source_role: str = "product") -> None:
         with self._workflows.database.engine.connect() as connection:
             journey_state = connection.execute(
                 select(AgentCanvasGuidanceSessionRow.journey_state_json).where(
@@ -449,7 +495,7 @@ class GuidedProductInputCommitService:
                 "Guided Product source input cannot read the current journey stage.",
                 stage="guided_product_service",
             ) from error
-        if stage != "product":
+        if stage != source_role:
             raise V2PersistenceError(
                 "guided_product_stage_invalid",
                 "Guided Product source input is only available during the Product stage.",
@@ -463,6 +509,7 @@ class GuidedProductInputCommitService:
         node_id: str,
         request: GuidedProductInputCommitRequestV1,
         output_asset_id: str,
+        output_version_id: str,
         provenance: dict[str, object],
     ) -> CanvasNodeV2:
         now = datetime.now(timezone.utc)
@@ -470,23 +517,38 @@ class GuidedProductInputCommitService:
             node_id=node_id,
             workflow_id=workflow_id,
             node_type="image",
-            creative_role="product",
+            creative_role=request.source_role,
             title=(
                 "Uploaded Product Main"
                 if request.input_kind == "main"
-                else "Uploaded Product Multiview"
+                else f"Uploaded {request.source_role.title()} Multiview"
             ),
             status="ready",
             execution_mode="source_only",
             summary_prompt=None,
             generation_prompt="",
-            structured_content={},
+            structured_content=(
+                {"character_asset_kind": "turnaround", "occurrence_id": request.occurrence_id}
+                if request.source_role == "character"
+                else {"scene_asset_kind": "multi_view"}
+                if request.source_role == "scene"
+                else {}
+            ),
             model_selection_mode="default",
             model_ref=None,
-            parameters={},
+            parameters={"aspect_ratio": "auto", "resolution": "auto"}
+            if request.source_role != "product"
+            else {},
             metadata={
                 "source_input_kind": request.input_kind,
-                "source_type": "upload" if request.input_kind == "main" else "derived",
+                "source_type": "upload" if len(request.asset_versions) == 1 else "derived",
+                "source_role": request.source_role,
+                **(
+                    {"occurrence_id": request.occurrence_id, "character_phase": "turnaround"}
+                    if request.source_role == "character"
+                    else {}
+                ),
+                "asset_version_id": output_version_id,
                 "output_asset_id": output_asset_id,
                 "provenance": provenance,
             },
