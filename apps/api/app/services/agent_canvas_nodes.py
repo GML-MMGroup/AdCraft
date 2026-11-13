@@ -24,6 +24,7 @@ from app.schemas.agent_canvas import (
     USER_AUTHORING_ORIGIN_KEY,
 )
 from app.schemas.agent_canvas_editing import default_editing_content
+from app.persistence.agent_canvas_editing_default_export_repository import DEFAULT_EXPORT_INTENT
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
@@ -86,7 +87,10 @@ class AgentCanvasNodeService:
             error=None,
             prompt_preparation=_initial_prompt_preparation(request, now),
             # Canvas-created nodes belong to the user and stay outside Agent journeys.
-            metadata=({USER_AUTHORING_ORIGIN_KEY: USER_AUTHORING_ORIGIN} if user_authored else {}),
+            metadata={
+                **({USER_AUTHORING_ORIGIN_KEY: USER_AUTHORING_ORIGIN} if user_authored else {}),
+                **({DEFAULT_EXPORT_INTENT: True} if request.node_type == "editing" else {}),
+            },
             created_at=now,
             updated_at=now,
         )

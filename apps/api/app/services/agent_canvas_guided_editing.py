@@ -19,6 +19,7 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_editing_default_export_repository import DEFAULT_EXPORT_INTENT
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
@@ -264,6 +265,7 @@ class GuidedEditingPreparationService:
                 structured_content=EditingNodeContentV2(manifest=manifest).model_dump(mode="json"),
                 metadata={
                     "guided_production": True,
+                    DEFAULT_EXPORT_INTENT: True,
                     "guidance_session_id": plan_document.guidance_session_id,
                     "source_agent_document_id": plan_document.document_id,
                     "source_agent_document_revision": plan_document.revision,
