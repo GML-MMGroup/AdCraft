@@ -292,6 +292,19 @@ class GuidedProductionJourneyService:
             if duration_wait is not None:
                 return duration_wait
             result = self._policy.evaluate(self._context(session))
+        entered = self._ensure_asset_source_stage_entry(
+            session,
+            result=result,
+            turn_id=turn_id,
+            expected_session_revision=expected_session_revision,
+            idempotency_key=idempotency_key,
+        )
+        if entered is not None:
+            return entered, JourneyPolicyResultV2(
+                action="wait_for_user",
+                expected_stage_revision=entered.journey.stage_revision,
+                requires_model_call=False,
+            )
         if result.action not in {
             "invoke_capability",
             "invoke_internal_checkpoint",
@@ -375,6 +388,66 @@ class GuidedProductionJourneyService:
             expected_session_revision=expected_session_revision,
             idempotency_key=f"{idempotency_key}:product-source-stage-entry",
             input_kind="main",
+        )
+        return self._conversations.get_guidance_session(session.workflow_id)
+
+    def _ensure_asset_source_stage_entry(
+        self,
+        session: GuidedSessionStateV2,
+        *,
+        result: JourneyPolicyResultV2,
+        turn_id: str,
+        expected_session_revision: int,
+        idempotency_key: str,
+    ) -> GuidedSessionStateV2 | None:
+        """Ask once per unstarted asset, preserving in-flight legacy authoring."""
+        role = session.journey.stage
+        if role not in {"character", "scene"} or result.action != "invoke_capability":
+            return None
+        if role == "character" and result.character_phase != "main":
+            return None
+        if session.interaction is not None or awaiting_blocks_authoring(
+            session.awaiting,
+            stage=role,
+            stage_revision=session.journey.stage_revision,
+        ):
+            return None
+        interactions = AgentCanvasGuidedInteractionRepository(
+            self._conversations.database,
+            self._conversations.events,
+        )
+        occurrence_id = result.occurrence_id if role == "character" else None
+        if interactions.has_product_source_submission(
+            session.workflow_id,
+            input_kind="multiview",
+            source_role=role,
+            occurrence_id=occurrence_id,
+        ) or interactions.has_started_asset_design(
+            session.workflow_id, source_role=role, occurrence_id=occurrence_id
+        ):
+            return None
+        source_label = None
+        if role == "character":
+            authority = character_occurrence_authority_for_authoring(
+                self._requirements.get_current(session.workflow_id)
+            )
+            source_label = next(
+                (
+                    item.role
+                    for item in authority.occurrences
+                    if item.occurrence_id == occurrence_id
+                ),
+                None,
+            )
+        interactions.open_product_source_with_journey(
+            session.workflow_id,
+            source_turn_id=turn_id,
+            expected_session_revision=expected_session_revision,
+            idempotency_key=f"{idempotency_key}:asset-source-stage-entry",
+            input_kind="multiview",
+            source_role=role,
+            occurrence_id=occurrence_id,
+            source_label=source_label,
         )
         return self._conversations.get_guidance_session(session.workflow_id)
 

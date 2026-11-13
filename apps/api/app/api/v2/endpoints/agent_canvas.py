@@ -187,6 +187,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
+    GuidedProductSourceSubmitV1,
 )
 from app.schemas.agent_canvas_guided_references import (
     ReferenceCandidateKindV2,
@@ -3448,12 +3449,19 @@ def retry_chat_turn(
     "/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit",
     response_model=GuidedInteractionAcceptedV1,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        200: {
+            "model": GuidedInteractionAcceptedV1,
+            "description": "Existing asset source committed synchronously.",
+        }
+    },
 )
 def submit_guided_interaction(
     workflow_id: str,
     interaction_id: str,
     request: GuidedInteractionSubmitRequestV1,
     background_tasks: BackgroundTasks,
+    response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> GuidedInteractionAcceptedV1:
@@ -3477,6 +3485,14 @@ def submit_guided_interaction(
             request,
             idempotency_key=idempotency_key,
         )
+        if (
+            isinstance(request, GuidedProductSourceSubmitV1)
+            and request.action.source_role != "product"
+            and request.action.choice == "upload"
+        ):
+            # Existing images are validated/combined and committed synchronously.
+            # Reserve HTTP 202 for bounded acceptance of queued authoring work.
+            response.status_code = status.HTTP_200_OK
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     if isinstance(request, GuidedMediaReviewSubmitV1) and request.action == "accept":

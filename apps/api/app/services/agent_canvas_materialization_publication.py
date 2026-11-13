@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from app.persistence.agent_canvas_guided_interaction_repository import (
+    AgentCanvasGuidedInteractionRepository,
+)
+
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -454,7 +458,9 @@ class CapabilityMaterializationPublicationService:
         """Open optional Main reference input before prompt-ready admission."""
 
         reference_source_opener = getattr(self, "_reference_source_opener", None)
-        if reference_source_opener is None:
+        if reference_source_opener is None or not self._requires_reference_source_checkpoint(
+            envelope
+        ):
             return False
         expected_operation_kind = {
             "character_design": "parent",
@@ -484,9 +490,22 @@ class CapabilityMaterializationPublicationService:
     ) -> bool:
         if getattr(self, "_reference_source_opener", None) is None:
             return False
-        return (
+        eligible = (
             envelope.capability_id == "character_design" and envelope.operation_kind == "parent"
         ) or (envelope.capability_id == "scene_design" and envelope.operation_kind == "standalone")
+        if not eligible:
+            return False
+        interactions = AgentCanvasGuidedInteractionRepository(
+            self._conversations.database, self._conversations.events
+        )
+        return not interactions.has_product_source_submission(
+            envelope.workflow_id,
+            input_kind="multiview",
+            source_role="character" if envelope.capability_id == "character_design" else "scene",
+            occurrence_id=envelope.occurrence_id
+            if envelope.capability_id == "character_design"
+            else None,
+        )
 
     def _allows_prompt_successor_recovery(
         self,
