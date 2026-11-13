@@ -904,10 +904,11 @@ class PiVideoAgentGateway:
         ):
             validation_context = {
                 "role_variant": context.role_variant,
-                "panel_count": (
-                    len(context.storyboard_projection.rows)
-                    if context.storyboard_projection is not None
-                    else None
+                **(
+                    {"panel_count": len(context.storyboard_projection.rows)}
+                    if context.role_variant == "storyboard_grid"
+                    and context.storyboard_projection is not None
+                    else {}
                 ),
                 "prompt_authority": (
                     "user_authored" if context.user_prompt is not None else "system_generated"
