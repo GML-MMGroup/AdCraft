@@ -100,6 +100,12 @@ when time resumes. Avoid a theatrical shoulder charge or deliberate release.
 Allow a readable initial support state before the trigger, including at the
 start of a separately generated incident segment. Keep this causal setup in
 the selected story, segment start_state and downstream prompts.
+Show normal support, contact and separation as distinct moments. Freeze each
+item shortly after it loses support, at a position reached by its actual release
+trajectory. A low-held phone stays low; loose attachments can slip, while secure
+ones need an established mechanism. Preserve the previous segment's supplied
+positions, headings and carrying side. These causal facts take priority over
+arranging the objects into an attractive floating display.
 
 1. Normal-speed backward tracking starts at footwear and rises to a front view
    of the wearer, all three items and the passing route.
@@ -141,10 +147,13 @@ payoff after landing. Short internal visits are not separate generations.
 Shorten static holds before removing travel or descent; explain an incompatible
 explicit duration instead of splitting the action or silently extending time.
 
-A ten-second complete-ad example: 0-2 setup; 2-2.5 contact/release; 2.5-4.5
-visit A; 4.5-5.8 travel/visit B; 5.8-7 travel/visit C; 7-8 pullback; 8-10
-resume gravity, land every item and settle. Allocate more time, up to fifteen
-seconds, for more complicated geometry rather than overloading each second.
+For a typical ten-to-fifteen-second incident, allocate roughly two to three
+seconds to normal support, contact and release, and two to three seconds to
+the final descent and settling. Fit connected visits and a brief pullback into
+the remainder. Supporting-item dwells are brief; the advertised item receives
+the strongest detail emphasis. Adapt these ranges to the actual approved action;
+they are not a fixed timeline. Allocate more time, up to fifteen seconds, for
+complicated geometry rather than overloading each second.
 For an approved thirty-second ad: 0-7 extra setup; 7-22 one complete incident
 including landing; 22-30 reaction and brand payoff starting with grounded items.
 Keep the main advertised item dominant regardless of its tour slot.

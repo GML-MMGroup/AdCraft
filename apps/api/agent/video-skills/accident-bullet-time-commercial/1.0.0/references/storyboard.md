@@ -1,60 +1,54 @@
-# Draw moments from an energetic continuous camera journey
+# Stage the cause before the frozen-space tour
 
-Start with the approved inventory, visit order and physical map. Establish
-all carried/worn items and their supports before contact. Keep collision through
-all objects landing in one video segment and its matching grid: approach,
-contact/release, shared freeze, A/B/C visits, reconnection, descent and settling.
-Preserve the accepted panel count and grid layout.
-Reserve landing time within the approved duration and current generation cap.
-The first sample shows initial support before contact: worn items fit their
-supports and held items touch the hand.
-Establish independent walking routes with gaze and torso aligned to each route;
-sample incidental shoulder contact instead of a staged turn toward the wearer.
-Later released objects have a visible gap from their former supports. In an
-eyewear visit, separate the glasses clearly from the face so the frame cannot
-also read as a wearing portrait. Keep the vacated face/hand/shoulder empty.
+Use the approved inventory, visit order and physical map. Keep collision through
+all objects landing in one video segment and its matching grid. Preserve the
+accepted layout and reserve landing time inside the approved duration.
 
-Design the three visit panels before filling surrounding moments. Each needs a
-dominant subject, a readable real material detail and a different camera pose.
-Let the product fill most of the panel, with useful close cropping and depth
-separation; other people/items can be offscreen. Avoid repeating three upright,
-centered product portraits. Preserve product identity in close crops.
+Stage causal samples first. For the usual nine-panel incident, allocate:
+1. Initial support before contact: items visibly held or worn.
+2. Contact while the original supports still carry the items.
+3. First separation: small readable gaps beside the vacated supports.
+4. Shared freeze: all item heights, depths and empty supports legible.
+5-7. One dominant detail visit per item, following the approved order.
+8. Continuous pullback reconnecting the same frozen space.
+9. All released items grounded and the approved reaction.
+These are unequal-time samples of one path, not nine cuts. With a different
+approved layout, prioritize ambiguous transitions over repeated beauty angles.
+Contact must be depicted, not merely named in a caption.
 
-Map item heights and near/middle/far depths so the camera can travel between
-them. Use meaningful near-to-far displacement, low-to-high viewpoint changes
-and continuous camera roll. Tilted architectural lines express camera roll,
-not a rotated world. Plan continuous travel: accelerate toward the next item,
-slow for its detail, then accelerate past its edge. Each sampled frame must
-locate the lens on a traversable route, with continuous parallax and occlusion.
-Let outgoing objects and actors leave the frame naturally.
-Design the first medium-to-close bridge as carefully as the object visits.
-Include an intermediate approach sample with the still-visible former support,
-the released object and a shared background landmark. Let relative scale and
-occlusion change along the same path; a new overhead or reverse view requires
-visible travel to that viewpoint. Panels sample that travel, not edit points.
+Match supplied prior positions, headings, carrying side and camera side in the
+opening. Distinguish an observed prior ending from a planned end_state. Establish
+independent walking routes with gaze and stride toward separate destinations;
+limited passing clearance creates incidental outer-shoulder contact and passive
+recoil. Freeze near the departure points: low-held items move a short distance
+downward, loose eyewear slides from the face, and a slipping strap clears its
+shoulder with both ends attached to the bag. A secure attachment needs an
+established release mechanism. Let trajectories determine the arrangement.
 
-Freeze items, droplets and body poses in world space, including head and gaze.
-New reactions begin only after time resumes. Track each released item's same
-physical instance: the vacated support stays empty through the frozen tour and
-landing. A bag's strap remains attached to that bag; an airborne accessory is
-absent from its former wearing position. Use actor-relative directions and street
-landmarks for the shared map; derive panel overlap from the camera viewpoint.
-Character sheets supply identity, while the bound product design and approved
-possession state govern belongings, even if a reference shows a substitute.
-Freeze an expressive state compatible with the product: fabric tension, crumbs
-or condensation; a splash requires an open vessel. Preserve closures and design.
-Camera proximity creates scale changes; objects keep their size and orientation.
+Choose the frozen map once in world space. Freeze bodies, head and gaze with
+items; reactions start when time resumes. The vacated support stays empty.
+Carry attached parts and offscreen states forward. Bound products govern design,
+character sheets identity, and the action possession; incidental accessories
+cannot restore an earlier state. Use actor-relative directions and landmarks.
+Camera proximity changes apparent size; objects keep size and orientation.
 
-Show the pullback as a short reconnection, not a long reset. Finish the action
-board with every released item grounded and an expressive approved reaction:
-reaching too late, leaning after the objects or looking down in disbelief.
-A fall is optional. Record body pose and object positions in end_state for the
-next board. Put route, speed changes, visit emphasis
-and landing scope into narrative_goal and production_handoff.
+Use the shared frozen view as the intermediate medium-to-close approach sample:
+released item, former support and one background landmark remain visible.
+Approach on the same side before visibly travelling to a new side. Plan a
+traversable route through gaps, with continuous parallax and occlusion. Let the
+outgoing subject leave frame naturally. Accelerate in transit, briefly slow to
+read each detail, then accelerate onward. Height changes and restrained camera
+roll are available; the camera moves while the world remains fixed.
+
+Each visit reveals a distinct real material detail; the advertised product gets
+the strongest scale or dwell. Useful close crops can exclude people and other
+items. Preserve identity and closures; a splash needs an established open source.
+Avoid spending scarce panels on another angle before the trigger is readable.
+Finish with every item settled, recording positions and body pose in end_state.
+Carry route, speed contrast and landing scope in narrative_goal and handoff.
 
 The grid is an off-screen story-process reference, not a first/last-frame target.
-Video output starts in the full-frame scene, without a sheet flash or cell zoom.
-Image panels contain no dialogue text, dialogue bubbles or added panel labels;
-preserve product packaging, logos and normal environmental text. Video subtitles
-follow their separate setting. Review pose/scale variety and traversable bridges
-in the authored text; do not add a media generation or visual-review gate.
+Video starts inside the full-frame scene. Panels contain no dialogue lettering,
+bubbles or added labels; allow original packaging, logos and environmental text.
+Video subtitles follow their own control. Resolve textual state conflicts before
+returning; add no media-generation or visual-review gate.
