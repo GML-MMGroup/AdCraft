@@ -24,6 +24,7 @@ from app.schemas.seedance_inputs import (
     StoryboardReferenceIdentityAuditV1,
 )
 from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
+from app.services.agent_canvas_provider_prompts import render_video_directions
 from app.services.agent_canvas_video_subtitles import apply_video_subtitle_control
 from app.services.agent_canvas_character_identity_prompt import (
     LabeledIdentityReference,
@@ -59,6 +60,10 @@ class AgentCanvasSeedanceInputCompiler:
         prompt = str(prompt_source or node.generation_prompt or "").strip()
         if not prompt:
             raise ValueError("v2_video_prompt_empty")
+        if grounding_plan is not None:
+            directions = render_video_directions(node.structured_content, known=prompt)
+            if directions:
+                prompt += f"\n\nStructured Video directions:\n{directions}"
         effective = (
             effective_parameters.effective if effective_parameters is not None else node.parameters
         )
@@ -76,7 +81,15 @@ class AgentCanvasSeedanceInputCompiler:
         media_inputs = _with_reference_purposes(node, media_inputs, grounding_plan)
         if grounding_plan is not None:
             _validate_grounding_manifest_inputs(grounding_plan, media_inputs)
-        compiled_prompt = _compile_prompt(prompt, text_inputs, media_inputs, grounding_plan)
+        authored_story = node.structured_content.get("storyboard_content")
+        compiled_prompt = _compile_prompt(
+            prompt,
+            text_inputs,
+            media_inputs,
+            grounding_plan,
+            has_authored_video_story=isinstance(authored_story, str)
+            and bool(authored_story.strip()),
+        )
         has_storyboard = any(
             item.reference_purpose in {"storyboard_grid", "storyboard_sequence"}
             for item in media_inputs
@@ -260,6 +273,8 @@ def _compile_prompt(
     text_inputs: tuple[SeedanceTextInputV1, ...],
     media_inputs: tuple[SeedanceMediaInputV1, ...],
     grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
+    *,
+    has_authored_video_story: bool = False,
 ) -> str:
     segments = [saved_prompt]
     for item in text_inputs:
@@ -285,6 +300,8 @@ def _compile_prompt(
             "The storyboard is an off-screen guide to narrative order. "
             "At time 0, begin directly with the first authored shot as one full-frame scene "
             "in the requested Video medium. Its panels represent successive story moments, "
+            "not interchangeable opening states. Begin with the authored initial object states; "
+            "later panel states follow their stated causes and timing. Panels are "
             "not simultaneous regions of the output. Image labels describe reference order, "
             "not first-frame or last-frame bindings. Never open on the sheet and zoom into a panel, "
             "animate its cells, pan across it, or dissolve from or back to the grid. "
@@ -296,8 +313,8 @@ def _compile_prompt(
             f"{storyboard_grid.label} is a loose storyboard reference for broad narrative context. "
             "The written action beats and target Video style take priority. "
             "Do not match panels one-to-one or copy their exact framing, character positions, "
-            "camera moves, or timing. Choose natural framing, camera motion, and transitions "
-            "that serve the written story. Never show the grid, collage, contact sheet, panel "
+            "camera moves, or timing. Use the camera path and editing structure authored in the Video prompt. "
+            "Never show the grid, collage, contact sheet, panel "
             "border, or split screen."
         )
         segments.append(
@@ -310,10 +327,13 @@ def _compile_prompt(
             "selected illustration, animation, or 3D style, including its intended strokes and texture."
         )
     if grounding_plan is not None and storyboard_grid is not None:
-        panel_text = ", ".join(
-            f"Panel {panel.panel_index}: {panel.beat}" for panel in grounding_plan.panels
-        )
-        segments.append(f"Written story beats (in narrative order): {panel_text}")
+        # An authored Video story owns the sequence. Reference-driven requests
+        # still need the panel beats, separate from identity and camera direction.
+        if not has_authored_video_story:
+            segments.append(
+                "Storyboard narrative context (subordinate to the Video prompt):\n"
+                + "\n".join(panel.beat for panel in grounding_plan.panels)
+            )
         role_directives = {
             "character_reference": (
                 "prioritize this reference for character identity, wardrobe, silhouette, and proportions"
