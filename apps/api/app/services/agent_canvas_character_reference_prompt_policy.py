@@ -45,15 +45,24 @@ CHARACTER_TURNAROUND_FRAMING = (
     "inherited identity descriptions are context; do not reuse a film pose unless "
     "explicitly requested for this reference."
 )
+CHARACTER_TURNAROUND_RENDERING_AUTHORITY = (
+    "Rendering authority: inherit the bound Main's rendering treatment by default. "
+    "An explicitly authored rendering change for this Turnaround takes precedence in its "
+    "specified regions over inherited or default treatment; keep the Main's treatment elsewhere. "
+    "Apply that direction consistently wherever those regions are visible across the three views. "
+    "Rendering changes do not alter physical identity, facial structure, hair, wardrobe, "
+    "proportions, material identity or physical colors."
+)
 CHARACTER_TURNAROUND_PROMPT = (
     "Use the bound Character Main image as the sole identity master. Render one turnaround "
     "sheet with exactly three full-body figures arranged left-to-right as "
     "forward-facing, exact side profile, and rear-facing. "
     + DEFAULT_REFERENCE_PRESENTATION
     + " All three views show the same character with identical "
-    "features, hair where present, wardrobe, proportions, silhouette, materials, palette, "
-    "and the same selected rendering treatment as the bound Main. "
+    "features, hair where present, wardrobe, proportions, silhouette, materials and palette. "
     "Preserve original costume printing and authored accessories. "
+    + CHARACTER_TURNAROUND_RENDERING_AUTHORITY
+    + " "
     + CHARACTER_TURNAROUND_FRAMING
     + " "
     + DEFAULT_IMAGE_OVERLAYS
@@ -63,7 +72,7 @@ CHARACTER_TURNAROUND_PROMPT = (
 class CharacterReferencePromptPolicy:
     """Compile image layout constraints without overriding the selected medium."""
 
-    policy_id = "adcraft.agent_canvas.character_reference.v4"
+    policy_id = "adcraft.agent_canvas.character_reference.v5"
 
     def compile(
         self,

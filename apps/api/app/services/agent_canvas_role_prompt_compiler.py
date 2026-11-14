@@ -8,6 +8,7 @@ from app.services.agent_canvas_video_subtitles import with_managed_video_subtitl
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CHARACTER_IDENTITY_SCOPE,
     CHARACTER_TURNAROUND_FRAMING,
+    CHARACTER_TURNAROUND_RENDERING_AUTHORITY,
 )
 
 from app.services.agent_canvas_image_presentation import (
@@ -366,6 +367,11 @@ class AgentCanvasRolePromptCompiler:
             # append the older rule that also repaints ears, neck and hands.
             rule = None
         if rule is not None:
+            if context.role_variant == "character_turnaround":
+                rule = (
+                    "Default face treatment for this Turnaround, subordinate to explicit "
+                    "region-specific rendering direction: " + rule.removeprefix("Mandatory rule: ")
+                )
             # User decision (2026-10-26): the rule is visible in the node prompt.
             prompt = f"{prompt}\n\n{rule}"
         if (
@@ -808,9 +814,9 @@ def _render(
         )
         return (
             "Use the exact bound Character Main as identity authority. Create the same "
-            "character in the selected visual style, matching the bound Main's rendering "
-            "treatment, in front, side, and back "
+            "character in the selected visual style in front, side, and back "
             f"full-body views. {DEFAULT_REFERENCE_PRESENTATION} Preserve all distinguishing details. "
+            f"{CHARACTER_TURNAROUND_RENDERING_AUTHORITY} "
             "Show the complete head-to-toe extent in every view, with the entire head, lower "
             "body and feet fully inside the frame and clear margins (or the complete silhouette "
             "and extremities for a nonhuman character). If the Main is cropped, do not reproduce "
