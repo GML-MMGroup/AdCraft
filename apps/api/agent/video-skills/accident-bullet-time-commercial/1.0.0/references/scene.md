@@ -9,9 +9,11 @@ open return path to a front medium view, with the same visible ground below.
 
 Choose lighting that reveals the actual hero material: a broad source for
 readable labels, a restrained edge highlight for glass or metal, and consistent
-shadows on the ground. Keep the horizon, architecture and light direction stable
-between views. Allow space for the hero to rise into view and descend toward the
-same surface. A tabletop or interior can replace the reference street.
+shadows on the ground. Keep architecture and light direction fixed in world
+space. The camera may roll, rise or orbit, so the visible horizon and building
+lines change on screen with continuous parallax; do not demand a level horizon
+in every view. Allow space for the hero to rise into view and descend toward
+the same surface. A tabletop or interior can replace the reference street.
 
 The scene reference remains an environment design in its required format.
 Keep it an empty location with clear depth, stable architecture and usable

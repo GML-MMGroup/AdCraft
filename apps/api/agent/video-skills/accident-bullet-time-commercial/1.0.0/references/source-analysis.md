@@ -130,3 +130,30 @@ the requested generated shot must maintain continuous camera motion and spatial
 parallax. Keep the grid as an off-screen story guide, with no visible sheet or
 panel zoom and no first/last-frame requirement. Existing media remain evidence,
 not automatically repaired outputs.
+
+
+## Kinetic-camera refinement after the next live result
+
+The next project run used Seedance 2.0 and six image references, with no source
+video input. The first new clip (13.073 seconds including container duration)
+maintained continuity and completed landing, but the tour mostly traversed a
+compact group frontally. The second (7.104 seconds) retained the search reversal.
+The new grid's three detail panels were upright product portraits, encouraging
+a similar presentation. The written route used small lateral/height changes,
+constant-velocity continuity and a relatively passive standing reaction.
+
+Source A instead uses conspicuous tilted views, close foreground passes, larger
+perspective/scale changes, and a liquid crown that gives the drink its own visual
+payoff. Its burger/fries/drink order and ground-level body reaction differ from
+the approved current campaign. These observations motivate stronger camera craft,
+not a claim that any one input caused the generated result or that the source
+was literally unedited. Source brands, specific food layers, liquid and body
+fall do not become mandatory product facts.
+
+This refinement supersedes the conservative small-arc/constant-velocity examples
+and ambiguous demand for a stable screen horizon. Freeze remains in world space;
+continuous camera roll, orbit, vertical travel and acceleration remain available.
+Each product dominates its visit, with a fast approach, readable dwell and fast
+exit. Preserve confirmed order, identities and complete landing. Author a visible
+reaction consistent with the next segment, without requiring a body fall. The
+current 20-second campaign retains its cup/fries/burger order and 13+7 windows.

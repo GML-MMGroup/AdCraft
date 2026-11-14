@@ -14,7 +14,9 @@ Keep a phone's screen and grip functionally oriented. Preserve separate
 identities for the protagonist and passerby. Do not add a duplicated body during
 an over-shoulder view or a product close-up.
 
-Choose an everyday walk and a brief legible startle compatible with the approved
-character. The story does not require a specific gender, body type, pink dress
+Choose an everyday walk and a legible startle compatible with the approved
+character. Performance may be exaggerated: a reaching hand, torso lean or low
+look can resolve the mishap. Match the narrative handoff; falling to the ground
+is optional, not a required identity pose for reference images. The story does not require a specific gender, body type, pink dress
 or fashion pose. Keep explicitly stylized characters in their selected medium;
 realistic identity references do not determine the final film medium.

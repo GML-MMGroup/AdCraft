@@ -17,5 +17,6 @@ release; the frozen interval never introduces a previously unseen belonging.
 Reference images show reusable isolated geometry in the current asset format,
 not the full accident. Maintain one physical instance of each prop. Liquid or
 crumb effects need a real source and must remain in the same frozen state during
-the tour. A sealed container stays closed and dry unless its actual mechanism
-and the approved action explicitly support opening.
+the tour. A sealed container retains its closure and contents; condensation on its
+exterior is compatible with sealing. Opening or a spill requires the actual
+mechanism and an approved action before freeze.

@@ -2,7 +2,7 @@
   "skill_id": "accident-bullet-time-commercial",
   "version": "1.0.0",
   "display_name": "Accident Bullet-Time Commercial",
-  "description": "Recreate an accidental bullet-time commercial: footwear-to-face tracking, visible contact, several carried items frozen together, a continuous camera tour of each item, then a pullback, resumed gravity and every object landing. Keep this complete incident in one continuous video segment, even in long ads. One advertised product still requires supporting belongings.",
+  "description": "Accidental bullet-time product photography with a continuous, energetic camera journey: footwear approach, visible contact, a shared frozen instant, dominant individual product views with depth travel and camera roll, then resumed gravity and every object landing. One advertised item retains supporting belongings; the complete incident stays in one segment.",
   "content_locale": "en-US",
   "category": "commercial-craft",
   "tags": [
@@ -28,17 +28,17 @@
   "allows_meme_captions": false,
   "allows_comedic_sound_effects": true,
   "files": {
-    "SKILL.md": "51ef4b7ed24e6c2eb567469012fdfc60398a7955da5deb758ec15afc3fa3456d",
+    "SKILL.md": "e9171f552d2e36236d4a7dfdf40167bb91fd7369c00c1b3bc62bb93e89f81fe7",
     "previews/preview.webp": "75f2f37d47cc0f923607c51c01c3e769c7b7e7de1b925b82f28df1ecb1b7c354",
     "references/bgm.md": "fb0b656d46dbd1990311cc6ee0780b7dbac1b497dacda5b5df218aadd0fcd117",
-    "references/character.md": "95df6eb9b7e07b54ea03c1cbcf7ea652a2abe6a5f336c30ca206aa55d32b2fa5",
-    "references/product.md": "fe3b24af55472cdee68cf57d5a34a91deab7731918f94704b19484297266feb3",
-    "references/prop.md": "32efb408c578210b36869994dff6bbdf22b4206312cefe872dc72312d4ec1e1d",
-    "references/scene.md": "4327d694fdf2f2b9637f2b21afb15e15dec99c776630b18bc8d066d349a0fcac",
-    "references/script.md": "4710d9fe0bd5e99bf1565cc468c91a90dd6009b18a9ca8410ae07c294c612ded",
-    "references/source-analysis.md": "53bbfaf6ce643de0ae8b074f60e409c20da54a4119b8fc4aa417a6c7186e29c7",
-    "references/storyboard.md": "07ff20f321acd87294c3c5de6650acb1ba0fe601689311f27eed199ae96dbf03",
-    "references/video.md": "b65ba610ad45ccf5b7f294b5c53ceb41656e47f29786fe14ddd867337bf6b0a1"
+    "references/character.md": "72506fe763d4c75676eafefc471be176db2b7854015aff203c2be1c26feb722e",
+    "references/product.md": "22c825906812c0142da5b79a6d1344d19da21f4dcf89bccfb92ff0b64a274d15",
+    "references/prop.md": "8b1591737bce307f282865696211e456eeb8d11dcf090801cde18303b0170c2a",
+    "references/scene.md": "b9a517debff070ab30b1b6a1d42727ebbbbeb3fc6c4f4a989d1f2ff4593f57a2",
+    "references/script.md": "3668680aa5654f58528b63af6a0d87403161ecfd3e3ef6d34f2cf8c9def0e1e4",
+    "references/source-analysis.md": "dd2d29e262683e28f5f07a640dc43489b93c5cbb4060ababd832962339229b60",
+    "references/storyboard.md": "95481e3116bc56553b40b94f2b26f332285c19875fb5ac262d94a2ace4d77d94",
+    "references/video.md": "d4025d37bc83121d4ee85bb43b9e9451d4a549d373c9d0f95aa0813ceb5ae55d"
   },
   "role_guidance": {
     "script": "references/script.md",

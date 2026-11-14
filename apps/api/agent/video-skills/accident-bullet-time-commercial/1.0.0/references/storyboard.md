@@ -1,42 +1,51 @@
-# Sample one continuous route through a complete accident
+# Draw moments from an energetic continuous camera journey
 
-Use the approved A/B/C inventory and references: the advertised item and two
-supporting belongings, or the approved product set. Map each item's initial
-support, frozen screen side/depth and landing area. Account for extra released
-props too. All items coexist throughout the tour, even when offscreen.
+Start with the approved inventory, visit order and physical map. Establish
+all carried/worn items and their supports before contact. Keep collision through
+all objects landing in one video segment and its matching grid: approach,
+contact/release, shared freeze, A/B/C visits, reconnection, descent and settling.
+Preserve the required panel count; the current storyboard remains a 3x3 grid.
+Reserve landing time within the approved duration and current generation cap.
 
-Keep collision through all objects landing in one video segment and its matching
-storyboard sequence. Sample approach, contact/release, shared freeze, A, B, C,
-pullback, descent, then all belongings settled on the ground. Keep the required
-grid format. Panels represent moments on a continuous path, not cuts, equal
-time slots or standalone videos. Put landing in the final panel of this action
-board; a later payoff board starts with the already grounded state.
+Design the three visit panels before filling surrounding moments. Each needs a
+dominant subject, a readable real material detail and a different camera pose.
+Let the product fill most of the panel, with useful close cropping and depth
+separation; other people/items can be offscreen. Avoid repeating three upright,
+centered product portraits. Commercial identity remains accurate even when a
+package edge temporarily leaves the frame.
 
-Establish a single spatial map before writing panels. For each A-to-B and B-to-C
-bridge name the camera's direction, changing distance/height, shared background
-landmark and overlap: the outgoing item slides toward an edge while the next
-enters. Keep lens perspective and axis coherent. The camera travels through the
-empty space between objects; do not jump to a freshly composed macro viewpoint.
-Frozen positions, orientations, openings, droplets and background poses stay
-fixed. Only viewpoint, occlusion and optical reflections change.
+Map item heights and near/middle/far depths so the camera can travel between
+them. Use meaningful near-to-far displacement, low-to-high viewpoint changes
+and continuous camera roll. Tilted architectural lines express camera roll,
+not a rotated world. Plan continuous travel: accelerate toward the next item,
+slow for its detail, then accelerate past its edge. Each sampled frame must
+locate the lens on a traversable route, with continuous parallax and occlusion.
+An outgoing edge may briefly overlap the next view, then leave entirely; no need
+to keep the full inventory or both actors behind every close-up.
 
-Reserve two to three seconds for resumed gravity, every ground contact and
-settling within the same generation, respecting the fifteen-second cap and
-accepted total. Extra setup or payoff may use other nodes; the collision, tour
-and landing remain together. Write this scope and the concrete landed end_state
-into narrative_goal and production_handoff, not only visual panel descriptions.
+Freeze items, droplets and body poses in world space. Select a charged state
+before freeze: crumbs suspended after release, stretched fabric, condensation
+catching side light, or a splash only from an already open vessel. Preserve
+closures, food layers, silhouettes and the selected medium. Camera proximity
+creates apparent size; subjects do not grow, self-spin or duplicate.
 
-Adaptable board example: establish a wearer carrying glasses, cup and bag;
-show the support loss; freeze glasses at upper left near the face, cup lower
-right ahead of the torso and bag lower center behind the cup. Sample the camera
-advancing to the glasses, sliding right/down toward the cup with the glasses
-still at the left edge, then arcing down/left toward the bag as the cup leaves
-right. Keep a background doorway moving with continuous parallax. Pull back,
-resume gravity and follow all three down; finish with glasses, cup and bag
-settled and the owner looking down. Substitute the approved map and identities.
+Example of three samples, adapted to the approved map: a near drink dominates
+a low tilted view with bright condensation; the camera passes beside its rim
+and travels diagonally deeper to fries viewed along their ridges; it then rises
+and curves toward the hero burger, its edge passing close as cheese and beef
+layers fill the frame. Give the hero the strongest scale/detail contrast.
+Actual product order and tilt are choices, not fixed source requirements.
+
+Show the pullback as a short reconnection, not a long reset. Finish the action
+board with every released item grounded and an expressive approved reaction:
+reaching too late, leaning after the objects or looking down in disbelief.
+A body fall is optional. Define the exact body pose and object positions in
+end_state; the next board begins there. Put route, speed changes, visit emphasis
+and landing scope into narrative_goal and production_handoff.
 
 The grid is an off-screen story-process reference, not a first/last-frame target.
-The Video starts inside the full-frame scene, without sheet flashes or a zoom
-into cells. Preserve the selected medium, product print and ordinary scene text.
-Keep dialogue, panel labels, arrows and tutorial UI out of the image; this does
-not turn off Video subtitles. Retain original product lettering and logos.
+Video output starts in the full-frame scene, without a sheet flash or cell zoom.
+Image panels contain no dialogue text, dialogue bubbles or added panel labels;
+preserve product packaging, logos and normal environmental text. Video subtitles
+follow their separate setting. Review pose/scale variety and traversable bridges
+in the authored text; do not add a media generation or visual-review gate.

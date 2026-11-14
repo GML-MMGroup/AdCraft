@@ -14,8 +14,10 @@ design. Several views of this product still depict one physical item, not the
 three distinct subjects required by the final camera tour.
 
 Record the approved physical state: open or closed, attached or detached,
-filled or empty, orientation of label and functional face. A sealed bottle must
-retain its seal and dry exterior throughout the sequence.
+filled or empty, orientation of label and functional face. A sealed bottle
+retains its closure and contents. Exterior condensation or reference-backed
+surface texture may remain visible; sealing does not require an artificially
+dry surface.
 An attached cap, strap or hinge stays connected unless a visible, supported action
 releases it. Food layers keep their actual order and shape across camera viewpoints.
 Choose detail views the references can support rather than inventing a back view.

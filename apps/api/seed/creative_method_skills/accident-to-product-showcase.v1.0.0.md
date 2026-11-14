@@ -9,8 +9,9 @@ core_principle: >
   a moving-camera close-up tour of each distinct item, a pullback to the wearer,
   then resumed gravity and reaction. Even one advertised product needs supporting
   belongings. Keep collision through all objects landing in one video segment,
-  even in a long ad; finish after every released item has settled on the ground. Identities and setting can
-  change, but the multi-item tour cannot.
+  even in a long ad; finish after every released item has settled on the ground.
+  Build a visual crescendo across visits. Identities and setting can change,
+  while the multi-item discovery and complete incident remain recognizable.
 consumer_psychology: >
   An interrupted ordinary action creates anticipation. Delaying the consequence
   lets the camera discover desirable details among familiar belongings, making
@@ -28,7 +29,8 @@ product_role: >
   One supplied product remains the commercial hero among three distinct items.
   Add two context-appropriate supporting belongings in the story and prop-design
   flow; they are neutral story props, not additional brands or product variants.
-  The advertised product receives the most detailed or longest camera visit.
+  The advertised product receives the strongest detail or scale emphasis. Order
+  the visits for anticipation and payoff while preserving any confirmed order.
 suitable_categories_and_goals: >
   Accidental bullet-time, frozen-space product tours, street collision adverts,
   accessories, drinks, food, cosmetics and handheld electronics, including briefs
@@ -90,13 +92,14 @@ consistent. Multiple product views do not create multiple inventory slots.
 3. All three items freeze together in front of the wearer. Lock positions,
    orientations, openings, liquid shape and droplets along with the reaction.
 4. From the front medium view, push into that space and travel successively
-   to A, B and C. Each gets its own close-up, readable surface detail and a
-   small lateral/partial arc movement with changing background overlap. Describe
-   one continuous camera path with visible travel between these positions. Objects remain still and singular;
-   offscreen or defocused belongings still exist in the same shared space.
-5. Pull back to the same front three-quarter medium view before time resumes.
+   to A, B and C. Each owns a distinct product-dominant view with readable
+   material detail. Build anticipation through changing proximity and depth;
+   the audiovisual treatment owns camera roll, height and speed changes. Objects
+   remain still and singular, even when offscreen or defocused.
+5. Briefly reconnect with the wearer through a continuous front three-quarter
+   pullback, then carry that motion into the resumed fall.
 6. Restore ordinary time, follow those trajectories to ground contact and
-   settling, then reveal the wearer's front-facing startled expression.
+   settling, and resolve the wearer's physical reaction in the same incident.
 
 These stages and separate visits are mandatory for this method. Substituting
 roles, objects or location does not permit a different camera grammar. Let the
@@ -128,15 +131,25 @@ For an approved thirty-second ad: 0-7 extra setup; 7-22 one complete incident
 including landing; 22-30 reaction and brand payoff starting with grounded items.
 Keep the main advertised item dominant regardless of its tour slot.
 
-### Connect visits through the same physical space
+### Build a visual crescendo with real product details
 
-Map each frozen item's screen side, depth and height. Name the actual camera
-travel from A to B and B to C: direction, height/distance change, background
-landmark and overlapping view as one item leaves and the next enters. Keep a
-continuous axis and lens perspective. A-to-B is movement through intervening
-space, not a newly framed close-up. Include travel time in the budget. Subjects,
-liquid and droplets stay motionless until ordinary time resumes; focus shifts
-and viewpoint-dependent reflections do not make the objects move.
+Choose what makes each visit rewarding: layered food texture, reflective hardware,
+condensation on a sealed cup, or a frozen splash from an already open source.
+Create the plausible displaced state at contact, then freeze it. Keep packaging
+mechanisms and actual food layers intact. One reference's liquid crown is not a
+universal effect to add to electronics, eyewear or sealed goods.
+
+Preserve a confirmed visit order; when open, choose an order that creates
+anticipation and a stronger payoff, without always requiring the hero last.
+Let each item own the frame during its visit and give the advertised product the
+strongest detail/scale contrast. The whole inventory need not stay visible.
+Carry fast approach, readable inspection and fast departure into the production
+handoff; exact camera geometry belongs to the audiovisual role guidance.
+
+Choose a visible reaction that fits the established person and next beat: a
+late reach, a forward lean, a low look of disbelief or an approved fall. Preserve
+its end pose in the handoff. Do not impose the reference actor's ground-level
+fall on every story. The complete landing remains the action's resolution.
 
 ### Make the landed boundary explicit without pretending to lock frames
 

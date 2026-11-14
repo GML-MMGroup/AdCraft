@@ -30,12 +30,23 @@ static holds before compromising continuous travel or descent. Do not invent
 four-second fragments of the incident or silently extend the total. Identify
 an incompatible explicit allocation without creating a new rejection gate.
 
-Write the tour as one continuous camera path in one physical space. Each visit
-has a route in and out, shared screen direction/depth and visible parallax;
-three listed close-ups alone do not specify continuity. Frozen subjects and
-liquid stay still while the camera moves. Preserve this in narrative_goal and
-production_handoff so later authors do not turn visits into separate cuts.
-Record pre-contact start_state, landed end_state and exact local timing. Grid
-panels sample these events without imposing cuts or native frame conditioning.
-Review the inventory, route and landing before returning the text; this adds
-no paid visual-model check.
+Plan a visual crescendo across the visits, preserving any confirmed order.
+The advertised item receives the strongest material detail or scale change;
+it need not always come last. Use a recognizably charged frozen instant with
+product-appropriate detail, rather than merely suspending an intact inventory.
+Crumbs, fabric tension and condensation can be useful; a liquid splash requires
+an established open source. Keep actual materials and closures authoritative.
+
+Give the tour a rhythm of fast approach, readable inspection and fast departure.
+The camera travels in depth with continuous changes of height and tilt, while
+frozen subjects stay still. Let the current product own the viewer's attention;
+the whole cast/inventory need not remain visible during every visit. Leave the
+exact camera geometry to Storyboard and Video, but carry this emphasis and the
+landing interval into narrative_goal and production_handoff.
+
+Choose a physical reaction compatible with the approved comedy: an unsuccessful
+reach, a forward lean, a low look of disbelief, or a fall if the story calls for
+one. Do not turn the source's fall into a universal plot requirement. Describe
+the landed end_state including body pose so the next segment can continue it.
+Review inventory, visual emphasis, timing and handoff before returning the text;
+this adds no paid visual-model check.
