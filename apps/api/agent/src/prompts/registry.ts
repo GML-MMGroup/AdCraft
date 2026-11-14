@@ -18,6 +18,13 @@ const capabilityOptionSubjects: Readonly<Record<string, string>> = {
   bgm: "the music's genre, instrumentation, tempo, mood, and structure",
 };
 
+const objectContinuityPolicy = [
+  "Object state continuity: character references govern identity and clothing; product references govern object geometry, materials and markings; the approved story governs possession, location and state. An incidental product substitute or carrying pose in a character sheet cannot override the bound product design or a later release.",
+  "For relevant objects, carry stable names, approved counts, support/owner, orientation and relative location through the existing narrative, action and continuity fields. A release or handoff moves the same object; the vacated support stays empty until an authored reattachment. Keep attached parts with their owning object. Preserve approved transformations and multiplicity without inventing either.",
+  "Use actor-relative directions and scene landmarks for physical positions; distinguish them from camera-relative projection. A changing viewpoint changes overlap and apparent size, not the object's location or structure. Carry the same state transitions into panels, video actions and sequence handoffs; offscreen objects retain their last authored state.",
+  "Storyboard images guide event order off-screen, not first/last frames or exact panel compositions. If a grid contradicts confirmed geometry or possession, realize the approved state instead of interpolating its error. Keep the selected camera freedom and world rules; emit only shot-relevant facts, without a new output schema or review call.",
+].join(" ");
+
 const shotDirectionPolicy = [
   shotCoveragePolicy,
   "For Storyboard and Video, associate each character with its supplied occurrence identity and references; use stable descriptive names in the authored direction. Reference views and repeated panel appearances depict their owning character. Keep different character identities separate and preserve each one's own appearance; similar faces or clothing do not merge cast members.",
@@ -308,6 +315,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "For video_segment, a video_representation_mode from explicit_user or video_skill governs target_style and editable_prompt: retain compatible cinematography from style_projection but do not repeat a conflicting Skill medium after a typed user override. Preserve upstream identity references.",
       "For video_segment, illustration_to_live_action describes reference-to-output conversion, not a transition over time: target_style and editable_prompt must describe fictional cinematic live action throughout the segment. Do not begin with illustrated frames or animate a change of rendering medium. When the user or selected Skill explicitly chooses illustrated output, preserve that medium throughout. Preserve the planned actions, timing, lighting, materials, palette, composition, and camera language compatible with the selected medium.",
       shotDirectionPolicy,
+      ...(["storyboard_grid", "video_segment"].includes(String(context.role_variant)) ? [objectContinuityPolicy] : []),
       "For storyboard_grid, use the accepted storyboard_projection.rows count and order in beats and editable_prompt: four rows mean 2x2, nine rows mean 3x3. Preserve the accepted layout even for an older short sequence. When no accepted projection exists, use 2x2 for a supplied segment duration below 5 seconds, otherwise 3x3. Cells sample key visual states; they do not require separate cuts or extra events.",
       "For scene_board multi_view, supply nine view_plan entries: camera position/direction, framing, visible anchors and distinct spatial information. Choose views for this environment instead of a generic angle template. For scene_board, author only the typed environment, lighting, materials, palette, composition, atmosphere, valid Scene references, technical constraints, and structural exclusions present in the frozen context.",
       "For scene_board, global_style_guidance is unchanged advisory campaign guidance, not Scene subject content. Express its applicable lighting, materials, palette, composition and camera language in the Scene brief and editable_prompt; keep other role subjects out. style_projection is the Scene-specific advice and remains subordinate to the role contract.",
@@ -334,6 +342,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   if (operation === "plan_storyboard_sequence_outline") {
     return [
       generationTimingPolicy,
+      objectContinuityPolicy,
       downstreamDialogueContinuityPolicy,
       "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",
       "Planning rule: one storyboard sequence represents one bounded downstream video segment and one later ordered storyboard grid (2x2 at exactly 4 seconds, 3x3 at 5 seconds or above), not one shot, camera setup, panel, or story beat.",
@@ -353,6 +362,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       downstreamDialogueContinuityPolicy,
       "Materialize only the supplied storyboard segment using exactly context.panel_count ordered rows and one segment-local generation prompt: 4 means a 2x2 grid, 9 means a 3x3 grid. If panel_count is absent in a historical request, retain nine rows. Preserve the supplied approved narrative, selected direction, Brand decisions, prior final panel, prior end state, terminal policy, product purpose, and CTA; do not author platform identifiers.",
       shotDirectionPolicy,
+      objectContinuityPolicy,
       "Develop the supplied number of panels from this sequence's allocated beats and pacing rationale; density, holds and progression must fit its exact duration. The grid and Video share the same local story and timing. Cells are visual samples, not equal time slots; do not borrow later segments' actions or add events to fill cells.",
       "Return the rows and generation prompt in response_locale in this operation. Do not request a translation or a second creative operation.",
     ].join(" ");
