@@ -7,11 +7,14 @@ surface. Show the real rim, lid, hinge, seam, lens, camera cluster or closure
 needed by the selected action; omit unreferenced mechanisms.
 
 Use neutral, uncluttered product references with complete geometry and enough
-surface detail for close views. Do not bake the collision, floating debris,
-multiple copies or a street scene into a product reference. The advertised
-product keeps its own identity; the two supporting belongings belong to prop
-design. Several views of this product still depict one physical item, not the
-three distinct subjects required by the final camera tour.
+surface detail for close views. Keep collision, floating debris and street
+action in the story deliverable. For multi-view sheets, repeat the same product
+across separate panels, each showing an authored angle or detail. Preserve one
+product identity across panels: geometry, materials, colors, components and
+marks remain consistent, with natural perspective and occlusion differences.
+These repeated depictions are not additional physical belongings in the story.
+The two supporting belongings belong to prop design; multiple product views
+do not fill the three distinct subjects required by the final camera tour.
 
 Record the approved physical state: open or closed, attached or detached,
 filled or empty, orientation of label and functional face. A sealed bottle
