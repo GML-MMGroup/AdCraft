@@ -27,6 +27,7 @@ from app.persistence.agent_canvas_conversation_repository import (
     _creative_memory_values,
 )
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_canvas_guided_reference_validation import require_source_catalog_member
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
@@ -628,6 +629,19 @@ class AgentCanvasGuidedProductRepository:
                         workflow_id=node.workflow_id,
                         request=request,
                     )
+                    if request.source_role in {"character", "scene"}:
+                        requirement = AgentCanvasRequirementRepository(
+                            database
+                        ).get_current_in_transaction(connection, node.workflow_id)
+                        node = node.model_copy(
+                            update={
+                                "metadata": {
+                                    **node.metadata,
+                                    "requirement_revision_id": requirement.revision_id,
+                                    "requirement_revision_no": requirement.revision_no,
+                                }
+                            }
+                        )
                     connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
                     if request.source_role != "product":
                         self._approve_source_in_memory(connection, node)
