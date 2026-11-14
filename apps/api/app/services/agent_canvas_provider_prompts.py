@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_selected_reference import SELECTED_REFERENCE_APPEARANCE
+
 from app.core.storyboard_layout import storyboard_layout_name
 
 from app.services.agent_canvas_image_presentation import (
@@ -1029,6 +1031,31 @@ def _render_reference_identities(
     target_semantic_role: str,
     known_product_text: str = "",
 ) -> str:
+    selected_appearance = []
+    for index, reference in enumerate(reference_bundle.references, start=1):
+        if (
+            reference.media_type == "image"
+            and reference.source_identity_facts.get("appearance_authority")
+            == "selected_reference_image"
+            and not _is_storyboard_style_anchor(reference, target_semantic_role)
+        ):
+            selected_appearance.append(
+                f"Image {index}: {reference.source_semantic_role}"
+                + (f" ({reference.occurrence_id})" if reference.occurrence_id else "")
+            )
+    appearance_clause = (
+        "Selected appearance references: "
+        + "; ".join(selected_appearance)
+        + ".\n"
+        + SELECTED_REFERENCE_APPEARANCE
+        + " Each image governs only its assigned subject: Product geometry, materials, colors "
+        "and packaging; Character face, hair, proportions and wardrobe; Scene architecture "
+        "and spatial layout. Incidental objects in a Character or Scene image do not replace "
+        "the dedicated Product reference. Storyboard panels guide events, not appearance "
+        "overrides. Keep the target rendering medium and camera freedom.\n"
+        if selected_appearance
+        else ""
+    )
     identities = [
         {
             "binding_id": reference.binding_id,
@@ -1101,7 +1128,7 @@ def _render_reference_identities(
         )
         video_semantics = "Video reference-use semantics:\n" + "\n".join(instructions) + "\n"
     return (
-        video_semantics + "Authoritative bound reference identities:\n"
+        appearance_clause + video_semantics + "Authoritative bound reference identities:\n"
         "These persisted Binding facts are base identity authority. Preserve them except for "
         "state changes explicitly approved in the written sequence, such as wardrobe or lighting "
         "transitions. Retain creative freedom for panel action, composition, and camera. "
