@@ -35,10 +35,10 @@
     "references/product.md": "373b3605a6418aff111075d5221a0636b3af10f69f369c89f8cc34f6a2ba3bfb",
     "references/prop.md": "8b1591737bce307f282865696211e456eeb8d11dcf090801cde18303b0170c2a",
     "references/scene.md": "b9a517debff070ab30b1b6a1d42727ebbbbeb3fc6c4f4a989d1f2ff4593f57a2",
-    "references/script.md": "473262bb2807aa1c5937cbb3016086f3c24a92a34a793bcb190fe3a9e74062c7",
+    "references/script.md": "99d442af0fa354f6bce20efa0cad177a2335bb43495714a7062acdc7e54cea15",
     "references/source-analysis.md": "dd2d29e262683e28f5f07a640dc43489b93c5cbb4060ababd832962339229b60",
-    "references/storyboard.md": "c7f696bb31bae44f1d1e000dc8e0f6b05b49b58e139ff144492356fe5b635d15",
-    "references/video.md": "039f895de2e9945a7e915ba895b3583713e3107c10612e8610f97c8d9d54a9f2"
+    "references/storyboard.md": "afa8d25a64eb081578c467064af2f1a69dd0a58afebbffbf4b24f1f71d6738f2",
+    "references/video.md": "e1f56d50ef3f7c02396e539f8cdc030d3923d7b6aa231a31c7ae7794539f787c"
   },
   "role_guidance": {
     "script": "references/script.md",

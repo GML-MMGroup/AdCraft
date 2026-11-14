@@ -5,6 +5,11 @@ plausible supporting belongings. An approved product set may fill these slots
 with real separate items. Establish neutral supporting props through the normal
 prop-design flow. Do not replace the visits with three surfaces of one object.
 Keep any additional approved belongings in the physical inventory too.
+Establish independent walking routes and destinations before contact. Gaze and
+stride follow those routes; limited clearance creates an incidental outer-shoulder
+brush, passive recoil and support loss. Do not stage a turn or shoulder charge
+toward the wearer. Give the initial support state readable time before release,
+including when the incident starts a new generated segment.
 For every released item state its original support, release mechanism, frozen
 position and landing destination. Respect available hands and actual mechanisms;
 a sealed container stays closed unless a credible opening is already authored.

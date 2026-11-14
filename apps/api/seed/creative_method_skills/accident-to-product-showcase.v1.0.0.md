@@ -25,6 +25,8 @@ hook_methods: >
   Track backward from footwear height and rise to reveal the wearer and all
   belongings. Establish the passing route before the shoulder brush so the
   cause is readable and the frozen objects were already present in ordinary life.
+  Give both people independent walking routes and destinations; contact results
+  from their intersecting paths while their gaze and movement still serve those destinations.
 product_role: >
   One supplied product remains the commercial hero among three distinct items.
   Add two context-appropriate supporting belongings in the story and prop-design
@@ -88,6 +90,16 @@ references govern design, character references identity, and story actions
 possession. A reference's carrying pose does not restore a released belonging.
 
 ### Preserve the reference sequence and camera route
+
+Make the accident incidental. Establish both walking directions and the local
+reason clearance becomes too narrow before contact. Each person keeps an
+independent destination, natural stride and gaze ahead; the passerby does not
+turn toward the wearer to initiate contact. A brief outer-shoulder brush causes
+a passive recoil and loss of existing support, followed by continued travel
+when time resumes. Avoid a theatrical shoulder charge or deliberate release.
+Allow a readable initial support state before the trigger, including at the
+start of a separately generated incident segment. Keep this causal setup in
+the selected story, segment start_state and downstream prompts.
 
 1. Normal-speed backward tracking starts at footwear and rises to a front view
    of the wearer, all three items and the passing route.
