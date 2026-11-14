@@ -4,7 +4,7 @@ Start with the approved inventory, visit order and physical map. Establish
 all carried/worn items and their supports before contact. Keep collision through
 all objects landing in one video segment and its matching grid: approach,
 contact/release, shared freeze, A/B/C visits, reconnection, descent and settling.
-Preserve the required panel count; the current storyboard remains a 3x3 grid.
+Preserve the accepted panel count and grid layout.
 Reserve landing time within the approved duration and current generation cap.
 
 Design the three visit panels before filling surrounding moments. Each needs a
@@ -23,7 +23,15 @@ locate the lens on a traversable route, with continuous parallax and occlusion.
 An outgoing edge may briefly overlap the next view, then leave entirely; no need
 to keep the full inventory or both actors behind every close-up.
 
-Freeze items, droplets and body poses in world space. Select a charged state
+Freeze items, droplets and body poses in world space, including head and gaze.
+New reactions begin only after time resumes. Track each released item's same
+physical instance: the vacated support stays empty through the frozen tour and
+landing. A bag's strap remains attached to that bag; an airborne accessory is
+absent from its former wearing position. Use actor-relative directions and street
+landmarks for the shared map; derive panel overlap from the camera viewpoint.
+Character sheets supply identity, while the bound product design and approved
+possession state govern belongings, even if a reference shows a substitute.
+Select a charged state
 before freeze: crumbs suspended after release, stretched fabric, condensation
 catching side light, or a splash only from an already open vessel. Preserve
 closures, food layers, silhouettes and the selected medium. Camera proximity

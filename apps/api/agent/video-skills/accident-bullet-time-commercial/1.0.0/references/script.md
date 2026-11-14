@@ -8,6 +8,10 @@ Keep any additional approved belongings in the physical inventory too.
 For every released item state its original support, release mechanism, frozen
 position and landing destination. Respect available hands and actual mechanisms;
 a sealed container stays closed unless a credible opening is already authored.
+After release, the vacated support stays empty until an authored pickup or
+reattachment. Carry that state through the tour and landing, including attached
+straps or handles. Freeze head and gaze with the body; place any new look,
+reach or expression change after time resumes.
 
 Preserve the sequence: footwear tracking rises to the wearer and belongings;
 visible passing contact causes recoil and support loss; everything freezes

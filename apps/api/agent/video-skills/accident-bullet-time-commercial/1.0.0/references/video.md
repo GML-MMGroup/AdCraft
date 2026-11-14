@@ -28,6 +28,14 @@ moves. Preserve an expressive suspended state created before freeze. A sealed
 cup can show condensation and reflections without opening; an already open drink
 can show a frozen splash. Do not add a liquid crown to every product category.
 
+Freeze head and gaze too; new looks or reaches begin after time resumes.
+The vacated support stays empty after release, through the tour and landing;
+an offscreen item retains its mapped state. A bag and its attached strap are
+one object. Product references govern its design, character sheets its wearer's
+identity, and the approved action its current support and location. Follow the
+shared actor-relative map instead of reconstructing incompatible grid poses.
+At pickup, move the grounded object into the hand and leave its old spot empty.
+
 Adaptable thirteen-second route with A/B/C as approved visit slots:
 0-1.6s low tracking rises to carrier and items; 1.6-2.3s contact, release, freeze.
 2.3-4.3s accelerate low toward near A, roll into a tilted close view, slow to read
@@ -40,11 +48,9 @@ pull back through the shared space, level gradually and reconnect with the weare
 and settling; show the approved reaching/leaning reaction. 12.5-13s read the
 settled consequence. Adapt this geometry and timing to the actual segment.
 
-Maintain one spatial journey: no cut, dissolve or hidden viewpoint replacement.
-Camera roll and speed changes are visible motion, not permission to teleport.
-Review the prompt for distinct viewpoint/scale changes and speed contrast as
-well as continuity. Reaching or leaning may convey the reaction; a body fall
-is optional and must fit the next segment's start_state.
+Maintain one spatial journey without cuts, dissolves or viewpoint replacement.
+Review viewpoint, scale and speed contrast alongside continuity. Reaching,
+leaning or an optional body fall must fit the next segment's start_state.
 
 The grid is an off-screen story-process reference, not a first/last-frame target.
 Start at time zero inside the full-frame scene. Do not show sheet layouts, borders

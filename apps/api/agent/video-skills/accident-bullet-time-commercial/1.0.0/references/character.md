@@ -4,6 +4,10 @@ Preserve the approved identity, hair, outfit, footwear and accessories across
 all references. Use the existing Main and full-body multi-view contracts.
 References establish anatomy, proportion and usable clothing construction;
 they do not need to enact the accident or contain flying products.
+The carrying pose is a starting state, not a permanent identity feature. Use the
+bound product reference for the advertised item's design rather than an
+incidental substitute in a character sheet. Later release or pickup changes
+possession without changing the wearer's identity or creating another item.
 
 Establish carrying relationships for the three distinct belongings: which hand
 holds each item, which item is worn, where a

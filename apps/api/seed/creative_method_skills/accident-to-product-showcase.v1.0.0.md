@@ -81,6 +81,11 @@ For each, specify its reference or approved design, actual appearance, initial
 hand or attachment, support loss, frozen position and landing area. Use viable
 hand counts and clothing supports. Keep references for the wearer and location
 consistent. Multiple product views do not create multiple inventory slots.
+Release moves the established item and vacates its previous support; that hand,
+face or shoulder stays empty until an authored reattachment. Keep attached parts
+with their owner and carry the same inventory into landing and pickup. Product
+references govern design, character references identity, and story actions
+possession. A reference's carrying pose does not restore a released belonging.
 
 ### Preserve the reference sequence and camera route
 
@@ -91,6 +96,7 @@ consistent. Multiple product views do not create multiple inventory slots.
    passerby continues away; a slight brush never becomes a violent launch.
 3. All three items freeze together in front of the wearer. Lock positions,
    orientations, openings, liquid shape and droplets along with the reaction.
+   Head and gaze freeze too; new looks and reaches wait until time resumes.
 4. From the front medium view, push into that space and travel successively
    to A, B and C. Each owns a distinct product-dominant view with readable
    material detail. Build anticipation through changing proximity and depth;
