@@ -28,6 +28,7 @@ from app.services.agent_canvas_reference_semantics import (
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_selected_reference import selected_reference_facts
 
 
 class AdReferenceBundleResolver:
@@ -341,6 +342,9 @@ class AdReferenceBundleResolver:
 def canonical_node_reference_facts(node: CanvasNodeV2) -> dict[str, object]:
     """Project bounded typed facts for one explicitly bound source Node."""
 
+    selected = selected_reference_facts(node)
+    if selected:
+        return selected
     content = node.structured_content
     if node.creative_role in {"product", "prop", "character"}:
         facts = _selected_text_facts(content, ("subject_identity", "design_summary"))

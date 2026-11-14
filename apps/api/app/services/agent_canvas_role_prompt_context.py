@@ -40,6 +40,10 @@ from app.services.agent_canvas_role_stage_context import (
     scope_role_stage_context,
 )
 from app.services.agent_canvas_video_subtitles import without_managed_video_subtitles
+from app.services.agent_canvas_selected_reference import (
+    SELECTED_REFERENCE_APPEARANCE,
+    selected_reference_facts,
+)
 
 
 _GLOBAL_REQUIREMENT_FIELDS = frozenset(
@@ -844,6 +848,13 @@ def product_identity_projection_from_node(
 ) -> ProductIdentityAuthorityProjectionV1 | None:
     """Project only explicit structured Product Main identity authority."""
 
+    if selected_reference_facts(node):
+        return ProductIdentityAuthorityProjectionV1.build(
+            source_node_id=node.node_id,
+            source_node_revision=node.revision,
+            subject_identity="The product in the selected reference image",
+            design_summary=SELECTED_REFERENCE_APPEARANCE,
+        )
     subject_identity = _required_text(node.structured_content.get("subject_identity"))
     design_summary = _required_text(node.structured_content.get("design_summary"))
     if subject_identity is None or design_summary is None:

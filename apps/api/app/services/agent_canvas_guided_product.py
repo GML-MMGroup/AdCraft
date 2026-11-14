@@ -44,6 +44,7 @@ from app.services.product_upload_multiview_compiler import (
     ProductUploadMultiviewInput,
 )
 from app.services.v2_final_composition_renderer import V2MediaProbe
+from app.services.agent_canvas_selected_reference import SELECTED_REFERENCE_APPEARANCE
 
 
 class GuidedProductInputCommitService:
@@ -359,7 +360,7 @@ class GuidedProductInputCommitService:
                             "structured_content": {
                                 **node.structured_content,
                                 "subject_identity": occurrence.role,
-                                "design_summary": occurrence.identity_summary,
+                                "design_summary": SELECTED_REFERENCE_APPEARANCE,
                             },
                         }
                     )
