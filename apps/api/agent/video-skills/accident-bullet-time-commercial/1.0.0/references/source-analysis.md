@@ -4,6 +4,31 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
+## Latest user-confirmed correction: recoil and airborne release
+
+On 2026-11-14 the user specified slight backward lean, instinctively opening hands
+and original belongings flying into the air after accidental contact. Source D
+at about 2.7-3.6 seconds and Source C at about 2.6-3.0 show this especially clearly.
+Source A at about 1.7-2.0 compresses a more exaggerated loss of balance into a
+very short transition; it does not show an equally complete open-palm pose.
+
+The user approves camera movement in A, C and D. Their foreground edge passes,
+near/far displacement, changing scale and fast-travel/brief-dwell rhythm guide
+the continuous tour. Source B remains evidence for the bodily response and
+reference preparation, not a camera model: its separate frontal product portraits
+and self-rotation should not replace shared-space traversal.
+
+This supersedes the downward-only release, low-phone-height lock, forward head
+dip, two-to-three-second contact budget and restrained-camera prescription from
+the previous causal-staging revision. Preserve the approved advertising
+exaggeration while keeping original identity, counts and connected parts.
+The current grid in proj_1c834dabb3d3fea9 duplicated a worn and free bag in panels
+3, 4 and 8 and held the phone in panel 5; its video repeated those states.
+Future directions must depict empty supports and the single airborne originals
+in the same panel, rather than merely stating a total inventory once.
+These are text-authoring corrections, not an added visual-review or retry gate.
+Historical observations below remain provenance where not superseded here.
+
 ## Source A: short fast-food example
 
 Translated title: I made the viral Instagram creative clip in 15 seconds.

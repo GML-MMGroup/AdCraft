@@ -6,21 +6,25 @@ real separate items. Three surfaces of one object are not three belongings.
 Keep additional approved items in the inventory and account for their landing.
 
 Establish independent walking routes and destinations before contact; gaze and
-stride follow them. Limited clearance causes incidental outer-shoulder contact,
-passive recoil and support loss, rather than a deliberate charge or throw.
-Give the initial support state, contact and separation distinct readable moments.
-For a typical ten-to-fifteen-second incident, allow roughly two to three seconds
-for that causal opening before allocating detail visits. Continue the supplied
-previous positions, headings and carrying side when the incident starts a node.
+stride follow them. Incidental outer-shoulder contact triggers a slight backward
+recoil, instinctively spreading hands with open palms, and the original belongings
+tossing forward and upward into the air. This is one quick involuntary reaction,
+not an intentional throw. Show the initial support state before contact, then
+stretch the airborne instant with the speed ramp. Do not impose a three-second
+contact demonstration. Continue supplied prior positions and carrying side.
 
 For every released item establish support, release mechanism, frozen position
 and landing destination. Respect available hands, attachments and world rules.
-Freeze shortly after support loss: low-held objects move down near their hands;
-loose attachments slip, while secure ones need an established mechanism. Derive
-the arrangement from those trajectories rather than a chest-height display.
+The recoil and hands opening motivate an expressive airborne release. Items may
+rise above their initial supports; preserve this approved advertising exaggeration
+rather than rewriting it as a downward slip or forward head dip. Freeze the
+slight backward lean, open empty palms and separated items near the airborne crest.
+Each original item has one current location, including when worn and airborne
+states appear in different reference panels.
 The vacated support stays empty until an authored pickup or reattachment. Keep
 attached parts with their object and retain offscreen states through landing.
-Freeze head and gaze with the body; new reactions begin when time resumes.
+Freeze head and gaze with the backward-leaning body; new reactions begin when
+time resumes. The carrier looks toward the airborne items rather than the ground.
 
 Preserve the sequence: footwear tracking rises to wearer and belongings; visible
 passing contact causes release; everything freezes together; the camera visits

@@ -1,6 +1,6 @@
 ---
 name: Accident Bullet-Time Commercial
-description: Accidental bullet-time product photography with a continuous, energetic camera journey: footwear approach, visible contact, a shared frozen instant, dominant individual product views with depth travel and camera roll, then resumed gravity and every object landing. One advertised item retains supporting belongings; the complete incident stays in one segment.
+description: Accidental bullet-time advertising: a passing brush, slight backward recoil, open palms and original belongings tossing upward; an energetic continuous camera journey through their frozen space, then every item landing. Preserve one instance of each item and keep the complete incident in one segment.
 ---
 
 # Accident Bullet-Time Commercial
@@ -15,8 +15,12 @@ approved product set may fill those slots. Preserve additional approved props.
 ## Choreography and visual intensity
 
 1. Track backward at footwear height and rise to establish the carrier, items
-and passing route. Visible shoulder contact causes recoil and support loss.
-2. Freeze the accident at a visually charged instant. Capture plausible crumbs,
+and passing route. Incidental shoulder contact triggers slight backward recoil,
+instinctively open palms and the original belongings tossing forward and upward.
+Keep the reaction quick and modest; the airborne items supply the spectacle.
+2. Freeze that backward lean and open empty hands near the items' airborne crest.
+The vacated shoulder stays empty too; worn and airborne reference states depict
+one item at different moments, not simultaneous copies. Capture plausible crumbs,
 condensation or displaced fabric produced by the established action. An already
 open drink may supply a splash; a sealed vessel retains its real closure.
 3. Travel continuously through the shared frozen space, visiting each item.

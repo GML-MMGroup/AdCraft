@@ -2,24 +2,25 @@
 
 Use the approved item map and visit order. Keep collision through all objects
 landing in one video segment within its confirmed duration and fifteen-second
-cap. Reserve two to three seconds for descent and settling. For a typical ten-
-to-fifteen-second incident, budget roughly two to three seconds for initial
-support, contact and separation; adapt to the actual action rather than fixing
-these ranges. Cut optional beauty holds before compressing the cause.
+cap. Reserve two to three seconds for descent and settling. Show initial support
+before contact, then let contact, recoil and release be one quick readable reaction.
+Stretch the airborne instant, not a mandatory three-second contact demonstration.
 
 Before contact, show the supported starting state in a readable medium view.
 Continue supplied prior positions, headings and carrying side; distinguish an
 observed ending from a planned one. Independent walking routes, gaze and stride
-serve separate destinations. Limited clearance causes brief outer-shoulder
-contact, passive recoil and loss of support. Make normal holding, contact and
-first separation distinct observable moments. Begin accelerated camera travel
-after the shared freeze, while the trigger is already understood.
+serve separate destinations. An incidental outer-shoulder brush triggers a slight
+backward lean, arms opening a little and open palms instinctively spreading. The
+same belongings toss forward and upward as the carrier loses balance. Hands
+open from the involuntary reaction, not an intentional throwing gesture. Establish
+that airborne state before accelerated camera travel.
 
-Freeze near each departure point after short support loss: a low-held phone
-moves below the empty hand, loose eyewear slides away from the face, and a bag's
-strap clears its shoulder with both ends attached to the bag. Secure attachments
-need an established release mechanism. Derive positions from trajectories,
-rather than lifting objects into a decorative row. Preserve approved world rules.
+Freeze near the crest with a slight backward lean and both empty palms visible.
+Allow the approved expressive upward release, including from a low hand; preserve
+the product's structure and the connection of its strap or attached parts. Each
+released item has one position: an airborne bag has no worn counterpart and an
+airborne phone stays out of both hands through the tour. This replaces the
+earlier downward-only slip and forward head-dip direction.
 
 Lock item positions, orientations, closures and body poses in world space.
 Freeze head and gaze too; reactions begin when time resumes. The vacated support
@@ -35,8 +36,9 @@ passes an edge as the next comes into view. Move beside solid objects.
 
 Accelerate in transit, decelerate for one readable detail, then accelerate onward.
 Keep supporting visits brief and the advertised product dominant. Vary depth and
-height, with restrained camera roll when useful. Prefer a clear passing path to
-repeated reversing orbits around each item. People can leave frame, and useful
+height, camera roll and arc movement along the connected route. Build visible
+near/far travel and foreground edge passes instead of separate frontal product
+portraits. People can leave frame, and useful
 close crops are allowed. Subjects keep their orientation; proximity produces
 scale changes. Transit blur is restrained and detail dwells remain crisp.
 

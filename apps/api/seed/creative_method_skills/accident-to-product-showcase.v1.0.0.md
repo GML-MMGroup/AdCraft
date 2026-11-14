@@ -4,8 +4,9 @@ version: 1.0.0
 skill_kind: creative_method
 title: Accident-to-Product Showcase
 core_principle: >
-  An everyday collision freezes several carried belongings together. Recreate
-  the reference sequence: footwear-to-face tracking, visible impact and release,
+  An incidental collision prompts a slight backward lean and instinctively open
+  hands; original belongings toss forward and upward into a shared frozen instant.
+  Recreate the reference sequence: footwear-to-face tracking, visible contact/recoil,
   a moving-camera close-up tour of each distinct item, a pullback to the wearer,
   then resumed gravity and reaction. Even one advertised product needs supporting
   belongings. Keep collision through all objects landing in one video segment,
@@ -18,7 +19,8 @@ consumer_psychology: >
   the main product stand out before the falling objects complete the suspense.
 story_structure: >
   Establish the wearer and three carried or worn items at normal speed; show
-  passing shoulder contact and individual release; freeze them together; push
+  passing shoulder contact, slight backward recoil and open palms as the original
+  items toss forward and upward; freeze them together; push
   into separate close views of A, B and C; pull back to the front medium view;
   restore time, show the same items landing and the wearer's reaction.
 hook_methods: >
@@ -46,7 +48,8 @@ common_mistakes: >
   belongings with three views of the same product, contactless flight, unseen
   props appearing at freeze time, independently spawning each item, rotating
   products instead of moving the camera, disconnected inserts, omitting the
-  front-medium pullback, or never returning to the same landing and reaction.
+  front-medium pullback, turning the recoil into a forward head dip and downward
+  slip, or never returning to the same landing and reaction.
 cross_category_examples: >
   Sunglasses: a wearer carries a neutral cup and loose shoulder bag; a passing shoulder brush releases all three, the camera visits the glasses hinge, cup rim and bag seam, pulls back and lets the same belongings land.
   Takeaway meal: a wearer carries a burger, fries and drink; passing contact releases the three established items, the frozen tour reveals sesame, fries and the cup in order before returning to the wearer and the landing. Fallen food is not eaten.
@@ -95,23 +98,26 @@ Make the accident incidental. Establish both walking directions and the local
 reason clearance becomes too narrow before contact. Each person keeps an
 independent destination, natural stride and gaze ahead; the passerby does not
 turn toward the wearer to initiate contact. A brief outer-shoulder brush causes
-a passive recoil and loss of existing support, followed by continued travel
-when time resumes. Avoid a theatrical shoulder charge or deliberate release.
+a slight backward recoil, hands instinctively spreading with open palms, and
+the original belongings tossing forward and upward. The passerby continues on
+their route when time resumes. Preserve the accidental startle, not a deliberate
+throw or shoulder charge.
 Allow a readable initial support state before the trigger, including at the
 start of a separately generated incident segment. Keep this causal setup in
 the selected story, segment start_state and downstream prompts.
-Show normal support, contact and separation as distinct moments. Freeze each
-item shortly after it loses support, at a position reached by its actual release
-trajectory. A low-held phone stays low; loose attachments can slip, while secure
-ones need an established mechanism. Preserve the previous segment's supplied
-positions, headings and carrying side. These causal facts take priority over
-arranging the objects into an attractive floating display.
+Show normal support before the quick, continuous contact-recoil-release reaction.
+Freeze near the airborne crest with the carrier slightly leaning back, both palms
+empty and open toward the released items. Upward release is the approved visual
+exaggeration, even for a previously low-held object. Maintain original identity,
+structure and one instance per item. The shoulder and hands remain empty through
+the tour. Continue supplied prior positions, headings and carrying side.
 
 1. Normal-speed backward tracking starts at footwear and rises to a front view
    of the wearer, all three items and the passing route.
-2. A passerby's outer shoulder visibly brushes the wearer. Show torso recoil,
-   hands opening or loose support slipping, then each item's release. The
-   passerby continues away; a slight brush never becomes a violent launch.
+2. A passerby's outer shoulder visibly brushes the wearer. The upper body leans
+   slightly back and the hands open instinctively as the same belongings toss
+   forward and upward. The body reaction remains modest; airborne objects supply
+   the spectacle. The passerby keeps moving through the encounter.
 3. All three items freeze together in front of the wearer. Lock positions,
    orientations, openings, liquid shape and droplets along with the reaction.
    Head and gaze freeze too; new looks and reaches wait until time resumes.
@@ -147,13 +153,12 @@ payoff after landing. Short internal visits are not separate generations.
 Shorten static holds before removing travel or descent; explain an incompatible
 explicit duration instead of splitting the action or silently extending time.
 
-For a typical ten-to-fifteen-second incident, allocate roughly two to three
-seconds to normal support, contact and release, and two to three seconds to
-the final descent and settling. Fit connected visits and a brief pullback into
-the remainder. Supporting-item dwells are brief; the advertised item receives
-the strongest detail emphasis. Adapt these ranges to the actual approved action;
-they are not a fixed timeline. Allocate more time, up to fifteen seconds, for
-complicated geometry rather than overloading each second.
+Keep the trigger brief and readable; extend the airborne instant through the
+speed ramp instead of requiring three seconds to demonstrate contact. Reserve
+enough time for the final descent and settling, then fit connected visits and
+a brief pullback into the remainder. Supporting-item dwells are brief; the
+advertised item receives the strongest detail emphasis. Adapt to the approved
+action and duration rather than imposing one timeline on every product.
 For an approved thirty-second ad: 0-7 extra setup; 7-22 one complete incident
 including landing; 22-30 reaction and brand payoff starting with grounded items.
 Keep the main advertised item dominant regardless of its tour slot.
