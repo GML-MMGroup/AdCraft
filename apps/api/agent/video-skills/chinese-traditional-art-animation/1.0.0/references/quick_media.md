@@ -3,3 +3,9 @@
 快速探索墨色、纸纹、剪纸边缘或装饰层时，锁定角色和产品轮廓，只改变一个材料变量。变体用于材料试验或转场试验，不自动改变正式的传统语汇。
 
 比较时看层次、留白、边缘和运动阻力是否成立。
+
+## Optional motion study phrasing
+
+For an animation study, distinguish the viewing window from ink or paper-layer motion. A
+still study uses one material state and negative space, without camera-travel
+instructions.

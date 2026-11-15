@@ -3,3 +3,11 @@
 按材料出现、层间移动、遮挡打开、poetic motion 和收束组织画面。关键帧记录墨线起止、纸片交接、折叠方向、纹样流向和留白变化。每次材料转换都应有触发动作或声音。
 
 用墨迹扩散、纸面折线、剪影对齐和纹样匹配转场。
+
+## Optional viewpoint clarification
+
+Define the scroll or paper plane, layer order and negative space before placing the ink
+or cutout action. Show one readable material state per panel. Distinguish a viewing-
+window move from ink spreading or paper folding within a fixed view. Retain poetic
+motion, brush edges and the approved transition trigger rather than imposing
+photographic shot grammar.
