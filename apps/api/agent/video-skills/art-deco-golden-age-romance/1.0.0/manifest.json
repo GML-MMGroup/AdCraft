@@ -26,13 +26,15 @@
     "references/product.md": "7844bda1521593d02495974742396abb1e4392788e0f8305f1d0b90524057797",
     "references/character.md": "500f1c00c5efed27969d3ccaeb4d60307ed3115cbda176f53cfe80dc37448865",
     "references/scene.md": "12434e07b9c82a1f00682bc80fd36f17ea561c7592960d9ec98af0c6b11c1735",
-    "references/video.md": "9d2714f2a505c97313dac349760ebd844b800cf1a371f9cdc0b2dd49356953cb",
-    "previews/preview.webp": "c400894b7018b6ceec8e418be9f5d1a8eae834d106bb3d34f768269c1799d019"
+    "references/video.md": "1440eb114a377d05944201b0ef0608de88f6de30514be9b2cd23f384f9757326",
+    "previews/preview.webp": "c400894b7018b6ceec8e418be9f5d1a8eae834d106bb3d34f768269c1799d019",
+    "references/storyboard.md": "81e59fe75678cb2a3ada885a54eff72e79f4b99e8152c8f797757e2b3023e6d1"
   },
   "role_guidance": {
     "product": "references/product.md",
     "character": "references/character.md",
     "scene": "references/scene.md",
-    "video": "references/video.md"
+    "video": "references/video.md",
+    "storyboard": "references/storyboard.md"
   }
 }

@@ -4,3 +4,12 @@
 
 正例：摄影机沿阶梯上升，人物在轴线交点停住并递出产品，镜面只反射已存在的主体。
 反例：镜头无理由翻转，反射复制主体，或华丽灯光遮住产品和人物脸部。
+
+## Optional shot phrasing
+
+Where a ceremonial move is planned, describe the axial view before its action: "The
+camera retreats along the central aisle while the performer approaches the lens, holding
+a steady distance within the arch." A locked symmetrical tableau is equally valid.
+Separate camera travel from performer travel and preserve reflection geometry. Use cuts
+or occlusion as authored; this wording technique does not require an orbit or a new
+entrance.
