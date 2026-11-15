@@ -8,3 +8,11 @@
 
 正例：先用稳定构图交代空间，再以人物转身引导镜头横移，动作结束时切到产品细节，下一镜从同一方向接续。
 反例：相邻镜头同时改变轴线、主体身份、焦点和光源，或只写“快速、震撼、电影感”而没有可执行的动作与起止状态。
+
+## Optional viewpoint clarification
+
+Choose the information beat first. When writing its shot, place the viewing axis and
+planned accent before the action that shares it. Distinguish a whip during movement, a
+cut on contact and a held result. Record the starting state, accent and landing in the
+nine-panel grid without treating each cell as a cut. Preserve the next view's inherited
+screen direction or explicitly motivated change.
