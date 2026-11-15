@@ -3,3 +3,12 @@
 镜头与人物保持尊重的观察距离，靠近是为了理解手部或工具，后退是为了交代环境。authentic action 保留犹豫、失败、重复和完成，不用慢动作或音乐制造虚假英雄感。
 
 声音优先使用工作声、脚步、风、机器、人声和房间底噪；旁白克制、清楚、可回溯。
+
+## Optional shot phrasing
+
+Where observation follows work, "An observer-level frame tracks gently alongside while
+the subject continues the task" clarifies concurrent movement without staging a new
+event. A patient locked view may be more truthful. Describe approach or crossing
+relative to the lens only when needed. Preserve authentic action, imperfect timing and
+environmental sound; do not manufacture heroic slow motion or behavior designed solely
+for the camera.
