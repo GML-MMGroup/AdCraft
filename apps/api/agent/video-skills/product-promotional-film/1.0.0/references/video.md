@@ -4,3 +4,11 @@
 
 正例：镜头跟随手部打开产品，焦点转到功能显现，动作声与接触同步，随后平稳回到整洁的产品展示。
 反例：快速旋转、漂浮和闪光让产品无法辨认，也没有说明卖点如何产生。
+
+## Optional shot phrasing
+
+For an approved demonstration, "A fixed three-quarter close view keeps the control
+visible while the hand operates it; cut to the resulting change" states the viewing
+relationship before the action. Use a follow only where it clarifies use. Keep selling-
+point hierarchy, real feedback and clean packshot logic without requiring a reveal,
+rotation or sales close in every segment.
