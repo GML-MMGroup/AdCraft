@@ -3,3 +3,8 @@
 快速探索屏幕质感、夜色、空置空间或一个记忆物件时，只改变一个变量，保留人物和空间锚点。变体用于比较怀旧材质、临界感或色彩，不自动改变正式世界设定。
 
 先检查熟悉感是否具体，再看梦境偏移是否可控。
+
+## Optional motion study phrasing
+
+For a moving memory study, anchor the repeated viewpoint before the changing detail.
+Still studies can retain an empty, motionless composition; digital drift is optional.
