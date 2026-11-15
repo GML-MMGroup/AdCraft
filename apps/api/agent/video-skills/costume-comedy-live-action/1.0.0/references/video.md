@@ -29,3 +29,11 @@ accent a double take or sudden change of mood; avoid covering the line or
 every gesture. Exclude background music from the video prompt; the BGM role
 owns it. Respect the selected audio mode and leave sales graphics to the
 approved editing plan unless the current output contract explicitly allows them.
+
+## Optional shot phrasing
+
+For an approved double take, a useful description is "A held medium close-up contains
+the performer's recoil and pause; cut to the listener's reaction." When a push coincides
+with a gesture, put the push before that gesture and specify their overlap. Preserve
+exaggerated, performable expressions and the contrast with ceremonial stillness. Do not
+replace comic reaction cuts with uninterrupted travel.

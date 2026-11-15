@@ -36,8 +36,8 @@
     "references/scene.md": "eeeceaad7d4b1a7acf2b12fa09798e881ca12b609cff30af35c86388da3643f2",
     "references/script.md": "e775200df0ba0473a122a40a52fa4477540cae28000828e165a5c205b5e20ca9",
     "references/source-analysis.md": "1c05ae6ab7cd08f06bc5275e7c93dc9e417f97e152a9360dca090192b3446946",
-    "references/storyboard.md": "6675b9705f178db021021e177c88990386930b21f1b1e7088bc2f85563d2d6bc",
-    "references/video.md": "352f6ea9b150808ccede1f14dea3ae8c927078a59c93b09938bfdf186af6f266"
+    "references/storyboard.md": "3e99611fd30a8a1be4f045b309e039b1dc259674dbd54abc3985247ac6b217ab",
+    "references/video.md": "d850a93943c590e3004a9511ae1dcef851bd6ef6d7169190d9c06411751afe77"
   },
   "role_guidance": {
     "bgm": "references/bgm.md",
