@@ -4,3 +4,11 @@
 
 正例：镜头沿手腕动作缓慢推进，焦点在宝石切面出现时稳定，手势停住后回到完整佩戴关系。
 反例：珠宝高速翻转、复制或变色，镜面高光没有结构依据。
+
+## Optional shot phrasing
+
+A locked macro viewpoint often serves specular light better than travel: "In a fixed
+oblique close-up, the wrist turns slightly toward the lens and a highlight crosses the
+existing facet." Describe any camera advance separately from the wrist rotation. Keep
+stone geometry, chain tension and wearing position stable. Do not add spinning, glitter
+or persistent focus changes merely to use camera-first phrasing.
