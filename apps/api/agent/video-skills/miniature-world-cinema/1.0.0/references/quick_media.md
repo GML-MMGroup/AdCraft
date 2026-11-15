@@ -3,3 +3,9 @@
 快速探索一个比例参照、材质、焦点或微型动作时，只改变一个变量，并保留核心道具与路径。变体用于验证 scale contrast、handcrafted detail 或动作可读性，不自动改写正式世界比例。
 
 先检查目标、接触和结果，再评价微缩质感。
+
+## Optional motion study phrasing
+
+For a miniature motion study, establish scale and contact focus before the action. For a
+still study, retain a clear scale comparison without requiring tracking or focus
+changes.
