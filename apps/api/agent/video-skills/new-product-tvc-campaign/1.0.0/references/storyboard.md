@@ -4,3 +4,11 @@ visual anchor 可以是轮廓、接口、手部动作、光线边缘、空间线
 
 正例：稳定构图交代人物需求，手部动作引导镜头进入产品细节，功能完成时切回全貌，结尾保留品牌和受众承诺。
 反例：只写“宏大、奢华、震撼”，没有产品证据、起止状态或镜头之间的连接理由。
+
+## Optional viewpoint clarification
+
+Choose the approved campaign beat before specifying its framing, viewing axis and
+product evidence. Write that view ahead of the action in shots where overlap matters.
+Keyframes preserve product visibility, contact and feedback; neighboring views inherit a
+visual anchor. The nine-panel grid does not require a fresh premium reveal or brand
+close in every segment.
