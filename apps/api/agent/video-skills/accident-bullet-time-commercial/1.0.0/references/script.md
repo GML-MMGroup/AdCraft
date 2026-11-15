@@ -32,14 +32,17 @@ A, B and C; it pulls back; time resumes, all objects land and settle, and the
 wearer reacts. The advertised product receives the strongest attention. Preserve
 approved speech and claims; a drop or intact landing does not prove durability.
 
-Keep collision through all objects landing in one video segment, even in a long
-advertisement. Reserve that interval before extra setup or brand payoff. The
+Keep the first-frame footwear reveal through all objects landing in one video
+segment, even in a long advertisement. Start_state opens on feet with items
+still held or worn; the camera rises to show initial support before contact.
+Do not assign the opening track, rise or setup to another node. Budget this
+whole interval before any post-landing story or brand payoff. The
 final two to three seconds cover resumed fall, every ground contact and settling.
 End_state records all grounded belongings and body pose so a later node starts
 there rather than repeating the fall. Honor the fifteen-second generation cap
-and confirmed total. Shorten optional holds before compromising cause, continuous
-travel or descent; disclose an incompatible explicit allocation without adding
-a new rejection gate or silently extending time.
+and confirmed total for the opening and incident together. Shorten optional holds
+before compromising the reveal, cause, travel or descent; disclose incompatible
+timing without adding a rejection gate or silently extending time.
 
 Plan a visual crescendo while preserving confirmed visit order. Supporting
 items receive brief individual details; the advertised item receives the strongest
@@ -49,7 +52,7 @@ needs an established open vessel; actual materials and closures remain intact.
 
 Give the tour fast approaches, readable brief inspections and fast departures.
 Leave camera geometry to Storyboard and Video, carrying that emphasis and the
-landing interval into narrative_goal and production_handoff. Choose a reaction
+footwear-to-landing interval into narrative_goal and production_handoff. Choose a reaction
 suited to the approved tone: reaching too late, leaning after objects, a low look
 or a fall if called for. The source's fall is not a universal plot requirement.
 Review inventory, causal timing and handoff in this authoring call; do not add a

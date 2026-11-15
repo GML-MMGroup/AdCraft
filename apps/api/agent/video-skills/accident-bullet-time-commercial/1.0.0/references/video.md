@@ -1,12 +1,15 @@
 # A readable accident and one continuous camera path
 
-Use the approved item map and visit order. Keep collision through all objects
-landing in one video segment within its confirmed duration and fifteen-second
-cap. Reserve two to three seconds for descent and settling. Show initial support
+Use the approved item map and visit order. Keep the first-frame footwear reveal
+through all objects landing in one video segment within its confirmed duration
+and fifteen-second cap. No split before contact or separately generated opening.
+Reserve two to three seconds for descent and settling. Show initial support
 before contact, then let contact, recoil and release be one quick readable reaction.
 Stretch the airborne instant, not a mandatory three-second contact demonstration.
 
-Before contact, show the supported starting state in a readable medium view.
+The first frame shows the wearer's feet, grounded and moving at normal speed.
+Track backward low and rise continuously to reveal the wearer and belongings,
+reaching a readable medium view of the supported starting state before contact.
 Continue supplied prior positions, headings and carrying side; distinguish an
 observed ending from a planned one. Independent walking routes, gaze and stride
 serve separate destinations. An incidental outer-shoulder brush triggers a slight
@@ -19,8 +22,8 @@ Freeze near the crest with a slight backward lean and both empty palms visible.
 Allow the approved expressive upward release, including from a low hand; preserve
 the product's structure and the connection of its strap or attached parts. Each
 released item has one position: an airborne bag has no worn counterpart and an
-airborne phone stays out of both hands through the tour. This replaces the
-earlier downward-only slip and forward head-dip direction.
+airborne phone stays out of both hands through the tour. Do not substitute a
+downward-only slip or forward head dip.
 
 Lock item positions, orientations, closures and body poses in world space.
 Freeze head and gaze too; reactions begin when time resumes. The vacated support
@@ -38,8 +41,7 @@ Accelerate in transit, decelerate for one readable detail, then accelerate onwar
 Keep supporting visits brief and the advertised product dominant. Vary depth and
 height, camera roll and arc movement along the connected route. Build visible
 near/far travel and foreground edge passes instead of separate frontal product
-portraits. People can leave frame, and useful
-close crops are allowed. Subjects keep their orientation; proximity produces
+portraits. People may leave close crops. Subjects keep orientation; proximity produces
 scale changes. Transit blur is restrained and detail dwells remain crisp.
 
 Reconnect through a short continuous pullback, then restore gravity and follow
@@ -47,10 +49,12 @@ all items to contact and settling. Foley follows actual contact timing, not an
 arbitrary order that contradicts height and motion. Preserve the approved reaction
 and landed end_state for the next segment. A body fall is optional.
 
-Write one chronological direction: opening, trigger/release/freeze, connected
-visits, return, landing. Attach each constraint to its owning beat; replace stale
-conflicts instead of appending lists. The grid is an off-screen story-process
-reference, not a first/last-frame target, collage or set of edit points. Written
+Write chronologically: first-frame feet, backward tracking/rise, trigger/release/freeze,
+connected visits, pullback, landing. Attach constraints to their beats; replace
+stale conflicts. Start_state opens at footwear level; end_state has every item
+settled. Later segments begin there, without repeating the reveal or fall.
+The grid is an off-screen story-process reference, not a first/last-frame target,
+collage or set of edit points. Written
 opening states do not provide native first-frame control or numeric image weight.
 Record visible reference conflicts in production_handoff without claiming they
 were corrected or adding an automatic review or rerun. Preserve speech/subtitle

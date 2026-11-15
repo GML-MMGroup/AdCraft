@@ -2,7 +2,7 @@
   "skill_id": "accident-bullet-time-commercial",
   "version": "1.0.0",
   "display_name": "Accident Bullet-Time Commercial",
-  "description": "Accidental bullet-time advertising: a passing brush, slight backward recoil, open palms and original belongings tossing upward; an energetic continuous camera journey through their frozen space, then every item landing. Preserve one instance of each item and keep the complete incident in one segment.",
+  "description": "Accidental bullet-time advertising in one continuous video segment from the first-frame footwear reveal, rising to the wearer, through passing contact, airborne release, a frozen-space product tour and every item landing. Preserve one instance of each item; keep the opening and incident together.",
   "content_locale": "en-US",
   "category": "commercial-craft",
   "tags": [
@@ -21,24 +21,24 @@
   ],
   "preview": {
     "kind": "image",
-    "summary": "Passing contact prompts backward recoil, open palms and an airborne product set; the camera travels through that instant before all objects land.",
+    "summary": "From feet in the first frame, the camera rises to the wearer, follows an accidental release and traverses frozen belongings until every item lands, all in one generated segment.",
     "media_url": "/api/v2/video-skills/accident-bullet-time-commercial/preview?v=1.0.0"
   },
   "display_order": 90,
   "allows_meme_captions": false,
   "allows_comedic_sound_effects": true,
   "files": {
-    "SKILL.md": "6e70513bfea499992a4dd47834495f153018bf00b9a35a2f2ee522f951bb449e",
+    "SKILL.md": "dcafe9b86598a24c798d5bf679d796b085a87704ad7a071301ea6aaaa7486d40",
     "previews/preview.webp": "75f2f37d47cc0f923607c51c01c3e769c7b7e7de1b925b82f28df1ecb1b7c354",
     "references/bgm.md": "fb0b656d46dbd1990311cc6ee0780b7dbac1b497dacda5b5df218aadd0fcd117",
     "references/character.md": "1e1ab326f1372a21a8df5a90dc0b62ff6932971155a1756886c4b4b266a7af77",
     "references/product.md": "373b3605a6418aff111075d5221a0636b3af10f69f369c89f8cc34f6a2ba3bfb",
     "references/prop.md": "8b1591737bce307f282865696211e456eeb8d11dcf090801cde18303b0170c2a",
     "references/scene.md": "b9a517debff070ab30b1b6a1d42727ebbbbeb3fc6c4f4a989d1f2ff4593f57a2",
-    "references/script.md": "aa05d33a1ffabbfcb33b7ac14ea1f770698e6577ead62e13be414e76b0c1ef06",
-    "references/source-analysis.md": "cf8ffb908f2004884cbe319b2407eebdcd99ad7c2bcd25587b1ad4b00a5db985",
-    "references/storyboard.md": "e137c45d58e721de47fd1b60c0151c810f330672b4344d2b4de59a60d0dfc7a7",
-    "references/video.md": "185c80688cd50fd37104fd04adf5f4d33a3dd231341417ed495cbc23f54985bd"
+    "references/script.md": "d61fec57a3eafb05ed7dc544918bc4979aeebbb00d70b9c710efafd4770fc017",
+    "references/source-analysis.md": "22626e7f14487e29118cf746b04dd839bbe04b23138d3a1a53896df512cbe0ba",
+    "references/storyboard.md": "dff6d1d1b8dcfa7e5c4fbfdecfd80ca56711cc1c7357541b6866edcebcf18b11",
+    "references/video.md": "ff1689c6798b30a4e7479ca9c9151e1a80c3dc3e702ad885627a41a63ea00294"
   },
   "role_guidance": {
     "script": "references/script.md",

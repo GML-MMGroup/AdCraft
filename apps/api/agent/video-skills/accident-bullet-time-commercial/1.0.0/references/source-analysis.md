@@ -4,7 +4,24 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest user-confirmed correction: recoil and airborne release
+## Latest user-confirmed correction: one generation from feet to settled landing
+
+On 2026-11-15 the user extended the protected interval to the first frame showing
+the wearer's feet, citing Sources A and C. Low backward tracking, the rising
+reveal, supported belongings before contact, collision, recoil and release,
+the frozen-space tour, pullback and all objects landing now belong to one
+continuous video generation. Keeping only contact-to-landing together is insufficient.
+
+This supersedes a separate opening/setup node and the former thirty-second
+7+15+8 example. Budget the footwear opening and incident together within one
+generation window, reserving descent and settling before allocating opening
+and inspection holds. Longer films continue with approved story or brand payoff
+after the settled ending. Do not stitch two generated clips to imitate this
+protected continuity, or treat the grid as a native first/last-frame binding.
+The first grid sample shows feet; the rise establishes carrying states in the
+next sample before the quick contact/recoil/release transition.
+
+## Prior user-confirmed correction: recoil and airborne release
 
 On 2026-11-14 the user specified slight backward lean, instinctively opening hands
 and original belongings flying into the air after accidental contact. Source D
@@ -126,18 +143,20 @@ traversing-camera impression.
 
 This correction supersedes the initial single-product/single-object fallback,
 optional footwear opening, interchangeable camera routes, and the four-second
-single-bottle whole-film example. Four-second nodes may still cover a phase of
-a longer sequence. Confirmed whole-film timing stays authoritative; a tight
+single-bottle whole-film example. Short additional nodes may follow the settled
+ending, but cannot divide the protected footwear-to-landing sequence. Confirmed
+whole-film timing stays authoritative; a tight
 budget must be acknowledged without silently dropping visits or blocking text.
 The teaching interfaces, source brands, exact wardrobe and provider settings
 remain provenance rather than platform policy.
 
-## Current correction: landing-complete segment and actual continuous travel
+## Historical correction: landing-complete segment and actual continuous travel
 
-The latest user review supersedes the earlier freeze-completion boundary that
-allowed a node to finish with airborne belongings. Protect collision, shared
-freeze, all visits, pullback, resumed gravity and every object landing/settling
-inside one generation segment. Extra story follows only after that completion.
+That review superseded the earlier freeze-completion boundary that allowed a
+node to finish with airborne belongings. It protected collision, shared freeze,
+all visits, pullback, resumed gravity and every object landing/settling inside
+one generation segment. The 2026-11-15 correction above extends its start to the
+first-frame footwear reveal. Extra story follows only after that completion.
 Source A is the timing template: its actual roughly ten seconds include the
 fall and ground-level consequence, not just the suspended showcase.
 

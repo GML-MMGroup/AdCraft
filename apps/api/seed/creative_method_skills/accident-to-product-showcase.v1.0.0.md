@@ -9,8 +9,10 @@ core_principle: >
   Recreate the reference sequence: footwear-to-face tracking, visible contact/recoil,
   a moving-camera close-up tour of each distinct item, a pullback to the wearer,
   then resumed gravity and reaction. Even one advertised product needs supporting
-  belongings. Keep collision through all objects landing in one video segment,
-  even in a long ad; finish after every released item has settled on the ground.
+  belongings. Keep the first-frame footwear reveal through all objects landing
+  in one video segment, even in a long ad; finish after every released item has
+  settled on the ground. The footwear opening and rising reveal belong to that
+  same uninterrupted generation, not a separate setup node.
   Build a visual crescendo across visits. Identities and setting can change,
   while the multi-item discovery and complete incident remain recognizable.
 consumer_psychology: >
@@ -18,7 +20,8 @@ consumer_psychology: >
   lets the camera discover desirable details among familiar belongings, making
   the main product stand out before the falling objects complete the suspense.
 story_structure: >
-  Establish the wearer and three carried or worn items at normal speed; show
+  Open on the wearer's feet, track backward and rise to establish the wearer and
+  three carried or worn items at normal speed in the same video segment; show
   passing shoulder contact, slight backward recoil and open palms as the original
   items toss forward and upward; freeze them together; push
   into separate close views of A, B and C; pull back to the front medium view;
@@ -48,7 +51,8 @@ common_mistakes: >
   belongings with three views of the same product, contactless flight, unseen
   props appearing at freeze time, independently spawning each item, rotating
   products instead of moving the camera, disconnected inserts, omitting the
-  front-medium pullback, turning the recoil into a forward head dip and downward
+  front-medium pullback, separating the footwear opening from the incident,
+  turning the recoil into a forward head dip and downward
   slip, or never returning to the same landing and reaction.
 cross_category_examples: >
   Sunglasses: a wearer carries a neutral cup and loose shoulder bag; a passing shoulder brush releases all three, the camera visits the glasses hinge, cup rim and bag seam, pulls back and lets the same belongings land.
@@ -102,9 +106,10 @@ a slight backward recoil, hands instinctively spreading with open palms, and
 the original belongings tossing forward and upward. The passerby continues on
 their route when time resumes. Preserve the accidental startle, not a deliberate
 throw or shoulder charge.
-Allow a readable initial support state before the trigger, including at the
-start of a separately generated incident segment. Keep this causal setup in
-the selected story, segment start_state and downstream prompts.
+Reveal a readable initial support state as the opening camera rises from feet
+to the wearer, before the trigger. This opening and the incident share one
+generation. Keep the footwear-level start and rising reveal in the selected
+story, segment start_state and downstream prompts.
 Show normal support before the quick, continuous contact-recoil-release reaction.
 Freeze near the airborne crest with the carrier slightly leaning back, both palms
 empty and open toward the released items. Upward release is the approved visual
@@ -138,18 +143,24 @@ visit. For the three-slot tour, avoid unrelated studio inserts and three angles
 of only the main product. A sealed vessel keeps its seal unless its real
 mechanism and the approved action support an explicit opening before freeze.
 
-### Keep collision through all objects landing in one video segment
+### Keep the first-frame footwear reveal through all objects landing in one video segment
 
-Protect the complete incident as one video segment: visible contact/release,
+Protect the complete opening and incident as one video segment: the first frame
+shows the wearer's feet at footwear height, backward tracking rises to establish
+the wearer and supported belongings, followed by visible contact/release,
 simultaneous freeze, A/B/C visits, pullback, resumed fall, all ground contacts
 and settling. This includes every released supporting prop, bag, loose piece
-or spill, not only the advertised item. End with all objects grounded. No node
-boundary belongs inside this interval, even in a long advertisement.
+or spill, not only the advertised item. End with all objects grounded. The
+footwear opening is the start of the protected interval, not optional setup.
+No node boundary or stitched generation belongs anywhere between that first
+frame and the settled ending, including before contact, even in a long ad.
 
 Reserve the final two to three seconds for descent and settling before assigning
-the tour holds. Fit the full action within the current fifteen-second cap and
-confirmed total. Move extra setup before contact and later reaction or brand
-payoff after landing. Short internal visits are not separate generations.
+the opening and tour holds. Budget footwear tracking, the rising reveal and the
+complete incident together within the current fifteen-second cap and confirmed
+total. Further story, extended reaction or brand payoff can follow the settled
+ending in later segments. Do not move the opening to another node to make room.
+Short internal visits are not separate generations.
 Shorten static holds before removing travel or descent; explain an incompatible
 explicit duration instead of splitting the action or silently extending time.
 
@@ -159,8 +170,9 @@ enough time for the final descent and settling, then fit connected visits and
 a brief pullback into the remainder. Supporting-item dwells are brief; the
 advertised item receives the strongest detail emphasis. Adapt to the approved
 action and duration rather than imposing one timeline on every product.
-For an approved thirty-second ad: 0-7 extra setup; 7-22 one complete incident
-including landing; 22-30 reaction and brand payoff starting with grounded items.
+For a longer ad, allocate the footwear-to-landing opening as one generation
+first, then assign remaining time to the approved post-landing story and payoff.
+Rebalance internal timing rather than retaining separate setup and incident windows.
 Keep the main advertised item dominant regardless of its tour slot.
 
 ### Build a visual crescendo with real product details
@@ -185,7 +197,8 @@ fall on every story. The complete landing remains the action's resolution.
 
 ### Make the landed boundary explicit without pretending to lock frames
 
-Record the full protected action in narrative_goal, a pre-contact start_state
+Record the full protected action in narrative_goal, a footwear-level first-frame
+start_state with belongings still held or worn (possibly outside the opening crop),
 and a landed end_state: camera pose, wearer reaction and every item's grounded
 position, orientation and opening state. The following segment continues from
 that settled consequence, without replaying contact or descent. A storyboard
@@ -197,9 +210,11 @@ do not invent frame bindings or new frame-generation work for this method.
 ### Carry the complete action into production prompts
 
 The script, outline, storyboard and Video prompt must agree on the inventory,
-contact before release, shared freeze, visit order, continuous travel, pullback
-and landing-complete endpoint. Keep additional approved objects accounted for.
+footwear-level opening, uninterrupted rise, contact before release, shared freeze,
+visit order, continuous travel, pullback and landing-complete endpoint in the
+same segment. Keep additional approved objects accounted for.
 Timing/camera revisions reuse approved identities and replace stale instructions
-that stop at freeze, move frozen droplets, or reserve landing for another node.
+that split off the opening, stop at freeze, move frozen droplets, or reserve
+landing for another node.
 Review these links before returning text; this adds no paid visual check or
 backend rejection gate. Preserve speech, subtitles and actual product facts.
