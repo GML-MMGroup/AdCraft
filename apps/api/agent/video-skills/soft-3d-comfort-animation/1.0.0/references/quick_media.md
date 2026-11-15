@@ -3,3 +3,8 @@
 快速探索角色表情、柔软材质或一个安慰动作时，每次只改变一个变量。保留 rounded proportions、主色、接触关系和 warm light；变体用于比较动作或材质，不自动替换角色身份。
 
 先检查是否可辨认、可触碰、可回到主故事，再选择继续发展。
+
+## Optional motion study phrasing
+
+For a motion study, place the viewing plane before pressure and rebound only when needed
+to clarify contact. A still study can show a single supported soft pose.

@@ -3,3 +3,11 @@
 动作保持缓慢、完整且有重量，优先呈现按压、拥抱、递交、坐下和回弹。warm light 要保留柔和阴影而非过曝；镜头可轻微靠近，但不要用晃动制造亲密感。
 
 声音使用织物摩擦、轻放、脚步、呼吸和房间底噪。结果僵硬或过度弹跳时，降低动作幅度并恢复接触与重量。
+
+## Optional shot phrasing
+
+For a planned touch, "A held low close view watches the rounded form compress at the
+contact point and slowly recover" may be preferable to a push-in. If the camera eases
+closer, state that movement before the overlapping gesture. Keep soft weight, warm
+shadows and complete pauses; relative-direction wording should clarify contact without
+adding constant bounce or camera drift.
