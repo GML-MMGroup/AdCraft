@@ -4,7 +4,33 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest user-confirmed correction: an incidental passerby, not a second lead
+## Latest user-confirmed correction: staggered depth before camera traversal
+
+On 2026-11-15 the user identified a flat airborne display in project
+proj_fbba5ab434f95922. Its first grid's shared states, particularly panels 4 and 8,
+already stage the items mostly laterally; the generated video repeats weak depth
+separation around 4-6 seconds. The accepted provider prompt and upstream states
+place the drink left-front, earphone cable centrally and sunglasses right-front.
+One deeper detail description does not establish the group's complete depth map.
+This agreement suggests a prompt/reference contribution, not isolated causality.
+
+Source A shows a large near burger and a smaller, deeper cup; Source C lets near
+glasses overlap the cup with the wearer behind; Source D's revised tour passes a
+near cup/handle to reveal the phone beyond. These are observable perspective and
+occlusion cues, not recovered metric distances. Existing guidance already called
+for depth, parallax and foreground passes, but left initial staging underspecified.
+
+The correction replaces a planar inventory row with a bounded, staggered volume
+derived from supports and release paths. Carry relative item-to-item and wearer
+relationships from story through grid and video. Near/middle/far describe freeze
+onset; frozen world positions persist while camera-relative occlusion changes.
+Shared grid samples show the depth, and connected offset travel passes through
+the gaps. Background blur alone is insufficient. Product order, exact distances and
+straight-line travel are not standardized. Preserve the existing one-segment
+footwear-to-landing action and incidental passerby. No current canvas text or
+media was rewritten for this correction; generated effectiveness remains untested.
+
+## User-confirmed correction: an incidental passerby, not a second lead
 
 On 2026-11-15 the user clarified that the collision partner need not become a
 second designed character. Sources A and C use brief passing bodies, shoulders

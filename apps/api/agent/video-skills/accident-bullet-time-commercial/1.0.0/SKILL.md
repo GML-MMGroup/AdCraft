@@ -5,52 +5,50 @@ description: One continuous bullet-time product tour from first-frame feet throu
 
 # Accident Bullet-Time Commercial
 
-Use contact-triggered speed ramp and parallax-led product inspection: subjects
-freeze while the camera travels. Adapt casting, setting and medium to the approved
-story. Default to the product plus two distinct supporting items; an approved
-product set may fill those slots. Preserve additional approved props.
-
-Keep camera attention on the wearer. Passing contact gets no separate
-introduction; the route determines the passerby's visible face or back.
+Use contact-triggered speed ramp and parallax-led product inspection: freeze
+subjects while the camera travels through their space. Adapt casting,
+setting and medium to the approved story. Default to the product plus two distinct
+supporting items; an approved product set may fill those slots. Preserve extra props.
+Keep attention on the wearer; the passing route determines face/back visibility,
+without a separate introduction.
 
 ## Choreography and visual intensity
 
-1. Open the first frame on the wearer's feet. Track backward at footwear height
-and rise continuously within this same video segment to establish the carrier, items
-and passing route. Incidental shoulder contact triggers slight backward recoil,
-instinctively open palms and the original belongings tossing forward and upward.
-Keep the reaction quick and modest; the airborne items supply the spectacle.
-2. Freeze that backward lean and open empty hands near the items' airborne crest.
-The vacated shoulder stays empty too; worn and airborne views depict the same
-item at different times. Crumbs, condensation or fabric follow the action.
-A splash needs an already open vessel; a sealed one retains its closure.
-3. Travel continuously through the shared frozen space, visiting each item.
-Vary distance, height and angle with continuous camera roll and foreground passes.
-Accelerate into a visit, slow to read detail, then accelerate out. Continuity does
-not require a level horizon, constant speed or frontal views.
-4. Make one item dominant per visit; other subjects may leave the close crop.
-Pass foreground edges to reveal depth. Give the product the strongest emphasis
-while retaining confirmed order. A/B/C are visit slots, not fixed products.
-5. Briefly reconnect with the wearer through a continuous pullback.
-Return to gravity without pausing for a second establishing shot. Follow all items down,
-show their contacts and settling, and reveal the approved physical reaction.
+1. Open on the wearer's feet, track backward low and rise in this same segment
+to reveal the carrier, supported items and passing route. Incidental shoulder
+contact causes slight backward recoil, open palms and the original items tossing
+forward/upward. Keep the reaction quick and modest; objects supply the spectacle.
+2. Freeze near the airborne crest with empty hands and vacated supports.
+Derive a bounded, staggered volume from those supports and release paths, with
+depth, height and lateral offsets rather than a flat left/center/right display.
+Define relative near/middle/far at this viewpoint; perspective and partial overlap
+make the separation visible. Choose the layout for the objects and action, without
+equal spacing or a fixed product order. Carry the map through script, grid and video.
+3. Travel between item depths through offset gaps, passing near edges to reveal
+the next item where useful. Vary height, angle and camera roll. Accelerate into
+a visit, slow for detail, then accelerate out. Sideways scanning, isolated zooms
+or background blur alone cannot establish this traversal.
+4. Make one item dominant per visit; others may leave the crop. Give the product
+the strongest emphasis and preserve confirmed order; A/B/C are visit slots,
+not mandatory near-to-far positions. Continuity permits varied horizons and speed.
+5. Pull back continuously to reconnect with the wearer, then return to gravity.
+Follow every item through ground contact and settling into the approved reaction.
 
 ## Continuity and completion
 
 Keep the first-frame footwear reveal through all objects landing in one video
-segment: low tracking, rising reveal, contact, release, shared freeze, all visits,
-pullback, descent, contacts and settling. Do not generate the opening separately
-or stitch to a second incident clip.
+segment, including the rise, contact, release, tour, pullback and settling.
+Do not generate the opening separately or stitch to a second incident clip.
 Reserve the final two to three seconds for landing; fit the whole interval
 within the generation cap (currently fifteen seconds) and confirmed total.
 Further story/payoff starts after settling. Shorten holds rather than splitting
 before contact; disclose incompatible timing instead of silently exceeding it.
 
-Lock subject positions, orientations, closures and suspended material in world
-space during freeze; screen position and occlusion follow camera motion. Preserve
-geometry, identity and one instance per item; perspective supplies apparent scale.
-Avoid disconnected inserts, hidden cuts and uniform frontal inventory scans.
-An intact landing is not evidence for a durability claim.
+Lock bodies, head, gaze, object poses, closures and suspended material in world
+space; screen position, apparent size and occlusion follow the moving viewpoint.
+Keep geometry, identity and one instance per item; vacated supports stay empty.
+Crumbs or fabric follow the action; a splash needs an already open vessel.
+Avoid hidden cuts or disconnected inserts. A landing does not prove durability.
 
 The grid is an off-screen story-process reference, not a first/last-frame target.
 Start in the full-frame scene; panels sample events, not mandatory cuts or framing.

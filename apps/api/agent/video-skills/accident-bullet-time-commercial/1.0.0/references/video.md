@@ -1,50 +1,46 @@
 # A readable accident and one continuous camera path
 
 Use the approved item map and visit order. Keep the first-frame footwear reveal
-through all objects landing in one video segment within its confirmed duration
-and fifteen-second cap. No split before contact or separately generated opening.
-Reserve two to three seconds for descent and settling. Show initial support
-before contact; contact/recoil/release is quick, stretching only the airborne instant.
+through all objects landing in one video segment within the confirmed duration
+and fifteen-second cap. No separate opening; reserve two to three seconds for
+landing. Show initial support before contact. Keep contact/recoil/release quick;
+stretch only the airborne instant.
 
-The first frame shows the wearer's feet, grounded and moving at normal speed.
-Track backward low and rise continuously to reveal the wearer and belongings,
-reaching a readable medium view of the supported starting state before contact.
-Retain supplied positions and carrying side; distinguish observed and planned
-endings. An anonymous passerby needs no separate reference or identity ID.
-Preserve an approved supporting cast; references do not require face presentation.
-Keep camera attention on the wearer, not a passerby introduction or face reveal.
+Open on grounded feet at normal speed. Track backward low and rise to a readable
+medium view of the wearer and supported items. Keep supplied positions/carrying
+side; distinguish observed and planned endings. An anonymous passerby needs no
+reference or identity ID. Preserve approved cast without forced face presentation;
+camera attention stays on the wearer, without a passerby introduction.
 
 Set independent walking routes, gaze, headings, contact side and exit. With a
-frontal retreating camera, opposing passage can enter the foreground edge with
-back/shoulder visible and move into depth. Approach from behind can show a face;
-establish relative speed and narrowing clearance before contact. Side crossings
-also work. Choose one coherent route; no forced back view or frontal ban, and
-no turning or stopping for identification. The brief shoulder brush causes
-slight backward recoil, open palms and original items tossing forward/upward,
-not a deliberate throw. The passerby follows that route when time resumes.
+frontal retreating camera, opposing passage shows back/shoulder moving from
+foreground into depth. Approach from behind may show a face; establish relative
+speed and narrowing clearance before contact. Side crossings also work. No
+turning or stopping for identification. The brief brush causes slight backward
+recoil, open palms and original items tossing forward/upward, not a deliberate
+throw. The passerby continues their route when time resumes.
 
-Freeze near the crest with a slight backward lean and both empty palms visible.
-Preserve expressive upward release and attached parts, not a downward slip or
-head dip. One released item has one position: an airborne bag has no worn copy;
-an airborne phone stays out of both hands through the tour.
-
-Lock item positions, orientations, closures and body poses in world space.
-Freeze head and gaze too; reactions begin when time resumes. The vacated support
-stays empty, and offscreen items retain their mapped states. Product references
-govern design, character references identity, and the approved action possession.
-Preserve expressive fabric or droplets; a splash needs an established open source.
+Freeze near the crest with slight backward lean and empty palms, not a head dip
+or downward slip. Use the outline/grid's staggered volume, deriving unspecified
+depths from initial supports and release paths. Name near/middle/far relative to
+freeze onset, with height/lateral offsets and item-to-wearer relationships. A flat
+left/center/right row is insufficient; no equal spacing or fixed product order.
+Lock positions, orientations, closures, body, head and gaze in world space.
+One item has one location; the vacated support stays empty. Keep attached parts
+and offscreen states. Camera motion changes apparent size and overlap, not
+geometry or frozen positions. References govern design/identity; action governs
+possession. A splash needs an established open source. Reactions start when time resumes.
 
 For the medium-to-close bridge, retain an intermediate view of item, empty support
-and landmark. Approach as the item grows and background slides away; visibly
-travel before revealing a new side. Follow gaps with continuous parallax; the
-outgoing item passes an edge as the next appears. Move beside solid objects.
-
-Accelerate in transit, decelerate for one readable detail, then accelerate onward.
-Keep supporting visits brief and the advertised product dominant. Vary depth and
-height, camera roll and arc movement along the connected route. Build visible
-near/far travel and foreground passes, not separate portraits. People may leave
-close crops. Subjects keep orientation; proximity produces
-scale changes. Transit blur is restrained and detail dwells remain crisp.
+and landmark. Establish depth through perspective and partial overlap, not only
+background blur. Connect visits by advancing/retreating with lateral or vertical
+offset through gaps: an outgoing item edge can pass near the lens to reveal the
+next item deeper inside. Keep this physical route compatible with the approved
+order, without requiring near-to-far visits. Travel beside solids before showing
+a new side; avoid lateral scans or isolated zooms as the whole tour.
+Accelerate in transit, slow for detail, then accelerate onward; vary height,
+camera roll and arcs. Keep supporting visits brief and the product dominant.
+Others may leave close crops. Restrain transit blur and keep detail dwells crisp.
 
 Pull back continuously, restore gravity and follow every item through settling.
 Foley follows physical contact timing. Preserve the approved reaction and landed
