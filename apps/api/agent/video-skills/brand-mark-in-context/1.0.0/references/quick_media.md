@@ -3,3 +3,8 @@
 快速探索品牌形状与环境、产品或动作的关系时，只改变一个回响变量，并保留已确认资产的比例与颜色。变体用于比较 environmental integration 和识别层级，不自动产生新的品牌标志。
 
 先看产品是否仍可读，再看品牌记忆点。
+
+## Optional motion study phrasing
+
+For a video alignment study, separate viewpoint movement from the existing brand shape.
+A still-image study needs only the angle, occlusion and visible mark state.
