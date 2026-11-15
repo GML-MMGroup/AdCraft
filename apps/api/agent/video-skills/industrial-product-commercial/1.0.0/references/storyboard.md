@@ -4,3 +4,11 @@ Choose engineering form, functional detail and physical feedback to clarify the 
 
 正例：稳定全景建立工作空间，近景展示一个接口动作，中景显示反馈和结果，再回到完整设备。
 反例：同时切换设备形态、工件位置和观察方向，导致功能演示无法复核。
+
+## Optional viewpoint clarification
+
+Choose the functional evidence, then set a view that exposes its interface and support.
+Record input, moving component, contact and feedback without changing equipment
+geometry. Separate a workpiece advancing along a rail from a camera following the rail.
+Stable inspection views and explicitly identified explanatory sections are valid
+coverage.
