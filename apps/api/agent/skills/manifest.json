@@ -12,12 +12,12 @@
     },
     {
       "path": "brand_agent_creative_treatment/SKILL.md",
-      "sha256": "6d4e31ba62e87fcbf2cfeba89d9373b1f9ce83810e34eced8d3c16269f92b7e7",
+      "sha256": "8503345d713977d51e6254171ec23efaeab508c18eee3dfdf33862ef66a7bceb",
       "skill_id": "brand_agent_creative_treatment"
     },
     {
       "path": "brand_agent_full_script/SKILL.md",
-      "sha256": "5cd8e104bd8fbb993074ba9f1ca0023425011517e5e89d3eecb718c2c4fc65e8",
+      "sha256": "9b8be9416c024e066a8f6a26e148be5213e29a8bb7f23b9a2ab602dc0052ba4b",
       "skill_id": "brand_agent_full_script"
     },
     {

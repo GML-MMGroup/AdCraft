@@ -52,6 +52,11 @@ production_requirements. Count distinct identities once across shots. Resolve
 character_count and scene_presence, including explicit absence for a film with
 no characters or locations. Summaries describe each identity or space for later
 prompt authoring. Treat the advertised product separately from optional props.
+Distinguish independently designed cast from anonymous background extras allowed
+by the story. Describe such extras in action without adding Character roster
+entries or requesting Main/Turnaround assets. Retain confirmed cast and speaking
+or recurring identities. State the distinction in the cast declaration and
+preserve any explicit total-person limit or prohibition on background people.
 
 Classify physical objects in production_requirements.objects. For each, name its
 identity and scene function, quote its screenplay evidence, and assign ownership:
