@@ -20,11 +20,13 @@
   "files": {
     "SKILL.md": "130745d8dfd802fd773c44a28382557b6aaff8a968579052c0ea4f4211f1dc77",
     "references/bgm.md": "8f8f60e2eedc9de2ec85ce5d169567db5b199b1f8da857b5d52c15152832dc0e",
-    "references/video.md": "1971b6544d044564377915686c40ec2a4f21587861ec27aab3851865200e3b9b",
-    "previews/preview.webp": "3a00c12b6ea941e94bf978f669d749813db6c931bfde3a8c578408bb2244e7dd"
+    "references/video.md": "be82cf1d4bd1ca79a1a8ca384f0b361bf724c7005cc99a93515d0439d1b3e6ea",
+    "previews/preview.webp": "3a00c12b6ea941e94bf978f669d749813db6c931bfde3a8c578408bb2244e7dd",
+    "references/storyboard.md": "235fdade8ded248fd342320fd44e71be8c819f5d23fa67db20fcbe054f1476ca"
   },
   "role_guidance": {
     "bgm": "references/bgm.md",
-    "video": "references/video.md"
+    "video": "references/video.md",
+    "storyboard": "references/storyboard.md"
   }
 }
