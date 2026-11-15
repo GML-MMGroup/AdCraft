@@ -3,3 +3,9 @@
 快速探索纸纹、边缘、色块或一个拼合动作时，只改变一个材料或运动变量。保留产品、角色和主视线；变体用于验证层级、触感或节拍，不自动替换正式资产。
 
 比较时先看遮挡顺序和主体可读性，再看纹理丰富度。
+
+## Optional motion study phrasing
+
+For a motion study, specify the flat viewing window before the moving paper layers. For
+a still composition, use one layer arrangement rather than adding physical camera
+motion.
