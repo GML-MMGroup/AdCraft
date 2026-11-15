@@ -21,3 +21,11 @@ stillness for recognition. Other segments keep their assigned local ending.
 If native environmental sound is requested, use delicate synchronized
 sifting, bristle contact, soft crumb movement, or gentle tool contact. Keep
 silent segments silent and follow the established audio mode.
+
+## Optional shot phrasing
+
+If a lateral macro move is already useful, lead with it: "A slow track along the flaky
+ridge holds the contact plane while the brush bends against the surface." For sifting or
+a deposited coating, a locked view may show causality better. Specify whether the
+camera, tool or ingredient moves; keep warm texture, patient timing and usable focus
+rather than adding perpetual rack focus or orbiting.
