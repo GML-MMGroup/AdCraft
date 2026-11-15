@@ -3,3 +3,9 @@
 快速探索一个身份母题、现实层材质或匹配转场时，只改变一个维度，并保留角色身份与核心物件。明确变体是在验证形状、触发动作还是现实规则，不把试验画面写回权威角色事实。
 
 比较时优先检查可追踪性和回收可能性。
+
+## Optional motion study phrasing
+
+For a transition study, identify the subjective view and identity motif before the
+change. Distinguish a graphic match cut from in-shot transformation; a still study
+captures only one state.
