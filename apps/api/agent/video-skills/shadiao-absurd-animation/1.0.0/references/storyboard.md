@@ -10,3 +10,10 @@ reaction treatment. Keep the output medium consistent and preserve deliberate
 state changes. Opening gags and final payoffs belong where the whole story places
 them, not automatically in the first and last cell of every grid. Carry captions,
 sound and finishing instructions separately from generated panel imagery.
+
+## Optional viewpoint clarification
+
+Set the graphic viewpoint and main silhouette before the approved squash, stretch or
+ordinary reaction. Track the cause, expressive extreme and resulting state without
+confusing a zoom with bodily expansion. Panels may sample one held gag or several
+deliberate cuts. Preserve flat-color clarity and the approved product identity.
