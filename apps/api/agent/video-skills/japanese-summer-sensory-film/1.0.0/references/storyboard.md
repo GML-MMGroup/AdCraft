@@ -19,3 +19,11 @@ which can find a natural camera path while preserving the approved action.
 Reserve a calm ending view with clear merchandise and space for authorized
 brand text if needed. Keep panels text-free and record exact lettering,
 placement, and readable hold time in the designated handoff fields.
+
+## Optional viewpoint clarification
+
+Set the viewing distance and light direction before the sensory gesture. Distinguish
+wind-driven fabric or water motion from camera movement; a held tactile frame may carry
+both atmosphere and actual use. Keep contact, closure state and ownership consistent.
+Environmental views and human responses retain the approved rhythm rather than becoming
+one continuous approach.
