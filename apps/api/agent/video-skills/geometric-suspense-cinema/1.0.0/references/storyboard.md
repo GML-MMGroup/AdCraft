@@ -3,3 +3,11 @@
 每个镜头注明观众位置、可见信息、遮挡边界、主体方向和母题状态。controlled viewpoint 的切换必须对应新证据；关键帧覆盖进入遮挡、揭示瞬间和揭示后的空间关系。
 
 用构图对齐、视线、反射或同向移动转场。检查左右关系、镜面反射和消失点是否一致，避免剪辑后空间无法复原。
+
+## Optional viewpoint clarification
+
+Start with the audience viewpoint, vanishing point and occluding boundary. Then place
+the subject and evidence relative to those lines. Distinguish uncovering by camera
+movement from uncovering by a subject leaving the frame. Preserve mirror geometry and
+explicitly planned viewpoint changes; a fixed frame can still reveal new spatial
+information.
