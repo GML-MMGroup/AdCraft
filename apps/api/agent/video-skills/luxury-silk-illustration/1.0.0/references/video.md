@@ -4,3 +4,11 @@
 
 正例：手部从画面边缘拉开丝绸，褶皱按顺序展开，镜头沿高光移动，结尾露出产品全貌。
 反例：布料瞬间复制、穿模或失去纹理，镜头只剩装饰线而没有主体。
+
+## Optional shot phrasing
+
+When a fabric reveal is planned, "A held frontal composition contains the silk drawing
+toward screen-left; folds propagate from the existing traction point and expose the
+product" may be enough. If the view follows a flowing ornamental line, name that
+movement before the unfolding. Preserve silk weight and refined color fields; do not
+convert illustration into handheld footage or make cloth and camera orbit together.
