@@ -13,6 +13,8 @@ core_principle: >
   in one video segment, even in a long ad; finish after every released item has
   settled on the ground. The footwear opening and rising reveal belong to that
   same uninterrupted generation, not a separate setup node.
+  Default to one designed protagonist and an anonymous passing extra, not a
+  second designed character or face-reveal beat. Preserve an approved cast.
   Build a visual crescendo across visits. Identities and setting can change,
   while the multi-item discovery and complete incident remain recognizable.
 consumer_psychology: >
@@ -32,6 +34,8 @@ hook_methods: >
   cause is readable and the frozen objects were already present in ordinary life.
   Give both people independent walking routes and destinations; contact results
   from their intersecting paths while their gaze and movement still serve those destinations.
+  A brief back, side or partial view can establish the passerby. A naturally
+  visible face is allowed; no separate introduction or front-facing pose is needed.
 product_role: >
   One supplied product remains the commercial hero among three distinct items.
   Add two context-appropriate supporting belongings in the story and prop-design
@@ -52,6 +56,7 @@ common_mistakes: >
   props appearing at freeze time, independently spawning each item, rotating
   products instead of moving the camera, disconnected inserts, omitting the
   front-medium pullback, separating the footwear opening from the incident,
+  promoting an incidental passerby to a second lead, bending routes to show faces,
   turning the recoil into a forward head dip and downward
   slip, or never returning to the same landing and reaction.
 cross_category_examples: >
@@ -75,6 +80,34 @@ product, supporting belongings, location and an explicitly selected animation
 medium can change while that structure remains recognizable.
 
 ## How To Execute
+
+### Keep the passerby incidental
+
+For an open cast, design the protagonist and describe the collision partner as
+an anonymous background extra in the action. A brief back, shoulder, side or
+partial silhouette is enough. Do not add a second named identity, Character
+Main, Turnaround or reference binding solely to perform the passing contact.
+In production inventory, list the identities needing independent design in
+characters; describe the anonymous extra separately in the story, not as an
+extra roster entry. Do not invent dialogue, a biography or a later subplot to
+justify that entry. Preserve explicitly selected characters and approved later
+speaking, recurring or reversal roles; this default does not delete them or
+bypass an explicit total-person limit or prohibition on background people.
+
+Choose routes before face visibility. With a camera retreating in front of the
+protagonist, an opposing passerby can enter from the camera-side foreground and
+continue toward the background, showing mostly back or shoulder. A passerby
+approaching from behind can face the camera while catching up along an offset
+lane. Show the relative speed and narrowing clearance that cause the brush;
+same-direction motion alone is not contact. Side crossings can work too.
+Keep the chosen route, body heading, gaze, contact side and exit consistent with
+the camera path. No route is mandatory, and a natural frontal glimpse is allowed.
+
+Camera attention remains on the protagonist and belongings. Do not pause, turn
+the passerby, create a companion-like two-person portrait or add an introduction
+to exhibit their face. Show the contact clearly without requiring a full-body
+or facial presentation. A supplied character reference fixes identity, not
+framing or visibility. Later approved dialogue may receive its own coverage.
 
 ### Establish three distinct belongings even for a single-product brief
 

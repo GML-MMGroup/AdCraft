@@ -2,7 +2,7 @@
   "skill_id": "accident-bullet-time-commercial",
   "version": "1.0.0",
   "display_name": "Accident Bullet-Time Commercial",
-  "description": "Accidental bullet-time advertising in one continuous video segment from the first-frame footwear reveal, rising to the wearer, through passing contact, airborne release, a frozen-space product tour and every item landing. Preserve one instance of each item; keep the opening and incident together.",
+  "description": "One continuous bullet-time product tour from first-frame feet through accidental contact and every item landing. Default to one designed protagonist and an anonymous passing extra; route and camera determine face visibility, without a separate character introduction.",
   "content_locale": "en-US",
   "category": "commercial-craft",
   "tags": [
@@ -21,24 +21,24 @@
   ],
   "preview": {
     "kind": "image",
-    "summary": "From feet in the first frame, the camera rises to the wearer, follows an accidental release and traverses frozen belongings until every item lands, all in one generated segment.",
+    "summary": "First-frame feet, a brief incidental passerby, continuous frozen-product travel and every item landing in one segment. No separate supporting-character introduction.",
     "media_url": "/api/v2/video-skills/accident-bullet-time-commercial/preview?v=1.0.0"
   },
   "display_order": 90,
   "allows_meme_captions": false,
   "allows_comedic_sound_effects": true,
   "files": {
-    "SKILL.md": "dcafe9b86598a24c798d5bf679d796b085a87704ad7a071301ea6aaaa7486d40",
+    "SKILL.md": "35099def22667036bf9f2c4406ff1c871a2be8ebcae047c0120a61c60be68f6b",
     "previews/preview.webp": "75f2f37d47cc0f923607c51c01c3e769c7b7e7de1b925b82f28df1ecb1b7c354",
     "references/bgm.md": "fb0b656d46dbd1990311cc6ee0780b7dbac1b497dacda5b5df218aadd0fcd117",
-    "references/character.md": "1e1ab326f1372a21a8df5a90dc0b62ff6932971155a1756886c4b4b266a7af77",
+    "references/character.md": "2f9dbdb8b6423dec46fb1a27b1c3a688bcc4bbbb6a2bcc85285365e726d8c499",
     "references/product.md": "373b3605a6418aff111075d5221a0636b3af10f69f369c89f8cc34f6a2ba3bfb",
     "references/prop.md": "8b1591737bce307f282865696211e456eeb8d11dcf090801cde18303b0170c2a",
     "references/scene.md": "b9a517debff070ab30b1b6a1d42727ebbbbeb3fc6c4f4a989d1f2ff4593f57a2",
-    "references/script.md": "d61fec57a3eafb05ed7dc544918bc4979aeebbb00d70b9c710efafd4770fc017",
-    "references/source-analysis.md": "22626e7f14487e29118cf746b04dd839bbe04b23138d3a1a53896df512cbe0ba",
-    "references/storyboard.md": "dff6d1d1b8dcfa7e5c4fbfdecfd80ca56711cc1c7357541b6866edcebcf18b11",
-    "references/video.md": "ff1689c6798b30a4e7479ca9c9151e1a80c3dc3e702ad885627a41a63ea00294"
+    "references/script.md": "d2efc26165a163ef12ce91e801179ea2c9fddeb573034a5fbf943058aeea6eb0",
+    "references/source-analysis.md": "8e7489fc785505b16ca2e46704785c3e4559fd908179c819bf346469e2e303ea",
+    "references/storyboard.md": "2196df2a0967ea0b1a19f14bfda6b517d158824a4ed39a27d8401b5258630e4c",
+    "references/video.md": "96e5d8456e536cdf06a644dd369f92b665029d6378553b998a6a383f5f9a552a"
   },
   "role_guidance": {
     "script": "references/script.md",

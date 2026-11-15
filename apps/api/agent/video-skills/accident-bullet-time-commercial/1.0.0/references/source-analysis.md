@@ -4,7 +4,30 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest user-confirmed correction: one generation from feet to settled landing
+## Latest user-confirmed correction: an incidental passerby, not a second lead
+
+On 2026-11-15 the user clarified that the collision partner need not become a
+second designed character. Sources A and C use brief passing bodies, shoulders
+or backs while the camera remains with the protagonist. Read-only inspection of
+the latest luxury and burger projects found companion-like two-person framing;
+the luxury grid already encoded similar headings before the Video followed it.
+The inspected prompts did not require a frontal face. References may contribute
+visual bias, but that influence was not isolated in a controlled experiment.
+
+The correction defaults an open cast to one designed protagonist plus anonymous
+background action, without a separate Main, Turnaround or identity binding for
+the passing extra. It supersedes any assumption that a shoulder brush requires
+two independently designed identities. Preserve explicit cast choices and
+approved later dialogue/recurring roles. This is not a global one-person limit.
+
+Opposing passage and approach from behind are both valid. With a frontal
+retreating camera, opposing passage can show the passerby's back from foreground
+into depth; an approach from behind can show a face while relative speed and
+offset paths produce the contact. Visibility follows the route. Do not impose a
+back-only rule, rotate a body to display identity, or pause for an introduction.
+The protected first-frame-feet through settled-landing interval remains intact.
+
+## User-confirmed continuity: one generation from feet to settled landing
 
 On 2026-11-15 the user extended the protected interval to the first frame showing
 the wearer's feet, citing Sources A and C. Low backward tracking, the rising

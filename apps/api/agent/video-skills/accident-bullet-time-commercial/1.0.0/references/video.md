@@ -4,26 +4,29 @@ Use the approved item map and visit order. Keep the first-frame footwear reveal
 through all objects landing in one video segment within its confirmed duration
 and fifteen-second cap. No split before contact or separately generated opening.
 Reserve two to three seconds for descent and settling. Show initial support
-before contact, then let contact, recoil and release be one quick readable reaction.
-Stretch the airborne instant, not a mandatory three-second contact demonstration.
+before contact; contact/recoil/release is quick, stretching only the airborne instant.
 
 The first frame shows the wearer's feet, grounded and moving at normal speed.
 Track backward low and rise continuously to reveal the wearer and belongings,
 reaching a readable medium view of the supported starting state before contact.
-Continue supplied prior positions, headings and carrying side; distinguish an
-observed ending from a planned one. Independent walking routes, gaze and stride
-serve separate destinations. An incidental outer-shoulder brush triggers a slight
-backward lean, arms opening a little and open palms instinctively spreading. The
-same belongings toss forward and upward as the carrier loses balance. Hands
-open from the involuntary reaction, not an intentional throwing gesture. Establish
-that airborne state before accelerated camera travel.
+Retain supplied positions and carrying side; distinguish observed and planned
+endings. An anonymous passerby needs no separate reference or identity ID.
+Preserve an approved supporting cast; references do not require face presentation.
+Keep camera attention on the wearer, not a passerby introduction or face reveal.
+
+Set independent walking routes, gaze, headings, contact side and exit. With a
+frontal retreating camera, opposing passage can enter the foreground edge with
+back/shoulder visible and move into depth. Approach from behind can show a face;
+establish relative speed and narrowing clearance before contact. Side crossings
+also work. Choose one coherent route; no forced back view or frontal ban, and
+no turning or stopping for identification. The brief shoulder brush causes
+slight backward recoil, open palms and original items tossing forward/upward,
+not a deliberate throw. The passerby follows that route when time resumes.
 
 Freeze near the crest with a slight backward lean and both empty palms visible.
-Allow the approved expressive upward release, including from a low hand; preserve
-the product's structure and the connection of its strap or attached parts. Each
-released item has one position: an airborne bag has no worn counterpart and an
-airborne phone stays out of both hands through the tour. Do not substitute a
-downward-only slip or forward head dip.
+Preserve expressive upward release and attached parts, not a downward slip or
+head dip. One released item has one position: an airborne bag has no worn copy;
+an airborne phone stays out of both hands through the tour.
 
 Lock item positions, orientations, closures and body poses in world space.
 Freeze head and gaze too; reactions begin when time resumes. The vacated support
@@ -31,31 +34,28 @@ stays empty, and offscreen items retain their mapped states. Product references
 govern design, character references identity, and the approved action possession.
 Preserve expressive fabric or droplets; a splash needs an established open source.
 
-For the medium-to-close bridge, keep an intermediate view of the released item,
-empty support and landmark. Approach continuously; the item grows while people
-and background slide away. Travel visibly before revealing another side. Follow
-one traversable route through gaps, with continuous parallax; the outgoing item
-passes an edge as the next comes into view. Move beside solid objects.
+For the medium-to-close bridge, retain an intermediate view of item, empty support
+and landmark. Approach as the item grows and background slides away; visibly
+travel before revealing a new side. Follow gaps with continuous parallax; the
+outgoing item passes an edge as the next appears. Move beside solid objects.
 
 Accelerate in transit, decelerate for one readable detail, then accelerate onward.
 Keep supporting visits brief and the advertised product dominant. Vary depth and
 height, camera roll and arc movement along the connected route. Build visible
-near/far travel and foreground edge passes instead of separate frontal product
-portraits. People may leave close crops. Subjects keep orientation; proximity produces
+near/far travel and foreground passes, not separate portraits. People may leave
+close crops. Subjects keep orientation; proximity produces
 scale changes. Transit blur is restrained and detail dwells remain crisp.
 
-Reconnect through a short continuous pullback, then restore gravity and follow
-all items to contact and settling. Foley follows actual contact timing, not an
-arbitrary order that contradicts height and motion. Preserve the approved reaction
-and landed end_state for the next segment. A body fall is optional.
+Pull back continuously, restore gravity and follow every item through settling.
+Foley follows physical contact timing. Preserve the approved reaction and landed
+end_state for the next segment; a body fall is optional.
 
 Write chronologically: first-frame feet, backward tracking/rise, trigger/release/freeze,
 connected visits, pullback, landing. Attach constraints to their beats; replace
 stale conflicts. Start_state opens at footwear level; end_state has every item
 settled. Later segments begin there, without repeating the reveal or fall.
 The grid is an off-screen story-process reference, not a first/last-frame target,
-collage or set of edit points. Written
-opening states do not provide native first-frame control or numeric image weight.
-Record visible reference conflicts in production_handoff without claiming they
-were corrected or adding an automatic review or rerun. Preserve speech/subtitle
-choices; Video owns ambience and foley, while BGM remains separate.
+collage or edit points. Written states do not supply native first-frame control
+or image weight. Record visible reference conflicts in production_handoff without
+claiming correction or adding a review/rerun. Preserve speech/subtitle choices;
+Video owns ambience and foley, with BGM separate.

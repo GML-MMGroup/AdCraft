@@ -18,35 +18,35 @@ Stage causal samples first. For the usual nine-panel incident, allocate:
 These are unequal-time samples, not nine cuts. Prioritize ambiguous transitions
 over repeated beauty angles. Depict contact; a caption is insufficient.
 
-Match supplied prior positions, headings, carrying side and camera side in the
-footwear opening and rise; do not substitute a medium shot or airborne panel.
-Distinguish observed prior endings from planned states. Establish
-independent walking routes with gaze and stride toward separate destinations;
-limited clearance triggers a slight backward lean, arms opening a little and
-palms spreading. Original belongings toss forward and upward in that involuntary
-reaction, then freeze near the airborne crest. Preserve this expressive release,
-rather than a forward head dip or downward-only slip. The strap leaves the shoulder
-with its bag, both ends attached. Show one airborne bag and an empty shoulder,
-not a carried counterpart; phone details show free space, not gripping fingers.
+Keep the footwear opening, supplied positions and carrying side. Distinguish an
+observed prior ending from a planned state. The anonymous passerby needs no
+Character reference or invented identity ID. Use brief back, side or partial
+coverage, without a face-reveal panel or companion-like two-person portrait.
+Preserve an approved independent supporting role and any later performance.
+
+Set independent walking routes, gaze, body heading, contact side and exit before
+framing. With the camera retreating in front of the wearer, opposing passage
+enters from the foreground edge showing back/shoulder and continues into depth.
+Approach from behind may show a face; show relative speed and narrowing clearance
+to motivate contact. Side crossings are also valid. Derive visible faces from
+these routes; do not rotate a passerby or redirect the camera to exhibit identity.
+Depict the brush, slight backward lean, open palms and original items tossing
+upward, then freezing near the crest. No deliberate charge or downward-only slip.
 
 Choose the frozen map once in world space. Freeze bodies, head and gaze with
 items in the recoil pose; new reactions start when time resumes.
 The vacated support stays empty. Each visible item occurs once per panel.
-Assign each item one state per panel: carried, airborne or grounded.
-Reference angles and earlier states do not add copies.
-Carry attached parts and offscreen states forward. Bound products govern design,
-character sheets identity, and the action possession; incidental accessories
-cannot restore an earlier state. Use actor-relative directions and landmarks.
-Camera proximity changes apparent size; objects keep size and orientation.
+Each item is carried, airborne or grounded; earlier reference states add no copies.
+Carry attached parts and offscreen states forward. Products govern design,
+character sheets identity, action possession. Use actor-relative directions and
+landmarks. Proximity changes apparent size, not geometry or orientation.
 
 Use the shared frozen view as the intermediate medium-to-close approach sample:
 released item, former support and one background landmark remain visible.
-Approach on the same side before visibly travelling to a new side. Plan a
-traversable route through gaps, with continuous parallax and occlusion. Let the
-outgoing subject leave frame naturally. Accelerate in transit, briefly slow to
-read each detail, then accelerate onward. Use depth travel, height changes,
-camera roll and arcs as the route needs; continuity does not mean gentle motion.
-Pass foreground edges to reveal the next item deeper in the same scene.
+Approach on the same side, visibly travel through gaps to a new side, with
+continuous parallax and occlusion. Accelerate in transit, slow to read detail,
+then accelerate onward. Use depth, height, camera roll and arcs; pass foreground
+edges as the outgoing subject leaves frame and the next appears deeper inside.
 
 Each visit reveals a real material detail; give the product the strongest scale
 or dwell. Close crops may exclude people and other items. Preserve identity and
