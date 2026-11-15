@@ -22,3 +22,11 @@ Retain nine ordered panels for the current sequence. Several panels can show
 successive states of one beat; their count does not require nine cuts. Preserve
 the sequence's local start and end states, including unresolved tension when
 the payoff belongs later. Adapt framing to the requested frame shape.
+
+## Optional viewpoint clarification
+
+For dialogue coverage, state the camera side and listener relationship before the
+accusation or response. Opposing eyelines remain consistent through reverse angles.
+Distinguish a tighter cut from a push during a line. At an approved sales handoff, mark
+the change to looking into the lens; the technique must not advance that handoff or
+remove reaction coverage.

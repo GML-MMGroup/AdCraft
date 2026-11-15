@@ -34,3 +34,12 @@ Exclude background music from the video prompt; the BGM role owns it. Respect
 the chosen audio mode, including silence. Do not invent an exact tune or
 source sound from the visual reference. Overlay text belongs to the approved
 editing plan unless the current output contract explicitly permits it.
+
+## Optional shot phrasing
+
+When a push supports an approved line, describe it within the speaking shot: "A
+restrained push toward the speaker continues while they address the listener just off
+lens; cut to the listener's reaction after the line." Preserve the actual words and
+timing. Reverse shots and held confrontation frames remain central options; do not turn
+the exchange into one continuous orbit or direct-to-camera acting before the sales
+handoff.
