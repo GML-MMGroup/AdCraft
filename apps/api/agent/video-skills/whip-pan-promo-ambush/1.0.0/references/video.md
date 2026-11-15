@@ -31,3 +31,12 @@ the apparent emergency. Honor requested silence; when speech is absent,
 carry the full offer through the approved graphic handoff. The separate BGM
 role owns the score. Exact promotional typography and conditions belong in
 the authorized editing plan.
+
+## Optional shot phrasing
+
+The camera cue is useful first for the signature move: "Whip from the established
+boundary toward screen-right; land on the witness as the reaction begins. After the
+readable hold, whip back toward the same boundary." Use only the moves assigned to this
+segment. A settled offer view then lets the presenter and item move within a steady
+frame. Do not synchronize every gesture with another swing or reverse the approved
+reveal order.
