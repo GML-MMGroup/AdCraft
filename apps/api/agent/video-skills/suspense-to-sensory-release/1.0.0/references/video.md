@@ -18,3 +18,12 @@ retain recognizable timbre and rhythm when the source is revealed. Do not
 turn a device into an animal growl or manufacture claims of perfect silence.
 Honor silent segments. Do not request background music in video generation;
 the BGM role owns the instrumental bed and any tonal score transition.
+
+## Optional shot phrasing
+
+For a planned withholding shot, "A locked close view contains the gesture while the
+source stays beyond the frame edge" states the information boundary clearly. At the
+authorized reveal, describe the widening view or explicit cut before the action it
+exposes. Keep restrained suspense, the ordinary sensory explanation and the dry
+callback. Do not let an early camera retreat disclose the product before its intended
+reveal.
