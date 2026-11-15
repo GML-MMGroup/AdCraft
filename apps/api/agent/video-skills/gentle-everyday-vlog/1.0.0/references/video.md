@@ -3,3 +3,11 @@
 intimate handheld observation 要有呼吸、行走或取景动机，手持可以有轻微惯性但不能持续抖动。保留 natural gestures 的完整起止和物件接触，镜头靠近时证明一个细节，后退时交代关系。
 
 声音分层使用水、餐具、衣料、脚步、室内机械和远处生活声。结果做作时减少镜头运动和音乐，恢复真实动作。
+
+## Optional shot phrasing
+
+For intimate handheld observation, name the viewing relationship only as far as useful:
+"An observer-height handheld view drifts slightly while the hand reaches from the near
+edge to the object." Separate this small camera drift from the actual reach. Allow
+natural gestures to finish and preserve a still frame when appropriate; camera-first
+wording should not make ordinary life feel choreographed.
