@@ -29,3 +29,11 @@ Preserve the supplied frame shape, timing, and representation requirements.
 When the existing brief requests native environmental sound, sparse contact,
 air movement, and soft arrival cues may follow the visible action. Keep these
 restrained and physically timed; do not add them when the brief is silent.
+
+## Optional shot phrasing
+
+For an approved glide, "A low lateral track holds the hero near frame-center while the
+nearby arch moves quickly across the edge and distant architecture shifts slowly" makes
+parallax explicit. State any independent hero rotation separately. Retain sunlit pastel
+clarity and smooth spatial travel, with calm recognition beats; do not turn every shot
+into a spinning camera or force a floating action absent from the story.

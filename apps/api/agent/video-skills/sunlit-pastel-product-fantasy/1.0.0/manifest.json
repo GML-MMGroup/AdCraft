@@ -33,8 +33,8 @@
     "references/product.md": "779c261f46b70ad78f7b66beb031740de679746194822b8488805e4d2a62e9ec",
     "references/scene.md": "d0da9eaafb1e9ffcbab975870b275990e24a7758f27bbcbb691171c687f03e4d",
     "references/script.md": "1303eabf6d4fb934b1268871ec23b5de88b50531b5708c7f8a14c1d3871eb0e3",
-    "references/storyboard.md": "844dcc140bda6b8a5fab4422d3fdafb0e94956c9b1dc2affa21f601a63139e17",
-    "references/video.md": "de93d0fdf3daeb9a9654310059462d44a608df897304040c5489d499ba807135"
+    "references/storyboard.md": "d3288bff5fd8c910ef1497f1a4281a029b1701504185c6809ec65ba2f8f0263c",
+    "references/video.md": "6021d04b96dd0132844ad919e0a9f5f60efd69069897f4912397b35d93141858"
   },
   "role_guidance": {
     "product": "references/product.md",
