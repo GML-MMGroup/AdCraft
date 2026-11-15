@@ -4,3 +4,11 @@
 
 正例：镜头从全身侧面跟随人物步行，焦点在衣摆展开时转到织物纹理，停步后回到完整造型。
 反例：人物高速旋转导致面料、脸和饰件同时改变，或只写“时装大片”没有可观察动作。
+
+## Optional shot phrasing
+
+When the camera accompanies a walk, lead with its relationship: "A full-length lateral
+follow keeps the model in profile while the hem swings with each step." Name a turn
+relative to the lens rather than ambiguous "forward." A held editorial pose or fabric
+detail can stay still. Preserve silhouette, fabric weight and approved cuts; do not
+force all fashion coverage into a walking shot.
