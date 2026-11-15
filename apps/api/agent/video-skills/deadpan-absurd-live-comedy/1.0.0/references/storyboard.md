@@ -10,3 +10,10 @@ where it makes the contrast readable. Several cells may sample one action;
 their count does not determine cuts or repetitions. Preserve cast positions,
 product identity and the state passed to the next segment. Keep panels text-free;
 record approved captions and exact finishing in the production handoff.
+
+## Optional viewpoint clarification
+
+Decide what the observer can see before placing the ordinary response and absurd event.
+A held wide view may carry the entire contrast; a reaction cut or crash-zoom emphasis is
+a separate choice. Keyframes preserve the joke's preparation, pause and visible
+consequence without adding another gag to satisfy the grid.

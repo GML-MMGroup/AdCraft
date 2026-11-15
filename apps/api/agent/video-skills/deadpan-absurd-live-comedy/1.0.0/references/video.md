@@ -12,3 +12,11 @@ finishing use the production handoff; native short captions follow actual
 capability. Preserve approved dialogue with speaker and timing. Video owns
 ambience and action effects; the separate BGM role owns music. Keep cast identity,
 product geometry and contact coherent through deliberate impossible events.
+
+## Optional shot phrasing
+
+Use explicit stillness when it carries the joke: "In an unchanged observer-level wide
+shot, the approved absurd event unfolds while the performer remains composed." For a
+crash zoom, name its target and the reaction it coincides with. This technique clarifies
+timing; it does not require a roaming camera, eliminate abrupt cuts or turn sincere
+deadpan acting into a camera-facing performance.
