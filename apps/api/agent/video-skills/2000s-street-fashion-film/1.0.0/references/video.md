@@ -26,3 +26,12 @@ cloth movement, or hardware contact when requested. Keep supplied speech
 intelligible and speaker-specific; otherwise do not invent a sales monologue.
 Respect requested silence. The separate BGM role supplies the score. Exact
 typography and finishing remain explicit postproduction handoff items.
+
+## Optional shot phrasing
+
+When a walk and a camera move should overlap, placing the observer first can clarify the
+shot: "A shoulder-height lateral follow keeps the model at frame-right while they walk
+parallel to the lens; nearby poles pass behind them." Adapt this syntax only to an
+approved action. Keep candid drift, brisk cuts and lingering looks distinct. A held
+portrait needs no added movement; camera-relative language must not turn natural
+behavior into continuous posing.
