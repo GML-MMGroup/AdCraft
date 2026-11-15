@@ -19,3 +19,11 @@ space and time for stable geometry and product recognition at the ending.
 Grid framing remains guidance rather than a forced camera match. Keep panels
 text-free and carry exact typography, effects timing, and any overlays in the
 production handoff.
+
+## Optional viewpoint clarification
+
+Define the departure viewpoint and continuity anchor before the impossible event. At a
+threshold, track contact, subject position and the changed world state. Distinguish an
+actual scale change from approaching with the camera. A cut, unfolding surface or
+continuous reveal can each carry the approved rule; the grid should not invent extra
+worlds.
