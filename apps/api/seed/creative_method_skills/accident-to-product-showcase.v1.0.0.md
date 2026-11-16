@@ -15,8 +15,9 @@ core_principle: >
   same uninterrupted generation, not a separate setup node.
   Default to one designed protagonist and an anonymous passing extra, not a
   second designed character or face-reveal beat. Preserve an approved cast.
-  Release the belongings into a bounded, staggered volume with distinct depths,
-  not a flat display row. Carry that shared spatial map through the tour.
+  Release the belongings into a bounded depth corridor: the approved visit order
+  runs from near to far. Carry that map through a continuous forward tour, not
+  a flat display row or disconnected product portraits.
   Build a visual crescendo across visits. Identities and setting can change,
   while the multi-item discovery and complete incident remain recognizable.
 consumer_psychology: >
@@ -27,8 +28,9 @@ story_structure: >
   Open on the wearer's feet, track backward and rise to establish the wearer and
   three carried or worn items at normal speed in the same video segment; show
   passing shoulder contact, slight backward recoil and open palms as the original
-  items toss forward and upward to staggered depths; freeze them together; push
-  into separate close views of A, B and C; pull back to the front medium view;
+  items toss forward and upward to staggered depths; freeze them together; travel
+  forward from near A through middle B to far C with visible approaches between
+  their close views; pull back to the front medium view;
   restore time, show the same items landing and the wearer's reaction.
 hook_methods: >
   Track backward from footwear height and rise to reveal the wearer and all
@@ -136,16 +138,16 @@ possession. A reference's carrying pose does not restore a released belonging.
 ### Give the shared freeze a spatial shape
 
 Derive each frozen position from its initial support and release trajectory.
-Keep the group within a bounded volume in front of the wearer, staggered in
-depth as well as height and lateral offset. Left/center/right alone is not a
-spatial map. Use relative near, middle and far relationships at the freeze-onset
-view, with readable perspective and partial overlap where useful. Do not arrange
-equal-size items in an evenly spaced row or exaggerate depth by changing geometry.
+Keep the group within a bounded depth corridor in front of the wearer. Arrange
+the approved visit order near to far away from the freeze-onset camera; small
+height and lateral offsets keep silhouettes and passages clear. Left/center/right
+alone is not a spatial map. Use perspective and partial occlusion, without a
+flat equal-size row or exaggerated depth made by changing object geometry.
 
 Carry the same item-to-item and item-to-wearer relationships into the outline,
 grid and video through existing action and continuity prose. Choose placement
 for the actual supports, release and approved visit order; no fixed product
-order, equal distances or straight-line layout is required. Once frozen, objects
+categories, equal distances or rigidly collinear layout is required. Once frozen, objects
 stay in world space. The moving camera changes screen position, apparent size
 and occlusion; it does not rearrange items to keep them in permanent screen slots.
 Depth between the items must remain readable, not just a blurred background.
@@ -180,14 +182,14 @@ the tour. Continue supplied prior positions, headings and carrying side.
 3. All three items freeze together in their staggered volume. Lock positions,
    orientations, openings, liquid shape and droplets along with the reaction.
    Head and gaze freeze too; new looks and reaches wait until time resumes.
-4. From the front medium view, push into that space and travel successively
-   to A, B and C. Each owns a distinct product-dominant view with readable
-   material detail. Travel between depths with offset passes through the gaps,
-   letting a near edge reveal the next item where the route permits. Preserve
-   confirmed visit order without forcing every journey from nearest to farthest.
-   Build anticipation through changing proximity and depth;
-   the audiovisual treatment owns camera roll, height and speed changes. Objects
-   remain still and singular, even when offscreen or defocused.
+4. From the front medium view, travel continuously forward through near A,
+   middle B and far C. Each becomes dominant with readable material detail.
+   Before each arrival, the next item is already smaller and deeper; the current
+   item grows past a frame edge while the next enlarges along the same path.
+   These visible approaches connect the visits, including the final product;
+   do not restart its presentation as an isolated orbit or macro insert. The
+   audiovisual treatment owns roll, height and speed changes along this route.
+   Objects remain still and singular, even when offscreen or defocused.
 5. Briefly reconnect with the wearer through a continuous front three-quarter
    pullback, then carry that motion into the resumed fall.
 6. Restore ordinary time, follow those trajectories to ground contact and
@@ -221,11 +223,14 @@ Short internal visits are not separate generations.
 Shorten static holds before removing travel or descent; explain an incompatible
 explicit duration instead of splitting the action or silently extending time.
 
-Keep the trigger brief and readable; extend the airborne instant through the
-speed ramp instead of requiring three seconds to demonstrate contact. Reserve
+Keep the opening and trigger brief and readable; start travel promptly after
+release instead of holding a frozen group portrait. Extend the airborne instant
+through the speed ramp, not a long contact demonstration. Reserve
 enough time for the final descent and settling, then fit connected visits and
 a brief pullback into the remainder. Supporting-item dwells are brief; the
-advertised item receives the strongest detail emphasis. Adapt to the approved
+advertised item receives the strongest detail emphasis. Protect both visible
+forward bridges before optional beauty dwells, especially arrival at the final
+product; backward travel begins only at the concluding pullback. Adapt to the approved
 action and duration rather than imposing one timeline on every product.
 For a longer ad, allocate the footwear-to-landing opening as one generation
 first, then assign remaining time to the approved post-landing story and payoff.
@@ -268,7 +273,7 @@ do not invent frame bindings or new frame-generation work for this method.
 
 The script, outline, storyboard and Video prompt must agree on the inventory,
 footwear-level opening, uninterrupted rise, contact before release, shared freeze,
-relative item depths, visit order, continuous travel, pullback and landing-complete endpoint in the
+near-to-far visit order, forward travel and visible approaches, pullback and landing-complete endpoint in the
 same segment. Keep additional approved objects accounted for.
 Timing/camera revisions reuse approved identities and replace stale instructions
 that split off the opening, stop at freeze, move frozen droplets, or reserve
