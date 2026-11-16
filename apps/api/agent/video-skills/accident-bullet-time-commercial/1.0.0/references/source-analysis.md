@@ -4,7 +4,34 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest user-confirmed correction: staggered depth before camera traversal
+## Latest correction: Source A's continuous foreground-to-background route
+
+The next result in proj_fbba5ab434f95922 used the revised text and newly generated
+grid, confirmed by its accepted input manifest. The 15.042-second clip still
+holds a largely lateral frozen group around 3.7-6.3 seconds. Dense sampling shows
+an abrupt earphone-to-sunglasses change around 8.6-8.7 seconds, without visible
+arrival. The grid's detail panels largely isolate each item; the accepted prompt
+still gives the glasses a separately emphasized orbit/macro treatment. These
+agreements support a staging/transition correction, not isolated causal proof.
+
+The user now specifically selects Source A's forward depth progression. Around
+3.7-3.9 seconds its near burger enlarges and passes an edge while the smaller,
+deeper fries become the next destination; the farther drink remains a landmark.
+Around 5.7-6.0 seconds the fries pass near the lens and the smaller cup beyond
+grows into the next visit. Roll and tilt vary continuously, but travel through
+the objects is predominantly from foreground to background, not a lateral scan.
+
+Replace the earlier freedom to visit depths in any order or retreat between
+items: arrange approved A/B/C visits near to far and traverse forward, reserving
+backward movement for the final pullback. Each transition retains the outgoing
+near edge, already visible deeper target and shared background. The last product
+is reached along this path, without restarting an orbit or isolated macro shot.
+The grid must depict those bridges rather than three disconnected portraits.
+Compress setup and static freeze holds to protect travel and complete landing.
+No fixed metric distances, source food/brand, spill or actor fall are prescribed.
+This changes authoring guidance, not provider guarantees or a paid review gate.
+
+## Earlier correction: staggered depth before camera traversal
 
 On 2026-11-15 the user identified a flat airborne display in project
 proj_fbba5ab434f95922. Its first grid's shared states, particularly panels 4 and 8,
@@ -26,9 +53,11 @@ relationships from story through grid and video. Near/middle/far describe freeze
 onset; frozen world positions persist while camera-relative occlusion changes.
 Shared grid samples show the depth, and connected offset travel passes through
 the gaps. Background blur alone is insufficient. Product order, exact distances and
-straight-line travel are not standardized. Preserve the existing one-segment
-footwear-to-landing action and incidental passerby. No current canvas text or
-media was rewritten for this correction; generated effectiveness remains untested.
+rigidly straight-line travel are not standardized. Preserve the one-segment
+footwear-to-landing action and incidental passerby. A subsequent production Agent
+rewrite updated the current canvas text; the user's next generation motivates
+the forward-traversal correction above. That earlier wording alone did not
+produce satisfactory depth in the observed result.
 
 ## User-confirmed correction: an incidental passerby, not a second lead
 
@@ -243,9 +272,11 @@ not a claim that any one input caused the generated result or that the source
 was literally unedited. Source brands, specific food layers, liquid and body
 fall do not become mandatory product facts.
 
-This refinement supersedes the conservative small-arc/constant-velocity examples
+This historical refinement superseded the conservative small-arc/constant-velocity examples
 and ambiguous demand for a stable screen horizon. Freeze remains in world space;
-continuous camera roll, orbit, vertical travel and acceleration remain available.
+continuous camera roll, orbit, vertical travel and acceleration were permitted.
+The latest correction above narrows this to forward traversal with continuous
+roll/tilt and offsets, removing independent orbits and intermediate retreats.
 Each product dominates its visit, with a fast approach, readable dwell and fast
 exit. Preserve confirmed order, identities and complete landing. Author a visible
 reaction consistent with the next segment, without requiring a body fall. The

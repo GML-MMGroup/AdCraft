@@ -18,19 +18,20 @@ without a separate introduction.
 to reveal the carrier, supported items and passing route. Incidental shoulder
 contact causes slight backward recoil, open palms and the original items tossing
 forward/upward. Keep the reaction quick and modest; objects supply the spectacle.
-2. Freeze near the airborne crest with empty hands and vacated supports.
-Derive a bounded, staggered volume from those supports and release paths, with
-depth, height and lateral offsets rather than a flat left/center/right display.
-Define relative near/middle/far at this viewpoint; perspective and partial overlap
-make the separation visible. Choose the layout for the objects and action, without
-equal spacing or a fixed product order. Carry the map through script, grid and video.
-3. Travel between item depths through offset gaps, passing near edges to reveal
-the next item where useful. Vary height, angle and camera roll. Accelerate into
-a visit, slow for detail, then accelerate out. Sideways scanning, isolated zooms
-or background blur alone cannot establish this traversal.
-4. Make one item dominant per visit; others may leave the crop. Give the product
-the strongest emphasis and preserve confirmed order; A/B/C are visit slots,
-not mandatory near-to-far positions. Continuity permits varied horizons and speed.
+2. Freeze near the airborne crest with empty hands and vacated supports. Arrange
+the approved visits A/B/C from near to far along a depth corridor away from this
+camera, with small height/lateral offsets for passage and visible silhouettes.
+Derive this bounded volume from supports and release paths, not a flat display
+row. Carry the same map through script, grid and video; no fixed product order.
+3. Start the tour promptly: advance continuously from foreground to background,
+A to B to C. Before each arrival, the next item is already smaller and deeper;
+the outgoing item grows past a frame edge as the next enlarges continuously.
+Keep shared landmarks and parallax through these visible bridges. Sideways scans,
+isolated zooms or background blur cannot replace forward travel.
+4. Accelerate between visits, slow briefly for detail, then continue forward.
+Camera roll/tilt and gentle offsets follow that path. Each item becomes dominant;
+the product receives the strongest detail, reached on the same trajectory, never
+a separate orbit, macro insert or reset. Save backward travel for the final pullback.
 5. Pull back continuously to reconnect with the wearer, then return to gravity.
 Follow every item through ground contact and settling into the approved reaction.
 
@@ -41,7 +42,7 @@ segment, including the rise, contact, release, tour, pullback and settling.
 Do not generate the opening separately or stitch to a second incident clip.
 Reserve the final two to three seconds for landing; fit the whole interval
 within the generation cap (currently fifteen seconds) and confirmed total.
-Further story/payoff starts after settling. Shorten holds rather than splitting
+Further story/payoff starts after settling. Shorten opening/static holds rather than splitting
 before contact; disclose incompatible timing instead of silently exceeding it.
 
 Lock bodies, head, gaze, object poses, closures and suspended material in world

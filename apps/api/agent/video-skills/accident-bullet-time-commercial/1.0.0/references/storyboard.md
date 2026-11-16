@@ -11,16 +11,16 @@ Stage causal samples first. For the usual nine-panel incident, allocate:
    before contact: items visibly held or worn.
 3. Incidental passing contact, slight backward recoil, opened palms and the
    original items beginning to rise away as one quick causal reaction.
-4. Shared freeze: empty supports and staggered item depths, not a flat row.
-5-7. One dominant detail visit per item, following the approved order.
+4. Shared freeze viewed down the depth corridor, empty supports behind it.
+5-7. Forward visits: a dominant near item, its passing edge and the smaller next
+   item deeper inside. The last detail is reached along that same path.
 8. Pullback reconnecting the same staggered volume, not rearranging it.
 9. All released items grounded and the approved reaction.
 These are unequal-time samples, not cuts. Depict contact, not a caption.
 
-Keep supplied positions/carrying side; distinguish observed and planned endings.
-An anonymous passerby needs no Character reference or identity ID. Use passing
-back/side/partial coverage without a face-reveal or companion portrait. Preserve
-approved supporting roles and later performances.
+Keep supplied positions/carrying side. An anonymous passerby needs no identity
+reference; use passing back/side/partial coverage without an introduction.
+Preserve approved supporting roles and later performances.
 
 Set independent walking routes, gaze, heading, contact side and exit before framing.
 With a frontal retreating camera, opposing passage shows back/shoulder moving
@@ -29,28 +29,28 @@ relative speed and narrowing clearance. Side crossings also work. Face visibilit
 follows the route, without turning for identification. A brief brush causes slight
 backward lean, open palms and upward release, not a charge or downward-only slip.
 
-Resolve missing depth relations from supports and release paths in world space:
-a bounded volume with depth, height and lateral offsets. Identify relative near/
-middle/far at freeze onset and relationships to the wearer using existing action
-prose. Shared views show perspective size differences and partial overlap where
-useful, with recognizable silhouettes. Background blur alone is not item depth.
-No equal spacing, compulsory straight line or fixed product depth order.
+Resolve depth from supports/release paths in world space: approved visit order
+A/B/C runs near to far away from the freeze-onset camera, with small height/lateral
+offsets for visibility and passage. Show perspective size differences and partial
+occlusion down that corridor, with the wearer behind. No side-view inventory row
+or three isolated portraits. Background blur alone is not item depth. Preserve
+item order without equal spacing, a rigid line or fixed product categories.
 Carry the same map into Video; camera motion changes screen positions and
 occlusion, not object geometry or pose. Freeze bodies, head and gaze until time
 resumes. The vacated support stays empty; each item occurs once per panel.
 Keep attached parts and offscreen states. Product references govern design,
 character sheets identity, action possession.
 
-Use the shared freeze as an intermediate medium-to-close approach: released
-item, empty support and landmark establish depth. Detail-transition samples can
-retain an outgoing near edge and incoming deeper item along the connected route.
-Travel through offset gaps before showing a new side; vary depth, height, arcs
-and camera roll. Accelerate between visits, slow for detail, then accelerate on.
-Preserve visit order without forcing near-to-far travel every time; avoid only
-sideways scanning or isolated zooms.
+Use the shared freeze as an intermediate medium-to-close approach, not a long
+hold. Travel from foreground to background throughout the tour. Each transition
+shows the outgoing item growing past an edge and the already visible, deeper next
+item enlarging continuously, with common background landmarks. Retain these
+bridges in panels 5-7; the final detail must not start a new orbit or macro shot.
+Camera roll/tilt and gentle offsets continue along the forward route. Accelerate
+between visits, slow briefly for detail, then accelerate on; retreat only for
+the final pullback. A lateral sweep or isolated zoom cannot replace traversal.
 
-One item is dominant per visit; give the product the strongest detail/scale.
-Close crops may exclude others. Preserve closures; splashes need an open source.
+Give the product the strongest detail/scale. Preserve closures; splashes need an open source.
 Finish with every item settled, recording positions and body pose in end_state.
 Carry the full footwear-to-landing route, speed contrast and indivisible scope
 in narrative_goal and handoff. Later segments begin after every item settles.
