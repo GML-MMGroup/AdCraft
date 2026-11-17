@@ -50,6 +50,7 @@ class AgentCanvasSeedanceInputCompiler:
         compiled_prompt: str | None = None,
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None,
         grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
+        max_duration_seconds: int = 15,
     ) -> tuple[SeedanceInputManifestV1, SeedanceInputManifestAuditV1]:
         if node.node_type != "video":
             raise ValueError("Seedance manifests require a Video node.")
@@ -75,6 +76,7 @@ class AgentCanvasSeedanceInputCompiler:
             requested.get("duration_seconds"),
             effective.get("duration_seconds"),
             effective_parameters.normalizations if effective_parameters is not None else (),
+            max_duration_seconds=max_duration_seconds,
         )
         text_inputs = self._compile_text_inputs(resolved_inputs)
         media_inputs = self._compile_media_inputs(delivered_media, grounding_plan=grounding_plan)
@@ -138,7 +140,11 @@ class AgentCanvasSeedanceInputCompiler:
         requested_value: object,
         effective_value: object,
         normalizations: tuple[str | VideoParameterNormalizationV2, ...],
+        *,
+        max_duration_seconds: int,
     ) -> tuple[int, int, tuple[str, ...]]:
+        if not 1 <= max_duration_seconds <= 30:
+            raise ValueError("max_duration_seconds must be within 1..30")
         requested = (
             self._default_duration_seconds
             if requested_value is None
@@ -153,8 +159,8 @@ class AgentCanvasSeedanceInputCompiler:
             item.normalization_code if isinstance(item, VideoParameterNormalizationV2) else item
             for item in normalizations
         )
-        if effective > 15:
-            effective = 15
+        if effective > max_duration_seconds:
+            effective = max_duration_seconds
             normalization_codes = (
                 *normalization_codes,
                 "duration_clamped_to_provider_limit",

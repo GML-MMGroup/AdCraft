@@ -239,6 +239,9 @@ def _ark_video_profile(
     model_ref: str,
     *,
     release_tier: str = "optional",
+    max_duration_seconds: int = 15,
+    resolutions: tuple[str, ...] = ("480p", "720p", "1080p"),
+    max_references: int = 15,
 ) -> dict[str, Any]:
     return _adapter_profile(
         model_ref=model_ref,
@@ -247,7 +250,7 @@ def _ark_video_profile(
         capability="video",
         request_mode="video_generation",
         accepted_input_modes=("text_only", "native_reference_slots"),
-        max_images=15,
+        max_images=max_references,
         allowed_roles=(
             "character_turnaround",
             "product_reference",
@@ -269,18 +272,18 @@ def _ark_video_profile(
                     "name": "duration_seconds",
                     "value_type": "integer",
                     "minimum": 4,
-                    "maximum": 15,
+                    "maximum": max_duration_seconds,
                     "default": 5,
                 },
                 {
                     "name": "resolution",
                     "value_type": "enum",
-                    "allowed_values": ("480p", "720p", "1080p"),
+                    "allowed_values": list(resolutions),
                 },
                 {
                     "name": "aspect_ratio",
                     "value_type": "enum",
-                    "allowed_values": ("16:9", "9:16", "1:1"),
+                    "allowed_values": ["16:9", "9:16", "1:1"],
                 },
                 {"name": "generate_audio", "value_type": "boolean", "default": False},
             ),
@@ -540,11 +543,15 @@ def _video_capability_metadata(
     duration_range_seconds: tuple[int, int] = (4, 15),
     max_references: int = 15,
     provider_protocol: str = "ark_video",
+    resolutions: tuple[str, ...] = ("480p", "720p", "1080p"),
+    reference_limits: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     return {
         "accepted_input_types": ["text", "image", "video", "audio"],
         "max_references": max_references,
-        "reference_limits": {"image": min(max_references, 9), "video": 3, "audio": 3},
+        "reference_limits": dict(reference_limits)
+        if reference_limits is not None
+        else {"image": min(max_references, 9), "video": 3, "audio": 3},
         "supported_parameters": [
             "aspect_ratio",
             "resolution",
@@ -552,7 +559,7 @@ def _video_capability_metadata(
             "generate_audio",
         ],
         "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
-        "supported_resolutions": ["480p", "720p", "1080p"],
+        "supported_resolutions": list(resolutions),
         "duration_range_seconds": list(duration_range_seconds),
         "supports_native_audio": True,
         # Execution fills unset video parameters from these defaults; without
@@ -774,6 +781,31 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-5-5-261028",
+        display_name="Doubao Seedream 5.5",
+        capability="image",
+        capability_metadata={
+            "omit_sequential_image_generation": True,
+            "accepted_input_types": ["text", "image"],
+            "max_references": 10,
+            "reference_limits": {"image": 10, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
+            "pixel_bounds": [512, 4096],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-5-5-261028",
+                max_images=10,
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
         provider_model_id="doubao-seedream-4-5-251128",
         display_name="Doubao Seedream 4.5",
         capability="image",
@@ -845,6 +877,24 @@ _TRUSTED_MANIFESTS = (
         capability="video",
         capability_metadata=_video_capability_metadata(
             _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260628")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-5-flash-261115",
+        display_name="Doubao Seedance 2.5 Flash",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile(
+                "volcengine_ark:doubao-seedance-2-5-flash-261115",
+                max_duration_seconds=30,
+                resolutions=("480p", "720p"),
+                max_references=20,
+            ),
+            duration_range_seconds=(4, 30),
+            resolutions=("480p", "720p"),
+            max_references=20,
+            reference_limits={"image": 10, "video": 5, "audio": 5},
         ),
     ),
     TrustedModelManifest(

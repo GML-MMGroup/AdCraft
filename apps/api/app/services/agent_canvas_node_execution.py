@@ -571,6 +571,11 @@ class MediaNodeExecutor:
                 ),
                 effective_parameters=context.effective_parameters,
                 grounding_plan=grounding_plan,
+                max_duration_seconds=int(
+                    context.model_resolution.capability_metadata.get(
+                        "duration_range_seconds", [1, 15]
+                    )[1]
+                ),
             )
         except (GroundingPlanError, ValueError) as error:
             code = str(error)
