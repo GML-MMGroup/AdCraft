@@ -209,8 +209,7 @@ class GuidedFinalCompletionService:
             version is None
             or version.source_workflow_id != workflow_id
             or version.status != "ready"
-            or datetime.fromisoformat(version.created_at.replace("Z", "+00:00"))
-            < preparation.committed_at
+            or datetime.fromisoformat(version.created_at.replace("Z", "+00:00")) < node.created_at
         ):
             return None
         try:
