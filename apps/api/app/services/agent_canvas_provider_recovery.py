@@ -20,6 +20,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
     ResolvedNodeInputManifestV2,
 )
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultPublicationContextV1
 from app.schemas.agent_canvas_ad_media import CompiledProviderPromptV2
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
@@ -80,6 +81,10 @@ class ProviderTaskRecoveryService:
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         output_preparer: AgentCanvasOutputPreparationService | None = None,
         result_committer: AgentCanvasExecutionResultCommitService | None = None,
+        guided_media_context_resolver: Callable[
+            [NodeExecutionContext, int, str], GuidedMediaResultPublicationContextV1 | None
+        ]
+        | None = None,
         owner_id: str = "provider-recovery",
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
@@ -97,6 +102,7 @@ class ProviderTaskRecoveryService:
         self._submission_intents = ProviderSubmissionIntentService(runtime)
         self._output_preparer = output_preparer
         self._result_committer = result_committer
+        self._guided_media_context_resolver = guided_media_context_resolver
 
     def recover_due_tasks(self) -> tuple[str, ...]:
         reconciled: list[str] = []
@@ -360,6 +366,11 @@ class ProviderTaskRecoveryService:
         )
         fingerprint = f"provider-task:{task.task_id}"
         if self._output_preparer is not None and self._result_committer is not None:
+            guided_media_context = (
+                self._guided_media_context_resolver(context, lease.generation, fingerprint)
+                if self._guided_media_context_resolver is not None
+                else None
+            )
             preparation_guard = self._leases.guard(lease)
             try:
                 prepared, lease = preparation_guard.run_with_latest_lease(
@@ -374,6 +385,11 @@ class ProviderTaskRecoveryService:
                             submission_intent_id=task.submission_intent_id,
                         ),
                         fingerprint=fingerprint,
+                        **(
+                            {"guided_media_context": guided_media_context}
+                            if guided_media_context is not None
+                            else {}
+                        ),
                     )
                 )
             except V2PersistenceError as error:
@@ -408,6 +424,7 @@ class ProviderTaskRecoveryService:
                         provider_task_id=task.task_id,
                         outcome="succeeded",
                         prepared_result=prepared,
+                        guided_media_context=prepared.guided_media_context,
                         committed_at=self._clock(),
                     )
                 )

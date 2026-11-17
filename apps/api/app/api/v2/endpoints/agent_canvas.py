@@ -569,6 +569,7 @@ class AgentCanvasRuntime:
     editing_nodes: EditingNodeService
     editing_responses: EditingResponseProjector
     editing_exports: EditingExportService
+    guided_final_completion: GuidedFinalCompletionService
     editing_output_reuse: EditingExportOutputReuseService
     editing_default_exports: EditingDefaultExportCoordinator
     editing_export_repository: AgentCanvasEditingExportRepository
@@ -1405,6 +1406,7 @@ def create_agent_canvas_runtime(
         ],
         output_preparer=AgentCanvasOutputPreparationService(asset_service),
         result_committer=result_committer,
+        guided_media_context_resolver=guided_media_contexts.resolve,
     )
     editing_commit_service = AgentCanvasEditingExportCommitService(
         AgentCanvasEditingExportCommitRepository(
@@ -2144,6 +2146,7 @@ def create_agent_canvas_runtime(
         editing_nodes=editing_nodes,
         editing_responses=editing_responses,
         editing_exports=editing_exports,
+        guided_final_completion=guided_final_completion,
         editing_output_reuse=editing_output_reuse,
         editing_default_exports=editing_default_exports,
         editing_export_repository=editing_export_repository,

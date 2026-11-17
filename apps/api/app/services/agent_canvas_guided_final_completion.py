@@ -29,6 +29,7 @@ from app.schemas.agent_canvas_production_closure import (
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_guided_production_closure import GuidedProductionClosureService
 from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.agent_canvas_editor_export_evidence import saved_editor_export
 
 
 Clock = Callable[[], datetime]
@@ -166,6 +167,180 @@ class GuidedFinalCompletionService:
         )
         self._complete_session(receipt, preparation)
         return receipt
+
+    def complete_saved_editor_export(
+        self,
+        workflow_id: str,
+        editing_node_id: str,
+    ) -> GuidedFinalCompletionReceiptV1 | None:
+        """Honor an explicit user-rendered delivery without pretending it is an FFmpeg export.
+
+        User edits may intentionally trim or remove planned inputs. Their persisted
+        rendered snapshot and readable output, rather than the automatic timeline,
+        are the delivery authority. Later edits do not undo a delivered film.
+        """
+        if not isinstance(self._workflows, AgentCanvasWorkflowRepository):
+            return None
+        node = self._workflows.get_node(workflow_id, editing_node_id)
+        evidence = saved_editor_export(node)
+        if evidence is None or not node.metadata.get("guided_production"):
+            return None
+        preparation = self._receipts.find_preparation_for_editing(workflow_id, editing_node_id)
+        if preparation is None:
+            return None
+        session = self._require_current_preparation(preparation)
+        existing = self._receipts.find_completion_for_export(evidence.export_id)
+        if session.status == "completed":
+            return existing
+        if (
+            session.status != "active"
+            or session.journey.stage != "editing"
+            or session.journey.active_action is not None
+            or session.journey.suspended_action is not None
+            or (
+                session.awaiting is not None
+                and session.awaiting.kind not in {"manual_node_run", "media_review"}
+            )
+        ):
+            return None
+        asset_repository = V2AssetLibraryRepository(self._workflows.database)
+        version = asset_repository.find_version(asset_id=evidence.asset_id)
+        if (
+            version is None
+            or version.source_workflow_id != workflow_id
+            or version.status != "ready"
+            or datetime.fromisoformat(version.created_at.replace("Z", "+00:00"))
+            < preparation.committed_at
+        ):
+            return None
+        try:
+            asset = self._assets(evidence.asset_id)
+        except (KeyError, LookupError, V2PersistenceError):
+            return None
+        if (
+            asset.status != "ready"
+            or asset.media_type != "video"
+            or asset.version_id != version.version_id
+            or not self._asset_readable(asset)
+        ):
+            return None
+        identity = (
+            f"{preparation.receipt_id}:{evidence.export_id}:{asset.version_id}:{asset.checksum}"
+        )
+        receipt = GuidedFinalCompletionReceiptV1(
+            receipt_id="completion_" + sha256(identity.encode()).hexdigest()[:32],
+            logical_identity=identity,
+            workflow_id=workflow_id,
+            preparation_receipt_id=preparation.receipt_id,
+            export_id=evidence.export_id,
+            export_generation=1,
+            final_asset_id=asset.asset_id,
+            final_asset_version_id=version.version_id,
+            final_asset_digest=asset.checksum,
+            completion_revision=session.revision + 1,
+            completed_at=self._clock(),
+            delivery_source="browser_editor",
+            editor_snapshot_digest=evidence.snapshot_digest,
+        )
+        completion = session.completion.model_copy(
+            update={
+                "authoring": "ready",
+                "delivery": "ready",
+                "export_status": "completed",
+                "export_id": receipt.export_id,
+                "final_completion_receipt_id": receipt.receipt_id,
+                "final_asset_id": asset.asset_id,
+                "matching_asset_ids": tuple(
+                    dict.fromkeys((*session.completion.matching_asset_ids, asset.asset_id))
+                ),
+            }
+        )
+        journey = session.journey.model_copy(
+            update={
+                "stage": "completed",
+                "stage_status": "completed",
+                "stage_revision": session.journey.stage_revision + 1,
+                "active_action": None,
+                "suspended_action": None,
+            }
+        )
+        with self._workflows.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                self._workflows.require_node_revision_in_transaction(
+                    connection,
+                    workflow_id=workflow_id,
+                    node_id=editing_node_id,
+                    expected_revision=node.revision,
+                    expected_output_asset_id=node.output_asset_id,
+                )
+                current_version = asset_repository.find_version(
+                    asset_id=asset.asset_id, connection=connection
+                )
+                if (
+                    current_version is None
+                    or current_version.version_id != version.version_id
+                    or current_version.sha256 != asset.checksum
+                    or current_version.status != "ready"
+                ):
+                    raise _error(
+                        "guided_final_asset_unreadable", "Final Asset changed before delivery."
+                    )
+                self._receipts.save_completion_in_transaction(connection, receipt)
+                self._conversations.complete_guidance_session_in_transaction(
+                    connection,
+                    session.session_id,
+                    expected_session_revision=session.revision,
+                    completion=completion,
+                    journey=journey,
+                    now=receipt.completed_at.isoformat(),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=workflow_id,
+                        node_id=editing_node_id,
+                        execution_id=receipt.export_id,
+                        event_type="guided_production_completed",
+                        transition_key=f"guided-completion:{receipt.receipt_id}",
+                        created_at=receipt.completed_at.isoformat(),
+                        payload={
+                            "final_completion_receipt_id": receipt.receipt_id,
+                            "preparation_receipt_id": preparation.receipt_id,
+                            "export_id": receipt.export_id,
+                            "final_asset_id": asset.asset_id,
+                            "delivery_source": "browser_editor",
+                            "session_revision": session.revision + 1,
+                            "refresh": ["conversation", "workflow", "assets", "runtime"],
+                        },
+                    ),
+                )
+                connection.commit()
+            except V2PersistenceError:
+                connection.rollback()
+                persisted = self._receipts.find_completion_for_export(receipt.export_id)
+                current = self._conversations.get_guidance_session(workflow_id)
+                if (
+                    persisted is not None
+                    and persisted.logical_identity == receipt.logical_identity
+                    and current.status == "completed"
+                    and current.completion.final_completion_receipt_id == persisted.receipt_id
+                ):
+                    return persisted
+                raise
+            except BaseException:
+                connection.rollback()
+                raise
+        return receipt
+
+    def reconcile_saved_editor_exports(self) -> None:
+        """Retry durable editor deliveries, including a crash after the timeline save."""
+        for workflow_id, node_id in self._receipts.pending_editor_deliveries():
+            try:
+                self.complete_saved_editor_export(workflow_id, node_id)
+            except V2PersistenceError:
+                # A concurrent editor/journey update is retried from fresh authority.
+                continue
 
     def _complete_current_media(
         self,

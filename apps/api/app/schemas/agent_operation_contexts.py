@@ -322,7 +322,16 @@ class WorkflowContextTruncationV1(_WorkflowContextModel):
     omitted_documents: int = Field(default=0, ge=0)
 
 
+class WorkflowDeliverySummaryV1(_WorkflowContextModel):
+    guidance_completed: bool = False
+    known_export_count: int = Field(default=0, ge=0)
+    latest_export_asset_id: str | None = Field(default=None, min_length=1, max_length=160)
+    final_completion_receipt_id: str | None = Field(default=None, min_length=1, max_length=160)
+    editor_has_unexported_changes: bool = False
+
+
 class WorkflowStateCapsuleV1(_WorkflowContextModel):
+    delivery: WorkflowDeliverySummaryV1 = Field(default_factory=WorkflowDeliverySummaryV1)
     workflow_id: str = Field(min_length=1, max_length=160)
     workflow_revision: int = Field(ge=1)
     response_locale: BCP47Tag = "und"

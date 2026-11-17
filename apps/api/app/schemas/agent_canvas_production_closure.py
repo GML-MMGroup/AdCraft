@@ -327,6 +327,8 @@ class GuidedEditingActionReconciliationReceiptV1(GuidedEditingActionReconciliati
 
 
 class GuidedFinalCompletionReceiptV1(_ClosureModel):
+    delivery_source: Literal["backend_export", "browser_editor"] = "backend_export"
+    editor_snapshot_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     receipt_id: str = Field(min_length=1, max_length=160)
     logical_identity: str = Field(min_length=1, max_length=640)
     workflow_id: str = Field(min_length=1, max_length=160)

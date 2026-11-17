@@ -51,6 +51,22 @@ class WorkflowStatusReplyRenderer:
             sections.append(f"Remaining: {remaining} nodes ({remaining} remaining).")
             if total > 0 and remaining == 0:
                 sections.append("All current nodes are ready.")
+        if capsule.delivery.known_export_count:
+            sections.append(
+                {
+                    "zh-CN": "已有导出的成片。",
+                    "zh-TW": "已有匯出的成片。",
+                    "en": "An exported final video is available.",
+                }[language]
+            )
+            if capsule.delivery.editor_has_unexported_changes:
+                sections.append(
+                    {
+                        "zh-CN": "剪辑中还有后续修改尚未导出，之前的成片仍然保留。",
+                        "zh-TW": "剪輯中還有後續修改尚未匯出，先前的成片仍然保留。",
+                        "en": "Later timeline edits are not exported yet; the existing film remains available.",
+                    }[language]
+                )
         if capsule.next_valid_action is not None:
             label = capsule.next_valid_action.objective or capsule.next_valid_action.action_kind
             sections.append(
