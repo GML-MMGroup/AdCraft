@@ -4,6 +4,23 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
+## Shared onset replaces sequential waits, 2026-11-16
+
+In video version_asset_324c502c4277cf64f3ca7345, release becomes visible around
+3.3 seconds, followed by a shared airborne view before the camera noticeably
+closes on the cup around 4.8 seconds. Its accepted text explicitly schedules
+contact/recoil, then separate release, then surprise once all items are airborne.
+The user now wants contact, recoil, surprise, all releases and camera approach
+to start together. This supersedes the preceding after-all-airborne surprise rule.
+
+Use one impact interval with concurrent motion. Support loss remains observable
+along an already advancing camera path; it is not a prerequisite proof shot.
+Grid samples show successive instants of that overlap, not separate action stages.
+Remove group-frame, completed-release and completed-pose waiting conditions.
+Keep the accepted individual orbits, continuous bridges, surprise hold, original
+inventory, supports, locations and ending. This evidence identifies conflicting
+text but does not isolate all image/provider contributions or guarantee output.
+
 ## Camera-only refinement and surprised expression, 2026-11-16
 
 The user accepts the latest action, identities, objects, setting and ending in

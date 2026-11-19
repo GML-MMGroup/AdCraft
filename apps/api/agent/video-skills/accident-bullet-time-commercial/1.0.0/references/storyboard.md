@@ -18,19 +18,19 @@ that modest recoil. Keep the backward direction explicit; knee flexion alone
 leaves it unspecified. Hands reflexively open briefly and asymmetrically. The
 anonymous passerby remains adjacent at onset and keeps their destination and gaze.
 
-Each original stays next to its source until a visible gap establishes transfer:
-cup clearing opening fingers, glasses clearing nose/ears, accessory clearing its
-support. Show the now-vacant source. Each panel has one location per original.
+In one impact, support loss, recoil, surprise and camera advance start together.
+Show vacancies along the moving view, without a group-frame wait. Each panel has
+one location per original and samples overlapping motion, not an action gate.
 
 ## Nine sampled states
 
 1. Footwear-height first frame, low backward tracking; off-crop items stay supported.
 2. Continuous rise reveals ordinary wearing/grip and the approaching passing lane.
-3. Actual shoulder touch, slight backward recoil and onset of release. Choose one
-   instant with originals and supports readable; the passerby is still adjacent.
-4. Early separation: each original just beyond its vacant support. Open empty
-   fingers, bare face behind departing glasses, vacant accessory support. Arcs
-   slow into an intermediate medium-to-close approach to A.
+3. Shoulder touch starts slight backward recoil, surprise, all releases and camera
+   approach together. The passerby is adjacent; originals begin clearing supports.
+4. SAME overlapping beat, later instant: camera closes on A as originals separate.
+   Empty supports stay empty. An intermediate medium-to-close moving view replaces
+   a held group pose; arcs slow near the crest.
 5-7. Near-to-far visits of the SAME airborne originals above distant pavement.
    Sample a partial camera orbit around EACH fixed item: front/side surfaces,
    outgoing edge, smaller next target and shared landmark show connected travel.
@@ -41,8 +41,8 @@ support. Show the now-vacant source. Each panel has one location per original.
 
 ## One space and forward state progression
 
-After all items clear their supports, show widened eyes, raised brows and parted
-lips. Freeze surprise, body, head and gaze until time resumes; keep surprise in
+Start widened eyes, raised brows and parted lips with contact. Near the airborne
+crest, freeze surprise, body, head and gaze until time resumes; keep surprise in
 the settled last panel. Each original's vacated support stays empty until pickup.
 Connected parts and closures
 persist; a splash needs an open source. Heights follow the actual release arcs.

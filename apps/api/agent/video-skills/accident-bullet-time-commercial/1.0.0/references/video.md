@@ -5,10 +5,10 @@ first-frame footwear reveal through all objects landing in one video segment,
 within the confirmed duration and fifteen-second cap. Reserve two to three seconds
 for landing; use one timeline and continuous camera path.
 
-Lead the editable prompt with the action: incidental shoulder contact, slight
-backward torso recoil and reflexive opening hands, original belongings departing
-into short outward/upward arcs, airborne inspection, pullback, gravity and first
-landing. Keep backward recoil explicit in timed actions.
+Use one onset interval: contact simultaneously starts slight backward recoil,
+surprise, opening hands, all originals' release and the camera's approach to A.
+Overlap their motion within that interval; continue into inspection, pullback
+and landing. Keep backward recoil explicit in timed actions.
 
 ## Contact, recoil and visible transfer
 
@@ -22,19 +22,16 @@ continues into depth. Shoulders/upper arms meet at the same depth. Fabric
 compression and torso deflection make contact visible. Preserve the extra's
 destination and gaze without a face introduction or avoidance detour.
 
-The upper torso tilts slightly backward relative to the hips as a knee yields
-or a small recovery step begins. Hands open in a brief asymmetric balance reflex
-while the passerby remains adjacent. Keep walking/contact near normal speed;
-strong slowing begins after support loss, not during a prolonged recoil pose.
+The passerby is still adjacent when the torso recoils slightly backward, a knee
+yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
+impact, the cup clears fingers, glasses clear nose/ears and the accessory leaves
+its support. All start departing together on their own short outward/upward arcs.
 
-Follow each original clearing its support in the same continuous medium view:
-opening fingers release that cup; those glasses lift clear of nose/ears into a
-short outward/upward arc, exposing the bare face; the accessory clears its actual
-support. Show original, source and growing gap together. Follow those originals
-into flight, slowing near the crest at support-derived heights. Enter an
-intermediate medium-to-close approach to A promptly.
+The camera already advances toward A during contact and release. The intermediate
+medium-to-close view keeps support loss readable through motion; never wait for
+all originals to finish rising, settle into a pose or fit one group frame. Normal
+impact momentum slows near the airborne crest while the approach continues.
 
-Once all items are airborne, show widened eyes, lifted brows and parted lips.
 Freeze surprise, body, head and gaze until time resumes; retain surprise through
 settling. The vacated support stays empty; keep slight backward recovery and one
 original per item, including offscreen and in pullback.

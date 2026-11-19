@@ -10,10 +10,9 @@ Preserve the approved story, inventory, identities and medium.
 
 ## Deliver the complete action
 
-Carry this chain into the actual narrative and provider prompt, not just the
-handoff: incidental shoulder contact briefly tilts the upper torso slightly
-backward relative to the hips, hands reflexively open, and the same supported
-belongings depart into short outward/upward arcs. They remain airborne through
+In narrative/provider text, contact starts slight backward recoil, surprise,
+opening hands, all originals' outward/upward release and camera approach together.
+Approach overlaps separation, without a group-frame wait. Originals stay airborne through
 connected inspection and pullback; gravity resumes before their first landing.
 Keep the backward direction explicit when condensing. A yielding knee supports
 that modest recoil rather than replacing it with unspecified imbalance.
@@ -31,12 +30,12 @@ At one contact plane, shoulders/upper arms visibly touch; fabric compression and
 the immediate small backward deflection establish the impulse. The anonymous
 extra keeps their destination without a face introduction or avoidance detour.
 
-Keep contact and the brief asymmetric recovery near normal speed. Show each
-original clearing its support, with a visible gap and vacant source: opening
-fingers and departing cup, glasses clearing nose/ears, accessory leaving its
-resting point. Follow outward/upward momentum before strong slowing. Derive
-height from support; move the camera to the item. Enter the first inspection
-promptly instead of holding a staged recoil or slowly levitating belongings.
+Keep contact and the brief asymmetric recovery near normal speed. As the camera
+advances, show the cup clearing opening fingers, glasses clearing nose/ears and
+accessory leaving its support in the same impulse. Readable gaps and vacancies
+develop along the moving view, not a separate proof shot. Follow outward/upward
+momentum before strong slowing; derive height from support. Reach A without
+waiting for every original to finish rising or fit in the same frame.
 
 ## Traverse one frozen space
 
@@ -52,8 +51,8 @@ final pullback, resumed gravity and settling.
 
 ## Preserve states across views
 
-Once all originals are airborne, show surprise within the existing release beat:
-widened eyes, lifted brows and slightly parted lips. Freeze that expression,
+Surprise starts with contact: widened eyes, lifted brows and slightly parted lips.
+As the interrupted action slows into its airborne crest, freeze that expression,
 body, head and gaze through inspection/pullback; retain surprise through settling.
 Freeze object geometry, closures and displaced material in world space.
 Each original exists once; its vacated support stays empty in every

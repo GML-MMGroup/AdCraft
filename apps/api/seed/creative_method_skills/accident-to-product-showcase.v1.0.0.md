@@ -5,8 +5,8 @@ skill_kind: creative_method
 title: Accident-to-Product Showcase
 core_principle: >
   Interrupt an ordinary walk with unmistakable incidental shoulder contact.
-  One short impact causes loss of balance and support; the original belongings
-  leave their supports with momentum, then share a frozen airborne instant.
+  One short impact starts recoil, surprise, all originals' release and camera
+  approach together; momentum slows into a shared airborne instant during approach.
   Discover the advertised product among three distinct belongings before time
   resumes and every item lands. Protect the whole footwear-to-landing incident
   inside one generated video segment. The slight backward recoil and open hands
@@ -19,9 +19,10 @@ consumer_psychology: >
 story_structure: >
   First-frame footwear and a rising reveal establish ordinary product use.
   The passerby reaches the same contact plane as the protagonist; shoulders
-  briefly meet while both keep their destinations. Contact checks the torso slightly backward,
-  weight shifts and hands react; items leave their actual supports with a short
-  forward/upward impulse. Freeze after release, visit the established items from
+  briefly meet while both keep their destinations. Contact simultaneously starts
+  slight backward recoil, surprise, reflexive hand opening, all items' release
+  and approach to the first item. Support loss unfolds along the moving view;
+  slow into the airborne crest without a group-frame wait, then visit the items from
   near to far while they remain airborne, pull back, resume the same fall and
   finish after all items settle for the first time.
 hook_methods: >
@@ -51,7 +52,8 @@ common_mistakes: >
   backbend, opening hands before impact, deliberate throwing, props rising
   slowly without an initial impulse, low-held items levitating to head height,
   attached items passing through the body, a frozen inventory row, disconnected
-  product portraits, duplicated belongings, or ending before everything lands.
+  product portraits, duplicated belongings, waiting for a complete airborne group
+  before camera approach or surprise, or ending before everything lands.
 cross_category_examples: >
   Sunglasses: the advertised glasses begin worn on the face, a neutral drink is held in one hand and a supporting accessory rests at its ordinary support; contact dislodges those same originals, leaving a bare face and empty hand before the frozen tour and complete landing.
   Takeaway meal: a carrier's supported burger, fries and drink are displaced by incidental contact; a brief reflex and loss of grip precede the airborne tour, followed by the original items falling. Fallen food is not eaten.
@@ -111,8 +113,11 @@ inside the final shot prompt. Mere overlap in screen space is insufficient.
 
 ### Derive recoil and release from the interrupted stride
 
-Write one connected event: contact, weight transfer, involuntary hand response,
-support loss, airborne momentum. Contact checks the upper torso slightly backward
+Write one overlapping event with a shared onset: contact starts backward recoil,
+surprise, reflexive hand opening, all items' release and camera approach together.
+The camera closes on the first original while separation is still unfolding;
+it need not wait for every item to finish rising or share a group frame.
+Contact checks the upper torso slightly backward
 while the walking body is still transferring weight. A yielding knee, displaced
 shoulder or small recovery step makes the modest recoil readable. Keep it brief
 and slightly asymmetric. The hands open while trying to recover balance; no
@@ -129,7 +134,8 @@ the same cup clears them; the same glasses clear nose and ears as the head react
 the loose accessory clears its actual resting point. A visible gap and vacant
 support establish transfer. Keep following the departing original into flight,
 rather than revealing an airborne copy while its source remains occupied.
-All releases belong to the same short impact, with natural small offsets.
+All releases start in the same short impact; small physical offsets do not become
+separate scheduled beats or a reason to delay the camera.
 Flight begins with an initial impulse, carries
 forward/lateral motion and curves upward before slowing into the shared freeze.
 It must not accelerate slowly out of a stationary open hand.
@@ -160,8 +166,10 @@ per original, including the object next to its newly vacant support.
 Release moves the original; its vacated support stays empty until an authored
 pickup or reattachment. Show that vacancy in every later shared/body view,
 including the pullback: an empty hand, bare nose/ears or vacant neck, as applicable.
-Reference carrying poses never restore possession. Freeze after release near the shared airborne crest,
-with the body caught partway through balance recovery. Lock head and gaze,
+Reference carrying poses never restore possession. Surprise begins with contact,
+not after a completed airborne display. Slow into the shared airborne crest with
+the body caught partway through recovery, retaining that surprised expression
+through settling. Lock head and gaze,
 object poses, closures and displaced material until time resumes. No conscious
 posing or new head turns during the tour. Preserve one instance even offscreen.
 Liquid needs a real open source; sealed packaging keeps its closure and contents.
@@ -174,7 +182,7 @@ height/lateral offsets that fit the supports. No equal-height display row or
 geometry changes to manufacture depth. Carry the same map into outline, grid
 and Video. Distances and product categories are not fixed.
 
-Move promptly from the readable release into the first object's close view.
+Start moving toward the first object's close view at contact, overlapping release.
 The recoil is a transition, not a long tableau of a person arching backward.
 The outgoing near item enlarges past a frame edge while the already visible,
 smaller next item deepens the route and grows into its visit. Keep all visits
@@ -199,7 +207,7 @@ screen time and framing to follow actual separation; shorten the setup or beauty
 holds before omitting this link. Extend the airborne interval, not a slow
 pantomime of the collision. Remove the long
 freeze-establishing hold before trimming connected travel or landing. Choose
-one chronological timeline rather than overlapping beat intervals.
+one chronological timeline; actions within the impact interval deliberately overlap.
 
 Record footwear-level start_state with belongings supported, and end_state with
 every original grounded, the body reaction and any next-segment continuity.
@@ -209,8 +217,9 @@ floating pose; the next sample shows the airborne result. Later nodes start
 from the settled consequence without repeating the cause.
 
 Before returning, reconcile story, outline, grid and Video against this chain:
-actual contact -> slight backward torso recoil -> support loss and launch -> shared
-freeze -> connected inspection -> complete landing. Replace stale instructions
+actual contact with overlapping recoil, surprise, release and camera approach ->
+shared freeze during that approach -> connected inspection -> complete landing.
+Replace stale instructions
 that demand a planted presentation pose, delayed levitation, unsupported launch
 heights or contact hidden behind foreground coverage. Preserve approved speech,
 subtitles, identity and product facts. This is authoring guidance inside the
