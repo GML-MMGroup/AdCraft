@@ -42,16 +42,21 @@ promptly instead of holding a staged recoil or slowly levitating belongings.
 
 Use the product plus two distinct supporting items unless the approved set
 supplies those slots. Stage approved A/B/C near to far in a bounded depth corridor
-with support-derived height and lateral offsets. Advance continuously: the
-outgoing near edge grows past the lens while the already visible smaller next
-item enlarges. Accelerate between visits, slow for detail, and continue with
-connected roll/tilt and offsets. Give the product the strongest view. Only the
-final pullback retreats; then resume gravity and finish settling.
+with support-derived height and lateral offsets. Give EVERY item a readable
+partial camera orbit: front/three-quarter to side detail, with background parallax.
+Join each arc tangentially to the next approach; the outgoing edge and already
+visible next target share the bridge. Advance overall through depth while curving
+locally around each fixed item. Accelerate between visits, slow while circling;
+roll/tilt alone is not an orbit. Give the product the strongest view. Keep the
+final pullback, resumed gravity and settling.
 
 ## Preserve states across views
 
-Freeze body, head and gaze, object geometry, closures and displaced material in
-world space. Each original exists once; its vacated support stays empty in every
+Once all originals are airborne, show surprise within the existing release beat:
+widened eyes, lifted brows and slightly parted lips. Freeze that expression,
+body, head and gaze through inspection/pullback; retain surprise through settling.
+Freeze object geometry, closures and displaced material in world space.
+Each original exists once; its vacated support stays empty in every
 later body view and pullback. References supply identity/design while the story
 owns possession and location. Flag stale conflicting media for replacement.
 A splash needs an open source; a drop is not durability proof.

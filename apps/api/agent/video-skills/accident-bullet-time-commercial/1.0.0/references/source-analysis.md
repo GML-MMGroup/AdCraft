@@ -4,6 +4,31 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
+## Camera-only refinement and surprised expression, 2026-11-16
+
+The user accepts the latest action, identities, objects, setting and ending in
+proj_fbba5ab434f95922 (video version_asset_6922fa3bb6c3896e53225a3a). Preserve
+them. The requested changes are continuous bridges, a readable partial camera
+orbit around every airborne item, and surprise after all items leave their
+supports, held through the ending. Current frames around 6.17-6.25 seconds show
+an abrupt cup-to-headphone/background change rather than a readable traversal.
+The glasses then receive mostly a forward enlargement with limited side reveal.
+
+Source C's glasses around 3.0-4.6 seconds move from lens face toward hinge/temple
+detail, with the cup and wearer remaining depth landmarks. Its cup around
+4.8-5.8 and bag around 6.4-7.7 show changing perspective and background position.
+Transfer these partial arcs and the visibly surprised face, not a requirement for
+three complete revolutions, source props, spill, costume or duration. Sampling
+does not establish that the reference itself contains no edits.
+
+This supersedes treating overall forward travel as a ban on local orbital arcs.
+Join arc exits tangentially to subsequent approaches with visible background;
+preserve overall depth order and the final pullback. Rolling the image or rotating
+objects is not a substitute for camera translation. The surprise develops within
+the existing airborne beat without adding a reaction insert or time window.
+Only camera/expression text is in scope; historical rejected states below must
+not trigger another rewrite of the now-approved contact, release or landing.
+
 ## Latest correction: preserve recoil direction and one forward state progression
 
 The 2026-11-16 result version_asset_952a813e9c35c94b2f582217 uses Seedance 2.0,

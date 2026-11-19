@@ -31,10 +31,9 @@ support. Show the now-vacant source. Each panel has one location per original.
 4. Early separation: each original just beyond its vacant support. Open empty
    fingers, bare face behind departing glasses, vacant accessory support. Arcs
    slow into an intermediate medium-to-close approach to A.
-5-7. Connected near-to-far visits of those SAME airborne originals. Every featured
-   object, including the advertised product, has visible air beneath it; pavement
-   stays a distant background plane. Outgoing near edge and already visible
-   smaller deeper next item connect each transition. Objects keep world positions.
+5-7. Near-to-far visits of the SAME airborne originals above distant pavement.
+   Sample a partial camera orbit around EACH fixed item: front/side surfaces,
+   outgoing edge, smaller next target and shared landmark show connected travel.
 8. Sole continuous pullback to the same airborne event, with body caught in slight
    backward recovery and every released support still vacant. Gravity is about to resume.
 9. All originals grounded and settled for the first time after descent, with the
@@ -42,16 +41,18 @@ support. Show the now-vacant source. Each panel has one location per original.
 
 ## One space and forward state progression
 
-Freeze the body, head and gaze mid-recovery until time resumes. Each original's
-vacated support stays empty until an authored pickup. Connected parts and closures
+After all items clear their supports, show widened eyes, raised brows and parted
+lips. Freeze surprise, body, head and gaze until time resumes; keep surprise in
+the settled last panel. Each original's vacated support stays empty until pickup.
+Connected parts and closures
 persist; a splash needs an open source. Heights follow the actual release arcs.
 
-Map A/B/C near to far in a bounded depth corridor with natural offsets. Advance
-through fixed world space: outgoing item enlarges past an edge as the deeper
-next target grows. Shared landmarks and parallax connect both bridges. Accelerate
-in transit, slow for detail; camera roll, tilt and offsets share that route.
-Each item becomes dominant, the product strongest. Only the final pullback
-retreats; reserve two to three seconds for landing.
+Link each orbit's front/three-quarter entry, curved side view and tangential exit
+to the next approach through world space. Each item becomes dominant, the product
+strongest. Both bridges retain outgoing edge, deeper target and shared background.
+Accelerate between visits, slow while circling; camera roll/zoom alone is insufficient.
+Local arcs preserve overall depth progression. Keep panels 5-7, the final pullback
+and two to three seconds for landing.
 
 Before returning, follow every original through supported -> separating ->
 airborne inspection/pullback -> settled. Correct any held-and-airborne duplicate,

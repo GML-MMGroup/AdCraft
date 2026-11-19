@@ -26,8 +26,9 @@ forward/upward flight curve and slow before the shared freeze; no delayed,
 slow vertical levitation. Low-held objects need support-derived heights, not
 an unexplained climb above the face. Preserve connected parts and closures.
 
-Freeze the body mid-recovery, including head and gaze; new reactions wait until
-time resumes. One item has one location and its vacated support stays empty,
+Once all items are airborne, show surprised widened eyes, raised brows and parted
+lips within that beat. Freeze this expression, body, head and gaze until time
+resumes; keep surprise through settling. One item has one location and its vacated support stays empty,
 including every later body view and pullback. Reference poses cannot restore
 possession. Carry an authorized placement correction into start_state and all
 dependent prompts, while retaining identities and the later handoff.
