@@ -17,7 +17,7 @@ consumer_psychology: >
   lets the audience discover desirable product details before the expected
   consequence arrives. Recognizable cause and consequence make the fantasy credible.
 story_structure: >
-  First-frame footwear and a rising reveal establish supported belongings.
+  First-frame footwear and a rising reveal establish ordinary product use.
   The passerby reaches the same contact plane as the protagonist; shoulders
   briefly meet while both keep their destinations. Contact checks the torso,
   weight shifts and hands react; items leave their actual supports with a short
@@ -32,8 +32,9 @@ hook_methods: >
   Use one chosen route, without swerving to display a face or deliberately charging.
 product_role: >
   Use the advertised product plus two plausible unbranded supporting belongings;
-  an approved product set may supply distinct slots. Establish each support,
-  release mechanism and landing. The commercial hero receives the strongest
+  an approved product set may supply distinct slots. Establish the product in its
+  ordinary functional position, then visibly follow that original clearing its
+  support before inspection. The commercial hero receives the strongest
   material or scale emphasis. Preserve an approved visit order and product facts.
 suitable_categories_and_goals: >
   Accidental bullet-time street adverts, accessories, drinks, food, cosmetics
@@ -51,7 +52,7 @@ common_mistakes: >
   attached items passing through the body, a frozen inventory row, disconnected
   product portraits, duplicated belongings, or ending before everything lands.
 cross_category_examples: >
-  Sunglasses: a wearer carries the advertised glasses and a neutral cup, with a loose supporting accessory; passing contact interrupts the stride and jolts the supports, releasing the originals before the frozen tour and complete landing.
+  Sunglasses: the advertised glasses begin worn on the face, a neutral drink is held in one hand and a supporting accessory rests at its ordinary support; contact dislodges those same originals, leaving a bare face and empty hand before the frozen tour and complete landing.
   Takeaway meal: a carrier's supported burger, fries and drink are displaced by incidental contact; a brief reflex and loss of grip precede the airborne tour, followed by the original items falling. Fallen food is not eaten.
   Skincare: establish the capped product, a neutral phone and loose eyewear; select carrying positions with believable release paths, inspect the coexisting originals in frozen time and return to their shared consequence. The cap stays closed.
 ---
@@ -70,6 +71,24 @@ The companion audiovisual Skill owns framing, speed changes and camera travel.
 Explicit user facts, approved cast and physical reference designs remain authoritative.
 
 ## How To Execute
+
+### Establish ordinary use before designing the spectacle
+
+Choose each initial location from the product's actual use and the approved
+story. Eyewear normally starts on the nose and ears; a drink is held by its cup;
+a loose neck accessory rests on its real support. Explicitly authored handling
+can differ, but convenient launch geometry alone is not a reason to put a worn
+product in a hand or distribute belongings arbitrarily. Let trajectory and
+camera adapt to these starting locations. Respect available hands and geometry.
+
+Keep reusable identity/design and changing possession separate. Character
+references identify the person and clothing; product/prop references identify
+the objects. The current authored action owns wearing, grip and release. If an
+authorized change supersedes an old carrying state, update the affected start
+state, character-reference instructions, grid and video together. Record stale
+images for replacement instead of retaining their old pose as a creative fact.
+Use the actual prop reference for each designed belonging when available;
+an incidental object in a character sheet is not a second version of that prop.
 
 ### Choose one passing route and an actual contact
 
@@ -104,16 +123,21 @@ For each original item, name its actual support, the motion that dislodges it,
 the moment support is lost and the departing direction. A hand-held object has
 a brief grip/wrist disturbance; a loose worn item has a visible slip or lift
 clear of its real support. A secure strap cannot vanish or pass through anatomy.
-All releases belong to the same short impact, with natural small offsets rather
-than sequential magic reveals. Flight begins with an initial impulse, carries
+Show the original and its support together through separation: fingers open and
+the same cup clears them; the same glasses clear nose and ears as the head reacts;
+the loose accessory clears its actual resting point. A visible gap and vacant
+support establish transfer. Keep following the departing original into flight,
+rather than revealing an airborne copy while its source remains occupied.
+All releases belong to the same short impact, with natural small offsets.
+Flight begins with an initial impulse, carries
 forward/lateral motion and curves upward before slowing into the shared freeze.
 It must not accelerate slowly out of a stationary open hand.
 
 Upward motion is an advertising exaggeration, but its extent follows the support
 and impulse. Keep low-held items near a plausible departing height instead of
 lifting everything above the face for composition. Move the camera to the items.
-When carrying is still open, choose loose, ordinary supports that make the
-release legible. Preserve approved supports unless their revision is authorized;
+When carrying is still open, choose ordinary functional supports and a plausible
+release. Preserve approved supports unless their revision is authorized;
 explain a physical conflict rather than inventing unseen force. Do not reduce
 the requested airborne event to a downward slip or change every story into a fall.
 
@@ -126,8 +150,9 @@ belongings are not extra advertised brands or alternate views of one object.
 Retain additional approved items and attached components.
 
 Release moves the original; its vacated support stays empty until an authored
-pickup or reattachment. Reference carrying poses establish an initial state,
-not permanent possession. Freeze after release near the shared airborne crest,
+pickup or reattachment. Show that vacancy in every later shared/body view,
+including the pullback: an empty hand, bare nose/ears or vacant neck, as applicable.
+Reference carrying poses never restore possession. Freeze after release near the shared airborne crest,
 with the body caught partway through balance recovery. Lock head and gaze,
 object poses, closures and displaced material until time resumes. No conscious
 posing or new head turns during the tour. Preserve one instance even offscreen.
@@ -161,8 +186,10 @@ reserve two to three seconds for complete landing before adding beauty holds.
 Extra story or brand payoff begins after settling. Disclose incompatible timing.
 
 Keep ordinary walking and contact close to normal speed; begin the strong speed
-ramp only after the contact impulse and support loss are readable. Extend the
-airborne interval, not a slow pantomime of the collision. Remove the long
+ramp only after the contact impulse and support loss are readable. Protect enough
+screen time and framing to follow actual separation; shorten the setup or beauty
+holds before omitting this link. Extend the airborne interval, not a slow
+pantomime of the collision. Remove the long
 freeze-establishing hold before trimming connected travel or landing. Choose
 one chronological timeline rather than overlapping beat intervals.
 

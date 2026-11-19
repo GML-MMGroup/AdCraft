@@ -11,17 +11,26 @@ because clearance is insufficient. Gaze follows each destination. No foreground
 crossing with an untouched gap, curve around the wearer, pause or deliberate shove.
 An explicitly approved alternative route still needs visible contact.
 
+Choose ordinary functional placement first: eyewear worn on the face, a drink
+held by its cup, other belongings on their real supports. Explicit handling can
+differ; easier release geometry is not a reason to move everything into hands.
 Show initial support, then one quick chain: contact checks the torso, weight
 transfer is disturbed, a knee yields, hands react and grip/support is lost.
 Slight backward recoil and open palms are the recovery reflex, not a planted
 backbend or a pose arranged before release. The passerby remains adjacent at
-onset. Name the initial impulse and support loss for each original item. Let
+onset. Name the initial impulse and support loss for each original item. Follow
+the same cup clearing opening fingers, glasses clearing nose/ears and accessories
+leaving their support. Keep source and original readable together until a gap
+and vacant support establish transfer; only then enter the airborne detail. Let
 forward/upward flight curve and slow before the shared freeze; no delayed,
 slow vertical levitation. Low-held objects need support-derived heights, not
 an unexplained climb above the face. Preserve connected parts and closures.
 
 Freeze the body mid-recovery, including head and gaze; new reactions wait until
-time resumes. One item has one location and its vacated support stays empty.
+time resumes. One item has one location and its vacated support stays empty,
+including every later body view and pullback. Reference poses cannot restore
+possession. Carry an authorized placement correction into start_state and all
+dependent prompts, while retaining identities and the later handoff.
 Use a near-to-far depth corridor consistent with release paths and approved
 visit order. Move promptly from the release into A; an intermediate group view
 is brief, not a tableau. Connect A/B/C through visible outgoing edges and smaller
@@ -33,7 +42,7 @@ segment: feet, rise and supported items, contact/release, shared freeze,
 connected visits, pullback, resumed fall and settling. Keep the impact near normal
 speed; stretch the airborne instant after release. Reserve two to three seconds
 for landing within the fifteen-second cap and confirmed total. Shorten static
-holds, not travel or descent. Later story/payoff continues from end_state.
+holds, not visible separation, travel or descent. Later story/payoff continues from end_state.
 
 Carry the causal chain and complete interval into narrative_goal and handoff.
 The grid's contact sample shows the touch before the completed airborne state.

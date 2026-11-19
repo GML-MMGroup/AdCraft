@@ -4,7 +4,37 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest correction: contact and momentum before the frozen pose
+## Latest correction: ordinary use and visible transfer of the same originals
+
+The next first-segment result in proj_fbba5ab434f95922 is asset
+version_asset_c6588fafd95957f8d0c0e513, generated with the revised Node text and
+new grid version_asset_5b554c928c63e5feb60161ad. The actual input provenance
+includes that grid. Sampled frames around 3-6 seconds retain the cup in the hand
+while airborne accessories appear; the neck still carries an accessory while
+another is inspected. This fails to establish the original leaving its support.
+The new grid already duplicates the cup in panels 4 and 8, showing both a held
+and a released copy. The bound character sheet shows hand-held glasses and cup,
+with an accessory unlike the independent prop reference. That prop reference
+was bound to Video but absent from the grid inputs. These are concrete input
+contradictions; they do not isolate any one cause of the provider's output.
+
+The user corrects the campaign's initial use: the advertised glasses belong on
+the face. The preceding guidance preserved a low-held glasses state too strongly,
+and the creative example also suggested carrying the glasses. Supersede that
+default: establish ordinary functional placement, or explicit authored handling,
+before deriving any release geometry. Apply authorized placement corrections to
+the plan and affected reference instructions instead of preserving stale states.
+
+Make transfer observable in one view: the same cup clears opening fingers,
+glasses clear nose/ears and a loose accessory clears its support, leaving a gap
+and visible vacancy. Follow those originals into flight before pushing close.
+Keep vacancies in the shared airborne state and pullback. Identity and object
+design persist while possession changes. Use actual prop designs consistently
+upstream and downstream. Preserve the earlier natural contact, compact recoil,
+forward depth bridges and feet-to-settling continuity. No paid review gate or
+automatic media retry is added; replacement images still need generation.
+
+## Previous correction: contact and momentum before the frozen pose
 
 The 2026-11-16 first-segment result in proj_fbba5ab434f95922 is 15.104 seconds,
 720 by 1280 at 24 fps, asset version_asset_bd28cff350dfd8322f0581e8. Sampling
