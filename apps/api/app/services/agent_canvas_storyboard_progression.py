@@ -1716,7 +1716,7 @@ def _later_grid_bindings(
         if binding.target_node_id != grid_one.node_id:
             continue
         source_role = _grid_source_role(binding, nodes)
-        if source_role not in {"product_multiview", "character_turnaround", "scene_board"}:
+        if source_role not in {"product_multiview", "character_turnaround", "scene_board", "prop"}:
             continue
         candidates.append((len(candidates), binding, source_role))
     copied = list(_select_canonical_singleton_bindings(candidates, nodes))
@@ -1784,14 +1784,14 @@ def _canonical_grid_reference_bindings(
         ):
             continue
         source_role = _grid_source_role(binding, nodes)
-        if source_role in {"product_multiview", "character_turnaround", "scene_board"}:
+        if source_role in {"product_multiview", "character_turnaround", "scene_board", "prop"}:
             candidates.append((index, binding, source_role))
     selected = _select_canonical_singleton_bindings(candidates, nodes)
     return tuple(
         binding
         for binding in selected
         if _grid_source_role(binding, nodes)
-        in {"product_multiview", "character_turnaround", "scene_board"}
+        in {"product_multiview", "character_turnaround", "scene_board", "prop"}
     )
 
 
@@ -1863,6 +1863,8 @@ def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) 
             return None
         if source.creative_role == "scene":
             return "scene_board"
+        if source.creative_role == "prop":
+            return "prop"
         if source.creative_role == "product" and (
             source.structured_content.get("asset_kind") == "multi_view"
             or source.metadata.get("source_input_kind") == "multiview"
@@ -1879,6 +1881,7 @@ def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) 
         "product_reference": "product_multiview",
         "subject_reference": "character_turnaround",
         "environment_reference": "scene_board",
+        "prop_reference": "prop",
     }.get(str(semantic_role))
 
 
