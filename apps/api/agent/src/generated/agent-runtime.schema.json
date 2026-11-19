@@ -19073,6 +19073,28 @@
           "title": "Completion Revision",
           "type": "integer"
         },
+        "delivery_source": {
+          "default": "backend_export",
+          "enum": [
+            "backend_export",
+            "browser_editor"
+          ],
+          "title": "Delivery Source",
+          "type": "string"
+        },
+        "editor_snapshot_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editor Snapshot Digest"
+        },
         "export_generation": {
           "minimum": 1,
           "title": "Export Generation",
@@ -19742,6 +19764,44 @@
           "maxLength": 160,
           "minLength": 1,
           "title": "Asset Id",
+          "type": "string"
+        },
+        "entity_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
+        "member_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Member Id"
+        },
+        "source_scope": {
+          "default": "project",
+          "enum": [
+            "mine",
+            "project",
+            "recommended"
+          ],
+          "title": "Source Scope",
           "type": "string"
         },
         "version_id": {
@@ -39589,6 +39649,57 @@
       "title": "WorkflowConversationReply",
       "type": "object"
     },
+    "WorkflowDeliverySummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "editor_has_unexported_changes": {
+          "default": false,
+          "title": "Editor Has Unexported Changes",
+          "type": "boolean"
+        },
+        "final_completion_receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Completion Receipt Id"
+        },
+        "guidance_completed": {
+          "default": false,
+          "title": "Guidance Completed",
+          "type": "boolean"
+        },
+        "known_export_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Known Export Count",
+          "type": "integer"
+        },
+        "latest_export_asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Export Asset Id"
+        }
+      },
+      "title": "WorkflowDeliverySummaryV1",
+      "type": "object"
+    },
     "WorkflowDocumentReferenceV1": {
       "additionalProperties": false,
       "properties": {
@@ -39788,6 +39899,9 @@
             }
           ],
           "default": null
+        },
+        "delivery": {
+          "$ref": "#/$defs/WorkflowDeliverySummaryV1"
         },
         "documents": {
           "default": [],

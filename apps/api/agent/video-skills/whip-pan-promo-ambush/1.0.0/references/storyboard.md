@@ -22,3 +22,11 @@ Hold enough clear coverage after the reveal for the pitch and actual offer.
 Plan portrait-safe separation of face, merchandise, and later typography,
 adapting to the approved frame shape. Keep panels free of text and carry exact
 event wording, price, conditions, and CTA placement into the editing handoff.
+
+## Optional viewpoint clarification
+
+For each planned whip, establish the starting view and direction before the reaction
+happening at its landing. Distinguish camera swing from a witness turning their head.
+Keep the same threshold landmark through the return, and mark the settled pitch as a
+separate stable state. The nine panels sample the assigned coverage, not additional
+whips.

@@ -31,3 +31,12 @@ threshold accent when requested. Leave room for approved speech and honor
 silence. The separate BGM role owns the score. Exact typography and final
 compositing remain explicit production handoff requirements rather than claims
 of work already executed.
+
+## Optional shot phrasing
+
+For an approved threshold, "A controlled advance keeps the held product centered while
+the surrounding surface unfolds into the new space" anchors the event in one viewpoint.
+State independently whether the cast or product moves. Preserve the selected world rule,
+identities and material response. Camera-first wording is useful for spatial ambiguity,
+but match cuts, static impossible tableaux and the approved representation remain
+available.

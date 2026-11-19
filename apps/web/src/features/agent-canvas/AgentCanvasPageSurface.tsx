@@ -217,6 +217,7 @@ export function AgentCanvasPage() {
     createBinding,
     createConnectedNode,
     createNode: createCanvasNode,
+    importEditingExport,
     deleteBinding,
     deleteNode,
     mergeNode,
@@ -622,13 +623,11 @@ export function AgentCanvasPage() {
     );
     setSurfaceError(null);
     try {
-      await createCanvasNode({
-        node_type: "video",
-        creative_role: "general_video",
-        role_contract_version: AGENT_CANVAS_ROLE_CONTRACT_VERSION,
-        source_asset_id: asset.asset_id,
+      if (!asset.version_id) throw new Error(t("The exported video could not be added to canvas."));
+      await importEditingExport(editingNodeId, {
+        editor_asset_id: asset.asset_id,
+        editor_version_id: asset.version_id,
         title: asset.display_name || "Exported video",
-        structured_content: sourceAssetStructuredContent("video", asset.display_name, asset.duration_seconds),
         position,
       });
       setEditingNodeId(null);
@@ -636,7 +635,7 @@ export function AgentCanvasPage() {
       setSurfaceError(error instanceof Error ? error.message : t("The exported video could not be added to canvas."));
       throw error;
     }
-  }, [createCanvasNode, editingNodeId, t, workflow]);
+  }, [editingNodeId, importEditingExport, t, workflow]);
 
   const closeVideoPreview = useCallback(() => {
     setVideoPreview(null);

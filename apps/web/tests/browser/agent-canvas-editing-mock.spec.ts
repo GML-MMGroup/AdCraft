@@ -40,12 +40,13 @@ async function setup(page: Page, scenario = "short") {
       workflow.assets = [...workflow.assets.filter(item => item.asset_id !== asset.asset_id), asset];
       return json({ workflow_id: "workflow-1", asset }, 201);
     }
-    if (path.endsWith("/nodes") && request.method() === "POST") {
+    if (path.endsWith("/editing-1/import-export") && request.method() === "POST") {
       const body = request.postDataJSON(); writes.push({ path, body });
-      const node = { ...workflow.nodes[0], ...body, node_id: "video-export", output_asset_id: body.source_asset_id, status: "ready", execution_mode: "source_only", generation_prompt: null };
-      delete node.source_asset_id;
-      workflow = { ...workflow, revision: workflow.revision + 1, nodes: [...workflow.nodes, node] };
-      return json({ workflow, node, binding: null }, 201);
+      const asset = workflow.assets.find(item => item.version_id === body.editor_version_id)!;
+      const node = { ...workflow.nodes[0], node_id: "video-export", node_type: "video" as const, creative_role: "general_video" as const, position: body.position, title: body.title, output_asset_id: asset.asset_id, status: "ready" as const, execution_mode: "source_only" as const, generation_prompt: null };
+      const binding = { ...workflow.bindings[0], binding_id: "editing-export-link", source: { kind: "node_output" as const, source_node_id: "editing-1" }, target_node_id: node.node_id, input_role: "video_reference" as const };
+      workflow = { ...workflow, revision: workflow.revision + 1, nodes: [...workflow.nodes, node], bindings: [...workflow.bindings, binding] };
+      return json({ workflow_id: workflow.workflow_id, revision: workflow.revision, layout_revision: workflow.layout_revision, node, binding, asset, events_cursor: 41, replayed: false }, 201);
     }
     if (path.endsWith("/bindings") && request.method() === "POST") {
       const body = request.postDataJSON(); writes.push({ path, body });
@@ -142,8 +143,10 @@ for (const format of ["mp4", "webm"] as const) test(`native ${format} edits pers
   await expect(page.getByTestId("agent-canvas-node-video-export")).toBeVisible();
   await page.getByRole("button", { name: "Connect imported video downstream" }).click();
   await expect(page.getByTestId("downstream-binding")).toHaveText("binding-video-downstream");
-  expect(writes.find(write => write.path.endsWith("/nodes"))?.body.source_asset_id).toBe("asset-export");
-  expect(writes.some(write => /provider|execution|import-export|\/export$/.test(write.path))).toBe(false);
+  expect(writes.find(write => write.path.endsWith("/editing-1/import-export"))?.body).toMatchObject({ editor_asset_id: "asset-export", editor_version_id: "export-v1" });
+  const canvas = JSON.parse(await page.getByTestId("workflow-state").textContent() || "{}") as AgentCanvasWorkflowV2;
+  expect(canvas.bindings).toContainEqual(expect.objectContaining({ source: { kind: "node_output", source_node_id: "editing-1" }, target_node_id: "video-export" }));
+  expect(writes.some(write => /provider|execution|\/export$/.test(write.path))).toBe(false);
   expect(writes.filter(write => write.path.endsWith("/editing-1")).every(write => !write.body.structured_content)).toBe(true);
 });
 

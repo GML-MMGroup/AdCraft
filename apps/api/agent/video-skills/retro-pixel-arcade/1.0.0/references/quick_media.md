@@ -3,3 +3,8 @@
 快速生成角色姿态、平台布局或图形反馈变体时，锁定 limited pixel palette、网格和主轮廓，只改变一个变量。变体用于可读性或节奏比较，不自动改写正式角色和场景。
 
 优先检查小尺寸识别、碰撞关系和结果反馈。
+
+## Optional motion study phrasing
+
+For a motion study, distinguish sprite travel from viewport scrolling. A still sprite
+study keeps pixel alignment and one pose without lens or tracking instructions.

@@ -4,3 +4,11 @@
 
 正例：镜头从人物手部的犹豫开始，随着选择完成逐步拉开空间，环境声和动作方向连续，最后回到品牌标识与承诺。
 反例：镜头只展示抽象光线和人群剪影，人物目标、动作和品牌关系都不清楚。
+
+## Optional shot phrasing
+
+For a planned contextual reveal, try "A measured pullback widens from the hand while the
+approved gesture completes, exposing its relationship to the surroundings." Use this
+order only when it clarifies simultaneity. A static symbolic image or deliberate montage
+remains valid. Keep the original belief, narration and brand resolution; camera
+placement controls how the event is seen, not which event occurs.

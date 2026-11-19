@@ -28,6 +28,7 @@ from app.services.agent_canvas_reference_semantics import (
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_selected_reference import selected_reference_facts
 
 
 class AdReferenceBundleResolver:
@@ -292,7 +293,9 @@ class AdReferenceBundleResolver:
                 tuple(
                     _policy_source_role(nodes[item.source_node_id])
                     if item.source_node_id and item.source_node_id in nodes
-                    else _policy_asset_source_role(item.source_semantic_role)
+                    else _policy_asset_source_role(
+                        item.source_semantic_role, item.semantic_reference_role
+                    )
                     for item in ordered
                 )
                 + tuple(_policy_source_role(source) for _, source in omitted_bindings),
@@ -341,6 +344,9 @@ class AdReferenceBundleResolver:
 def canonical_node_reference_facts(node: CanvasNodeV2) -> dict[str, object]:
     """Project bounded typed facts for one explicitly bound source Node."""
 
+    selected = selected_reference_facts(node)
+    if selected:
+        return selected
     content = node.structured_content
     if node.creative_role in {"product", "prop", "character"}:
         facts = _selected_text_facts(content, ("subject_identity", "design_summary"))
@@ -517,7 +523,11 @@ def _policy_source_role(node: CanvasNodeV2) -> str:
     return node.creative_role
 
 
-def _policy_asset_source_role(source_semantic_role: str | None) -> str:
+def _policy_asset_source_role(
+    source_semantic_role: str | None, semantic_reference_role: str | None = None
+) -> str:
+    if semantic_reference_role == "prop_reference":
+        return "prop"
     return {
         "product": "product_multiview",
         "prop": "prop",

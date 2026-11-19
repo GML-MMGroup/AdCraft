@@ -4,3 +4,11 @@
 
 正例：摄影机从侧面跟随主角进入，横移展示队形打开，聚光收拢到产品，结尾固定观察全景。
 反例：镜头穿过人群、人物瞬移，或所有灯光和动作同时达到最高强度。
+
+## Optional shot phrasing
+
+For an approved formation opening, "A frontal wide view holds the stage axis while the
+chorus parts toward the frame edges and the spotlight settles on the existing focal
+point" can carry the spectacle. If a lateral follow is needed, state its path before the
+performer enters. Preserve stage blocking, musical pauses and authored cuts; do not
+force the camera through the ensemble to demonstrate movement.

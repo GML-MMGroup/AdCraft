@@ -3,3 +3,10 @@
 按抵达建立、局部观察、手部记录、空间移动、回忆回收排列镜头。关键帧记录地点锚点、路线、叠加层入口、真实动作和声音桥接；scrapbook continuity 要保留票据、照片、纸边或重复手势中的至少一个连接点。
 
 用翻页、贴纸移动、路线延续、环境声或动作匹配转场，不把文字写死在画面。
+
+## Optional viewpoint clarification
+
+Establish the observed location and viewing direction before the travel gesture; place
+drawn overlays relative to their intended plane. A route mark attached to the street
+follows perspective, while a page annotation can remain screen-fixed. Preserve scrapbook
+continuity across cuts without inventing a route or a new destination.

@@ -3,3 +3,9 @@
 快速探索一个道具、变身阶段或色彩对比时，只改变一个变量，保留日常角色轮廓和动作锚点。变体用于验证 symbolic props、轮廓或揭示动作，不自动成为最终角色事实。
 
 比较时先看身份连续、变身可追踪和行动结果，再看华彩程度。
+
+## Optional motion study phrasing
+
+For a transformation study, distinguish virtual camera movement from body or prop
+rotation. A still silhouette study can hold the approved pose without transformation
+effects.

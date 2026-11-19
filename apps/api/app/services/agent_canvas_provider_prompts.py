@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_selected_reference import SELECTED_REFERENCE_APPEARANCE
+
 from app.core.storyboard_layout import storyboard_layout_name
 
 from app.services.agent_canvas_image_presentation import (
@@ -385,6 +387,15 @@ class AgentCanvasProviderPromptCompiler:
             target_semantic_role=node.semantic_role,
             known_product_text=f"{creative_prompt}\n{body}" if is_product else "",
         )
+        video_story_context = (
+            _render_video_story_context(reference_bundle, f"{creative_prompt}\n{body}")
+            if node.semantic_role in {"storyboard_video", "general_video"}
+            and not (
+                isinstance(structured, VideoSegmentContentV2)
+                and structured.storyboard_content.strip()
+            )
+            else ""
+        )
         references = "\n".join(
             f"- Image {index}: {_reference_description(item, node.semantic_role, product_multiview=product_multiview)}"
             for index, item in enumerate(reference_bundle.references, start=1)
@@ -433,6 +444,7 @@ class AgentCanvasProviderPromptCompiler:
             f"Creative prompt:\n{creative_prompt}",
             f"Structured role content:\n{body}" if body else "",
             reference_identities,
+            video_story_context,
             storyboard_anchor_clause,
             (
                 _render_world_setting(world_setting)
@@ -478,6 +490,13 @@ class AgentCanvasProviderPromptCompiler:
         if is_product:
             registry_digest = _digest(
                 {"role_registry_digest": registry_digest, "product_serialization_revision": 2}
+            )
+        if is_video:
+            registry_digest = _digest(
+                {
+                    "role_registry_digest": registry_digest,
+                    "video_narrative_serialization_revision": 2,
+                }
             )
         if node.semantic_role == "scene":
             # Apply the current role boundary without rewriting historical preparation evidence.
@@ -822,6 +841,25 @@ def _contains_text(prompt: str, value: str) -> bool:
     return bool(normalized) and normalized in " ".join(prompt.split())
 
 
+def render_video_directions(content: Mapping[str, object], *, known: str) -> str:
+    """Project authored Video directions without identity diagnostics or repeated prose."""
+    lines: list[str] = []
+    for label, field in (
+        ("Segment", "segment_summary"),
+        ("Storyboard", "storyboard_content"),
+        ("Dialogue", "dialogue"),
+        ("Voice style", "voice_style"),
+        ("Environment sound", "environment_sound"),
+        ("Action effects", "action_effects"),
+    ):
+        value = content.get(field)
+        if isinstance(value, str):
+            remaining = _unrepresented_lines(value, known + "\n" + "\n".join(lines))
+            if remaining:
+                lines.append(f"{label}: {remaining}")
+    return "\n".join(lines)
+
+
 def _render_product_identity(structured: DesignAssetContentV2, prompt: str) -> str:
     return "\n".join(
         f"{label}: {value}"
@@ -900,17 +938,13 @@ def _render_content(structured: object, *, generation_prompt: str = "") -> str:
             ]
         )
     if isinstance(structured, VideoSegmentContentV2):
-        return "\n".join(
-            (
-                f"Segment: {structured.segment_summary}",
-                f"Duration: {structured.duration_seconds} seconds",
-                f"Storyboard: {structured.storyboard_content}",
-                f"Dialogue: {structured.dialogue}",
-                f"Voice style: {structured.voice_style}",
-                f"Environment sound: {structured.environment_sound}",
-                f"Action effects: {structured.action_effects}",
-            )
+        lines = [f"Duration: {structured.duration_seconds} seconds"]
+        directions = render_video_directions(
+            structured.model_dump(), known=generation_prompt + "\n" + lines[0]
         )
+        if directions:
+            lines.append(directions)
+        return "\n".join(lines)
     if isinstance(structured, BgmContentV2):
         return "\n".join(
             (
@@ -997,6 +1031,31 @@ def _render_reference_identities(
     target_semantic_role: str,
     known_product_text: str = "",
 ) -> str:
+    selected_appearance = []
+    for index, reference in enumerate(reference_bundle.references, start=1):
+        if (
+            reference.media_type == "image"
+            and reference.source_identity_facts.get("appearance_authority")
+            == "selected_reference_image"
+            and not _is_storyboard_style_anchor(reference, target_semantic_role)
+        ):
+            selected_appearance.append(
+                f"Image {index}: {reference.source_semantic_role}"
+                + (f" ({reference.occurrence_id})" if reference.occurrence_id else "")
+            )
+    appearance_clause = (
+        "Selected appearance references: "
+        + "; ".join(selected_appearance)
+        + ".\n"
+        + SELECTED_REFERENCE_APPEARANCE
+        + " Each image governs only its assigned subject: Product geometry, materials, colors "
+        "and packaging; Character face, hair, proportions and wardrobe; Scene architecture "
+        "and spatial layout. Incidental objects in a Character or Scene image do not replace "
+        "the dedicated Product reference. Storyboard panels guide events, not appearance "
+        "overrides. Keep the target rendering medium and camera freedom.\n"
+        if selected_appearance
+        else ""
+    )
     identities = [
         {
             "binding_id": reference.binding_id,
@@ -1018,6 +1077,10 @@ def _render_reference_identities(
         for reference in reference_bundle.references
         if reference.source_identity_facts
         and not _is_storyboard_style_anchor(reference, target_semantic_role)
+        and not (
+            target_semantic_role in {"storyboard_video", "general_video"}
+            and _is_storyboard_reference(reference)
+        )
     ]
     if target_semantic_role == "product":
         identities = [item for item in identities if item["facts"]]
@@ -1065,16 +1128,59 @@ def _render_reference_identities(
         )
         video_semantics = "Video reference-use semantics:\n" + "\n".join(instructions) + "\n"
     return (
-        video_semantics + "Authoritative bound reference identities:\n"
+        appearance_clause + video_semantics + "Authoritative bound reference identities:\n"
         "These persisted Binding facts are base identity authority. Preserve them except for "
         "state changes explicitly approved in the written sequence, such as wardrobe or lighting "
         "transitions. Retain creative freedom for panel action, composition, and camera. "
         "Reference availability does not require every subject to appear in every shot.\n"
         + turnaround_clause
         + "\n".join(
-            f"- {json.dumps(identity, sort_keys=True, ensure_ascii=target_semantic_role != 'product')}"
+            f"- {json.dumps(identity, sort_keys=True, ensure_ascii=target_semantic_role not in {'product', 'storyboard_video', 'general_video'})}"
             for identity in identities
         )
+    )
+
+
+def _is_storyboard_reference(reference: ResolvedAdReferenceV2) -> bool:
+    return reference.source_semantic_role in {"storyboard_sequence", "storyboard_grid"} or (
+        reference.semantic_reference_role == "storyboard_visual_reference"
+    )
+
+
+def _unrepresented_lines(value: str, known: str) -> str:
+    """Elide only exact repeated lines, ignoring whitespace, without interpreting prose."""
+    remaining: list[str] = []
+    for line in value.splitlines():
+        if line.strip() and not _contains_text(known + "\n" + "\n".join(remaining), line):
+            remaining.append(line)
+    return "\n".join(remaining)
+
+
+def _render_video_story_context(bundle: AdReferenceBundleV2, known: str) -> str:
+    """Retain reference-driven story fallback without importing panel camera or layout."""
+    lines: list[str] = []
+    for reference in bundle.references:
+        if not _is_storyboard_reference(reference):
+            continue
+        facts = reference.source_identity_facts
+        values = [facts.get("sequence_summary"), facts.get("narrative_goal")]
+        panels = facts.get("panels")
+        if isinstance(panels, list):
+            for panel in panels:
+                if isinstance(panel, dict):
+                    values.extend(
+                        panel.get(field)
+                        for field in ("beat", "subject_action", "continuity_from_previous")
+                    )
+        for value in values:
+            if isinstance(value, str):
+                remaining = _unrepresented_lines(value, known + "\n" + "\n".join(lines))
+                if remaining:
+                    lines.append(remaining)
+    return (
+        "Storyboard narrative context (subordinate to the Video prompt):\n" + "\n".join(lines)
+        if lines
+        else ""
     )
 
 

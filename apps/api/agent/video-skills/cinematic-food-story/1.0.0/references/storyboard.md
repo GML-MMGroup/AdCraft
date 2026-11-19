@@ -9,3 +9,11 @@
 正例：先用稳定构图建立台面，再沿勺子的旋转切入汤汁纹理，蒸汽遮挡带到摆盘，最后用同一色彩锚点回到完整菜品。
 
 反例：只罗列景别和运镜名称，没有开始与结束状态；或相邻镜头同时改变食材熟度、空间轴线、光源和声音，造成无法修复的连续性断裂。
+
+## Optional viewpoint clarification
+
+Choose the appetite or process evidence first, then state the angle, scale and focal
+plane before the food action. Keyframes distinguish preparation, contact and material
+response, with tool ownership, heat and liquid state intact. A locked close-up can show
+a complete change; an environment cut supplies context. Nine panels sample the approved
+sequence, not nine forced camera moves.

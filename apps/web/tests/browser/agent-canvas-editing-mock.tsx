@@ -15,6 +15,7 @@ import { AgentCanvasEditingPanel } from "../../src/features/agent-canvas/editing
 import { AgentCanvasInlineWorkbench } from "../../src/features/agent-canvas/workbench/AgentCanvasInlineWorkbench.tsx";
 import {
   mergeAgentCanvasWorkflow,
+  mergeAgentCanvasEditingExportImport,
 } from "../../src/features/agent-canvas/session/workflowMerge.ts";
 import "../../src/styles/base.css";
 import "../../src/styles/theme.css";
@@ -275,11 +276,12 @@ function AcceptanceHarness() {
   );
 
   const addToCanvas = async (asset: ProjectAssetSummaryV2) => {
-    const response = await agentCanvasApi.createAgentCanvasNode(workflow.workflow_id, {
-      node_type: "video", creative_role: "general_video", role_contract_version: "ad-media-role-v2",
-      source_asset_id: asset.asset_id, title: "Exported video", position: { x: 900, y: 160 },
-    });
-    setWorkflow(current => mergeAgentCanvasWorkflow(current, response.value.workflow));
+    if (!asset.version_id) throw new Error("Missing rendered video version.");
+    const response = await agentCanvasApi.importAgentCanvasEditingExport(workflow.workflow_id, editingNode.node_id, {
+      editor_asset_id: asset.asset_id, editor_version_id: asset.version_id,
+      title: "Exported video", position: { x: 900, y: 160 },
+    }, crypto.randomUUID());
+    setWorkflow(current => mergeAgentCanvasEditingExportImport(current, response.value));
     setEditingPanelOpen(false);
   };
 

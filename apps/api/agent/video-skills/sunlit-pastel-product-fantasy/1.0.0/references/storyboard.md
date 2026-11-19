@@ -23,3 +23,11 @@ it to face camera during every rotation.
 Check the sequence at thumbnail size: focus, geography, and the final brand
 image should remain clear. Keep the storyboard layout required by the current
 role; the style does not prescribe a new panel count or canvas arrangement.
+
+## Optional viewpoint clarification
+
+When parallax matters, place the camera side, foreground edge and distant architecture
+before the hero state. Show which elements move because of viewpoint change and which
+follow an authored trajectory. Keep scale, daylight and geometry continuous through
+occlusion. The grid communicates state and geography without prescribing a new cut or
+orbit per panel.

@@ -3,3 +3,10 @@
 按日常建立、异常触发、尺度或形体变化、人物反应、功能回收组织画面。关键帧记录参照物、变形阶段、接触关系、视线和 visual metaphor 的回收位置。
 
 用形状匹配、颜色擦过、物体遮挡或视线转场连接段落，检查变化是否仍可解释。
+
+## Optional viewpoint clarification
+
+Establish the bold composition and scale comparison before the transformation state.
+Track what remains fixed, what changes and where contact occurs. Distinguish a graphic
+cut from a continuous metamorphosis. Preserve the approved visual metaphor; nine panels
+do not require nine new impossible events.

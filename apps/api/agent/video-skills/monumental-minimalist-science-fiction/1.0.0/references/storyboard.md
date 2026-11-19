@@ -3,3 +3,10 @@
 从建立尺度的远景开始，再用接近、横向移动、局部接口和结果镜头转换信息。为每个关键帧记录人物与结构的比例、消失点、运动方向、设备状态和大气层级。human-to-environment contrast 要服务于目标，而非只制造孤独。
 
 转场可用结构对齐、遮挡、光线变化或同一运动方向连接。检查主体轮廓在雾和逆光中仍可读。
+
+## Optional viewpoint clarification
+
+Choose the viewpoint and vanishing point that establish vast scale before placing the
+subject and interface state. Preserve foreground references and atmospheric depth across
+panels. A held wide frame can contain meaningful movement toward a distant structure;
+closer coverage is justified by information, not a compulsory scale reveal.

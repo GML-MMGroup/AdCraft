@@ -4,3 +4,11 @@
 
 正例：摄影机从走廊跟随人物，经过一个有意义的遮挡后转向产品落点，揭示发生在动作完成时。
 反例：只写“长镜头穿梭全场”，没有路线、障碍、焦点和信息节点。
+
+## Optional viewpoint clarification
+
+Use the nine panels as samples along the approved continuous spatial choreography, not
+nine cuts. At each sampled state, locate the camera, its route, the subject and a
+persistent landmark. Distinguish movement toward the lens from movement parallel to it.
+Track entrances, contact and occlusion without treating grid cells as mandatory first or
+last frames.

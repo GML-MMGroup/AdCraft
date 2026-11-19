@@ -475,6 +475,9 @@ async def _poll_agent_canvas_default_exports(
     def recover(cycle_settings: Settings) -> None:
         runtime = (runtime_factory or create_agent_canvas_runtime)(cycle_settings)
         try:
+            completion = getattr(runtime, "guided_final_completion", None)
+            if completion is not None:
+                completion.reconcile_saved_editor_exports()
             worker = getattr(runtime, "editing_default_exports", None)
             if worker is not None:
                 worker.run_once()

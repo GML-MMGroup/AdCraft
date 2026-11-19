@@ -4196,11 +4196,13 @@ export interface EditingExportCancelResponseV2 {
   events_cursor: number;
 }
 
-export interface CanvasEditingExportImportRequestV2 {
-  export_id: string;
+export type CanvasEditingExportImportRequestV2 = (
+  | { export_id: string }
+  | { editor_asset_id: string; editor_version_id: string }
+) & {
   title?: string | null;
   position: CanvasPositionV2;
-}
+};
 
 export interface CanvasEditingExportImportResponseV2 {
   workflow_id: string;

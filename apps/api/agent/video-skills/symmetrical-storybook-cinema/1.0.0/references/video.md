@@ -3,3 +3,11 @@
 优先保持稳定轴线和可读的主体运动，再安排推近、横移、停顿或轻微偏轴。动作要有准备、执行、反应和结束，角色表情、手部、产品轮廓与服装在相邻段落保持一致。precise comic timing 需要留出观众读懂反应的空间。
 
 声音可以用脚步、门响、停顿后的环境声和短促反应强调节奏，但不要让音效替代画面因果。结果失去童话秩序时，先恢复轴线、色盘和关键动作，再减少运动复杂度。
+
+## Optional shot phrasing
+
+For an approved crossing, "A locked frontal tableau holds the central axis while the
+performer enters from screen-left and pauses at the marked position" makes precise comic
+timing readable. If a lateral move is authored, name it before the action and preserve
+the axis. This style can remain still; camera-first phrasing must not replace deliberate
+chapter cuts or introduce observational wobble.

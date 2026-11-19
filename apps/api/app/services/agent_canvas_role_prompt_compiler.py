@@ -8,6 +8,7 @@ from app.services.agent_canvas_video_subtitles import with_managed_video_subtitl
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CHARACTER_IDENTITY_SCOPE,
     CHARACTER_TURNAROUND_FRAMING,
+    CHARACTER_TURNAROUND_RENDERING_AUTHORITY,
 )
 
 from app.services.agent_canvas_image_presentation import (
@@ -246,6 +247,7 @@ class AgentCanvasRolePromptCompiler:
             storyboard_beats=(
                 tuple(row.content_beat for row in context.storyboard_projection.rows)
                 if context.storyboard_projection is not None
+                and not _turnaround_aligned_grid(concrete_brief, context)
                 else None
             ),
         )
@@ -366,6 +368,11 @@ class AgentCanvasRolePromptCompiler:
             # append the older rule that also repaints ears, neck and hands.
             rule = None
         if rule is not None:
+            if context.role_variant == "character_turnaround":
+                rule = (
+                    "Default face treatment for this Turnaround, subordinate to explicit "
+                    "region-specific rendering direction: " + rule.removeprefix("Mandatory rule: ")
+                )
             # User decision (2026-10-26): the rule is visible in the node prompt.
             prompt = f"{prompt}\n\n{rule}"
         if (
@@ -808,9 +815,9 @@ def _render(
         )
         return (
             "Use the exact bound Character Main as identity authority. Create the same "
-            "character in the selected visual style, matching the bound Main's rendering "
-            "treatment, in front, side, and back "
+            "character in the selected visual style in front, side, and back "
             f"full-body views. {DEFAULT_REFERENCE_PRESENTATION} Preserve all distinguishing details. "
+            f"{CHARACTER_TURNAROUND_RENDERING_AUTHORITY} "
             "Show the complete head-to-toe extent in every view, with the entire head, lower "
             "body and feet fully inside the frame and clear margins (or the complete silhouette "
             "and extremities for a nonhuman character). If the Main is cropped, do not reproduce "
@@ -967,6 +974,20 @@ def _retain_video_audio(prompt: str, brief: VideoSegmentRoleBriefV2) -> str:
         if text and text not in prompt:
             prompt = f"{prompt}\n{label}: {text}"
     return prompt
+
+
+def _turnaround_aligned_grid(
+    brief: RoleCreativeBriefMemberV2, context: RolePromptPreparationContextV2
+) -> bool:
+    return (
+        isinstance(brief, StoryboardGridRoleBriefV2)
+        and context.storyboard_projection is not None
+        and len(brief.beats) == len(context.storyboard_projection.rows)
+        and any(
+            binding.source_role == "character" and binding.character_phase == "turnaround"
+            for binding in context.bindings
+        )
+    )
 
 
 def _structured_content(
@@ -1186,20 +1207,8 @@ def _structured_content(
         }
     if isinstance(brief, StoryboardGridRoleBriefV2):
         projection = context.storyboard_projection
-        panels = tuple(
-            StoryboardPanelV2(
-                panel_index=index,
-                beat=beat,
-                composition=f"Composition for ordered beat {index}.",
-                camera=f"Camera setup for ordered beat {index}.",
-                subject_action=beat,
-                continuity_from_previous=(
-                    "Opening state." if index == 1 else f"Continue from beat {index - 1}."
-                ),
-            )
-            for index, beat in enumerate(brief.beats, start=1)
-        )
-        if projection is not None:
+        aligned = _turnaround_aligned_grid(brief, context)
+        if projection is not None and not aligned:
             panels = tuple(
                 StoryboardPanelV2(
                     panel_index=row.panel_index,
@@ -1215,13 +1224,35 @@ def _structured_content(
                 )
                 for row in projection.rows
             )
+        else:
+            panels = tuple(
+                StoryboardPanelV2(
+                    panel_index=index,
+                    beat=beat,
+                    composition=beat if aligned else f"Composition for ordered beat {index}.",
+                    camera=(
+                        beat if len(beat) <= 1024 else "Follow the camera direction in this beat."
+                    )
+                    if aligned
+                    else f"Camera setup for ordered beat {index}.",
+                    subject_action=beat,
+                    continuity_from_previous=(
+                        "Opening state." if index == 1 else f"Continue from beat {index - 1}."
+                    ),
+                )
+                for index, beat in enumerate(brief.beats, start=1)
+            )
         return StoryboardGridContentV2(
             production_handoff=brief.production_handoff,
             sequence_summary=(
-                projection.sequence.narrative_goal if projection else brief.sequence_summary
+                projection.sequence.narrative_goal
+                if projection and not aligned
+                else brief.sequence_summary
             ),
             narrative_goal=(
-                projection.sequence.narrative_goal
+                brief.sequence_summary[:4096]
+                if aligned
+                else projection.sequence.narrative_goal
                 if projection
                 else context.selected_direction or brief.sequence_summary
             ),

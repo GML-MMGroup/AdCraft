@@ -41,7 +41,7 @@ class GuidedMediaResultPublicationContextV1(_GuidedAuthoringPolicyModel):
     plan_document_id: str = Field(min_length=1, max_length=160)
     plan_revision: int = Field(ge=1)
     operation_id: str = Field(min_length=1, max_length=160)
-    source_generation: int = Field(ge=0, le=16)
+    source_generation: int = Field(ge=0)
 
 
 class GuidedMediaResultEvidenceV2(_GuidedAuthoringPolicyModel):

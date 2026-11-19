@@ -20,3 +20,11 @@ Give material inserts enough scale to distinguish the actual item.
 Keep panels free of typography. Reserve an ending composition with breathing
 room and carry exact brand wording, timing, and placement into the editing
 handoff. A facade or a dark graphic ending is optional, not a required location.
+
+## Optional viewpoint clarification
+
+For walking coverage, establish the observer position and street depth before placing
+each model. Distinguish a model crossing screen-left to screen-right from approaching
+the lens. A lateral follow may keep the model in the same screen area while poles move
+behind. Portraits, garment inserts and city cutaways retain their own viewpoints; do not
+turn their contrast into one compulsory camera path.

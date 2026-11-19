@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.agent_canvas_selected_reference import selected_reference_facts
+
 from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -950,6 +952,17 @@ class NodePromptPreparationService:
                 "video_representation_mode",
             }
         }
+        # Read only current, explicitly bound sources; never infer hidden inputs.
+        selected_authorities = []
+        for binding in bindings:
+            if binding.source_node_id is None:
+                continue
+            source = self._workflows.get_node(node.workflow_id, binding.source_node_id)
+            facts = selected_reference_facts(source)
+            if facts:
+                selected_authorities.append({**binding.model_dump(mode="json"), **facts})
+        if selected_authorities:
+            controls["selected_reference_authorities"] = selected_authorities
         return self._projector.project(
             node,
             context,

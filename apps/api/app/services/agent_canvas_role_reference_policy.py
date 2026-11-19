@@ -25,7 +25,7 @@ from app.schemas.agent_canvas_role_reference_policy import (
 )
 
 
-_POLICY_VERSION = "agent_canvas_role_reference_policy_v2"
+_POLICY_VERSION = "agent_canvas_role_reference_policy_v3"
 
 
 def _rule(
@@ -85,6 +85,7 @@ _POLICIES: dict[RoleReferenceTargetV1, RoleReferencePolicyV1] = {
                 required_when_active=True,
                 canonical_order=2,
             ),
+            _rule("prop", "image", 0, 64, required=False, canonical_order=3),
         ),
     ),
     "storyboard_grid_n": RoleReferencePolicyV1(
@@ -111,6 +112,7 @@ _POLICIES: dict[RoleReferenceTargetV1, RoleReferencePolicyV1] = {
                 required_when_active=True,
                 canonical_order=3,
             ),
+            _rule("prop", "image", 0, 64, required=False, canonical_order=4),
         ),
     ),
     "storyboard_video": RoleReferencePolicyV1(

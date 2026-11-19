@@ -36,6 +36,7 @@ from app.services.brand_production_handoff import BrandProductionHandoffService
 from app.services.brand_production_handoff import confirmed_production_inventory
 from app.services.brand_production_context import project_brand_production_context
 from app.schemas.brand_professional_mode import BrandTreatmentDocumentV1
+from app.services.agent_canvas_selected_reference import selected_reference_facts
 
 
 def build_capability_context_snapshot(
@@ -286,6 +287,7 @@ def _reference_summaries(
         }
         node = nodes.get(source_id)
         if node is not None:
+            selected_facts = selected_reference_facts(node)
             summaries.append(
                 {
                     "source_id": node.node_id,
@@ -294,6 +296,7 @@ def _reference_summaries(
                     "creative_role": node.creative_role,
                     "title": node.title,
                     "status": node.status,
+                    **({"source_identity_facts": selected_facts} if selected_facts else {}),
                     **plan_facts,
                 }
             )

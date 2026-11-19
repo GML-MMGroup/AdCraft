@@ -4,3 +4,11 @@
 
 正例：镜头沿人物拿起产品的方向跟随，焦点在关键部件响应时转移，动作结束后保留完整轮廓和稳定光源。
 反例：快速旋转造成 Logo 和结构变形，或只写“电影感展示”而没有动作起止和产品证据。
+
+## Optional shot phrasing
+
+For an approved feature reveal, "A short controlled follow stays beside the product
+while the hand lifts it; focus settles on the responding component" links camera and
+action. A locked hero shot or hard detail cut may serve the campaign better. Keep
+premium product reveal and the brand arc at their approved positions, and separate
+camera movement from product rotation so structure and labels remain stable.

@@ -1,52 +1,67 @@
-# Film the complete accident with one continuous camera path
+# Follow the same originals through one continuous event
 
-Use the approved inventory and physical map. Establish every carried item before
-contact; A, B and C each receive a separate visit, with the advertised item most
-prominent. Preserve additional approved props and their landing destinations.
+Keep approved identities, inventory, visit order and endpoint. Keep first-frame
+footwear reveal through all objects landing in one video segment within the approved
+duration and fifteen-second cap. Reserve two to three seconds for landing;
+use a continuous camera path.
 
-Keep collision through all objects landing in one video segment, even in long
-ads: visible contact/release, simultaneous freeze, tour, pullback, resumed fall,
-every ground contact and settling. Reserve the final two to three seconds for
-descent and settling. End only after all released belongings reach the ground;
-other nodes may contain earlier setup or later reaction/brand payoff. Fit the
-complete action within the provider cap, currently fifteen seconds, and the
-confirmed total. Shorten holds or extra setup first; disclose incompatible
-explicit timing instead of splitting the action or extending its duration.
+Use one onset interval: contact simultaneously starts slight backward recoil,
+surprise, opening hands, all originals' release and the camera's approach to A.
+Overlap their motion; keep backward recoil explicit in timed actions.
 
-Describe a continuous camera path, not a list of cuts:
-- Track backward from footwear height and rise to establish wearer and items.
-- Show the passing shoulder contact, recoil and actual support loss; freeze all
-  subjects together. Push from front medium toward A along an unobstructed path.
-- At each bridge state direction, distance/height change and a shared background
-  landmark. Let the outgoing item remain at the edge as the next enters. Show
-  continuous parallax, changing overlap and gradual focus transfer during travel.
-  Carry camera axis, lens perspective and velocity through the bridge; no new
-  viewpoint appears instantly. Allocate time for travel as well as detail holds.
-- Ease back from C to the same front three-quarter medium view. Resume time and
-  descend with the falling items to their contacts and final settled positions.
+## Contact, recoil and visible transfer
 
-All frozen objects, openings, liquid shapes, droplets and background poses stay
-fixed in world space. No spinning products, rolling droplets or flowing liquid
-while time is frozen. Only the camera moves; reflections change with viewpoint.
-Use crisp readable materials and sufficient focus. No cuts, dissolves, whip-pan
-resets, teleporting macro inserts or angle jumps inside this action. Speed ramps
-change subject time continuously without replacing the camera view.
+Track backward at footwear height and rise to initial support in ordinary use:
+eyewear on the face, drink in one hand, accessories at real supports, unless
+approved handling differs. References own designs/identity; action owns possession.
 
-Adaptable fifteen-second example:
-0-2s footwear-to-face tracking; 2-3s contact/release and shared freeze.
-3-6s push toward advertised A at upper left and pass its real detail.
-6-8s slide right/down to B at lower right, A leaving left as B enters right.
-8-10s arc down/left to C deeper at center, B leaving right while C enlarges;
-the same background doorway drifts continuously behind all three visits.
-10-12s ease backward/up to front medium. 12-14.5s resume time, follow every
-released item to ground contact, spill/bounce and settling; 14.5-15s hold the
-settled consequence and reaction. Replace this map with the actual storyboard
-geometry. A longer film's following node starts after this landed end_state.
+Choose independent walking routes, contact side and exit before contact. For a walk, keep footfalls at walking cadence as the camera rises until contact;
+one foot always bears weight. The passerby enters a foreground edge facing away
+and continues into depth. Shoulders touch at the same depth; fabric compresses
+and torso deflects. Keep the extra's route and gaze.
 
-The attached grid is an off-screen story-process reference, not a first/last-frame
-target. Begin at time zero inside the full-frame authored scene. Never show the
-sheet, borders, multiple panels or a transition from a sheet into a panel. Use
-story order and identity guidance without exact panel framing or timing locks.
-State camera pose and every item's settled location for the next segment;
-ordinary reference images do not supply native frame locks. Preserve approved
-speech and subtitle choices. Contact/movement foley belongs here; BGM is separate.
+The passerby is still adjacent when the torso recoils slightly backward, a knee
+yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
+impact, pair EACH handheld item with its hand. Show a clear gap between fingertips and item, then the same empty palm on return. Eyewear's
+entire frame and temples clear nose/ears with visible air to the now-bare face;
+that same pair flies onward. All arc outward/upward together.
+
+Advance toward A during release. The intermediate
+medium-to-close view keeps support loss readable through motion; never wait for
+all originals to finish rising, settle into a pose or fit one group frame. Normal
+impact momentum slows near the airborne crest while the approach continues.
+
+Freeze surprise, body, head and gaze until time resumes; retain surprise through
+settling. At release and pullback name the exposed attachment point (e.g. bare
+left wrist). Each vacated support stays empty until reattachment, even offscreen.
+Keep other accessories and slight backward recovery.
+
+## Inspect, then land
+
+Stage A/B/C near to far with support-derived heights/offsets. Write a partial
+camera orbit for EVERY item: front/three-quarter entry, curved side view and
+tangential exit. Each becomes dominant, the product strongest. Show background
+parallax around fixed world space; camera roll, zoom or self-rotation is not an
+orbit. Accelerate between visits, slow while circling within existing time slots.
+Local curves retain overall depth progression without requiring full revolutions.
+
+At BOTH bridges, keep separate outgoing item/next silhouettes with visible air between
+them and a shared landmark. Retain each item's defining parts (ear housings/band
+versus lenses/frame/temples), even cropped; curved dark shapes must not morph into
+one another. Travel from each exit toward the already-existing deeper item,
+changing focus/scale smoothly, not its identity. Keep background visible, without
+full-frame wipes or blur-covered jumps. Join the final arc directly to pullback.
+
+Inspect originals airborne above distant ground; design references supply
+neither a resting surface nor replacements.
+
+Pull back to airborne originals and empty supports. Restore gravity and follow
+the SAME items through first landing; they stay grounded until an approved pickup.
+Closures/connected parts persist; splash needs an open source. Preserve later story.
+
+The grid is an off-screen story-process reference, not a first/last-frame target
+or edit list. Begin in the full-frame scene. If a panel contradicts the written
+state, preserve that state and flag the old image for replacement in handoff;
+text cannot repair existing media. Resolve textual contradictions in this call,
+without an added review model or rerun. Preserve speech/subtitle controls. Video
+owns ambience and synchronized action foley; BGM remains separate.

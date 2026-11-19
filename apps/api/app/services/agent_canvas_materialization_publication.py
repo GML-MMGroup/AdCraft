@@ -1900,7 +1900,10 @@ class CapabilityMaterializationPublicationService:
                 occurrence_id=occurrence_id,
                 references=envelope.reference_plan.references,
             )
-        prompt_service = NodePromptPreparationService(self._workflows)
+        prompt_service = NodePromptPreparationService(
+            self._workflows,
+            asset_resolver=self._asset_resolver,
+        )
         if self._storyboard_gateway is not None:
             prompt_service = NodePromptPreparationService(
                 self._workflows,
@@ -1985,7 +1988,10 @@ class CapabilityMaterializationPublicationService:
         nodes = {node.node_id: node for node in workflow.nodes}
         pending: list[tuple[str, str]] = []
         contexts: dict[str, StageAuthoringContextV1] = {}
-        prompt_service = NodePromptPreparationService(self._workflows)
+        prompt_service = NodePromptPreparationService(
+            self._workflows,
+            asset_resolver=self._asset_resolver,
+        )
         for node_id in dependency_ids:
             node = nodes.get(node_id)
             if node is None or node.status != "draft":

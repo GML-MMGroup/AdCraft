@@ -36,7 +36,7 @@ const JOURNEY_MESSAGES: Record<GuidedJourneyStageV2, UiMessageKey> = {
   videos: CAPABILITY_MESSAGES.video_direction,
   bgm: CAPABILITY_MESSAGES.bgm_direction,
   editing: "Editor is working...",
-  completed: "Preparing the next step...",
+  completed: "Agent is working...",
 };
 
 const BRAND_MESSAGES: Record<Exclude<BrandStageV2, "production">, UiMessageKey> = {
@@ -95,6 +95,9 @@ export function agentWorkingMessage(context: WorkingContext): UiMessageKey {
       return CAPABILITY_MESSAGES[item.proposal.capability_id];
     }
   }
+  // An ordinary reply is not a production operation, even when the last stage was Editing.
+  if (activeTurns[0]?.turn_kind === "message"
+    || (journey?.stage === "completed" && !journey.active_action)) return "Agent is working...";
   if (brandStage && brandStage !== "production") return BRAND_MESSAGES[brandStage];
   if (journey) return JOURNEY_MESSAGES[journey.active_action?.stage ?? journey.stage];
   return "Agent is working...";

@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
-from app.persistence.models import AgentCanvasGuidedProductionReceiptRow
+from app.persistence.models import (
+    AgentCanvasGuidedProductionReceiptRow,
+    AgentCanvasGuidanceSessionRow,
+    AgentCanvasNodeRow,
+)
 from app.schemas.agent_canvas_production_closure import (
     GuidedEditingActionReconciliationReceiptV1,
     GuidedEditingPreparationReceiptV1,
@@ -188,6 +192,25 @@ class AgentCanvasProductionClosureRepository:
             ),
             None,
         )
+
+    def pending_editor_deliveries(self) -> tuple[tuple[str, str], ...]:
+        with self._database.engine.connect() as connection:
+            rows = connection.execute(
+                select(
+                    AgentCanvasNodeRow.workflow_id,
+                    AgentCanvasNodeRow.node_id,
+                )
+                .join(
+                    AgentCanvasGuidanceSessionRow,
+                    AgentCanvasGuidanceSessionRow.workflow_id == AgentCanvasNodeRow.workflow_id,
+                )
+                .where(
+                    AgentCanvasGuidanceSessionRow.status == "active",
+                    AgentCanvasNodeRow.node_type == "editing",
+                    AgentCanvasNodeRow.parameters_json.contains('"cutia_editor_v1"'),
+                )
+            ).all()
+        return tuple((row.workflow_id, row.node_id) for row in rows)
 
     def save_completion(
         self, receipt: GuidedFinalCompletionReceiptV1

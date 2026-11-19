@@ -52,6 +52,11 @@ production_requirements. Count distinct identities once across shots. Resolve
 character_count and scene_presence, including explicit absence for a film with
 no characters or locations. Summaries describe each identity or space for later
 prompt authoring. Treat the advertised product separately from optional props.
+Distinguish independently designed cast from anonymous background extras allowed
+by the story. Describe such extras in action without adding Character roster
+entries or requesting Main/Turnaround assets. Retain confirmed cast and speaking
+or recurring identities. State the distinction in the cast declaration and
+preserve any explicit total-person limit or prohibition on background people.
 
 Classify physical objects in production_requirements.objects. For each, name its
 identity and scene function, quote its screenplay evidence, and assign ownership:
@@ -68,6 +73,20 @@ All inventory sources use step_key="story", section_key="screenplay", with exact
 quotes from the screenplay field. Make cast and location declarations explicit
 so they can support counts and presence. Set music_requirement independently
 of dialogue and effects, quoting the screenplay's music direction exactly.
+
+Resolved absence still requires evidence: when prop_presence is exclude, supply
+prop_sources quoting the screenplay's explicit supporting-prop decision. A zero
+character_count needs character_sources; either scene presence decision needs
+scene_sources. Do not leave evidence empty merely because no design is needed.
+
+Finalize the screenplay first, then copy contiguous source spans from that exact
+field. Preserve Markdown markers, punctuation, whitespace and line breaks; do not
+retype a rendered/plain-text version of a formatted heading. For example, a line
+`**Music**: Electronic percussion.` can be quoted exactly, or quoted using the
+unchanged span `Electronic percussion.`; `Music: Electronic percussion.` is not
+an exact span. Check timing, music and every inventory source together before
+returning. During repair, address all reported fields, preserve valid story text
+and decisions, and treat suggested source excerpts as evidence candidates only.
 
 Return exactly BrandScreenplayGenerationV1. Completion means the visible script contains
 the full story, timed actions, all dialogue, sound cues and ending, and its typed

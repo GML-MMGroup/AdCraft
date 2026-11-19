@@ -147,6 +147,7 @@ from app.schemas.agent_canvas_presentation import (
     PresentationStreamListV1,
 )
 from app.schemas.agent_canvas_editing_output_reuse import (
+    BrowserEditingExportImportRequestV2,
     EditingExportOutputReuseRequestV2,
     EditingExportOutputReuseResponseV2,
 )
@@ -569,6 +570,7 @@ class AgentCanvasRuntime:
     editing_nodes: EditingNodeService
     editing_responses: EditingResponseProjector
     editing_exports: EditingExportService
+    guided_final_completion: GuidedFinalCompletionService
     editing_output_reuse: EditingExportOutputReuseService
     editing_default_exports: EditingDefaultExportCoordinator
     editing_export_repository: AgentCanvasEditingExportRepository
@@ -1405,6 +1407,7 @@ def create_agent_canvas_runtime(
         ],
         output_preparer=AgentCanvasOutputPreparationService(asset_service),
         result_committer=result_committer,
+        guided_media_context_resolver=guided_media_contexts.resolve,
     )
     editing_commit_service = AgentCanvasEditingExportCommitService(
         AgentCanvasEditingExportCommitRepository(
@@ -2144,6 +2147,7 @@ def create_agent_canvas_runtime(
         editing_nodes=editing_nodes,
         editing_responses=editing_responses,
         editing_exports=editing_exports,
+        guided_final_completion=guided_final_completion,
         editing_output_reuse=editing_output_reuse,
         editing_default_exports=editing_default_exports,
         editing_export_repository=editing_export_repository,
@@ -2509,7 +2513,7 @@ def create_node(
 def import_editing_export(
     workflow_id: str,
     editing_node_id: str,
-    request: EditingExportOutputReuseRequestV2,
+    request: EditingExportOutputReuseRequestV2 | BrowserEditingExportImportRequestV2,
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
@@ -4690,6 +4694,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_not_runnable": 422,
         "node_already_ready": 409,
         "node_already_working": 409,
+        "node_already_ran_in_execution": 409,
         "failed_node_retry_required": 409,
         "node_model_incompatible": 409,
         "node_prompt_empty": 409,

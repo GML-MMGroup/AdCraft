@@ -8,3 +8,11 @@
 
 正例：镜头从产品侧面开始，沿手部拿起产品的方向平稳跟随，焦点在接触完成时转到功能部件，动作声与切点一致，下一镜保留相同受力方向。
 反例：只写“高速旋转、震撼卡点”，没有起止状态、主体动作或空间依据，结果导致主体变形、方向跳变和声音错位。
+
+## Optional shot phrasing
+
+Use camera-first wording where a rhythmic accent must coincide with an action: "A short
+lateral track follows the lift; as contact completes, cut to a held detail." Write
+simultaneous movement with "while" and an actual change of shot with "cut to". Keep the
+authored beat structure: fast montage can have several independently framed shots. Do
+not smooth every cut into one take or add a push-in on every beat.

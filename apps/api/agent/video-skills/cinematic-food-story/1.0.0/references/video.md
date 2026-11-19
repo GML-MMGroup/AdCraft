@@ -9,3 +9,12 @@
 正例：镜头沿端起碗的受力方向跟随，焦点在汤面波纹稳定后转向食材纹理，动作声与接触完成同步，下一镜保留碗沿和暖光。
 
 反例：只写“慢动作、热气、电影感”，不说明起止状态和物理来源；或者让蒸汽、液体和光线同时无规律变化，使主体变形且无法判断动作是否完成。
+
+## Optional shot phrasing
+
+When following a food action, define the view first: "A close lateral follow keeps the
+bowl rim in view while the bowl rises; steam drifts upward behind it." A locked macro
+view may be better for a cut surface, simmer or pour. Name the action's direction
+relative to the lens and its physical response only where needed. Keep process
+causality, temperature and synchronous action sound; do not add elaborate movement to a
+tactile pause.

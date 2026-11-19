@@ -12,12 +12,12 @@
     },
     {
       "path": "brand_agent_creative_treatment/SKILL.md",
-      "sha256": "6d4e31ba62e87fcbf2cfeba89d9373b1f9ce83810e34eced8d3c16269f92b7e7",
+      "sha256": "8503345d713977d51e6254171ec23efaeab508c18eee3dfdf33862ef66a7bceb",
       "skill_id": "brand_agent_creative_treatment"
     },
     {
       "path": "brand_agent_full_script/SKILL.md",
-      "sha256": "5cd8e104bd8fbb993074ba9f1ca0023425011517e5e89d3eecb718c2c4fc65e8",
+      "sha256": "79a578f051a2039b02b7a1906168198fb0628b8cd25bc4d608f4ace91554d8fd",
       "skill_id": "brand_agent_full_script"
     },
     {
@@ -27,7 +27,7 @@
     },
     {
       "path": "video_agent_character_design/SKILL.md",
-      "sha256": "1614f49a1ff16ac6fad495e3967ae5b14b60f452d5d6a2a08db0e73c2686988f",
+      "sha256": "cfa7cb62fe2e5020e9f52d397619c463859137cb8cbf244983d8f960501af7e1",
       "skill_id": "video_agent_character_design"
     },
     {
@@ -47,7 +47,7 @@
     },
     {
       "path": "video_agent_role_prompt_authoring/SKILL.md",
-      "sha256": "988297d826e733c0cd4e0043029b350a338658ff6b242f2de03a36a4f488502e",
+      "sha256": "b88c116182a785f6a69dd4419fa4c6b573cf45469e0915942c0f6bdf293bb49a",
       "skill_id": "video_agent_role_prompt_authoring"
     },
     {
@@ -57,17 +57,17 @@
     },
     {
       "path": "video_agent_script_authoring/SKILL.md",
-      "sha256": "947a6e2522809d4557b5e9b1e2c51d86001175f74cd0e19f152dd8a91761ef4a",
+      "sha256": "da23f4adbbe3a79b36808ae3138c1e698b8dde81229de47e1219582246293925",
       "skill_id": "video_agent_script_authoring"
     },
     {
       "path": "video_agent_storyboard_design/SKILL.md",
-      "sha256": "9986f7074e9c326c4848547d6a538809860d4a722a282d825f9b6f1578d0cb08",
+      "sha256": "23c82aac7968ae94257d6f17ff2922a92926897b91b66c1c3165d2a267dcb459",
       "skill_id": "video_agent_storyboard_design"
     },
     {
       "path": "video_agent_video_direction/SKILL.md",
-      "sha256": "ce60015106f1e0f43d6727e1c2ad5f11fe80aae12448142b6299b40a4233b31b",
+      "sha256": "b705c9786d1fcf1c282c4dd651bf0293a6aabe31832c048ba12a50d63a8fcb5c",
       "skill_id": "video_agent_video_direction"
     },
     {

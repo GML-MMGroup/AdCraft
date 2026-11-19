@@ -3,3 +3,9 @@
 快速生成单个角色、配件或场景变体时，只改变一个实验变量，并保留 collectible silhouette、主色和材质。明确变体的用途：轮廓探索、配件探索、动作姿态或世界入口，不把探索结果自动当作最终资产。
 
 比较时优先检查身份、配件数量、材质和比例，再看装饰效果。
+
+## Optional motion study phrasing
+
+For a motion study, establish toy-scale viewing height before the pose change and
+distinguish joint motion from camera travel. A still study needs a single readable
+silhouette and support.

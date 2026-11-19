@@ -4,3 +4,12 @@
 
 正例：摄影机沿人物右侧跟随，人物把产品放到台面，台面遮挡完成切换，镜头从同一方向升起揭示产品。
 反例：镜头穿过实体墙、人物突然换位，或高速旋转让观众失去空间地图。
+
+## Optional shot phrasing
+
+This technique is especially useful for an approved long take: describe each section of
+the continuous camera path, then the action happening within it. "The camera retreats
+through the opening while the subject approaches at a matching pace; it then arcs around
+the existing tabletop as the hand releases the item." Adapt the route to the actual
+space. Preserve reveal timing and physical clearance; wording order neither reverses
+events nor licenses hidden teleports or cuts.

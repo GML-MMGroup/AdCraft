@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.services.agent_canvas_creative_method_validation import creative_method_option_violations
+from app.services.brand_screenplay_validation import screenplay_grounding_violations
 
 import json
 from dataclasses import replace
@@ -77,9 +78,15 @@ class V2AgentStructuredValidationService:
                 normalization.value,
             )
         except ValidationError as error:
+            schema_violations = _project_validation_errors(error)
+            violations = schema_violations + raw_semantic_violations
+            if run.contract_name == "BrandScreenplayV1":
+                # Keep independent, field-specific evidence diagnostics visible even
+                # when a nested validator fails before the screenplay validator runs.
+                violations = (raw_semantic_violations + schema_violations)[:128]
             return _rejected(
                 submission,
-                _project_validation_errors(error) + raw_semantic_violations,
+                violations,
             )
         except AgentStructuredContractRegistryError:
             return _rejected(
@@ -173,6 +180,8 @@ class V2AgentStructuredValidationService:
         run: AgentRunRecord,
         value: dict[str, Any],
     ) -> tuple[StructuredViolation, ...]:
+        if run.contract_name == "BrandScreenplayV1":
+            return screenplay_grounding_violations(value)
         if run.validation_profile != "agent_intake_source_quotes_v1":
             return ()
         source_turn_id = run.validation_context.get("source_turn_id")

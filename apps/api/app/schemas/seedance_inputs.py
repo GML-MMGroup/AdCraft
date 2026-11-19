@@ -178,7 +178,7 @@ class SeedanceInputManifestV1(_SeedanceInputModel):
     aspect_ratio: str = Field(min_length=1)
     resolution: str = Field(min_length=1)
     requested_duration_seconds: int = Field(ge=1)
-    effective_duration_seconds: int = Field(ge=1, le=15)
+    effective_duration_seconds: int = Field(ge=1, le=30)
     generate_audio: bool
     normalizations: tuple[str, ...] = ()
     storyboard_reference_mode: Literal["loose_guidance"] | None = None

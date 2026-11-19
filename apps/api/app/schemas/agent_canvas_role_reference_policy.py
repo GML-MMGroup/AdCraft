@@ -56,7 +56,9 @@ class RoleReferenceRuleV1(_RoleReferenceModel):
 
 class RoleReferencePolicyV1(_RoleReferenceModel):
     policy_version: Literal[
-        "agent_canvas_role_reference_policy_v1", "agent_canvas_role_reference_policy_v2"
+        "agent_canvas_role_reference_policy_v1",
+        "agent_canvas_role_reference_policy_v2",
+        "agent_canvas_role_reference_policy_v3",
     ]
     target_role: RoleReferenceTargetV1
     sources: tuple[RoleReferenceRuleV1, ...] = Field(max_length=16)

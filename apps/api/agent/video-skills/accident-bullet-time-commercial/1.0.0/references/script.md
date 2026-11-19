@@ -1,41 +1,57 @@
-# One advertised product, several belongings, one complete accident
+# A passing collision with a visible consequence
 
-Build a default three-slot inventory: the advertised product plus two distinct,
-plausible supporting belongings. An approved product set may fill these slots
-with real separate items. Establish neutral supporting props through the normal
-prop-design flow. Do not replace the visits with three surfaces of one object.
-Keep any additional approved belongings in the physical inventory too.
-For every released item state its original support, release mechanism, frozen
-position and landing destination. Respect available hands and actual mechanisms;
-a sealed container stays closed unless a credible opening is already authored.
+Use the approved product plus two ordinary supporting belongings and retain
+extra approved items. Design the protagonist; an anonymous passing extra needs
+no separate identity asset or introduction. Preserve approved cast/person limits.
 
-Preserve the sequence: footwear tracking rises to the wearer and belongings;
-visible passing contact causes recoil and support loss; everything freezes
-together; the camera visits A, B and C; it pulls back to front medium; time
-resumes, all objects land and settle, and the wearer reacts. Give the advertised
-product the strongest attention. Keep approved speech and claims intact; a drop
-or intact landing does not prove durability.
+Choose independent walking routes, contact side and exit before contact. For a walking approach, carry the same walking cadence from shoe-level reveal
+through the rising mid-shot until contact. Express urgency in gaze or street
+activity. In the reference route a passerby enters a foreground edge and walks
+into depth on an offset lane. Shoulders touch at the same depth; both keep their
+destination and gaze. An approved alternative still needs visible contact.
 
-Protect collision through all objects landing as one video segment, even in a
-long advertisement. Reserve this interval before allocating surrounding beats.
-The final two to three seconds cover resumed fall, every ground contact and
-settling, including loose bags, packaging or spilled material, not only the
-three hero visits. End_state lists all released belongings on the ground; a
-later node begins from that settled state, not a second falling sequence.
+Choose ordinary functional placement first: eyewear worn on the face, a drink
+held by its cup, other belongings on their real supports. Explicit handling can
+differ; easier release geometry is not a reason to move everything into hands.
+Show initial support, then one overlapping impact: slight backward recoil,
+surprise, hand opening, all items' release and camera approach start together.
+Slight backward recoil and open palms are the recovery reflex, not a planted
+backbend or a pose arranged before release. The passerby remains adjacent at
+onset. Name the initial impulse and support loss for each original item. Follow
+the same cup clearing opening fingers, glasses clearing nose/ears and accessories
+leaving their support. Keep source and original readable together until a gap
+and vacant support establish transfer along the already moving approach. Let
+forward/upward flight curve and slow before the shared freeze; no delayed,
+slow vertical levitation. Low-held objects need support-derived heights, not
+an unexplained climb above the face. Preserve connected parts and closures.
 
-Fit the whole interval within the current fifteen-second cap and confirmed
-total. A complete short film commonly uses ten to fifteen seconds. In a longer
-ad, move extra setup before contact or brand payoff after landing; shorten
-static holds before compromising continuous travel or descent. Do not invent
-four-second fragments of the incident or silently extend the total. Identify
-an incompatible explicit allocation without creating a new rejection gate.
+Start surprised widened eyes, raised brows and parted lips at contact. Slow into
+the airborne crest and freeze this expression, body, head and gaze until time
+resumes; keep surprise through settling. One item has one location and its vacated support stays empty,
+including every later body view and pullback. Name the exposed attachment point
+for worn items. In the handoff pair every released item with its own vacated
+support; keep other accessories. Carry placement corrections into start_state and all
+dependent prompts, while retaining identities and the later handoff.
+Use a near-to-far depth corridor consistent with release paths and approved
+visit order. Approach A during release; no group-view pause or waiting for all
+items to finish rising. Connect A/B/C through visible outgoing edges and smaller
+approaching targets. Give the product the strongest material/scale emphasis;
+leave detailed camera geometry to Storyboard and Video.
 
-Write the tour as one continuous camera path in one physical space. Each visit
-has a route in and out, shared screen direction/depth and visible parallax;
-three listed close-ups alone do not specify continuity. Frozen subjects and
-liquid stay still while the camera moves. Preserve this in narrative_goal and
-production_handoff so later authors do not turn visits into separate cuts.
-Record pre-contact start_state, landed end_state and exact local timing. Grid
-panels sample these events without imposing cuts or native frame conditioning.
-Review the inventory, route and landing before returning the text; this adds
-no paid visual-model check.
+Keep the first-frame footwear reveal through all objects landing in one video
+segment: feet, rise and supported items, contact/release, shared freeze,
+connected visits, pullback, resumed fall and settling. Keep the impact near normal
+speed; stretch the airborne instant after release. Reserve two to three seconds
+for landing within the fifteen-second cap and confirmed total. Shorten static
+holds, not visible separation, travel or descent. Later story/payoff continues from end_state.
+
+Carry slight backward torso recoil explicitly into narrative_goal, not just
+generic imbalance or a yielding knee. Retain it in the frozen body state until
+time resumes. Each original stays airborne through inspection and pullback;
+its first ground contact belongs to the final descent. A ground-resting product
+reference supplies design, not an earlier landing or a second instance.
+Carry this causal chain and complete interval into narrative_goal and handoff.
+The grid's contact sample shows the touch before the completed airborne state.
+Replace stale timing, generic launch instructions and deliberate pose descriptions;
+preserve approved speech, subtitles, identities and facts. A fall is optional.
+Review these links inside the current authoring call, without a paid visual check.

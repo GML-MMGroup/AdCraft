@@ -5392,12 +5392,17 @@ class AgentCanvasConversationRepository:
         current_session_actions = (
             ()
             if authority.session is not None
-            and authority.session.awaiting is not None
-            and authority.session.awaiting.requires_user_action
-            and awaiting_blocks_authoring(
-                authority.session.awaiting,
-                stage=authority.session.journey.stage,
-                stage_revision=authority.session.journey.stage_revision,
+            and (
+                authority.session.status == "completed"
+                or (
+                    authority.session.awaiting is not None
+                    and authority.session.awaiting.requires_user_action
+                    and awaiting_blocks_authoring(
+                        authority.session.awaiting,
+                        stage=authority.session.journey.stage,
+                        stage_revision=authority.session.journey.stage_revision,
+                    )
+                )
             )
             else tuple(
                 sorted(

@@ -3,3 +3,10 @@
 用底面建立、层片进入、遮挡揭示、拼合、产品落点组织动效。关键帧记录每层的初始位置、移动方向、遮挡边缘、视觉中心和节拍。typography-aware rhythm without baked text 只标记排版节奏、对齐和留白，不写死画面文字。
 
 用翻页、撕开、形状匹配和层片交接转场，检查信息是否按层级出现。
+
+## Optional viewpoint clarification
+
+Establish the flat viewing window, layer stack and negative space before each cut-paper
+state. Record which layer occludes which and whether a turn is a page transition or an
+object flip. Keep typography-aware rhythm without baked text in the graphic handoff. Do
+not invent a physical camera path through a deliberately flat composition.

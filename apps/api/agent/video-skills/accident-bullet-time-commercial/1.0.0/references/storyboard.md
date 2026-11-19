@@ -1,42 +1,65 @@
-# Sample one continuous route through a complete accident
+# Nine instants of one continuous accident
 
-Use the approved A/B/C inventory and references: the advertised item and two
-supporting belongings, or the approved product set. Map each item's initial
-support, frozen screen side/depth and landing area. Account for extra released
-props too. All items coexist throughout the tour, even when offscreen.
+Keep approved inventory, identities, medium and visit order. Keep first-frame
+footwear reveal through all objects landing in one video segment. Panels sample
+unequal times, not cuts or first/last-frame targets. Write states in rows and image prompt.
 
-Keep collision through all objects landing in one video segment and its matching
-storyboard sequence. Sample approach, contact/release, shared freeze, A, B, C,
-pullback, descent, then all belongings settled on the ground. Keep the required
-grid format. Panels represent moments on a continuous path, not cuts, equal
-time slots or standalone videos. Put landing in the final panel of this action
-board; a later payoff board starts with the already grounded state.
+## Contact and recoil
 
-Establish a single spatial map before writing panels. For each A-to-B and B-to-C
-bridge name the camera's direction, changing distance/height, shared background
-landmark and overlap: the outgoing item slides toward an edge while the next
-enters. Keep lens perspective and axis coherent. The camera travels through the
-empty space between objects; do not jump to a freshly composed macro viewpoint.
-Frozen positions, orientations, openings, droplets and background poses stay
-fixed. Only viewpoint, occlusion and optical reflections change.
+Establish initial support in ordinary use: eyewear on nose/ears, a drink held by
+its cup, accessories on actual supports, unless approved handling differs.
+References own geometry and identity; action owns possession.
 
-Reserve two to three seconds for resumed gravity, every ground contact and
-settling within the same generation, respecting the fifteen-second cap and
-accepted total. Extra setup or payoff may use other nodes; the collision, tour
-and landing remain together. Write this scope and the concrete landed end_state
-into narrative_goal and production_handoff, not only visual panel descriptions.
+Choose independent walking routes before contact. For a walk, show a planted foot in the shoe-height panel; the mid-shot carries
+the same walking cadence until contact. Shoulders touch at the same depth;
+fabric compresses, torso tilts slightly backward, knee yields and hands briefly
+open asymmetrically. The passerby stays adjacent at onset and keeps their route and gaze.
 
-Adaptable board example: establish a wearer carrying glasses, cup and bag;
-show the support loss; freeze glasses at upper left near the face, cup lower
-right ahead of the torso and bag lower center behind the cup. Sample the camera
-advancing to the glasses, sliding right/down toward the cup with the glasses
-still at the left edge, then arcing down/left toward the bag as the cup leaves
-right. Keep a background doorway moving with continuous parallax. Pull back,
-resume gravity and follow all three down; finish with glasses, cup and bag
-settled and the owner looking down. Substitute the approved map and identities.
+In one impact, support loss, recoil, surprise and camera advance start together.
+For each handheld release, name the hand and show a clear gap between fingertips and item. Later panels keep the same empty palm whenever visible. Pair every item with its own vacancy in the panel text.
 
-The grid is an off-screen story-process reference, not a first/last-frame target.
-The Video starts inside the full-frame scene, without sheet flashes or a zoom
-into cells. Preserve the selected medium, product print and ordinary scene text.
-Keep dialogue, panel labels, arrows and tutorial UI out of the image; this does
-not turn off Video subtitles. Retain original product lettering and logos.
+## Nine sampled states
+
+1. Footwear-height first frame, low backward tracking; off-crop items stay supported.
+2. Continuous rise reveals ordinary wearing/grip and the approaching passing lane.
+3. Shoulder touch starts slight backward recoil, surprise, all releases and camera
+   approach together. The passerby is adjacent; originals begin clearing supports.
+4. SAME overlapping beat, later instant: camera closes on A as originals separate.
+   Eyewear frame/temples fully clear nose/ears, with air to the now-bare face.
+   Supports stay empty; use an intermediate moving medium-to-close view, no group wait.
+   Arcs slow near the crest.
+5-7. Near-to-far visits of the SAME airborne originals above distant pavement.
+   Orbit EACH fixed item: front/side surfaces, outgoing edge, smaller next target
+   and shared landmark show connected travel.
+8. Sole continuous pullback to the same airborne event, with body caught in slight
+   backward recovery and every released support still vacant. Gravity is about to resume.
+9. All originals grounded and settled for the first time after descent, with the
+   approved body reaction and next-segment handoff.
+
+## Continuity
+
+Start widened eyes, raised brows and parted lips with contact. Near the airborne
+crest, freeze surprise, body, head and gaze until time resumes; keep surprise in
+the settled last panel. In each body panel name the exposed attachment point
+(e.g. bare left wrist). Each vacated support stays empty until reattachment.
+Keep other accessories, parts, closures and release heights. Splashes need open sources.
+
+Link each orbit's front/three-quarter entry, curved side view and tangential exit
+to the next approach through world space. Each item becomes dominant, the product
+strongest. Both bridges show separate outlines, an air gap and shared background.
+Keep defining parts distinct: ear housings/band versus lenses/frame/temples.
+Approach the existing next item; never morph one into another.
+Accelerate between visits, slow while circling; camera roll/zoom alone is insufficient.
+Local arcs preserve overall depth progression. Keep panels 5-7, the final pullback
+and two to three seconds for landing.
+
+Trace each original: supported -> separating -> airborne inspection/pullback ->
+settled. Remove duplicates, premature grounding and restored supports. References
+supply design, not a surface or second location. Retain slight backward recoil
+in contact and later frozen body views.
+
+Record opening, path, end_state and image conflicts in handoff. The grid stays
+off-screen; Video starts full-frame. Exclude dialogue lettering,
+bubbles and added labels; preserve packaging, logos and environmental text.
+Video subtitles have their own control. Resolve contradictions in this authoring
+call, without an added review model or automatic media rerun.

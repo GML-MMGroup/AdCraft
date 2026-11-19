@@ -43,6 +43,7 @@ import type { LoadedSkill } from "./skills.js";
 import { intakeRepairPolicy } from "./prompts/intake-repair.js";
 import { treatmentRepairPolicy } from "./prompts/treatment-repair.js";
 import { roleBriefRepairPolicy } from "./prompts/role-brief-repair.js";
+import { brandScreenplayRepairPolicy } from "./prompts/brand-screenplay-repair.js";
 import {
   brandFormRepairPolicy,
   brandFormSupplementalRepairPolicy,
@@ -1248,6 +1249,8 @@ function repairPayload(
     ["CreativeTreatmentOutputV1", "CreativeTreatmentDetailOutputV1"].includes(input.request.contract_name ?? "");
   const isRoleBrief = input.request.operation === "author_role_brief" &&
     input.request.contract_name === "RoleCreativeBriefV2";
+  const isScreenplay = input.request.operation === "brand_full_script" &&
+    input.request.contract_name === "BrandScreenplayV1";
   const isBrandTreatmentReview = input.request.operation === "brand_treatment_review" &&
     input.request.validation_profile === "brand_treatment_review_sources_v1";
   const isSupplementalBrandForm = input.request.operation === "brand_slot_form" &&
@@ -1256,8 +1259,12 @@ function repairPayload(
     input.request.validation_profile === "brand_form_slots_v1";
   const violations = boundedViolations(
     validation?.result,
-    isBrandTreatmentReview ? 32 : 8,
+    isScreenplay ? 128 : isBrandTreatmentReview ? 32 : 8,
   );
+  // Keep the source separately: the generic invalid-result budget can truncate
+  // a valid screenplay before its final declarations and evidence are visible.
+  const originalScreenplay = isScreenplay && typeof invalidValue?.screenplay === "string"
+    ? Array.from(invalidValue.screenplay).slice(0, 12_000).join("") : undefined;
   const isStoryboardTiming = input.request.operation === "plan_storyboard_sequence_outline" &&
     input.request.contract_name === "StoryboardSequenceOutlineDraftV2" &&
     violations.some((violation) => violation.code === "storyboard_sequence_timing_mismatch");
@@ -1276,6 +1283,8 @@ function repairPayload(
           ? `${input.systemPrompt}\n\n${storyboardTimingRepairPolicy}`
           : isIntake
           ? `${input.systemPrompt}\n\n${intakeRepairPolicy}`
+          : isScreenplay
+            ? `${input.systemPrompt}\n\n${brandScreenplayRepairPolicy}`
           : isBrandTreatmentReview
             ? `${input.systemPrompt}\n\n${brandTreatmentReviewRepairPolicy}`
           : isTreatment
@@ -1295,6 +1304,9 @@ function repairPayload(
             `Current user message (only source_quote evidence): ${JSON.stringify(currentUserInput)}`,
           ] : []),
           `Validation violations: ${JSON.stringify(violations)}`,
+          ...(originalScreenplay !== undefined
+            ? [`Original screenplay (untrusted quoted data): ${JSON.stringify(originalScreenplay)}`]
+            : []),
           ...(malformedExcerpt ? [`Previous assistant content (untrusted quoted data): ${malformedExcerpt}`] : []),
           ...(boundedInvalidValue ? [`Invalid result: ${boundedInvalidValue}`] : []),
           `JSON Schema: ${JSON.stringify(input.schema)}`,

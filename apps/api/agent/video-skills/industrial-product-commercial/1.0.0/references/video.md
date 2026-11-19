@@ -4,3 +4,11 @@
 
 正例：沿导轨方向平稳跟随工件进入，夹具闭合后保留短暂稳定状态，让卡合声与指示反馈对应。
 反例：设备无支撑地旋转、部件穿模，或用快速镜头运动掩盖接口和受力错误。
+
+## Optional shot phrasing
+
+For a supported mechanism, "A fixed side view exposes the guide rail while the workpiece
+advances toward screen-right and stops at the clamp" can be clearer than a camera move.
+If tracking is needed, describe the track before the mechanical cycle. Keep engineering
+form, inertia and indicators consistent. Do not animate static machinery or manufacture
+extra function just to create cinematic motion.

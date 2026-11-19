@@ -28,10 +28,16 @@ from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRe
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.agent_canvas_editing_repository import AgentCanvasEditingExportRepository
+from app.services.agent_canvas_editor_export_evidence import saved_editor_export
 from app.schemas.agent_canvas_guidance import GuidanceAdvanceAuthoritySnapshotV1
+from app.schemas.agent_canvas import AgentCanvasWorkflowV2
+from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_runtime import CanvasExecutionMembershipV2
 from app.schemas.agent_operation_contexts import (
     WorkflowActionSummaryV1,
+    WorkflowDeliverySummaryV1,
     WorkflowContextTruncationV1,
     WorkflowDocumentReferenceV1,
     WorkflowStateCapsuleV1,
@@ -167,6 +173,7 @@ class AuthoritativeWorkflowContextProjector:
                 blockers=blockers,
                 current_action=current_action,
                 documents=documents,
+                delivery=self._delivery(workflow, snapshot.session),
             )
         except V2PersistenceError as error:
             if error.code == "agent_workflow_context_unavailable":
@@ -174,6 +181,44 @@ class AuthoritativeWorkflowContextProjector:
             raise _context_error(error.code) from error
         except (ValidationError, ValueError, TypeError) as error:
             raise _context_error("context_validation_failed") from error
+
+    def _delivery(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        session: GuidedSessionStateV2 | None,
+    ) -> WorkflowDeliverySummaryV1:
+        assets = V2AssetLibraryRepository(self._workflows.database)
+        exports = AgentCanvasEditingExportRepository(self._workflows.database)
+        known: dict[str, str] = {}
+        changed = False
+        for node in workflow.nodes:
+            if node.node_type != "editing":
+                continue
+            for export in exports.list_completed(workflow.workflow_id, node.node_id):
+                if export.output_asset_id:
+                    version = assets.find_version(asset_id=export.output_asset_id)
+                    if version is not None and version.status == "ready":
+                        known[export.output_asset_id] = version.created_at
+            saved = saved_editor_export(node)
+            if saved is not None:
+                version = assets.find_version(asset_id=saved.asset_id)
+                if (
+                    version is not None
+                    and version.status == "ready"
+                    and version.mime_type.startswith("video/")
+                    and version.source_workflow_id == workflow.workflow_id
+                ):
+                    known[saved.asset_id] = version.created_at
+                    changed = changed or saved.has_unexported_changes
+        return WorkflowDeliverySummaryV1(
+            guidance_completed=session is not None and session.status == "completed",
+            known_export_count=len(known),
+            latest_export_asset_id=max(known, key=known.__getitem__) if known else None,
+            final_completion_receipt_id=(
+                session.completion.final_completion_receipt_id if session else None
+            ),
+            editor_has_unexported_changes=changed,
+        )
 
     def _document_references(
         self,
@@ -354,11 +399,13 @@ class AuthoritativeWorkflowContextProjector:
         blockers,
         current_action,
         documents,
+        delivery,
     ) -> WorkflowStateCapsuleV1:
         omitted_work = 0
         omitted_blockers = 0
         while True:
             payload = {
+                "delivery": delivery,
                 "workflow_id": workflow_id,
                 "workflow_revision": workflow_revision,
                 "response_locale": response_locale,

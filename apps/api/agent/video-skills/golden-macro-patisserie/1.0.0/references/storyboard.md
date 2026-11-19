@@ -13,3 +13,10 @@ and surface state across cuts rather than assuming every move is continuous.
 Keep the final composition wide and calm enough to recognize the complete
 object. Preserve layer order and the approved display surface. Reserve clear
 brand space when requested, away from complex texture and bright dust.
+
+## Optional viewpoint clarification
+
+State the macro viewpoint, usable focus plane and scale anchor before the tactile
+action. A still panel represents one contact state, not several blurred tool positions.
+When widening, retain the same ridge or layer boundary as evidence of location.
+Miniature figures remain optional and the contact mechanism must stay readable.

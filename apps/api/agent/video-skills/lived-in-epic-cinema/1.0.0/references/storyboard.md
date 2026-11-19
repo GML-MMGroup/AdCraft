@@ -3,3 +3,10 @@
 先用局部触感和人物行动建立可信度，再扩大到 grounded spectacle，随后回到人物反应和具体后果。为关键帧记录地理、群众方向、道具状态、天气和受力关系。layered stakes 每次升级都要改变构图或行动。
 
 转场可用天气、尘土、交接动作、远近视线和地形线连接。检查奇观是否遮挡主动作，避免只剩大场面。
+
+## Optional viewpoint clarification
+
+Set viewpoint, terrain depth and scale references before the approved action and its
+consequence. Keep crowd routes, weather and equipment state traceable across close and
+wide coverage. Widening may reveal existing scale; it must not create new stakes, armies
+or destruction. Dust should leave the main contact readable.

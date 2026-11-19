@@ -21,3 +21,11 @@ coverage to the current sequence; the grid does not prescribe nine cuts.
 Maintain screen direction, costume, hands, package orientation, and any
 before-and-after product state. Do not duplicate the source's animated
 eye beams, face distortions, cast proportions, or floating decorative clouds.
+
+## Optional viewpoint clarification
+
+Place the formal axis and speaker-listener eyelines before the comic gesture.
+Distinguish a reaction cut from a push within the same shot, and keep room for a
+readable exaggerated expression. A sleeve or hand insert should inherit the owner and
+action state. Hierarchy comes from approved staging, not a compulsory throne, entrance
+or moving camera.

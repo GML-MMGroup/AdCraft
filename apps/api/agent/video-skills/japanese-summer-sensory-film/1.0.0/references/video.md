@@ -26,3 +26,11 @@ water wash, footsteps, fabric, the correct opening sound, or a small liquid
 movement. These are options derived from the planned scene, not verified
 source-audio quotations. Preserve requested speech or silence. The separate
 BGM role owns the score; exact brand typography belongs in the editing handoff.
+
+## Optional shot phrasing
+
+For an approved water gesture, "A held low close-up watches the hand enter from the near
+edge while ripples spread away from the contact" keeps the sensation legible. A gentle
+follow may suit walking; a quiet pause needs none. Use relative directions when
+ambiguous, retain luminous daylight and actual product use, and avoid turning every
+sensory moment into a push-in or speed ramp.

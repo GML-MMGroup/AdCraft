@@ -77,3 +77,16 @@ describe("stage-specific working messages", () => {
     } } })).toBe("Script Writer is working...");
   });
 });
+
+
+it("uses a neutral label for ordinary replies in Editing", () => {
+  expect(agentWorkingMessage({ ...context, journey: { stage: "editing", active_action: null },
+    turnsById: { message: turn("", { turn_kind: "message", request: {} }) },
+  })).toBe("Agent is working...");
+});
+
+it("does not advertise more production after completion", () => {
+  expect(agentWorkingMessage({ ...context, journey: { stage: "completed", active_action: null },
+    brandStage: "treatment",
+  })).toBe("Agent is working...");
+});

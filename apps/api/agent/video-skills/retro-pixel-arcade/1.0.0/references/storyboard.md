@@ -3,3 +3,10 @@
 按建立、移动、交互、反馈、结果组织街机动作。关键帧记录精灵姿态、平台关系、目标位置和 rhythmic graphic effects 的触发点。每个效果必须说明它表示输入、命中、成功或失败中的哪一种。
 
 用屏幕滚动、形状对齐、短促闪烁或动作匹配连接段落。
+
+## Optional viewpoint clarification
+
+Specify viewport bounds, pixel scale and platform positions before sprite states.
+Separate world travel from scrolling: a sprite can remain centered while the map moves
+beneath it. Record the input, contact and result of each planned effect. Preserve sprite
+readability and graphic timing without turning each grid panel into a new game screen.
