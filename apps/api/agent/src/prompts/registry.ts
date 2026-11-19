@@ -25,6 +25,8 @@ const objectContinuityPolicy = [
   "Storyboard images guide event order off-screen, not first/last frames or exact panel compositions. If a grid contradicts confirmed geometry or possession, realize the approved state instead of interpolating its error. Keep the selected camera freedom and world rules; emit only shot-relevant facts, without a new output schema or review call.",
 ].join(" ");
 
+const turnaroundAppearancePolicy = "Where a character has a bound turnaround, ground their appearance in that character's image or verified observations for its version. With text-only context, refer to the turnaround for appearance. Remove wardrobe inferred from an occupation or older plan throughout all beats, including opening, continuity and closing descriptions. Carry the planned camera and action together in each authored beat. Preserve plot props, their changes of possession and explicit costume changes.";
+
 const shotDirectionPolicy = [
   shotCoveragePolicy,
   "For Storyboard and Video, associate each character with its supplied occurrence identity and references; use stable descriptive names in the authored direction. Reference views and repeated panel appearances depict their owning character. Keep different character identities separate and preserve each one's own appearance; similar faces or clothing do not merge cast members.",
@@ -318,6 +320,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
       "For video_segment, illustration_to_live_action describes reference-to-output conversion, not a transition over time: target_style and editable_prompt must describe fictional cinematic live action throughout the segment. Do not begin with illustrated frames or animate a change of rendering medium. When the user or selected Skill explicitly chooses illustrated output, preserve that medium throughout. Preserve the planned actions, timing, lighting, materials, palette, composition, and camera language compatible with the selected medium.",
       shotDirectionPolicy,
       ...(["storyboard_grid", "video_segment"].includes(String(context.role_variant)) ? [objectContinuityPolicy] : []),
+      ...(context.role_variant === "storyboard_grid" ? [turnaroundAppearancePolicy] : []),
       "For storyboard_grid, use the accepted storyboard_projection.rows count and order in beats and editable_prompt: four rows mean 2x2, nine rows mean 3x3. Preserve the accepted layout even for an older short sequence. When no accepted projection exists, use 2x2 for a supplied segment duration below 5 seconds, otherwise 3x3. Cells sample key visual states; they do not require separate cuts or extra events.",
       "For scene_board multi_view, supply nine view_plan entries: camera position/direction, framing, visible anchors and distinct spatial information. Choose views for this environment instead of a generic angle template. For scene_board, author only the typed environment, lighting, materials, palette, composition, atmosphere, valid Scene references, technical constraints, and structural exclusions present in the frozen context.",
       "For scene_board, global_style_guidance is unchanged advisory campaign guidance, not Scene subject content. Express its applicable lighting, materials, palette, composition and camera language in the Scene brief and editable_prompt; keep other role subjects out. style_projection is the Scene-specific advice and remains subordinate to the role contract.",
@@ -343,6 +346,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   }
   if (operation === "plan_storyboard_sequence_outline") {
     return [
+      turnaroundAppearancePolicy,
       generationTimingPolicy,
       objectContinuityPolicy,
       downstreamDialogueContinuityPolicy,
@@ -361,6 +365,7 @@ function instructionForOperation(operation: string, context: Readonly<Record<str
   }
   if (operation === "materialize_storyboard_segment") {
     return [
+      turnaroundAppearancePolicy,
       downstreamDialogueContinuityPolicy,
       "Materialize only the supplied storyboard segment using exactly context.panel_count ordered rows and one segment-local generation prompt: 4 means a 2x2 grid, 9 means a 3x3 grid. If panel_count is absent in a historical request, retain nine rows. Preserve the supplied approved narrative, selected direction, Brand decisions, prior final panel, prior end state, terminal policy, product purpose, and CTA; do not author platform identifiers.",
       shotDirectionPolicy,
