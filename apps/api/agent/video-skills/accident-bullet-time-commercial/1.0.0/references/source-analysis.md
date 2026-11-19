@@ -4,6 +4,22 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
+## Visible eyewear departure and separate object identities, 2026-11-16
+
+In version_asset_8269c6cc8a733bdb38ce9cbe, glasses remain on the face around
+4-6 seconds despite the airborne cup/headphones. Around 9.5-10.5 seconds,
+headphone structure becomes eyewear instead of a camera approach to a separate
+existing pair. The accepted text already requests release and original-object
+continuity; these frames do not isolate image versus model contributions.
+
+Strengthen only these two observable transitions: the full frame and temples
+clear nose/ears with air to a newly bare face, and the headphone-to-eyewear bridge
+retains two separate outlines, their defining parts and intervening air. Worn
+references supply design, not restored possession. Preserve shared onset, moving
+approach, orbit routes/timing, frozen surprise, inventory and ending. Neither
+transition requires a new shot, a pause, head shake, hand removal or group tableau.
+Current canvas scope is the first Video text only; retain its Grid and Plan.
+
 ## Shared onset replaces sequential waits, 2026-11-16
 
 In video version_asset_324c502c4277cf64f3ca7345, release becomes visible around

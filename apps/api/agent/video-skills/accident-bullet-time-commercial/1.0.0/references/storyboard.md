@@ -1,11 +1,10 @@
 # Nine instants of one continuous accident
 
-Keep approved inventory, identities, medium, visit order and complete interval.
-Keep the first-frame footwear reveal through all objects landing in one video segment.
-Panels sample unequal times, not cuts or first/last-frame targets. Write each
-pictured instant's physical state in both its row and final image prompt.
+Keep approved inventory, identities, medium and visit order. Keep first-frame
+footwear reveal through all objects landing in one video segment. Panels sample
+unequal times, not cuts or first/last-frame targets. Write states in rows and image prompt.
 
-## Support, contact and slight backward recoil
+## Contact and recoil
 
 Establish initial support in ordinary use: eyewear on nose/ears, a drink held by
 its cup, accessories on actual supports, unless approved handling differs.
@@ -29,39 +28,41 @@ one location per original and samples overlapping motion, not an action gate.
 3. Shoulder touch starts slight backward recoil, surprise, all releases and camera
    approach together. The passerby is adjacent; originals begin clearing supports.
 4. SAME overlapping beat, later instant: camera closes on A as originals separate.
-   Empty supports stay empty. An intermediate medium-to-close moving view replaces
-   a held group pose; arcs slow near the crest.
+   Eyewear frame/temples fully clear nose/ears, with air to the now-bare face.
+   Supports stay empty; use an intermediate moving medium-to-close view, no group wait.
+   Arcs slow near the crest.
 5-7. Near-to-far visits of the SAME airborne originals above distant pavement.
-   Sample a partial camera orbit around EACH fixed item: front/side surfaces,
-   outgoing edge, smaller next target and shared landmark show connected travel.
+   Orbit EACH fixed item: front/side surfaces, outgoing edge, smaller next target
+   and shared landmark show connected travel.
 8. Sole continuous pullback to the same airborne event, with body caught in slight
    backward recovery and every released support still vacant. Gravity is about to resume.
 9. All originals grounded and settled for the first time after descent, with the
    approved body reaction and next-segment handoff.
 
-## One space and forward state progression
+## Continuity
 
 Start widened eyes, raised brows and parted lips with contact. Near the airborne
 crest, freeze surprise, body, head and gaze until time resumes; keep surprise in
-the settled last panel. Each original's vacated support stays empty until pickup.
-Connected parts and closures
-persist; a splash needs an open source. Heights follow the actual release arcs.
+the settled last panel. Each vacated support stays empty until pickup, including the face
+despite worn references. Parts/closures persist; splashes need open sources.
+Heights follow actual release arcs.
 
 Link each orbit's front/three-quarter entry, curved side view and tangential exit
 to the next approach through world space. Each item becomes dominant, the product
-strongest. Both bridges retain outgoing edge, deeper target and shared background.
+strongest. Both bridges show separate outlines, an air gap and shared background.
+Keep defining parts distinct: ear housings/band versus lenses/frame/temples.
+Approach the existing next item; never morph one into another.
 Accelerate between visits, slow while circling; camera roll/zoom alone is insufficient.
 Local arcs preserve overall depth progression. Keep panels 5-7, the final pullback
 and two to three seconds for landing.
 
-Before returning, follow every original through supported -> separating ->
-airborne inspection/pullback -> settled. Correct any held-and-airborne duplicate,
-grounded detail before the fall, or restored support in this draft. References
-supply design, not a display surface or a second location. Retain the slight
-backward direction in the contact panel and later frozen body views.
+Trace each original: supported -> separating -> airborne inspection/pullback ->
+settled. Remove duplicates, premature grounding and restored supports. References
+supply design, not a surface or second location. Retain slight backward recoil
+in contact and later frozen body views.
 
-Record opening, path, end_state and stale-image conflicts in handoff. The grid
-stays off-screen; Video begins in the full-frame scene. Exclude dialogue lettering,
+Record opening, path, end_state and image conflicts in handoff. The grid stays
+off-screen; Video starts full-frame. Exclude dialogue lettering,
 bubbles and added labels; preserve packaging, logos and environmental text.
 Video subtitles have their own control. Resolve contradictions in this authoring
 call, without an added review model or automatic media rerun.

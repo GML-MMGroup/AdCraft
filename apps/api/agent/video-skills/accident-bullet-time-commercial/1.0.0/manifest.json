@@ -36,9 +36,9 @@
     "references/prop.md": "f85a363028711a31b33b74dad2fa67dbc30fa4e26b60138c50575e50df185010",
     "references/scene.md": "b9a517debff070ab30b1b6a1d42727ebbbbeb3fc6c4f4a989d1f2ff4593f57a2",
     "references/script.md": "820167f2bbb0007164195dbf9b07e4f454f56c5cc4ec2f45d6072890e3405f13",
-    "references/source-analysis.md": "4d2f5931a5d82ca262d593f45e323eb6542a3e5d574fc6c3e8dc34c8be0cf1a7",
-    "references/storyboard.md": "a1ae6f2ed467de451e100c379319c8d40b056aceb9c49ca88f1d4607d06acb24",
-    "references/video.md": "e3b6336d7a28ec51f4c52449592adc64c1fd56a9a5993ba7b9327d723b5d91de"
+    "references/source-analysis.md": "e166951438fd81705d5e7d278f87f65116e730d7aeb585c3da6f9302aed9556a",
+    "references/storyboard.md": "13c9dcead8deae238347e0061c5515fd09677d3696b644f88aaaf7b71eb72968",
+    "references/video.md": "8d2f968940485f2d571ac3ed2a65ff280ec60242bda0cca400f681e687c399ba"
   },
   "role_guidance": {
     "script": "references/script.md",

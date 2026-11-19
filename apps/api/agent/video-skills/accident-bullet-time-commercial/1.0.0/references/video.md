@@ -1,14 +1,13 @@
 # Follow the same originals through one continuous event
 
-Keep approved identities, inventory, visit order and endpoint. Keep
-first-frame footwear reveal through all objects landing in one video segment,
-within the confirmed duration and fifteen-second cap. Reserve two to three seconds
-for landing; use one timeline and continuous camera path.
+Keep approved identities, inventory, visit order and endpoint. Keep first-frame
+footwear reveal through all objects landing in one video segment within the approved
+duration and fifteen-second cap. Reserve two to three seconds for landing;
+use a continuous camera path.
 
 Use one onset interval: contact simultaneously starts slight backward recoil,
 surprise, opening hands, all originals' release and the camera's approach to A.
-Overlap their motion within that interval; continue into inspection, pullback
-and landing. Keep backward recoil explicit in timed actions.
+Overlap their motion; keep backward recoil explicit in timed actions.
 
 ## Contact, recoil and visible transfer
 
@@ -24,8 +23,9 @@ destination and gaze without a face introduction or avoidance detour.
 
 The passerby is still adjacent when the torso recoils slightly backward, a knee
 yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
-impact, the cup clears fingers, glasses clear nose/ears and the accessory leaves
-its support. All start departing together on their own short outward/upward arcs.
+impact, the cup clears fingers and accessories leave their supports. Eyewear's
+entire frame and temples clear nose/ears with visible air to the now-bare face;
+that same pair flies onward. All start together on short outward/upward arcs.
 
 The camera already advances toward A during contact and release. The intermediate
 medium-to-close view keeps support loss readable through motion; never wait for
@@ -33,10 +33,10 @@ all originals to finish rising, settle into a pose or fit one group frame. Norma
 impact momentum slows near the airborne crest while the approach continues.
 
 Freeze surprise, body, head and gaze until time resumes; retain surprise through
-settling. The vacated support stays empty; keep slight backward recovery and one
-original per item, including offscreen and in pullback.
+settling. Each vacated support stays empty, including the face despite worn references.
+Keep slight backward recovery and one original per item, even offscreen/in pullback.
 
-## Inspect airborne originals, then land
+## Inspect, then land
 
 Stage A/B/C near to far with support-derived heights/offsets. Write a partial
 camera orbit for EVERY item: front/three-quarter entry, curved side view and
@@ -45,13 +45,15 @@ parallax around fixed world space; camera roll, zoom or self-rotation is not an
 orbit. Accelerate between visits, slow while circling within existing time slots.
 Local curves retain overall depth progression without requiring full revolutions.
 
-For BOTH bridges, the outgoing item edge, smaller next target and shared landmark
-remain traceable. Continue from each exit position/direction into the next approach,
-changing focus/scale smoothly. Keep background visible during edge passes, without
+At BOTH bridges, keep separate outgoing item/next silhouettes with visible air between
+them and a shared landmark. Retain each item's defining parts (ear housings/band
+versus lenses/frame/temples), even cropped; curved dark shapes must not morph into
+one another. Travel from each exit toward the already-existing deeper item,
+changing focus/scale smoothly, not its identity. Keep background visible, without
 full-frame wipes or blur-covered jumps. Join the final arc directly to pullback.
 
-All inspections stay airborne above distant ground. Follow the original flight
-into inspection; design references do not supply a surface or a replacement item.
+Inspect originals airborne above distant ground; design references supply
+neither a resting surface nor replacements.
 
 Pull back to airborne originals and empty supports. Restore gravity and follow
 the SAME items through first landing; they stay grounded until an approved pickup.
