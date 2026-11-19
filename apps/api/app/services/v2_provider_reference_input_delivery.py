@@ -15,7 +15,7 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_asset_library import AssetBindingV2, AssetVersionMetadataV2
-from app.schemas.agent_canvas import ResolvedMediaInputSnapshotV2
+from app.schemas.agent_canvas import CanvasCreativeRoleV2, ResolvedMediaInputSnapshotV2
 from app.schemas.agent_canvas_runtime import (
     ProviderReferenceInstructionTransportV1,
     ProviderReferenceDeliveryContextV1,
@@ -47,6 +47,7 @@ from app.services.v2_library_reference_preview import (
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
 CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE = "provider_reference_delivery_unavailable"
 _PROVIDER_REFERENCE_DIMENSIONS = (2048, 1536, 1024)
+_STORYBOARD_PROP_THUMBNAIL_MAX_DIMENSION = 640
 PROVIDER_REFERENCE_ERROR_URL_INVALID = "v2_provider_reference_url_invalid"
 PROVIDER_REFERENCE_ERROR_FILE_MISSING = "v2_provider_reference_file_missing"
 PROVIDER_REFERENCE_ERROR_UNSUPPORTED = "v2_provider_reference_delivery_unsupported"
@@ -477,6 +478,7 @@ class V2ProviderReferenceInputDeliveryService:
         model_resolution: ResolvedModelExecutionV1,
         inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
         grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
+        target_role: CanvasCreativeRoleV2 | None = None,
     ) -> V2DeliveredReferenceSet:
         """Deliver explicit Canvas media bindings in persisted input order."""
 
@@ -581,6 +583,16 @@ class V2ProviderReferenceInputDeliveryService:
                     input_snapshot,
                     version,
                     delivery_modes,
+                    thumbnail_prop_reference=(
+                        target_role == "storyboard_sequence"
+                        and context.target_capability == "image"
+                        and input_snapshot.media_type == "image"
+                        and (
+                            input_snapshot.source_semantic_role == "prop"
+                            or input_snapshot.binding_metadata.get("semantic_reference_role")
+                            == "prop_reference"
+                        )
+                    ),
                 )
             if isinstance(delivered, V2ReferenceInputDeliveryFailure):
                 failures.append(delivered)
@@ -728,6 +740,7 @@ class V2ProviderReferenceInputDeliveryService:
         max_dimension: int | None = 2048,
         max_data_url_bytes: int | None = None,
         min_short_side: int | None = None,
+        rendition_kind: Literal["provider_reference", "preview"] = "provider_reference",
     ) -> V2DeliveredProviderReference | None:
         try:
             source_path = validate_v2_data_path(
@@ -754,7 +767,7 @@ class V2ProviderReferenceInputDeliveryService:
                     asset_id=input_snapshot.asset_id,
                     version_id=version.version_id,
                     media_type="image",
-                    kind="provider_reference",
+                    kind=rendition_kind,
                     max_dimension=dimension,
                     **({"min_short_side": min_short_side} if min_short_side is not None else {}),
                     **(
@@ -778,7 +791,7 @@ class V2ProviderReferenceInputDeliveryService:
                     "provider_input_value": data_url,
                     "source": "local_file",
                     "byte_count": byte_count,
-                    "rendition_kind": "provider_reference",
+                    "rendition_kind": rendition_kind,
                     "source_checksum": version.sha256,
                     "source_byte_count": version.size_bytes,
                     "source_mime_type": version.mime_type,
@@ -797,6 +810,7 @@ class V2ProviderReferenceInputDeliveryService:
         delivery_modes: frozenset[str],
         *,
         blur_storyboard_grid: bool = False,
+        thumbnail_prop_reference: bool = False,
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
         if blur_storyboard_grid:
             if "data_url" not in delivery_modes:
@@ -845,6 +859,30 @@ class V2ProviderReferenceInputDeliveryService:
                 rendition_byte_count=preview.byte_count,
                 rendition_width=preview.width,
                 rendition_height=preview.height,
+            )
+        if thumbnail_prop_reference:
+            if "data_url" not in delivery_modes:
+                return _canvas_delivery_failure(
+                    input_snapshot, "preview_rendition_delivery_unsupported"
+                )
+            original = _canvas_delivered(
+                input_snapshot,
+                version,
+                input_type="data_url",
+                input_value="",
+                source="local_file",
+            )
+            thumbnail = self._deliver_canvas_provider_reference_rendition(
+                input_snapshot,
+                version,
+                original,
+                max_dimension=_STORYBOARD_PROP_THUMBNAIL_MAX_DIMENSION,
+                rendition_kind="preview",
+            )
+            if thumbnail is None:
+                return _canvas_delivery_failure(input_snapshot, "asset_rendition_generation_failed")
+            return thumbnail.model_copy(
+                update={"max_dimension": _STORYBOARD_PROP_THUMBNAIL_MAX_DIMENSION}
             )
         if input_snapshot.binding_metadata.get("rendition_kind") == "provider_ready":
             provider_ready = _verified_provider_ready_rendition(

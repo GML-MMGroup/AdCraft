@@ -480,6 +480,7 @@ class MediaNodeExecutor:
                 )
             delivery = self._reference_delivery.deliver_canvas_inputs(
                 model_resolution=context.model_resolution,
+                target_role=context.node.creative_role,
                 inputs=_delivery_inputs_with_validated_character_identity_semantics(
                     context.node,
                     media_inputs,
