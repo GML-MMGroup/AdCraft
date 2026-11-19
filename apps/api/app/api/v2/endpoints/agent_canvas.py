@@ -147,6 +147,7 @@ from app.schemas.agent_canvas_presentation import (
     PresentationStreamListV1,
 )
 from app.schemas.agent_canvas_editing_output_reuse import (
+    BrowserEditingExportImportRequestV2,
     EditingExportOutputReuseRequestV2,
     EditingExportOutputReuseResponseV2,
 )
@@ -2512,7 +2513,7 @@ def create_node(
 def import_editing_export(
     workflow_id: str,
     editing_node_id: str,
-    request: EditingExportOutputReuseRequestV2,
+    request: EditingExportOutputReuseRequestV2 | BrowserEditingExportImportRequestV2,
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,

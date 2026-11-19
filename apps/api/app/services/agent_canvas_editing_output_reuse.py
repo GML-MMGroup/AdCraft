@@ -37,6 +37,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
 )
 from app.schemas.agent_canvas_editing_output_reuse import (
+    BrowserEditingExportImportRequestV2,
     EditingExportOutputReuseRequestV2,
     EditingExportOutputReuseResponseV2,
 )
@@ -71,7 +72,7 @@ class EditingExportOutputReuseService:
         self,
         workflow_id: str,
         editing_node_id: str,
-        request: EditingExportOutputReuseRequestV2,
+        request: EditingExportOutputReuseRequestV2 | BrowserEditingExportImportRequestV2,
         *,
         expected_revision: int,
         idempotency_key: str,
@@ -110,21 +111,43 @@ class EditingExportOutputReuseService:
                     current_revision = _require_workflow_revision(
                         connection, workflow_id, expected_revision
                     )
-                    export, version_id = self._validate_export(
-                        connection,
-                        workflow_id=workflow_id,
-                        editing_node_id=editing_node_id,
-                        export_id=request.export_id,
-                    )
+                    export_id = None
+                    if isinstance(request, BrowserEditingExportImportRequestV2):
+                        source = self._workflows.get_node(workflow_id, editing_node_id)
+                        editor = source.parameters.get("cutia_editor_v1")
+                        saved = editor.get("export") if isinstance(editor, dict) else None
+                        if (
+                            not isinstance(saved, dict)
+                            or saved.get("assetId") != request.editor_asset_id
+                        ):
+                            raise _error(
+                                "editing_export_import_conflict",
+                                "The selected video does not match this Editing node's saved export.",
+                            )
+                        asset_id, version_id = request.editor_asset_id, request.editor_version_id
+                    else:
+                        export_id = request.export_id
+                        export, version_id = self._validate_export(
+                            connection,
+                            workflow_id=workflow_id,
+                            editing_node_id=editing_node_id,
+                            export_id=export_id,
+                        )
+                        asset_id = str(export["output_asset_id"])
+                        source = self._workflows.get_node(workflow_id, editing_node_id)
                     version = self._validate_version(
-                        connection,
-                        asset_id=str(export["output_asset_id"]),
-                        version_id=version_id,
+                        connection, asset_id=asset_id, version_id=version_id
                     )
-                    asset = self._assets.resolve_asset_version(
-                        str(export["output_asset_id"]), version_id
-                    )
-                    source = self._workflows.get_node(workflow_id, editing_node_id)
+                    asset = self._assets.resolve_asset_version(asset_id, version_id)
+                    if isinstance(request, BrowserEditingExportImportRequestV2) and (
+                        asset.workflow_id != workflow_id
+                        or asset.media_type != "video"
+                        or asset.source_type != "upload"
+                    ):
+                        raise _error(
+                            "editing_export_import_conflict",
+                            "A browser export must reference a video uploaded to this workflow.",
+                        )
                     if source.node_type != "editing":
                         raise _error(
                             "editing_export_import_conflict",
@@ -156,7 +179,7 @@ class EditingExportOutputReuseService:
                         structured_content={},
                         output_asset_id=asset.asset_id,
                         metadata={
-                            "source_export_id": request.export_id,
+                            **({"source_export_id": export_id} if export_id is not None else {}),
                             "source_asset_id": asset.asset_id,
                             "source_version_id": version_id,
                             "source_asset_sha256": str(version["sha256"]),
@@ -177,7 +200,7 @@ class EditingExportOutputReuseService:
                         order=0,
                         metadata={
                             "origin": "editing_export",
-                            "export_id": request.export_id,
+                            **({"export_id": export_id} if export_id is not None else {}),
                             "asset_id": asset.asset_id,
                             "version_id": version_id,
                             "sha256": str(version["sha256"]),
@@ -233,7 +256,7 @@ class EditingExportOutputReuseService:
                             event_type="editing_export_imported_to_canvas",
                             created_at=now.isoformat(),
                             payload={
-                                "export_id": request.export_id,
+                                **({"export_id": export_id} if export_id is not None else {}),
                                 "asset_id": asset.asset_id,
                                 "version_id": version_id,
                                 "sha256": str(version["sha256"]),

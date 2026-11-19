@@ -17,6 +17,13 @@ class EditingExportOutputReuseRequestV2(_AgentCanvasModel):
     position: CanvasPositionV2
 
 
+class BrowserEditingExportImportRequestV2(_AgentCanvasModel):
+    editor_asset_id: str
+    editor_version_id: str
+    title: str | None = None
+    position: CanvasPositionV2
+
+
 class EditingExportOutputReuseResponseV2(_AgentCanvasModel):
     workflow_id: str
     revision: int
