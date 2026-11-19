@@ -4693,6 +4693,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_not_runnable": 422,
         "node_already_ready": 409,
         "node_already_working": 409,
+        "node_already_ran_in_execution": 409,
         "failed_node_retry_required": 409,
         "node_model_incompatible": 409,
         "node_prompt_empty": 409,

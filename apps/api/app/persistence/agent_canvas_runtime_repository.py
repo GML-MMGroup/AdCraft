@@ -256,7 +256,10 @@ class AgentCanvasRuntimeRepository:
                     if active is not None:
                         next_member_order = self._next_member_order(connection, active.execution_id)
                         for node_id in node_ids:
-                            if self._member_exists(connection, active.execution_id, node_id):
+                            if (
+                                self._member_state(connection, active.execution_id, node_id)
+                                is not None
+                            ):
                                 continue
                             self._insert_member(
                                 connection,
@@ -375,7 +378,22 @@ class AgentCanvasRuntimeRepository:
                     inserted: list[str] = []
                     snapshot_ids: dict[str, str] = {}
                     for intent in command.member_intents:
-                        if self._member_exists(connection, execution_id, intent.node_id):
+                        member_state = self._member_state(connection, execution_id, intent.node_id)
+                        if member_state is not None:
+                            if (
+                                command.scope == "selected_nodes"
+                                and len(command.member_intents) == 1
+                            ):
+                                if member_state in _TERMINAL_MEMBER_STATES:
+                                    raise _error(
+                                        "node_already_ran_in_execution",
+                                        "This node has finished its part of the active run. "
+                                        "You can run it again when the other nodes finish.",
+                                    )
+                                raise _error(
+                                    "node_already_working",
+                                    "This node already has a task in the active run.",
+                                )
                             continue
                         member_id = f"member_{uuid4().hex}"
                         snapshot = self._snapshot_for_intent(
@@ -1756,16 +1774,13 @@ class AgentCanvasRuntimeRepository:
         )
 
     @staticmethod
-    def _member_exists(connection: Connection, execution_id: str, node_id: str) -> bool:
-        return (
-            connection.execute(
-                select(AgentCanvasExecutionMemberRow.member_id).where(
-                    AgentCanvasExecutionMemberRow.execution_id == execution_id,
-                    AgentCanvasExecutionMemberRow.node_id == node_id,
-                )
-            ).scalar_one_or_none()
-            is not None
-        )
+    def _member_state(connection: Connection, execution_id: str, node_id: str) -> str | None:
+        return connection.execute(
+            select(AgentCanvasExecutionMemberRow.state).where(
+                AgentCanvasExecutionMemberRow.execution_id == execution_id,
+                AgentCanvasExecutionMemberRow.node_id == node_id,
+            )
+        ).scalar_one_or_none()
 
     @staticmethod
     def _active_execution_in_transaction(
