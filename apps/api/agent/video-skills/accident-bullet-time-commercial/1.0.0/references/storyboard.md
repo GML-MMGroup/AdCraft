@@ -10,11 +10,10 @@ Establish initial support in ordinary use: eyewear on nose/ears, a drink held by
 its cup, accessories on actual supports, unless approved handling differs.
 References own geometry and identity; action owns possession.
 
-Choose independent walking routes before contact. At the same depth, shoulders
-or upper arms visibly touch; fabric compresses and the upper torso tilts slightly
-backward relative to the hips. A yielding knee or small recovery step supports
-that modest recoil. Name the backward recoil explicitly. Hands reflexively open briefly and asymmetrically. The
-anonymous passerby remains adjacent at onset and keeps their destination and gaze.
+Choose independent walking routes before contact. For a walk, show a planted foot in the shoe-height panel; the mid-shot carries
+the same walking cadence until contact. Shoulders touch at the same depth;
+fabric compresses, torso tilts slightly backward, knee yields and hands briefly
+open asymmetrically. The passerby stays adjacent at onset and keeps their route and gaze.
 
 In one impact, support loss, recoil, surprise and camera advance start together.
 For each handheld release, name the hand and show a clear gap between fingertips and item. Later panels keep the same empty palm whenever visible. Pair every item with its own vacancy in the panel text.

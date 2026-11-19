@@ -29,7 +29,10 @@ story_structure: >
   finish after all items settle for the first time. At impact name each airborne
   original and its own newly vacant support, including the advertised product.
 hook_methods: >
-  Establish independent walking routes and normal carrying before contact.
+  Preserve the approved gait. For a walk, keep the same walking cadence from
+  the shoe-level opening to the mid-shot and first shoulder contact; one foot
+  stays grounded. Convey urgency through gaze, street rhythm or camera motion.
+  Establish independent routes and normal carrying before contact.
   For the reference-like approach, an opposing passerby enters a foreground edge
   and continues into depth along an offset lane whose shoulder clearance is too
   narrow. A brief back or side view suffices. Reach the same depth and show

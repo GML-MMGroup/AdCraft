@@ -28,12 +28,12 @@ seconds for landing. Later story or payoff follows the grounded state.
 
 ## Establish cause and transfer
 
-Track backward at footwear height and rise within the same take. Establish
-ordinary use first: eyewear on the face, drink in a hand, accessories at real
-supports, unless approved handling differs. Choose independent passing routes.
-At one contact plane, shoulders/upper arms visibly touch; fabric compression and
-the immediate small backward deflection establish the impulse. The anonymous
-extra keeps their destination without a face introduction or avoidance detour.
+Track back at shoe height and rise in one take. Keep the approved gait through
+contact: for a walk, keep one foot grounded and the same cadence as framing
+widens. Use camera speed and street activity for urgency. Establish each item's
+ordinary support unless the story specifies otherwise. Choose independent routes;
+shoulders meet at one depth, fabric compresses, torso deflects backward. The
+anonymous extra keeps their destination and gaze.
 
 Keep contact and asymmetric recovery near normal speed. As the camera approaches
 A, show support loss along the moving view. Each original follows an outward/upward

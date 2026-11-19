@@ -4,12 +4,11 @@ Use the approved product plus two ordinary supporting belongings and retain
 extra approved items. Design the protagonist; an anonymous passing extra needs
 no separate identity asset or introduction. Preserve approved cast/person limits.
 
-Choose independent walking routes, contact side and exit before contact. For the
-reference-like approach, an opposing passerby enters a foreground edge and walks
-into depth on an offset lane. Both reach the same contact plane; shoulders touch
-because clearance is insufficient. Gaze follows each destination. No foreground
-crossing with an untouched gap, curve around the wearer, pause or deliberate shove.
-An explicitly approved alternative route still needs visible contact.
+Choose independent walking routes, contact side and exit before contact. For a walking approach, carry the same walking cadence from shoe-level reveal
+through the rising mid-shot until contact. Express urgency in gaze or street
+activity. In the reference route a passerby enters a foreground edge and walks
+into depth on an offset lane. Shoulders touch at the same depth; both keep their
+destination and gaze. An approved alternative still needs visible contact.
 
 Choose ordinary functional placement first: eyewear worn on the face, a drink
 held by its cup, other belongings on their real supports. Explicit handling can

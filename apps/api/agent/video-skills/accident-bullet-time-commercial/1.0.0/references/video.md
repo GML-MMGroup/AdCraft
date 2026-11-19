@@ -15,11 +15,10 @@ Track backward at footwear height and rise to initial support in ordinary use:
 eyewear on the face, drink in one hand, accessories at real supports, unless
 approved handling differs. References own designs/identity; action owns possession.
 
-Choose independent walking routes, contact side and exit before contact. In the
-reference pattern an opposing passerby enters a foreground edge facing away and
-continues into depth. Shoulders/upper arms meet at the same depth. Fabric
-compression and torso deflection make contact visible. Preserve the extra's
-destination and gaze without a face introduction or avoidance detour.
+Choose independent walking routes, contact side and exit before contact. For a walk, keep footfalls at walking cadence as the camera rises until contact;
+one foot always bears weight. The passerby enters a foreground edge facing away
+and continues into depth. Shoulders touch at the same depth; fabric compresses
+and torso deflects. Keep the extra's route and gaze.
 
 The passerby is still adjacent when the torso recoils slightly backward, a knee
 yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
