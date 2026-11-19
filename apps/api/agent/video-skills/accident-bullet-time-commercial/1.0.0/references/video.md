@@ -23,11 +23,11 @@ destination and gaze without a face introduction or avoidance detour.
 
 The passerby is still adjacent when the torso recoils slightly backward, a knee
 yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
-impact, the cup clears fingers and accessories leave their supports. Eyewear's
+impact, name the releasing hand: fingers unfold, revealing a clear gap between fingertips and item. Show the same empty palm whenever it reappears. Eyewear's
 entire frame and temples clear nose/ears with visible air to the now-bare face;
 that same pair flies onward. All start together on short outward/upward arcs.
 
-The camera already advances toward A during contact and release. The intermediate
+Advance toward A during release. The intermediate
 medium-to-close view keeps support loss readable through motion; never wait for
 all originals to finish rising, settle into a pose or fit one group frame. Normal
 impact momentum slows near the airborne crest while the approach continues.
