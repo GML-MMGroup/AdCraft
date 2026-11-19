@@ -543,6 +543,7 @@ CONTRACT_MODELS = (
     agent_operation_contexts.WorkflowActionSummaryV1,
     agent_operation_contexts.WorkflowDocumentReferenceV1,
     agent_operation_contexts.WorkflowContextTruncationV1,
+    agent_operation_contexts.WorkflowDeliverySummaryV1,
     agent_operation_contexts.WorkflowStateCapsuleV1,
     agent_operation_contexts.WorkflowConversationAgentContext,
     agent_operation_contexts.ConversationSummaryAgentContext,
