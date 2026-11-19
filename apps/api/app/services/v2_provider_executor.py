@@ -378,9 +378,12 @@ def _provider_response_details(
     if parsed is not None:
         nested_error = parsed.get("error")
         nested_error = nested_error if isinstance(nested_error, dict) else {}
-        provider_error_code = _safe_diagnostic_scalar(
-            _first_summary_value((nested_error, parsed), ("code",)),
-            prompt_values,
+        raw_code = _first_summary_value((nested_error, parsed), ("code",))
+        # This public Ark code otherwise looks like a long base64 token.
+        provider_error_code = (
+            raw_code
+            if raw_code == "OutputVideoSensitiveContentDetected.PolicyViolation"
+            else _safe_diagnostic_scalar(raw_code, prompt_values)
         )
         provider_message = _safe_diagnostic_scalar(
             _first_summary_value((nested_error, parsed), ("message",)),
@@ -3288,6 +3291,12 @@ def _result_from_provider_asset(
             },
         )
     if status == "failed":
+        details: dict[str, str] = {}
+        raw_response = asset.get("raw_response")
+        if media_type == "video" and isinstance(raw_response, dict):
+            details = _provider_response_details(
+                raw_response, _request_prompt_values((asset, provider_payload))
+            )
         return V2ProviderResult(
             status="failed",
             media_type=media_type,
@@ -3298,8 +3307,10 @@ def _result_from_provider_asset(
             provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
             reference_asset_ids=list(reference_asset_ids),
             error_code=str(asset.get("error_code") or "provider_generation_failed"),
-            error_message=str(asset.get("error") or "Provider failed."),
-            metadata=metadata,
+            error_message=str(
+                asset.get("error") or details.get("provider_message") or "Provider failed."
+            ),
+            metadata={**metadata, **details},
         )
     if task_id and not local_path:
         return V2ProviderResult(
