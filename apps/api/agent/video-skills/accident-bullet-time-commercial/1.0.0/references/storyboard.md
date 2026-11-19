@@ -17,7 +17,7 @@ that modest recoil. Name the backward recoil explicitly. Hands reflexively open 
 anonymous passerby remains adjacent at onset and keeps their destination and gaze.
 
 In one impact, support loss, recoil, surprise and camera advance start together.
-For each handheld release, name the hand and show a clear gap between fingertips and item. Later panels keep the same empty palm whenever visible. Sample overlapping motion, one location per original.
+For each handheld release, name the hand and show a clear gap between fingertips and item. Later panels keep the same empty palm whenever visible. Pair every item with its own vacancy in the panel text.
 
 ## Nine sampled states
 

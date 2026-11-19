@@ -6,16 +6,21 @@ description: One continuous bullet-time product tour from first-frame feet throu
 # Accident Bullet-Time Commercial
 
 Use a contact-triggered speed ramp for parallax-led product inspection.
-Preserve the approved story, inventory, identities and medium.
+Keep the approved story, identities, inventory and medium.
 
-## Deliver the complete action
+## Write the release into the action
 
-In narrative/provider text, contact starts slight backward recoil, surprise,
-opening hands, all originals' outward/upward release and camera approach together.
-Approach overlaps separation, without a group-frame wait. Originals stay airborne through
-connected inspection and pullback; gravity resumes before their first landing.
-Keep the backward direction explicit when condensing. A yielding knee supports
-that modest recoil rather than replacing it with unspecified imbalance.
+Match every released item to its own support, including the advertised product.
+Write the separation and resulting vacancy together at impact. For example:
+phone clears right fingertips, right palm empty; bottle clears left fingertips,
+left palm empty; glasses clear the nose and ears, face bare. Use the actual items
+and sides. At freeze and pullback keep each visible support in that state.
+Before returning, compare the written action to the release list and fill any
+missing pair in the action itself.
+
+Contact starts slight backward recoil, surprise, opening hands, outward/upward
+release and camera approach together. Keep the backward tilt explicit. Inspect
+airborne originals through pullback; restore gravity before their first landing.
 
 Keep the first-frame footwear reveal through all objects landing in one video
 segment, within the fifteen-second cap and confirmed total. Reserve two to three
@@ -30,12 +35,9 @@ At one contact plane, shoulders/upper arms visibly touch; fabric compression and
 the immediate small backward deflection establish the impulse. The anonymous
 extra keeps their destination without a face introduction or avoidance detour.
 
-Keep contact and the brief asymmetric recovery near normal speed. As the camera
-advances, show the cup clearing opening fingers, glasses clearing nose/ears and
-accessory leaving its support in the same impulse. Readable gaps and vacancies
-develop along the moving view, not a separate proof shot. Follow outward/upward
-momentum before strong slowing; derive height from support. Reach A without
-waiting for every original to finish rising or fit in the same frame.
+Keep contact and asymmetric recovery near normal speed. As the camera approaches
+A, show support loss along the moving view. Each original follows an outward/upward
+arc from its support before slowing. Continue without waiting for a group frame.
 
 ## Traverse one frozen space
 

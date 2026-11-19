@@ -23,7 +23,7 @@ destination and gaze without a face introduction or avoidance detour.
 
 The passerby is still adjacent when the torso recoils slightly backward, a knee
 yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
-impact, name the releasing hand: fingers unfold, revealing a clear gap between fingertips and item. Show the same empty palm whenever it reappears. Eyewear's
+impact, pair EACH handheld item with its hand. Show a clear gap between fingertips and item, then the same empty palm on return. Eyewear's
 entire frame and temples clear nose/ears with visible air to the now-bare face;
 that same pair flies onward. All arc outward/upward together.
 

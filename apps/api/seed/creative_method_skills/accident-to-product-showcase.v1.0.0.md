@@ -26,7 +26,8 @@ story_structure: >
   and approach to the first item. Support loss unfolds along the moving view;
   slow into the airborne crest without a group-frame wait, then visit the items from
   near to far while they remain airborne, pull back, resume the same fall and
-  finish after all items settle for the first time.
+  finish after all items settle for the first time. At impact name each airborne
+  original and its own newly vacant support, including the advertised product.
 hook_methods: >
   Establish independent walking routes and normal carrying before contact.
   For the reference-like approach, an opposing passerby enters a foreground edge
@@ -171,6 +172,10 @@ including the pullback. Name the side and the surface revealed at separation:
 if the left earring comes loose, the left earlobe is bare while that earring
 flies; the other earring stays on. Carry that exact pair of states into
 storyboard panels and timed video prompts whenever the wearer reappears.
+Before delivering the script, panels or timed prompt, compare the actual action
+to the complete release list. If the right hand releases a phone and the left a
+bottle, write both transfers in the same beat and both empty palms on pullback.
+Substitute the approved items and sides; fill any missing pair in the action.
 Reference carrying poses never restore possession. Surprise begins with contact,
 not after a completed airborne display. Slow into the shared airborne crest with
 the body caught partway through recovery, retaining that surprised expression
