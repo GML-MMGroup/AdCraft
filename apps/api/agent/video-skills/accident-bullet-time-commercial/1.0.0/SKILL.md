@@ -55,9 +55,9 @@ Surprise starts with contact: widened eyes, lifted brows and slightly parted lip
 As the interrupted action slows into its airborne crest, freeze that expression,
 body, head and gaze through inspection/pullback; retain surprise through settling.
 Freeze object geometry, closures and displaced material in world space.
-Each original exists once; its vacated support stays empty in every
-later body view and pullback. References supply identity/design while the story
-owns possession and location. Flag stale conflicting media for replacement.
+Pair each airborne original with its exposed attachment point: e.g. the scarf
+clears the collar, which stays visible in later body views and pullback until
+reattachment. Keep unrelated accessories in place. Flag stale reference poses.
 A splash needs an open source; a drop is not durability proof.
 
 The grid is an off-screen story-process reference, not a first/last-frame target

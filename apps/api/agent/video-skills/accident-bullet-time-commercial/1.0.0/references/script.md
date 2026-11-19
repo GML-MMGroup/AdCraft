@@ -29,8 +29,8 @@ an unexplained climb above the face. Preserve connected parts and closures.
 Start surprised widened eyes, raised brows and parted lips at contact. Slow into
 the airborne crest and freeze this expression, body, head and gaze until time
 resumes; keep surprise through settling. One item has one location and its vacated support stays empty,
-including every later body view and pullback. Reference poses cannot restore
-possession. Carry an authorized placement correction into start_state and all
+including every later body view and pullback. Name the exposed attachment point
+for each worn item in the handoff; retain accessories outside the release list. Carry an authorized placement correction into start_state and all
 dependent prompts, while retaining identities and the later handoff.
 Use a near-to-far depth corridor consistent with release paths and approved
 visit order. Approach A during release; no group-view pause or waiting for all

@@ -13,8 +13,7 @@ References own geometry and identity; action owns possession.
 Choose independent walking routes before contact. At the same depth, shoulders
 or upper arms visibly touch; fabric compresses and the upper torso tilts slightly
 backward relative to the hips. A yielding knee or small recovery step supports
-that modest recoil. Keep the backward direction explicit; knee flexion alone
-leaves it unspecified. Hands reflexively open briefly and asymmetrically. The
+that modest recoil. Name the backward recoil explicitly. Hands reflexively open briefly and asymmetrically. The
 anonymous passerby remains adjacent at onset and keeps their destination and gaze.
 
 In one impact, support loss, recoil, surprise and camera advance start together.
@@ -42,9 +41,9 @@ For each handheld release, name the hand and show a clear gap between fingertips
 
 Start widened eyes, raised brows and parted lips with contact. Near the airborne
 crest, freeze surprise, body, head and gaze until time resumes; keep surprise in
-the settled last panel. Each vacated support stays empty until pickup, including the face
-despite worn references. Parts/closures persist; splashes need open sources.
-Heights follow actual release arcs.
+the settled last panel. In each body panel name the exposed attachment point
+(e.g. bare left wrist). Each vacated support stays empty until reattachment.
+Keep other accessories, parts, closures and release heights. Splashes need open sources.
 
 Link each orbit's front/three-quarter entry, curved side view and tangential exit
 to the next approach through world space. Each item becomes dominant, the product

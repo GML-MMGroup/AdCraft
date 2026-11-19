@@ -11,6 +11,8 @@ core_principle: >
   resumes and every item lands. Protect the whole footwear-to-landing incident
   inside one generated video segment. The slight backward recoil and open hands
   are consequences of interrupted walking, never a pose performed to launch props.
+  Pair each released original with its exposed attachment point; preserve
+  the vacancy through the pullback. Keep other belongings in place.
   Default to one designed protagonist and an anonymous passing extra.
 consumer_psychology: >
   A readable everyday mishap creates anticipation. Extending its airborne instant
@@ -165,7 +167,10 @@ per original, including the object next to its newly vacant support.
 
 Release moves the original; its vacated support stays empty until an authored
 pickup or reattachment. Show that vacancy in every later shared/body view,
-including the pullback: an empty hand, bare nose/ears or vacant neck, as applicable.
+including the pullback. Name the side and the surface revealed at separation:
+if the left earring comes loose, the left earlobe is bare while that earring
+flies; the other earring stays on. Carry that exact pair of states into
+storyboard panels and timed video prompts whenever the wearer reappears.
 Reference carrying poses never restore possession. Surprise begins with contact,
 not after a completed airborne display. Slow into the shared airborne crest with
 the body caught partway through recovery, retaining that surprised expression

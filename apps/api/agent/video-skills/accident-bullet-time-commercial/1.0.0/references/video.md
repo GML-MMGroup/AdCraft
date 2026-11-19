@@ -25,7 +25,7 @@ The passerby is still adjacent when the torso recoils slightly backward, a knee
 yields, hands open and eyes widen with lifted brows and parted lips. In that SAME
 impact, name the releasing hand: fingers unfold, revealing a clear gap between fingertips and item. Show the same empty palm whenever it reappears. Eyewear's
 entire frame and temples clear nose/ears with visible air to the now-bare face;
-that same pair flies onward. All start together on short outward/upward arcs.
+that same pair flies onward. All arc outward/upward together.
 
 Advance toward A during release. The intermediate
 medium-to-close view keeps support loss readable through motion; never wait for
@@ -33,8 +33,9 @@ all originals to finish rising, settle into a pose or fit one group frame. Norma
 impact momentum slows near the airborne crest while the approach continues.
 
 Freeze surprise, body, head and gaze until time resumes; retain surprise through
-settling. Each vacated support stays empty, including the face despite worn references.
-Keep slight backward recovery and one original per item, even offscreen/in pullback.
+settling. At release and pullback name the exposed attachment point (e.g. bare
+left wrist). Each vacated support stays empty until reattachment, even offscreen.
+Keep other accessories and slight backward recovery.
 
 ## Inspect, then land
 
