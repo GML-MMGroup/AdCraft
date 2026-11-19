@@ -4,7 +4,40 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest correction: Source A's continuous foreground-to-background route
+## Latest correction: contact and momentum before the frozen pose
+
+The 2026-11-16 first-segment result in proj_fbba5ab434f95922 is 15.104 seconds,
+720 by 1280 at 24 fps, asset version_asset_bd28cff350dfd8322f0581e8. Sampling
+at 0.1-second intervals shows a foreground crossing around 2.2-3.0 seconds,
+with no clear shoulder compression or contact-driven torso deflection. The
+protagonist remains comparatively planted, then opens the hands and lifts the
+chin around 3.2-3.9 seconds while objects rise. This reads as delayed levitation
+and a presentation pose. The current grid's third panel already shows the
+finished backward-leaning pose without the passerby touching; its fourth panel
+also duplicates the cup. These are observed reference/output defects, not proof
+that one input uniquely caused the generation.
+
+Source A at about 1.6-1.7 seconds brings a back-facing passerby along the
+protagonist's shoulder on the right side of the frame, continuing into depth.
+At about 1.8 seconds the torso and carrying hands are abruptly displaced; by
+1.9-2.0 seconds the original burger and cup already travel toward the camera
+and the camera enters the product view. The contact/reaction/release is one
+compressed event, not a prolonged open-palm tableau. The exaggeration follows
+the recognizable interruption and departing momentum.
+
+This supersedes treating slight backward lean and open palms as a target pose,
+slowing the approach/contact into a pantomime, and sending even low-held items
+high upward without a support-specific impulse. Retain the user's modest
+backward recoil, airborne release, forward depth tour and complete landing.
+Stage a real contact plane, immediate asymmetric balance recovery and original
+items departing real supports; slow after release and enter the first item
+promptly. Move the camera to credible item heights. The grid contact sample
+shows the touch before the completed airborne result. Preserve approved carrying
+states, product design, duration and later continuity unless their revision is
+authorized. This is a rewrite of authoring guidance, not an added paid review,
+automatic rerun or a guarantee of the provider's physical simulation.
+
+## Previous correction: Source A's continuous foreground-to-background route
 
 The next result in proj_fbba5ab434f95922 used the revised text and newly generated
 grid, confirmed by its accepted input manifest. The 15.042-second clip still

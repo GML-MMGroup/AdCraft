@@ -1,58 +1,63 @@
-# A readable accident and one continuous camera path
+# Contact, momentum and one continuous camera path
 
-Use the approved item map and visit order. Keep the first-frame footwear reveal
-through all objects landing in one video segment within the confirmed duration
-and fifteen-second cap. No separate opening; reserve two to three seconds for
-landing. Show initial support before contact. Keep contact/recoil/release quick;
-stretch only the airborne instant.
+Keep approved inventory, supports, visit order and endpoint. Keep the first-frame
+footwear reveal through all objects landing in one video segment within the
+confirmed duration and fifteen-second cap. Reserve two to three seconds for
+landing; write one chronological timeline without overlapping intervals.
 
-Open on grounded feet at normal speed. Track backward low and rise to a readable
-medium view of the wearer and supported items. Keep supplied positions/carrying
-side; distinguish observed and planned endings. An anonymous passerby needs no
-reference or identity ID. Preserve approved cast without forced face presentation;
-camera attention stays on the wearer, without a passerby introduction.
+## Ordinary walk becomes an accident
 
-Set independent walking routes, gaze, headings, contact side and exit. With a
-frontal retreating camera, opposing passage shows back/shoulder moving from
-foreground into depth. Approach from behind may show a face; establish relative
-speed and narrowing clearance before contact. Side crossings also work. No
-turning or stopping for identification. The brief brush causes slight backward
-recoil, open palms and original items tossing forward/upward, not a deliberate
-throw. The passerby continues their route when time resumes.
+Open at footwear height, track backward low and rise to initial support on the
+wearer. Choose independent walking routes, headings, contact side and exit before
+contact. For the reference approach, an opposing passerby enters a foreground edge
+facing away and continues into depth along an offset lane. At the same contact
+plane, outer shoulder meets shoulder/upper arm; momentary fabric compression and
+a small torso deflection make the touch readable. Keep the contact edge visible.
+Do not use foreground occlusion, a gap-preserving pass or a curve around the wearer
+as the cause. The extra keeps their destination and gaze, without a stop, face
+introduction, deliberate charge or turn toward the protagonist.
 
-Freeze near the crest with slight backward lean and empty palms, not a head dip
-or downward slip. The approved visit order A/B/C runs near to far away from the
-freeze-onset camera along a bounded depth corridor, with the wearer behind.
-Derive positions from supports/release paths; small height/lateral offsets allow
-visibility and passage. No flat left/center/right row or fixed product categories.
-Lock positions, orientations, closures, body, head and gaze in world space.
-One item has one location; the vacated support stays empty. Keep attached parts
-and offscreen states. Camera motion changes apparent size and overlap, not
-geometry or frozen positions. References govern design/identity; action governs
-possession. A splash needs an established open source. Reactions start when time resumes.
+Contact immediately checks the torso slightly backward during weight transfer;
+a knee yields or a recovery step begins, and the hands reflexively adjust then
+lose grip. The hands open as a consequence. Keep the recoil brief, asymmetric and
+connected through shoulders, hips and feet, not a neck-only arch, planted backbend,
+slow chest lift or deliberate throwing gesture. The reaction starts while the
+passerby is still adjacent, without a pause between passage and release.
 
-Start moving promptly after release. The intermediate medium-to-close approach
-shows the first item, empty support and a landmark. Advance from foreground to
-background for the whole tour: before each arrival the next item is already
-visible smaller and deeper; the outgoing item grows and passes a frame edge as
-the next enlarges continuously. Preserve shared landmarks and parallax across
-both bridges, especially into the final product. Pass beside solids; do not
-substitute a sideways sweep, zoom, hidden cut or sudden isolated macro shot.
-Accelerate in transit, slow briefly for detail, then accelerate forward. Camera
-roll/tilt and small offsets stay on that continuous path; no independent product
-orbit or backward reset. Keep the product dominant through approach and detail,
-with brief supporting visits. Budget bridges before static holds. Restrain blur.
+Track each item's support, dislodging motion and departing arc. An initial impulse
+precedes forward/upward flight and deceleration into the shared crest. Small
+release offsets belong to one impact. A loose worn support visibly slips or lifts
+clear; attachments cannot vanish or pass through anatomy. Move the camera to
+support-derived heights rather than levitating low-held objects above the face.
+Preserve product geometry and closures.
 
-Only after the last visit, pull back continuously, restore gravity and follow every item through settling.
-Foley follows physical contact timing. Preserve the approved reaction and landed
-end_state for the next segment; a body fall is optional.
+Keep the approach and contact near normal speed. Begin the strong speed ramp
+after the impulse and support loss, then promptly follow the first departing item
+into an intermediate medium-to-close approach. Do not dwell on a finished open-palm
+pose. Freeze bodies mid-recovery, head and gaze and displaced material in world
+space until time resumes. The vacated support stays empty; each item occurs once,
+including offscreen states. A splash needs an established open source.
 
-Write chronologically: first-frame feet, backward tracking/rise, trigger/release/freeze,
-connected visits, pullback, landing. Attach constraints to their beats; replace
-stale conflicts. Start_state opens at footwear level; end_state has every item
-settled. Later segments begin there, without repeating the reveal or fall.
+## Travel through the released items
+
+Resolve a bounded depth corridor from the release paths. The approved A/B/C order
+runs near to far from the freeze-onset camera, with natural height/lateral offsets.
+Advance continuously through the objects. The outgoing item grows past a frame
+edge while the already visible smaller, deeper next item enlarges into its visit.
+Keep shared landmarks and parallax across both bridges, including the final product.
+Accelerate in transit, slow for a brief readable detail, then continue forward.
+Camera roll, tilt and small offsets share that route; pass beside solids.
+
+Give each item a dominant view, the product the strongest. The wearer may leave
+the crop while retaining the same frozen position; do not restore a full posed
+body behind every visit. No isolated macro insert, independent orbit, hidden cut
+or backward reset. Retreat only for the final pullback, restore gravity and follow
+every original through settling. Preserve the approved reaction and handoff.
+
 The grid is an off-screen story-process reference, not a first/last-frame target,
-collage or edit points. Written states do not supply native first-frame control
-or image weight. Record visible reference conflicts in production_handoff without
-claiming correction or adding a review/rerun. Preserve speech/subtitle choices;
-Video owns ambience and foley, with BGM separate.
+collage or edit points. Start in the full-frame scene. When the existing grid omits
+contact or depicts floating pose/duplicates, record that discrepancy in handoff;
+the corrected written causal sequence governs, without claiming the image changed.
+Resolve old timing, support and pose conflicts within the authorized scope.
+Preserve dialogue/subtitle controls; Video owns ambience and synchronized contact,
+release and landing foley, with BGM separate. No added review model or media rerun.

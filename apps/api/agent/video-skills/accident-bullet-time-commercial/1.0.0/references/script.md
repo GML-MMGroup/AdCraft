@@ -1,59 +1,42 @@
-# One product, several belongings, one complete accident
+# A passing collision with a visible consequence
 
-Use the product plus two plausible supporting belongings through normal prop
-design; an approved product set may supply separate items. Three surfaces are
-not three objects. Keep additional approved items through landing.
+Use the approved product plus two ordinary supporting belongings and retain
+extra approved items. Design the protagonist; an anonymous passing extra needs
+no separate identity asset or introduction. Preserve approved cast/person limits.
 
-For an open cast, design the protagonist; list the anonymous passerby as background
-action, without a Character asset/roster entry. Preserve approved roles/person limits.
-Establish independent walking routes before contact; gaze and stride follow each
-destination. Opposing passage or approaching from behind with relative speed
-and narrowing clearance may cause the brush. A back/shoulder glimpse suffices;
-natural frontal visibility is allowed, without an introduction beat.
-Show initial support before contact. The quick shoulder brush causes slight
-backward recoil, open palms and the original items tossing forward and upward,
-not an intentional throw. Stretch the airborne instant, not the contact.
+Choose independent walking routes, contact side and exit before contact. For the
+reference-like approach, an opposing passerby enters a foreground edge and walks
+into depth on an offset lane. Both reach the same contact plane; shoulders touch
+because clearance is insufficient. Gaze follows each destination. No foreground
+crossing with an untouched gap, curve around the wearer, pause or deliberate shove.
+An explicitly approved alternative route still needs visible contact.
 
-Map support, release, frozen position and landing with viable hands/attachments.
-Derive a bounded depth corridor from release paths: the approved visit order runs
-near to far away from the freeze-onset camera, with height/lateral offsets for
-visibility and passage. No planar left/center/right row. Carry this map and the
-wearer's position through outline, grid and video. The camera advances from
-foreground to background through A/B/C, without reversing before the final
-pullback. Preserve approved item order; no equal spacing or fixed product order.
-The outgoing item grows past an edge while the smaller, deeper next item grows
-into its visit. Those visible bridges, not background blur, establish depth.
-Preserve upward release, slight backward lean and open empty palms near the crest,
-not a downward slip or forward head dip. Each item has one location; reference
-panels depict successive states, not copies. Frozen objects stay in world space;
-screen positions and overlap change with the camera, without changing geometry.
-The vacated support stays empty until an authored pickup or reattachment. Keep
-attached parts with their object and retain offscreen states through landing.
-Freeze head and gaze with the backward-leaning body; new reactions begin when
-time resumes. The carrier looks toward the airborne items rather than the ground.
+Show initial support, then one quick chain: contact checks the torso, weight
+transfer is disturbed, a knee yields, hands react and grip/support is lost.
+Slight backward recoil and open palms are the recovery reflex, not a planted
+backbend or a pose arranged before release. The passerby remains adjacent at
+onset. Name the initial impulse and support loss for each original item. Let
+forward/upward flight curve and slow before the shared freeze; no delayed,
+slow vertical levitation. Low-held objects need support-derived heights, not
+an unexplained climb above the face. Preserve connected parts and closures.
 
-Preserve the sequence: footwear tracking rises to wearer and belongings; visible
-passing contact causes release; everything freezes together; the camera visits
-A, B and C; it pulls back; time resumes, all objects land and settle, and the
-wearer reacts. The advertised product receives the strongest attention. Preserve
-approved speech and claims; a drop or intact landing does not prove durability.
+Freeze the body mid-recovery, including head and gaze; new reactions wait until
+time resumes. One item has one location and its vacated support stays empty.
+Use a near-to-far depth corridor consistent with release paths and approved
+visit order. Move promptly from the release into A; an intermediate group view
+is brief, not a tableau. Connect A/B/C through visible outgoing edges and smaller
+approaching targets. Give the product the strongest material/scale emphasis;
+leave detailed camera geometry to Storyboard and Video.
 
 Keep the first-frame footwear reveal through all objects landing in one video
-segment, even in a long ad. Start_state opens on feet with items held/worn;
-the rise shows initial support before contact. No separate opening/setup node.
-Budget this interval before later story/payoff; reserve two to three seconds for
-every item falling and settling. End_state records grounded items and body pose;
-later nodes continue there. Honor the fifteen-second cap and confirmed total.
-Shorten holds before reveal, cause, travel or descent; disclose incompatible timing.
+segment: feet, rise and supported items, contact/release, shared freeze,
+connected visits, pullback, resumed fall and settling. Keep the impact near normal
+speed; stretch the airborne instant after release. Reserve two to three seconds
+for landing within the fifteen-second cap and confirmed total. Shorten static
+holds, not travel or descent. Later story/payoff continues from end_state.
 
-Preserve confirmed visit order; supporting details are brief, with the product's
-strongest material view or scale change. Preserve materials and closures;
-a splash needs an open vessel.
-
-Begin travel promptly after the quick release; avoid a long frozen group hold.
-Budget visible approaches between all items, including the final product, before
-optional beauty dwells. No separately started product orbit or macro insert.
-Leave camera geometry to Storyboard and Video, carrying forward traversal and the
-footwear-to-landing interval into narrative_goal and production_handoff. Reactions
-follow the approved tone; a body fall is optional. Review inventory, causality and
-handoff in this call, without an added paid visual-model check.
+Carry the causal chain and complete interval into narrative_goal and handoff.
+The grid's contact sample shows the touch before the completed airborne state.
+Replace stale timing, generic launch instructions and deliberate pose descriptions;
+preserve approved speech, subtitles, identities and facts. A fall is optional.
+Review these links inside the current authoring call, without a paid visual check.

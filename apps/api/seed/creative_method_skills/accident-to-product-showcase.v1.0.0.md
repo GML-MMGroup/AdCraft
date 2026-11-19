@@ -4,279 +4,179 @@ version: 1.0.0
 skill_kind: creative_method
 title: Accident-to-Product Showcase
 core_principle: >
-  An incidental collision prompts a slight backward lean and instinctively open
-  hands; original belongings toss forward and upward into a shared frozen instant.
-  Recreate the reference sequence: footwear-to-face tracking, visible contact/recoil,
-  a moving-camera close-up tour of each distinct item, a pullback to the wearer,
-  then resumed gravity and reaction. Even one advertised product needs supporting
-  belongings. Keep the first-frame footwear reveal through all objects landing
-  in one video segment, even in a long ad; finish after every released item has
-  settled on the ground. The footwear opening and rising reveal belong to that
-  same uninterrupted generation, not a separate setup node.
-  Default to one designed protagonist and an anonymous passing extra, not a
-  second designed character or face-reveal beat. Preserve an approved cast.
-  Release the belongings into a bounded depth corridor: the approved visit order
-  runs from near to far. Carry that map through a continuous forward tour, not
-  a flat display row or disconnected product portraits.
-  Build a visual crescendo across visits. Identities and setting can change,
-  while the multi-item discovery and complete incident remain recognizable.
+  Interrupt an ordinary walk with unmistakable incidental shoulder contact.
+  One short impact causes loss of balance and support; the original belongings
+  leave their supports with momentum, then share a frozen airborne instant.
+  Discover the advertised product among three distinct belongings before time
+  resumes and every item lands. Protect the whole footwear-to-landing incident
+  inside one generated video segment. The slight backward recoil and open hands
+  are consequences of interrupted walking, never a pose performed to launch props.
+  Default to one designed protagonist and an anonymous passing extra.
 consumer_psychology: >
-  An interrupted ordinary action creates anticipation. Delaying the consequence
-  lets the camera discover desirable details among familiar belongings, making
-  the main product stand out before the falling objects complete the suspense.
+  A readable everyday mishap creates anticipation. Extending its airborne instant
+  lets the audience discover desirable product details before the expected
+  consequence arrives. Recognizable cause and consequence make the fantasy credible.
 story_structure: >
-  Open on the wearer's feet, track backward and rise to establish the wearer and
-  three carried or worn items at normal speed in the same video segment; show
-  passing shoulder contact, slight backward recoil and open palms as the original
-  items toss forward and upward to staggered depths; freeze them together; travel
-  forward from near A through middle B to far C with visible approaches between
-  their close views; pull back to the front medium view;
-  restore time, show the same items landing and the wearer's reaction.
+  First-frame footwear and a rising reveal establish supported belongings.
+  The passerby reaches the same contact plane as the protagonist; shoulders
+  briefly meet while both keep their destinations. Contact checks the torso,
+  weight shifts and hands react; items leave their actual supports with a short
+  forward/upward impulse. Freeze after release, visit the established items from
+  near to far, pull back, resume the same fall and finish after all items settle.
 hook_methods: >
-  Track backward from footwear height and rise to reveal the wearer and all
-  belongings. Establish the passing route before the shoulder brush so the
-  cause is readable and the frozen objects were already present in ordinary life.
-  Give both people independent walking routes and destinations; contact results
-  from their intersecting paths while their gaze and movement still serve those destinations.
-  A brief back, side or partial view can establish the passerby. A naturally
-  visible face is allowed; no separate introduction or front-facing pose is needed.
+  Establish independent walking routes and normal carrying before contact.
+  For the reference-like approach, an opposing passerby enters a foreground edge
+  and continues into depth along an offset lane whose shoulder clearance is too
+  narrow. A brief back or side view suffices. Reach the same depth and show
+  contact; a foreground crossing with an untouched gap is not the accident.
+  Use one chosen route, without swerving to display a face or deliberately charging.
 product_role: >
-  One supplied product remains the commercial hero among three distinct items.
-  Add two context-appropriate supporting belongings in the story and prop-design
-  flow; they are neutral story props, not additional brands or product variants.
-  The advertised product receives the strongest detail or scale emphasis. Order
-  the visits for anticipation and payoff while preserving any confirmed order.
+  Use the advertised product plus two plausible unbranded supporting belongings;
+  an approved product set may supply distinct slots. Establish each support,
+  release mechanism and landing. The commercial hero receives the strongest
+  material or scale emphasis. Preserve an approved visit order and product facts.
 suitable_categories_and_goals: >
-  Accidental bullet-time, frozen-space product tours, street collision adverts,
-  accessories, drinks, food, cosmetics and handheld electronics, including briefs
-  that name only one advertised product and leave supporting belongings open.
+  Accidental bullet-time street adverts, accessories, drinks, food, cosmetics
+  and handheld electronics, including single-product briefs that leave routine
+  supporting belongings open. Adapt identity, location and selected visual medium.
 unsuitable_cases: >
-  Briefs that explicitly forbid supporting belongings, require a single-object
-  studio film or an uninterrupted practical demonstration. Explain such a
-  conflict rather than silently changing this method. A fall is not durability proof.
+  Briefs forbidding supporting belongings, single-object studio films and
+  uninterrupted practical demonstrations. Explain a direct conflict without
+  silently changing the method. A drop does not establish durability.
 common_mistakes: >
-  Reducing a single-product campaign to one airborne object, replacing distinct
-  belongings with three views of the same product, contactless flight, unseen
-  props appearing at freeze time, independently spawning each item, rotating
-  products instead of moving the camera, disconnected inserts, omitting the
-  front-medium pullback, separating the footwear opening from the incident,
-  promoting an incidental passerby to a second lead, bending routes to show faces,
-  arranging airborne items only left/center/right on one plane, substituting
-  background blur or isolated zooms for travel between item depths,
-  turning the recoil into a forward head dip and downward
-  slip, or never returning to the same landing and reaction.
+  A passerby walking around the protagonist, foreground occlusion replacing
+  contact, a delayed reaction after the passerby leaves, a planted symmetrical
+  backbend, opening hands before impact, deliberate throwing, props rising
+  slowly without an initial impulse, low-held items levitating to head height,
+  attached items passing through the body, a frozen inventory row, disconnected
+  product portraits, duplicated belongings, or ending before everything lands.
 cross_category_examples: >
-  Sunglasses: a wearer carries a neutral cup and loose shoulder bag; a passing shoulder brush releases all three, the camera visits the glasses hinge, cup rim and bag seam, pulls back and lets the same belongings land.
-  Takeaway meal: a wearer carries a burger, fries and drink; passing contact releases the three established items, the frozen tour reveals sesame, fries and the cup in order before returning to the wearer and the landing. Fallen food is not eaten.
-  Skincare bottle: a wearer carries the advertised capped bottle and a neutral phone while wearing loose sunglasses; contact releases the established items, the camera visits the glasses, bottle and phone, spending most time on the bottle, then pulls back before the fall. The cap stays closed.
+  Sunglasses: a wearer carries the advertised glasses and a neutral cup, with a loose supporting accessory; passing contact interrupts the stride and jolts the supports, releasing the originals before the frozen tour and complete landing.
+  Takeaway meal: a carrier's supported burger, fries and drink are displaced by incidental contact; a brief reflex and loss of grip precede the airborne tour, followed by the original items falling. Fallen food is not eaten.
+  Skincare: establish the capped product, a neutral phone and loose eyewear; select carrying positions with believable release paths, inspect the coexisting originals in frozen time and return to their shared consequence. The cap stays closed.
 ---
 
 # Accident-to-Product Showcase
 
 ## Why It Works
 
-The mishap creates a shared frozen space containing several familiar belongings.
-The camera's successive discoveries turn it into a product showcase, with one
-advertised object receiving the strongest emphasis. The awaited landing closes
-the same incident. One-object macro photography removes the defining traversal.
+The audience recognizes the mishap before the visual exaggeration begins.
+The unexpected pause turns that same accident into a product discovery tour.
+A convincing touch and loss of support matter more than a decorative floating
+pose. The ending pays off the consequence promised by the initial interruption.
 
-This method fixes narrative sequence and inventory logic. Its companion Accident
-Bullet-Time Commercial style fixes camera choreography. Casting, wardrobe,
-product, supporting belongings, location and an explicitly selected animation
-medium can change while that structure remains recognizable.
+This method owns narrative causality, inventory and the complete incident.
+The companion audiovisual Skill owns framing, speed changes and camera travel.
+Explicit user facts, approved cast and physical reference designs remain authoritative.
 
 ## How To Execute
 
-### Keep the passerby incidental
+### Choose one passing route and an actual contact
 
-For an open cast, design the protagonist and describe the collision partner as
-an anonymous background extra in the action. A brief back, shoulder, side or
-partial silhouette is enough. Do not add a second named identity, Character
-Main, Turnaround or reference binding solely to perform the passing contact.
-In production inventory, list the identities needing independent design in
-characters; describe the anonymous extra separately in the story, not as an
-extra roster entry. Do not invent dialogue, a biography or a later subplot to
-justify that entry. Preserve explicitly selected characters and approved later
-speaking, recurring or reversal roles; this default does not delete them or
-bypass an explicit total-person limit or prohibition on background people.
+Default to one designed protagonist and an anonymous background extra. The extra
+needs no name, Character Main, Turnaround, identity binding or introduction solely
+for contact. Preserve explicitly approved supporting identities, later speech
+and person limits. Face visibility follows the route, not a separate display beat.
 
-Choose routes before face visibility. With a camera retreating in front of the
-protagonist, an opposing passerby can enter from the camera-side foreground and
-continue toward the background, showing mostly back or shoulder. A passerby
-approaching from behind can face the camera while catching up along an offset
-lane. Show the relative speed and narrowing clearance that cause the brush;
-same-direction motion alone is not contact. Side crossings can work too.
-Keep the chosen route, body heading, gaze, contact side and exit consistent with
-the camera path. No route is mandatory, and a natural frontal glimpse is allowed.
+Choose independent walking routes, headings, contact side and exit before writing
+the event. For the Source A pattern, the protagonist approaches the retreating
+camera while the passerby enters one foreground edge facing away and proceeds
+into depth on an offset opposing lane. Both arrive at the same contact plane;
+the outer shoulder briefly meets shoulder or upper arm because clearance is
+insufficient. A visible shoulder deflection or fabric compression establishes
+touch. The passerby continues past, without curving around the protagonist,
+turning toward them, stopping or preparing a shove. Another approved route is
+valid if it supplies equally readable contact; do not list route alternatives
+inside the final shot prompt. Mere overlap in screen space is insufficient.
 
-Camera attention remains on the protagonist and belongings. Do not pause, turn
-the passerby, create a companion-like two-person portrait or add an introduction
-to exhibit their face. Show the contact clearly without requiring a full-body
-or facial presentation. A supplied character reference fixes identity, not
-framing or visibility. Later approved dialogue may receive its own coverage.
+### Derive recoil and release from the interrupted stride
 
-### Establish three distinct belongings even for a single-product brief
+Write one connected event: contact, weight transfer, involuntary hand response,
+support loss, airborne momentum. Contact checks the upper torso slightly backward
+while the walking body is still transferring weight. A yielding knee, displaced
+shoulder or small recovery step makes the modest recoil readable. Keep it brief
+and slightly asymmetric. The hands open while trying to recover balance; no
+pre-contact gesture, leisurely chest lift, fixed-feet backbend or display pose.
+Do not add a deliberate throwing swing. The passerby must still be adjacent when
+the reaction begins, rather than already gone before belongings start moving.
 
-Use the advertised product plus two plausible, unbranded supporting belongings.
-An approved product set may supply several slots with real separate items.
-Select the supporting items during story planning and carry them through the
-normal prop-design/reference flow. Do not request more advertised products or
-wait for the user to name routine props before writing a proposal. Present the
-chosen inventory in the story; explicit user constraints still govern it.
+For each original item, name its actual support, the motion that dislodges it,
+the moment support is lost and the departing direction. A hand-held object has
+a brief grip/wrist disturbance; a loose worn item has a visible slip or lift
+clear of its real support. A secure strap cannot vanish or pass through anatomy.
+All releases belong to the same short impact, with natural small offsets rather
+than sequential magic reveals. Flight begins with an initial impulse, carries
+forward/lateral motion and curves upward before slowing into the shared freeze.
+It must not accelerate slowly out of a stationary open hand.
 
-Assign A, B and C to different physical items, with one main advertised item.
-For each, specify its reference or approved design, actual appearance, initial
-hand or attachment, support loss, frozen position and landing area. Use viable
-hand counts and clothing supports. Keep references for the wearer and location
-consistent. Multiple product views do not create multiple inventory slots.
-Release moves the established item and vacates its previous support; that hand,
-face or shoulder stays empty until an authored reattachment. Keep attached parts
-with their owner and carry the same inventory into landing and pickup. Product
-references govern design, character references identity, and story actions
-possession. A reference's carrying pose does not restore a released belonging.
+Upward motion is an advertising exaggeration, but its extent follows the support
+and impulse. Keep low-held items near a plausible departing height instead of
+lifting everything above the face for composition. Move the camera to the items.
+When carrying is still open, choose loose, ordinary supports that make the
+release legible. Preserve approved supports unless their revision is authorized;
+explain a physical conflict rather than inventing unseen force. Do not reduce
+the requested airborne event to a downward slip or change every story into a fall.
 
-### Give the shared freeze a spatial shape
+### Keep one inventory through flight, inspection and landing
 
-Derive each frozen position from its initial support and release trajectory.
-Keep the group within a bounded depth corridor in front of the wearer. Arrange
-the approved visit order near to far away from the freeze-onset camera; small
-height and lateral offsets keep silhouettes and passages clear. Left/center/right
-alone is not a spatial map. Use perspective and partial occlusion, without a
-flat equal-size row or exaggerated depth made by changing object geometry.
+Establish the product plus two distinct supporting belongings before contact,
+using normal prop design and real hand counts. Give each a reference/design,
+initial support, release path, frozen location and landing area. Supporting
+belongings are not extra advertised brands or alternate views of one object.
+Retain additional approved items and attached components.
 
-Carry the same item-to-item and item-to-wearer relationships into the outline,
-grid and video through existing action and continuity prose. Choose placement
-for the actual supports, release and approved visit order; no fixed product
-categories, equal distances or rigidly collinear layout is required. Once frozen, objects
-stay in world space. The moving camera changes screen position, apparent size
-and occlusion; it does not rearrange items to keep them in permanent screen slots.
-Depth between the items must remain readable, not just a blurred background.
+Release moves the original; its vacated support stays empty until an authored
+pickup or reattachment. Reference carrying poses establish an initial state,
+not permanent possession. Freeze after release near the shared airborne crest,
+with the body caught partway through balance recovery. Lock head and gaze,
+object poses, closures and displaced material until time resumes. No conscious
+posing or new head turns during the tour. Preserve one instance even offscreen.
+Liquid needs a real open source; sealed packaging keeps its closure and contents.
 
-### Preserve the reference sequence and camera route
+### Discover the products through the same frozen space
 
-Make the accident incidental. Establish both walking directions and the local
-reason clearance becomes too narrow before contact. Each person keeps an
-independent destination, natural stride and gaze ahead; the passerby does not
-turn toward the wearer to initiate contact. A brief outer-shoulder brush causes
-a slight backward recoil, hands instinctively spreading with open palms, and
-the original belongings tossing forward and upward. The passerby continues on
-their route when time resumes. Preserve the accidental startle, not a deliberate
-throw or shoulder charge.
-Reveal a readable initial support state as the opening camera rises from feet
-to the wearer, before the trigger. This opening and the incident share one
-generation. Keep the footwear-level start and rising reveal in the selected
-story, segment start_state and downstream prompts.
-Show normal support before the quick, continuous contact-recoil-release reaction.
-Freeze near the airborne crest with the carrier slightly leaning back, both palms
-empty and open toward the released items. Upward release is the approved visual
-exaggeration, even for a previously low-held object. Maintain original identity,
-structure and one instance per item. The shoulder and hands remain empty through
-the tour. Continue supplied prior positions, headings and carrying side.
+Resolve a bounded depth corridor from the actual release paths. The approved
+visit order A/B/C runs near to far away from the freeze-onset camera, with
+height/lateral offsets that fit the supports. No equal-height display row or
+geometry changes to manufacture depth. Carry the same map into outline, grid
+and Video. Distances and product categories are not fixed.
 
-1. Normal-speed backward tracking starts at footwear and rises to a front view
-   of the wearer, all three items and the passing route.
-2. A passerby's outer shoulder visibly brushes the wearer. The upper body leans
-   slightly back and the hands open instinctively as the same belongings toss
-   forward and upward. The body reaction remains modest; airborne objects supply
-   the spectacle. The passerby keeps moving through the encounter.
-3. All three items freeze together in their staggered volume. Lock positions,
-   orientations, openings, liquid shape and droplets along with the reaction.
-   Head and gaze freeze too; new looks and reaches wait until time resumes.
-4. From the front medium view, travel continuously forward through near A,
-   middle B and far C. Each becomes dominant with readable material detail.
-   Before each arrival, the next item is already smaller and deeper; the current
-   item grows past a frame edge while the next enlarges along the same path.
-   These visible approaches connect the visits, including the final product;
-   do not restart its presentation as an isolated orbit or macro insert. The
-   audiovisual treatment owns roll, height and speed changes along this route.
-   Objects remain still and singular, even when offscreen or defocused.
-5. Briefly reconnect with the wearer through a continuous front three-quarter
-   pullback, then carry that motion into the resumed fall.
-6. Restore ordinary time, follow those trajectories to ground contact and
-   settling, and resolve the wearer's physical reaction in the same incident.
+Move promptly from the readable release into the first object's close view.
+The recoil is a transition, not a long tableau of a person arching backward.
+The outgoing near item enlarges past a frame edge while the already visible,
+smaller next item deepens the route and grows into its visit. Keep all visits
+connected, including the final advertised product. Camera movement determines
+scale and overlap; objects stay fixed in world space. The audiovisual Skill
+provides continuous roll, perspective and fast-travel/brief-inspection rhythm.
+The main product gets the strongest detail, not an independently restarted shot.
 
-These stages and separate visits are mandatory for this method. Substituting
-roles, objects or location does not permit a different camera grammar. Let the
-main product receive more time or richer detail, but keep each supporting-item
-visit. For the three-slot tour, avoid unrelated studio inserts and three angles
-of only the main product. A sealed vessel keeps its seal unless its real
-mechanism and the approved action support an explicit opening before freeze.
+### Protect the complete incident and replace conflicting instructions
 
-### Keep the first-frame footwear reveal through all objects landing in one video segment
+Keep the first-frame footwear reveal through all objects landing in one video
+segment: low backward tracking and rise, supported items, contact and release,
+shared freeze, A/B/C visits, continuous pullback, resumed fall and settling.
+No separate setup node, boundary before contact or stitched incident. Budget the
+entire interval inside the current fifteen-second cap and confirmed total;
+reserve two to three seconds for complete landing before adding beauty holds.
+Extra story or brand payoff begins after settling. Disclose incompatible timing.
 
-Protect the complete opening and incident as one video segment: the first frame
-shows the wearer's feet at footwear height, backward tracking rises to establish
-the wearer and supported belongings, followed by visible contact/release,
-simultaneous freeze, A/B/C visits, pullback, resumed fall, all ground contacts
-and settling. This includes every released supporting prop, bag, loose piece
-or spill, not only the advertised item. End with all objects grounded. The
-footwear opening is the start of the protected interval, not optional setup.
-No node boundary or stitched generation belongs anywhere between that first
-frame and the settled ending, including before contact, even in a long ad.
+Keep ordinary walking and contact close to normal speed; begin the strong speed
+ramp only after the contact impulse and support loss are readable. Extend the
+airborne interval, not a slow pantomime of the collision. Remove the long
+freeze-establishing hold before trimming connected travel or landing. Choose
+one chronological timeline rather than overlapping beat intervals.
 
-Reserve the final two to three seconds for descent and settling before assigning
-the opening and tour holds. Budget footwear tracking, the rising reveal and the
-complete incident together within the current fifteen-second cap and confirmed
-total. Further story, extended reaction or brand payoff can follow the settled
-ending in later segments. Do not move the opening to another node to make room.
-Short internal visits are not separate generations.
-Shorten static holds before removing travel or descent; explain an incompatible
-explicit duration instead of splitting the action or silently extending time.
+Record footwear-level start_state with belongings supported, and end_state with
+every original grounded, the body reaction and any next-segment continuity.
+The grid is an off-screen story-process reference, not a first/last-frame target
+or an edit list. Its contact sample shows touching bodies before the completed
+floating pose; the next sample shows the airborne result. Later nodes start
+from the settled consequence without repeating the cause.
 
-Keep the opening and trigger brief and readable; start travel promptly after
-release instead of holding a frozen group portrait. Extend the airborne instant
-through the speed ramp, not a long contact demonstration. Reserve
-enough time for the final descent and settling, then fit connected visits and
-a brief pullback into the remainder. Supporting-item dwells are brief; the
-advertised item receives the strongest detail emphasis. Protect both visible
-forward bridges before optional beauty dwells, especially arrival at the final
-product; backward travel begins only at the concluding pullback. Adapt to the approved
-action and duration rather than imposing one timeline on every product.
-For a longer ad, allocate the footwear-to-landing opening as one generation
-first, then assign remaining time to the approved post-landing story and payoff.
-Rebalance internal timing rather than retaining separate setup and incident windows.
-Keep the main advertised item dominant regardless of its tour slot.
-
-### Build a visual crescendo with real product details
-
-Choose what makes each visit rewarding: layered food texture, reflective hardware,
-condensation on a sealed cup, or a frozen splash from an already open source.
-Create the plausible displaced state at contact, then freeze it. Keep packaging
-mechanisms and actual food layers intact. One reference's liquid crown is not a
-universal effect to add to electronics, eyewear or sealed goods.
-
-Preserve a confirmed visit order; when open, choose an order that creates
-anticipation and a stronger payoff, without always requiring the hero last.
-Let each item own the frame during its visit and give the advertised product the
-strongest detail/scale contrast. The whole inventory need not stay visible.
-Carry fast approach, readable inspection and fast departure into the production
-handoff; exact camera geometry belongs to the audiovisual role guidance.
-
-Choose a visible reaction that fits the established person and next beat: a
-late reach, a forward lean, a low look of disbelief or an approved fall. Preserve
-its end pose in the handoff. Do not impose the reference actor's ground-level
-fall on every story. The complete landing remains the action's resolution.
-
-### Make the landed boundary explicit without pretending to lock frames
-
-Record the full protected action in narrative_goal, a footwear-level first-frame
-start_state with belongings still held or worn (possibly outside the opening crop),
-and a landed end_state: camera pose, wearer reaction and every item's grounded
-position, orientation and opening state. The following segment continues from
-that settled consequence, without replaying contact or descent. A storyboard
-grid is an off-screen story-process reference, not a first/last-frame target.
-Panels sample the story; they impose neither cuts nor exact camera compositions.
-A real preceding video end frame is separate, explicitly bound input authority;
-do not invent frame bindings or new frame-generation work for this method.
-
-### Carry the complete action into production prompts
-
-The script, outline, storyboard and Video prompt must agree on the inventory,
-footwear-level opening, uninterrupted rise, contact before release, shared freeze,
-near-to-far visit order, forward travel and visible approaches, pullback and landing-complete endpoint in the
-same segment. Keep additional approved objects accounted for.
-Timing/camera revisions reuse approved identities and replace stale instructions
-that split off the opening, stop at freeze, move frozen droplets, or reserve
-landing for another node.
-Review these links before returning text; this adds no paid visual check or
-backend rejection gate. Preserve speech, subtitles and actual product facts.
+Before returning, reconcile story, outline, grid and Video against this chain:
+actual contact -> immediate recovery reflex -> support loss and launch -> shared
+freeze -> connected inspection -> complete landing. Replace stale instructions
+that demand a planted presentation pose, delayed levitation, unsupported launch
+heights or contact hidden behind foreground coverage. Preserve approved speech,
+subtitles, identity and product facts. This is authoring guidance inside the
+existing call, not an extra review model, media rerun or backend rejection gate.

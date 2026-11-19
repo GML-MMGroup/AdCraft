@@ -5,60 +5,55 @@ description: One continuous bullet-time product tour from first-frame feet throu
 
 # Accident Bullet-Time Commercial
 
-Use contact-triggered speed ramp and parallax-led product inspection: freeze
-subjects while the camera travels through their space. Adapt casting,
-setting and medium to the approved story. Default to the product plus two distinct
-supporting items; an approved product set may fill those slots. Preserve extra props.
-Keep attention on the wearer; the passing route determines face/back visibility,
-without a separate introduction.
+Use a contact-triggered speed ramp for parallax-led product inspection.
+Film one interrupted walk, then expand its airborne instant into a continuous
+product tour. Preserve the approved story, inventory, identity and medium.
+The collision causes the spectacle; a floating display pose cannot substitute.
 
-## Choreography and visual intensity
+## Cause, release, then slow time
 
-1. Open on the wearer's feet, track backward low and rise in this same segment
-to reveal the carrier, supported items and passing route. Incidental shoulder
-contact causes slight backward recoil, open palms and the original items tossing
-forward/upward. Keep the reaction quick and modest; objects supply the spectacle.
-2. Freeze near the airborne crest with empty hands and vacated supports. Arrange
-the approved visits A/B/C from near to far along a depth corridor away from this
-camera, with small height/lateral offsets for passage and visible silhouettes.
-Derive this bounded volume from supports and release paths, not a flat display
-row. Carry the same map through script, grid and video; no fixed product order.
-3. Start the tour promptly: advance continuously from foreground to background,
-A to B to C. Before each arrival, the next item is already smaller and deeper;
-the outgoing item grows past a frame edge as the next enlarges continuously.
-Keep shared landmarks and parallax through these visible bridges. Sideways scans,
-isolated zooms or background blur cannot replace forward travel.
-4. Accelerate between visits, slow briefly for detail, then continue forward.
-Camera roll/tilt and gentle offsets follow that path. Each item becomes dominant;
-the product receives the strongest detail, reached on the same trajectory, never
-a separate orbit, macro insert or reset. Save backward travel for the final pullback.
-5. Pull back continuously to reconnect with the wearer, then return to gravity.
-Follow every item through ground contact and settling into the approved reaction.
+Keep footwear-level backward tracking and the rising reveal in the same take.
+Show initial supports and one passing route. At the same contact plane, the
+passer's shoulder visibly touches the protagonist's shoulder or upper arm;
+a short fabric compression or torso deflection establishes the impulse.
+A crossing foreground body or a route curving around the protagonist is not contact.
 
-## Continuity and completion
+Contact immediately interrupts weight transfer: the torso is checked slightly
+backward, a knee yields and the hands react as balance is lost. Keep the reflex
+brief and asymmetric, not a fixed-feet backbend, deliberate throw or held pose.
+Items leave real supports with an initial impulse and forward/upward momentum,
+then decelerate toward the shared freeze. Adapt height to the support and move
+the camera to it; low-held items must not slowly levitate above the face.
+Keep walking/contact near normal speed and start the strong speed ramp after
+support loss. Move promptly into the first object, instead of holding the recoil.
+
+## One connected inspection
+
+Use the product plus two distinct supporting items unless an approved set fills
+those slots. Map the approved A/B/C order near to far in a bounded depth corridor,
+with support-derived height/lateral offsets. Advance continuously through that
+space. The outgoing near edge grows past the lens while the already visible,
+smaller next item enlarges into its visit. Accelerate between visits, slow for
+detail and continue; roll/tilt and gentle offsets share this path. Give the
+advertised product the strongest view without restarting its orbit or macro shot.
+Retreat only for the final pullback, then resume the fall and complete settling.
+
+## Continuity
 
 Keep the first-frame footwear reveal through all objects landing in one video
-segment, including the rise, contact, release, tour, pullback and settling.
-Do not generate the opening separately or stitch to a second incident clip.
-Reserve the final two to three seconds for landing; fit the whole interval
-within the generation cap (currently fifteen seconds) and confirmed total.
-Further story/payoff starts after settling. Shorten opening/static holds rather than splitting
-before contact; disclose incompatible timing instead of silently exceeding it.
+segment, within the current fifteen-second cap and confirmed total. Reserve
+two to three seconds for landing; later story/payoff follows the grounded state.
+Freeze bodies, head and gaze, geometry, closures and displaced material in world
+space. Each original exists once and its vacated support stays empty. A splash
+needs an open source; a drop is not durability proof. Preserve speech/subtitles.
 
-Lock bodies, head, gaze, object poses, closures and suspended material in world
-space; screen position, apparent size and occlusion follow the moving viewpoint.
-Keep geometry, identity and one instance per item; vacated supports stay empty.
-Crumbs or fabric follow the action; a splash needs an already open vessel.
-Avoid hidden cuts or disconnected inserts. A landing does not prove durability.
-
-The grid is an off-screen story-process reference, not a first/last-frame target.
-Start in the full-frame scene; panels sample events, not mandatory cuts or framing.
-Keep speech/subtitle choices and asset-role formats. Reactions must connect to
-the next segment; no specific fall, cast or splash is mandatory.
+The grid is an off-screen story-process reference, not a first/last-frame target,
+collage or required cut list. The contact frame must show the cause, followed by
+the airborne state. Start in the full-frame scene and keep one continuous path.
 
 Read only the current role: [script](references/script.md),
 [product](references/product.md), [prop](references/prop.md),
 [character](references/character.md), [scene](references/scene.md),
 [storyboard](references/storyboard.md), [video](references/video.md), or
 [bgm](references/bgm.md). [Source analysis](references/source-analysis.md)
-records reference evidence and the corrections that supersede earlier guidance.
+records observations and explicitly superseded earlier guidance.

@@ -28,10 +28,12 @@ Keep a phone's screen and grip functionally oriented. Preserve separate
 identities when a passerby is independently designed; an anonymous extra is not
 another depiction of the protagonist. Do not duplicate bodies in close views.
 
-For shot performance, use an everyday walk followed by slight backward recoil
-and instinctively opening hands after contact; the original belongings toss away.
-Keep both palms empty and the body looking toward those airborne items during
-the tour. A low look or late reach can follow when time resumes. Match the
+For shot performance, connect contact to interrupted weight transfer: the torso
+is briefly checked backward, a knee yields or a recovery step begins, and the
+hands react before grip is lost. Open palms and slight backward recoil are the
+short, asymmetric consequence, not a fixed-feet backbend or deliberate display
+pose. Freeze the body mid-recovery after release, with empty supports; head and
+gaze remain in that moment. A low look or late reach can follow when time resumes. Match the
 narrative handoff; falling is optional and the accident pose does not belong in
 identity reference sheets. The story does not require a specific gender, body type, pink dress
 or fashion pose. Keep explicitly stylized characters in their selected medium;
