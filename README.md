@@ -46,23 +46,22 @@
 ## 🌟 Showcase — Ad Videos Across Industries
 
 > Real ad videos produced with AdCraft, spanning multiple industries.
-> <!-- 在这里放你不同领域的广告案例，建议用视频封面缩略图 + 播放链接 -->
 
 <table>
   <tr>
-    <td align="center"><b>🚗 Automotive</b><br/><img src="./assets/cases/auto.gif" width="240"/></td>
-    <td align="center"><b>🍔 Food</b><br/><img src="./assets/cases/food.gif" width="240"/></td>
-    <td align="center"><b>🥤 Beverage</b><br/><img src="./assets/cases/beverage.gif" width="240"/></td>
+    <td align="center"><b>🚗 Automotive</b><br/><img src="./assets/cases/auto.gif" alt="Motorcycle ad" width="240"/></td>
+    <td align="center"><b>🍔 Food</b><br/><img src="./assets/cases/food.gif" alt="Roast chicken ad" width="240"/></td>
+    <td align="center"><b>🥤 Beverage</b><br/><img src="./assets/cases/beverage.gif" alt="Xiyou sparkling water ad" width="240"/></td>
   </tr>
   <tr>
-    <td align="center"><b>💄 Beauty</b><br/><img src="./assets/cases/beauty.gif" width="240"/></td>
-    <td align="center"><b>👗 Apparel</b><br/><img src="./assets/cases/apparel.gif" width="240"/></td>
-    <td align="center"><b>🧴 Daily Goods</b><br/><img src="./assets/cases/goods.gif" width="240"/></td>
+    <td align="center"><b>💄 Beauty</b><br/><img src="./assets/cases/beauty.gif" alt="Lipstick ad" width="240"/></td>
+    <td align="center"><b>👗 Apparel</b><br/><img src="./assets/cases/apparel.gif" alt="T-shirt ad" width="240"/></td>
+    <td align="center"><b>🧴 Daily Goods</b><br/><img src="./assets/cases/goods.gif" alt="Windshield washer fluid ad" width="240"/></td>
   </tr>
   <tr>
-    <td align="center"><b>🔌 Appliances</b><br/><img src="./assets/cases/appliance.gif" width="240"/></td>
-    <td align="center"><b>📱 Electronics</b><br/><img src="./assets/cases/electronics.gif" width="240"/></td>
-    <td align="center"><b>➕ More coming</b><br/><img src="./assets/cases/more.gif" width="240"/></td>
+    <td align="center"><b>🔌 Appliances</b><br/><img src="./assets/cases/appliance.gif" alt="Rice cooker ad" width="240"/></td>
+    <td align="center"><b>📱 Electronics</b><br/><img src="./assets/cases/electronics.gif" alt="Power bank ad" width="240"/></td>
+    <td align="center"><b>🎞️ More Products</b><br/><img src="./assets/cases/more-products.gif" alt="Coffee, game controller, skateboard, headphones, and graphics card carousel" width="240"/></td>
   </tr>
 </table>
 

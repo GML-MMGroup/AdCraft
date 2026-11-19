@@ -44,23 +44,22 @@
 ## 🌟 案例展示 · 覆盖多个行业
 
 > 以下为使用 AdCraft 生产的真实广告视频，覆盖多个行业领域。
-> <!-- 在这里放你不同领域的广告案例，建议用视频封面缩略图 + 播放链接 -->
 
 <table>
   <tr>
-    <td align="center"><b>🚗 汽车</b><br/><img src="./assets/cases/auto.gif" width="240"/></td>
-    <td align="center"><b>🍔 食品</b><br/><img src="./assets/cases/food.gif" width="240"/></td>
-    <td align="center"><b>🥤 饮料</b><br/><img src="./assets/cases/beverage.gif" width="240"/></td>
+    <td align="center"><b>🚗 汽车</b><br/><img src="./assets/cases/auto.gif" alt="摩托车广告" width="240"/></td>
+    <td align="center"><b>🍔 食品</b><br/><img src="./assets/cases/food.gif" alt="烤鸡腿广告" width="240"/></td>
+    <td align="center"><b>🥤 饮料</b><br/><img src="./assets/cases/beverage.gif" alt="汐游矿泉水广告" width="240"/></td>
   </tr>
   <tr>
-    <td align="center"><b>💄 美妆</b><br/><img src="./assets/cases/beauty.gif" width="240"/></td>
-    <td align="center"><b>👗 服饰</b><br/><img src="./assets/cases/apparel.gif" width="240"/></td>
-    <td align="center"><b>🧴 日用品</b><br/><img src="./assets/cases/goods.gif" width="240"/></td>
+    <td align="center"><b>💄 美妆</b><br/><img src="./assets/cases/beauty.gif" alt="口红广告" width="240"/></td>
+    <td align="center"><b>👗 服饰</b><br/><img src="./assets/cases/apparel.gif" alt="T 恤衫广告" width="240"/></td>
+    <td align="center"><b>🧴 日用品</b><br/><img src="./assets/cases/goods.gif" alt="汽车玻璃水广告" width="240"/></td>
   </tr>
   <tr>
-    <td align="center"><b>🔌 电器</b><br/><img src="./assets/cases/appliance.gif" width="240"/></td>
-    <td align="center"><b>📱 电子产品</b><br/><img src="./assets/cases/electronics.gif" width="240"/></td>
-    <td align="center"><b>➕ 更多敬请期待</b><br/><img src="./assets/cases/more.gif" width="240"/></td>
+    <td align="center"><b>🔌 电器</b><br/><img src="./assets/cases/appliance.gif" alt="电饭煲广告" width="240"/></td>
+    <td align="center"><b>📱 电子产品</b><br/><img src="./assets/cases/electronics.gif" alt="充电宝广告" width="240"/></td>
+    <td align="center"><b>🎞️ 更多产品</b><br/><img src="./assets/cases/more-products.gif" alt="咖啡、游戏手柄、滑板、降噪耳机和显卡轮播图" width="240"/></td>
   </tr>
 </table>
 
