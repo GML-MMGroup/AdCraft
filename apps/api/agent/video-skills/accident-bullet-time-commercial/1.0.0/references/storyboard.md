@@ -1,60 +1,66 @@
-# Follow the same originals out of ordinary use
+# Nine instants of one continuous accident
 
 Keep approved inventory, identities, medium, visit order and complete interval.
-Keep the first-frame footwear reveal through all objects landing in one video
-segment. Grid panels sample unequal times, not cuts or first/last-frame targets.
+Keep the first-frame footwear reveal through all objects landing in one video segment.
+Panels sample unequal times, not cuts or first/last-frame targets. Write each
+pictured instant's physical state in both its row and final image prompt.
 
-## Establish support, then show transfer
+## Support, contact and slight backward recoil
 
-Use the product's ordinary functional position unless explicit handling differs:
-eyewear on nose and ears, a drink held by its cup, loose accessories on their real
-supports. Camera and trajectories adapt to these positions. Product/prop references
-own object geometry; character references own identity and clothing, not permanent
-possession or a conflicting incidental accessory. Carry authorized placement
-changes into all sampled states and flag stale source images for replacement.
+Establish initial support in ordinary use: eyewear on nose/ears, a drink held by
+its cup, accessories on actual supports, unless approved handling differs.
+References own geometry and identity; action owns possession.
 
-Choose independent walking routes before contact, with readable adjacent
-shoulder/upper-arm contact at the same depth. Fabric compression and a small torso deflection establish touch;
-the passerby keeps their destination and gaze without a face introduction.
-Show the interrupted weight transfer, yielding knee and beginning recovery reflex.
-This is brief and asymmetric, not a fixed-feet backbend or prearranged open palms.
+Choose independent walking routes before contact. At the same depth, shoulders
+or upper arms visibly touch; fabric compresses and the upper torso tilts slightly
+backward relative to the hips. A yielding knee or small recovery step supports
+that modest recoil. Keep the backward direction explicit; knee flexion alone
+leaves it unspecified. Hands reflexively open briefly and asymmetrically. The
+anonymous passerby remains adjacent at onset and keeps their destination and gaze.
 
-Connect contact to separation. Keep each original next to its source until a
-visible gap establishes transfer: cup clearing opened fingers, glasses clearing
-nose/ears, accessory lifting clear of its resting support. Then show that source
-vacant. A still panel represents one state per object, not a motion trail made
-of copies. Leave time between samples for Video to follow the actual release.
+Each original stays next to its source until a visible gap establishes transfer:
+cup clearing opening fingers, glasses clearing nose/ears, accessory clearing its
+support. Show the now-vacant source. Each panel has one location per original.
 
-## Nine samples of the continuous event
+## Nine sampled states
 
-1. Footwear-height first frame, low backward tracking; off-crop belongings remain supported.
-2. Continuous rise shows initial support through normal wearing/grip and the approaching passing lane.
-3. Actual touch and onset of recovery/release, with supports and originals readable.
-4. Early separated state: departing originals still near their now visibly vacant
-   supports. Cup beyond open fingers, bare face behind departing glasses, vacant
-   accessory support. Arcs slow into an intermediate medium-to-close approach to A.
-5-7. Connected near-to-far visits. Outgoing close edge and already visible smaller
-   deeper next item share each transition, including arrival at the main product.
-8. Sole continuous pullback reconnects the same frozen event; every released
-   source is still vacant. Retain the same inventory and prepare resumed gravity.
-9. Every original grounded and settled, with the approved body reaction and handoff.
+1. Footwear-height first frame, low backward tracking; off-crop items stay supported.
+2. Continuous rise reveals ordinary wearing/grip and the approaching passing lane.
+3. Actual shoulder touch, slight backward recoil and onset of release. Choose one
+   instant with originals and supports readable; the passerby is still adjacent.
+4. Early separation: each original just beyond its vacant support. Open empty
+   fingers, bare face behind departing glasses, vacant accessory support. Arcs
+   slow into an intermediate medium-to-close approach to A.
+5-7. Connected near-to-far visits of those SAME airborne originals. Every featured
+   object, including the advertised product, has visible air beneath it; pavement
+   stays a distant background plane. Outgoing near edge and already visible
+   smaller deeper next item connect each transition. Objects keep world positions.
+8. Sole continuous pullback to the same airborne event, with body caught in slight
+   backward recovery and every released support still vacant. Gravity is about to resume.
+9. All originals grounded and settled for the first time after descent, with the
+   approved body reaction and next-segment handoff.
 
-## Preserve the objects while the camera travels
+## One space and forward state progression
 
-The release has initial momentum, with height derived from real support. Move the
-camera to it rather than hoisting low-held objects above the face. Freeze after
-separation, with body, head and gaze caught mid-recovery until time resumes.
-Each original exists once; its vacated support stays empty until an authored pickup. Connected parts and closures persist. Splash needs an open source.
+Freeze the body, head and gaze mid-recovery until time resumes. Each original's
+vacated support stays empty until an authored pickup. Connected parts and closures
+persist; a splash needs an open source. Heights follow the actual release arcs.
 
-Stage the approved A/B/C order along one bounded depth corridor. Advance through
-fixed world space: the outgoing item enlarges past an edge while the already
-visible deeper target grows into its view. Shared landmarks and parallax join
-both bridges. Accelerate between visits and slow for detail; camera roll, tilt
-and offsets share that route. Each item becomes dominant, the product strongest.
-Avoid an equal-height row, isolated portraits, independent orbits or backward
-resets. Only the final pullback retreats; reserve two to three seconds for landing.
+Map A/B/C near to far in a bounded depth corridor with natural offsets. Advance
+through fixed world space: outgoing item enlarges past an edge as the deeper
+next target grows. Shared landmarks and parallax connect both bridges. Accelerate
+in transit, slow for detail; camera roll, tilt and offsets share that route.
+Each item becomes dominant, the product strongest. Only the final pullback
+retreats; reserve two to three seconds for landing.
 
-Protect separation, travel and descent. Record opening, path and end_state in handoff. The grid stays off-screen;
-Video begins in the full-frame scene. Exclude dialogue lettering, bubbles and labels;
-preserve packaging, logos and environmental text. Video subtitles have their own
-control. Resolve conflicts in this authoring call, without an added review model.
+Before returning, follow every original through supported -> separating ->
+airborne inspection/pullback -> settled. Correct any held-and-airborne duplicate,
+grounded detail before the fall, or restored support in this draft. References
+supply design, not a display surface or a second location. Retain the slight
+backward direction in the contact panel and later frozen body views.
+
+Record opening, path, end_state and stale-image conflicts in handoff. The grid
+stays off-screen; Video begins in the full-frame scene. Exclude dialogue lettering,
+bubbles and added labels; preserve packaging, logos and environmental text.
+Video subtitles have their own control. Resolve contradictions in this authoring
+call, without an added review model or automatic media rerun.

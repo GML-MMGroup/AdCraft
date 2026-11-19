@@ -44,7 +44,12 @@ speed; stretch the airborne instant after release. Reserve two to three seconds
 for landing within the fifteen-second cap and confirmed total. Shorten static
 holds, not visible separation, travel or descent. Later story/payoff continues from end_state.
 
-Carry the causal chain and complete interval into narrative_goal and handoff.
+Carry slight backward torso recoil explicitly into narrative_goal, not just
+generic imbalance or a yielding knee. Retain it in the frozen body state until
+time resumes. Each original stays airborne through inspection and pullback;
+its first ground contact belongs to the final descent. A ground-resting product
+reference supplies design, not an earlier landing or a second instance.
+Carry this causal chain and complete interval into narrative_goal and handoff.
 The grid's contact sample shows the touch before the completed airborne state.
 Replace stale timing, generic launch instructions and deliberate pose descriptions;
 preserve approved speech, subtitles, identities and facts. A fall is optional.

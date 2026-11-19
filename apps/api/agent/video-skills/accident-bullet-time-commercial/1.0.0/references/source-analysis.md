@@ -4,7 +4,24 @@ Analyzed four user-supplied local videos by timeline frame sampling, denser
 sampling around contact, and the tutorial's burned-in captions and visible prompt.
 Sound recommendations are authored production guidance, not an audio transcript.
 
-## Latest correction: ordinary use and visible transfer of the same originals
+## Latest correction: preserve recoil direction and one forward state progression
+
+The 2026-11-16 result version_asset_952a813e9c35c94b2f582217 uses Seedance 2.0,
+five image references and no source video. Its latest grid has forward lean in
+panel 3, a held and airborne cup in panel 4, grounded glasses in panel 7 and
+airborne glasses again in panel 8. The video initially sends glasses downward
+before presenting them farther ahead in air without an observable continuous
+trajectory. This establishes a discontinuity, not proof of two simultaneous pairs.
+The final saved action lost the explicit backward direction already in the Skill.
+
+Preserve slight backward recoil in the actual narrative, panel actions and Video
+text. Each panel samples one instant and one place per original. All inspection
+views and pullback remain airborne; the closing descent supplies first landing.
+Design references do not supply temporary possession or a resting surface. These
+findings motivate consistent text and new grid media; they do not measure each
+input's causal contribution or establish a numerical image-weight control.
+
+## Previous correction: ordinary use and visible transfer of the same originals
 
 The next first-segment result in proj_fbba5ab434f95922 is asset
 version_asset_c6588fafd95957f8d0c0e513, generated with the revised Node text and

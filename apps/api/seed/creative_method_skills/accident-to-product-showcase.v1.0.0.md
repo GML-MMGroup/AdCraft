@@ -19,10 +19,11 @@ consumer_psychology: >
 story_structure: >
   First-frame footwear and a rising reveal establish ordinary product use.
   The passerby reaches the same contact plane as the protagonist; shoulders
-  briefly meet while both keep their destinations. Contact checks the torso,
+  briefly meet while both keep their destinations. Contact checks the torso slightly backward,
   weight shifts and hands react; items leave their actual supports with a short
   forward/upward impulse. Freeze after release, visit the established items from
-  near to far, pull back, resume the same fall and finish after all items settle.
+  near to far while they remain airborne, pull back, resume the same fall and
+  finish after all items settle for the first time.
 hook_methods: >
   Establish independent walking routes and normal carrying before contact.
   For the reference-like approach, an opposing passerby enters a foreground edge
@@ -149,6 +150,13 @@ initial support, release path, frozen location and landing area. Supporting
 belongings are not extra advertised brands or alternate views of one object.
 Retain additional approved items and attached components.
 
+Track supported -> separating -> airborne -> settled as one forward progression
+for every original. Inspection and pullback occur during the airborne state;
+the product's first ground contact belongs to the closing descent. A ground-resting
+reference supplies design, not permission for a grounded beauty view followed
+by another airborne appearance. A grid panel samples one instant and one location
+per original, including the object next to its newly vacant support.
+
 Release moves the original; its vacated support stays empty until an authored
 pickup or reattachment. Show that vacancy in every later shared/body view,
 including the pullback: an empty hand, bare nose/ears or vacant neck, as applicable.
@@ -201,9 +209,12 @@ floating pose; the next sample shows the airborne result. Later nodes start
 from the settled consequence without repeating the cause.
 
 Before returning, reconcile story, outline, grid and Video against this chain:
-actual contact -> immediate recovery reflex -> support loss and launch -> shared
+actual contact -> slight backward torso recoil -> support loss and launch -> shared
 freeze -> connected inspection -> complete landing. Replace stale instructions
 that demand a planted presentation pose, delayed levitation, unsupported launch
 heights or contact hidden behind foreground coverage. Preserve approved speech,
 subtitles, identity and product facts. This is authoring guidance inside the
 existing call, not an extra review model, media rerun or backend rejection gate.
+Preserve the backward direction explicitly in the narrative and final action
+prompts; knee flexion or a generic balance reaction is not a substitute. Carry
+the airborne state into each inspection view and keep landing last.
