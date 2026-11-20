@@ -4,6 +4,7 @@ import { EmptyState, PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
 import type { RouteName } from "../types";
 import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
+import { ProjectDeleteDialog } from "./projects/ProjectDeleteDialog.tsx";
 import "./projects.css";
 import { useLocale, localeText } from "../i18n/locale.tsx";
 import { TrashIcon } from "../icons";
@@ -20,11 +21,17 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
   const { locale } = useLocale();
   const labels = locale === "zh-CN" ? localeText.zh.trashPage : localeText.en.trashPage;
   const deletionInFlight = useRef(false);
+  const deletionCancellationRequested = useRef(false);
+  const deletionTriggerRef = useRef<HTMLElement | null>(null);
   const [search, setSearch] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [batchAction, setBatchAction] = useState<"restore" | "delete" | null>(null);
+  const [pendingDeletion, setPendingDeletion] = useState<TrashListItem[] | null>(null);
+  const [deletionProgress, setDeletionProgress] = useState({ processed: 0, failed: 0 });
+  const [deletionCancelling, setDeletionCancelling] = useState(false);
+  const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
   const {
     trashedProjects,
     restoreTrashedProject,
@@ -128,19 +135,38 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
     setSelectionMode(false);
   }, [labels, restoreTrashedProject, selectedProjects, selectionBusy]);
 
+  const requestPermanentDelete = useCallback((items: TrashListItem[]) => {
+    if (selectionBusy || deletionInFlight.current || items.length === 0) return;
+    deletionTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPendingDeletion([...items]);
+  }, [selectionBusy]);
+
+  const cancelPermanentDelete = useCallback(() => {
+    if (!deletionInFlight.current || deletionCancellationRequested.current) return;
+    deletionCancellationRequested.current = true;
+    setDeletionCancelling(true);
+  }, []);
+
   const runPermanentDelete = useCallback(async (items: TrashListItem[]) => {
     if (selectionBusy || deletionInFlight.current || items.length === 0) return;
     const snapshot = [...items];
-    if (!window.confirm(`${labels.confirmDelete.replace("{count}", String(snapshot.length))}\n\n${snapshot.slice(0, 10).map((item) => item.name).join("\n")}`)) return;
     deletionInFlight.current = true;
+    deletionCancellationRequested.current = false;
+    setDeletionCancelling(false);
+    setDeletionNotice(null);
+    setDeletionProgress({ processed: 0, failed: 0 });
     setBatchAction("delete");
     setSelectionError(null);
     const failed = new Set<string>();
+    const remaining = new Set(snapshot.map((item) => item.projectId));
     const reasons: string[] = [];
+    let processed = 0;
     try {
       for (const item of snapshot) {
+        if (deletionCancellationRequested.current) break;
         try {
           if (!await permanentlyDeleteTrashedProject(item.projectId, item.projectVersion)) throw new Error(labels.deleteFailed.replace("{count}", "1"));
+          remaining.delete(item.projectId);
         } catch (error) {
           failed.add(item.projectId);
           const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
@@ -148,19 +174,29 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
             : code === "project_state_conflict" || code === "project_not_trashed" ? labels.deleteStale
             : error instanceof Error ? error.message : labels.deleteFailed.replace("{count}", "1"));
         }
+        processed += 1;
+        setDeletionProgress({ processed, failed: failed.size });
       }
-      setSelectedProjectIds(failed);
-      if (failed.size === 0) setSelectionMode(false);
-      else setSelectionError(`${labels.deleteFailed.replace("{count}", String(failed.size))} ${[...new Set(reasons)].join(" ")}`);
+      setSelectedProjectIds(remaining);
+      if (remaining.size === 0) setSelectionMode(false);
+      else if (deletionCancellationRequested.current) setSelectionMode(true);
+      if (failed.size > 0) setSelectionError(`${labels.deleteFailed.replace("{count}", String(failed.size))} ${[...new Set(reasons)].join(" ")}`);
+      if (deletionCancellationRequested.current) {
+        setDeletionNotice(labels.deleteCancelled
+          .replace("{deleted}", String(snapshot.length - remaining.size))
+          .replace("{remaining}", String(remaining.size)));
+      }
       await refreshProjects();
     } finally {
+      setPendingDeletion(null);
       deletionInFlight.current = false;
       setBatchAction(null);
+      setDeletionCancelling(false);
     }
   }, [labels, permanentlyDeleteTrashedProject, refreshProjects, selectionBusy]);
 
   return (
-    <section className="content-wrap trash-page">
+    <section className="content-wrap trash-page" inert={pendingDeletion !== null}>
       <PageHeader title={labels.title} editorial />
       <CatalogToolbar className="projects-toolbar">
         <div className="toolbar-row">
@@ -194,13 +230,14 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
           <CatalogFilterButton
             className="trash-delete-action"
             disabled={selectionBusy || localTrashItems.length === 0}
-            onClick={() => void runPermanentDelete(localTrashItems)}
+            onClick={() => requestPermanentDelete(localTrashItems)}
           >
             <TrashIcon />
             {batchAction === "delete" ? labels.deleting : labels.emptyTrash}
           </CatalogFilterButton>
         </div>
       </CatalogToolbar>
+      {deletionNotice ? <p className="trash-deletion-notice" role="status">{deletionNotice}</p> : null}
       {selectionError ? <p className="project-selection-error" role="alert">{selectionError}</p> : null}
       {selectionMode ? (
         <div className="project-selection-toolbar" aria-busy={selectionBusy}>
@@ -209,12 +246,12 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
           </div>
           <div className="project-selection-actions">
             <CatalogFilterButton  type="button" disabled={selectionBusy || selectedProjects.length === 0} onClick={() => void runBatchRestore()}>
-              {selectionBusy ? labels.restoring : labels.restoreSelected}
+              {batchAction === "restore" ? labels.restoring : labels.restoreSelected}
             </CatalogFilterButton>
             <CatalogFilterButton
               className="trash-delete-action"
               disabled={selectionBusy || selectedProjects.length === 0}
-              onClick={() => void runPermanentDelete(selectedProjects)}
+              onClick={() => requestPermanentDelete(selectedProjects)}
             >
               <TrashIcon />
               {labels.deleteSelected}
@@ -282,7 +319,7 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
                     type="button"
                     className="small-action trash-delete-action"
                     disabled={selectionBusy}
-                    onClick={() => void runPermanentDelete([item])}
+                    onClick={() => requestPermanentDelete([item])}
                   >
                     <TrashIcon />
                     {labels.deletePermanently}
@@ -295,6 +332,18 @@ export function TrashPage({ navigate }: { navigate?: (route: RouteName) => void 
       ) : (
         <EmptyState text={labels.empty} />
       )}
+      {pendingDeletion ? (
+        <ProjectDeleteDialog
+          projects={pendingDeletion}
+          busy={batchAction === "delete"}
+          progress={deletionProgress}
+          cancelling={deletionCancelling}
+          returnFocusTo={deletionTriggerRef.current}
+          onClose={() => { if (!deletionInFlight.current) setPendingDeletion(null); }}
+          onConfirm={() => void runPermanentDelete(pendingDeletion)}
+          onCancel={cancelPermanentDelete}
+        />
+      ) : null}
     </section>
   );
 }

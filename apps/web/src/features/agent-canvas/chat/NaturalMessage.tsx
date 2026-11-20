@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { useTranslation } from "../../../i18n/useTranslation.ts";
 import type { ChatMessageV2 } from "../../../types-v2.ts";
 import {
   isLikelyMarkdown,
@@ -28,7 +29,11 @@ function displayTime(value: string): string {
 }
 
 export function NaturalMessage({ message, presentation, related, skillTitle, animate = false, playback }: NaturalMessageProps) {
+  const t = useTranslation();
   const isAgent = message.speaker === "adcraft_video_agent";
+  const text = isAgent && message.text.trim() === "The Editing node is ready with the Ready Videos and BGM."
+    ? t("The Editing node is ready with the Ready Videos and BGM. Click the Editing card to export the video or add the final video to the canvas.")
+    : message.text;
 
   return (
     <article
@@ -52,7 +57,7 @@ export function NaturalMessage({ message, presentation, related, skillTitle, ani
             <span>{skillTitle}</span>
           </div>
         ) : null}
-        <MessageText text={message.text} animate={isAgent && animate} playback={playback} />
+        <MessageText text={text} animate={isAgent && animate} playback={playback} />
       </div>
       {related}
       <footer className="agent-chat__message-meta">

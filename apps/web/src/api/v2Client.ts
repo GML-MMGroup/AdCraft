@@ -1599,7 +1599,7 @@ export const v2Api = {
     }
     await requestV2Response(
       `/projects/${encodeURIComponent(projectId)}/permanent`,
-      { method: "DELETE", headers: { "If-Match": `"project:${projectId}:${projectVersion}"` } },
+      { method: "DELETE", headers: { "If-Match": `"project-${projectId}-v${projectVersion}"` } },
       { conflictHandling: "caller", captureAuthoringEtag: false },
     );
   },

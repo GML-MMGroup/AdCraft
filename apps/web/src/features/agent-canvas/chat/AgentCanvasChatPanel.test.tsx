@@ -2369,6 +2369,35 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm direction" }));
   }
 
+  it("reveals a ready scene choice while an earlier turn still reports working", () => {
+    const chat = mockChatResult();
+    chat.state.agentWorking = true;
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    const props = { workflow: roleMotionWorkflow, chatRevision: 0, chatEvents: [], onFocusNode: vi.fn() };
+    const { rerender } = render(<AgentCanvasChatPanel {...props} />);
+    expect(screen.queryByRole("radio", { name: /Amber street corner/ })).toBeNull();
+
+    const interaction = directionInteraction();
+    interaction.content = {
+      content_kind: "concept_choice", proposal_id: proposalCard.proposal.proposal_id,
+      stage: "scene", stage_revision: 6, action_id: "scene-action", occurrence_id: "scene-1",
+      capability_id: "scene_design", allow_custom: true, allow_exclusion: false,
+      options: [{ option_id: "scene-option", title: "Amber street corner", summary: "Warm backlight.",
+        difference_tags: [], recommended: true, reference_preview: [] }],
+    };
+    chat.state.guidedInteraction = interaction;
+    chat.state.items = [{ ...proposalCard, proposal: {
+      ...proposalCard.proposal, workflow_id: roleMotionWorkflow.workflow_id,
+      proposal_kind: "scene", capability_id: "scene_design", capability_display_name: "Scene Designer",
+      options: [{ option_id: "scene-option", title: "Amber street corner", public_summary: "Warm backlight.", key_decisions: [] }],
+    } }];
+    rerender(<AgentCanvasChatPanel {...props} chatRevision={1} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Amber street corner/ }));
+    expect((screen.getByRole("button", { name: "Confirm direction" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("status", { name: "Scene Designer is working..." })).toBeNull();
+  });
+
   it.each(["loading", "sending", "agentWorking"] as const)(
     "waits for backend %s state before revealing a new choice card",
     (pendingState) => {
@@ -2397,6 +2426,7 @@ describe("AgentCanvasChatPanel decision dock overlay", () => {
     if (interaction.content.content_kind !== "concept_choice") throw new Error("Expected concept choice");
     interaction.content.proposal_id = proposalCard.proposal.proposal_id;
     const chat = mockChatResult();
+    chat.state.agentWorking = true;
     chat.state.guidedInteraction = interaction;
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     const props = { workflow: roleMotionWorkflow, chatRevision: 0, chatEvents: [], onFocusNode: vi.fn() };

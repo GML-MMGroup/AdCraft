@@ -1,11 +1,15 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { LocaleProvider, useLocale } from "../../../i18n/locale.tsx";
 import type { ChatMessageV2 } from "../../../types-v2.ts";
 import { NaturalMessage } from "./NaturalMessage.tsx";
 import type { NaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.removeItem("adcraft.locale");
+});
 
 function message(
   speaker: ChatMessageV2["speaker"],
@@ -36,6 +40,40 @@ function presentation(showAgentIdentity: boolean): NaturalMessagePresentation {
 }
 
 describe("NaturalMessage", () => {
+  it("adds Editing card guidance and switches existing readiness messages to Chinese", () => {
+    function LanguageSwitch() {
+      const { setLocale } = useLocale();
+      return <button onClick={() => setLocale("zh-CN")}>中文</button>;
+    }
+
+    render(
+      <LocaleProvider initialLocale="en-US">
+        <LanguageSwitch />
+        <NaturalMessage
+          message={message("adcraft_video_agent", "The Editing node is ready with the Ready Videos and BGM.")}
+          presentation={presentation(true)}
+        />
+      </LocaleProvider>,
+    );
+
+    const english = "The Editing node is ready with the Ready Videos and BGM. Click the Editing card to export the video or add the final video to the canvas.";
+    expect(screen.getByText(english)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "中文" }));
+    expect(screen.getByText("剪辑节点已就绪，视频和背景音乐已准备好。点击剪辑卡片，即可导出视频或将最终视频添加到画布。")).toBeTruthy();
+    expect(screen.queryByText(english)).toBeNull();
+  });
+
+  it("leaves user-authored Editing readiness text unchanged in Chinese mode", () => {
+    const text = "The Editing node is ready with the Ready Videos and BGM.";
+    render(
+      <LocaleProvider initialLocale="zh-CN">
+        <NaturalMessage message={message("user", text)} presentation={presentation(false)} />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByText(text)).toBeTruthy();
+  });
+
   it("renders user messages as unlabeled bubbles", () => {
     render(<NaturalMessage message={message("user", "Create a quiet product film.")} presentation={presentation(false)} />);
 
