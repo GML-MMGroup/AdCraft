@@ -351,6 +351,13 @@ export function AgentCanvasChatPanel({
     || !conceptContent?.proposal_id
     || standaloneGuidedReferences !== null,
   );
+  // An open choice with hydrated proposal detail is ready for the user.
+  // Earlier turns and parallel work can keep the general working flag set.
+  const openConceptProposalReady = Boolean(
+    conceptInteraction?.status === "open"
+    && conceptContent?.proposal_id
+    && standaloneGuidedReferences !== null,
+  );
   const [presentedInteractionKey, setPresentedInteractionKey] = useState<string | null>(null);
   // New cards wait for their action state and proposal detail. Later background
   // refreshes must not unmount a card the user is already filling in.
@@ -358,7 +365,7 @@ export function AgentCanvasChatPanel({
     standaloneGuidedInteraction?.status === "open"
     && !currentInteractionSubmitted
     && shownInteractionKey !== presentedInteractionKey
-    && (chat.state.loading || chat.state.sending || chat.state.agentWorking
+    && (chat.state.loading || chat.state.sending || (chat.state.agentWorking && !openConceptProposalReady)
       || !brandContextReady || standaloneGuidedReferences === null),
   );
   const workingMessage = useMemo(() => agentWorkingMessage({
@@ -1295,7 +1302,7 @@ export function AgentCanvasChatPanel({
             {liveAssistantStreams.length ? (
               liveAssistantStreams.map((view) => <LiveAssistantTurn key={view.stream_id} view={view}
                 playback={{ cache: typewriterPlayback.cache, key: `stream:${view.stream_id}` }} />)
-            ) : chat.state.agentWorking && !waitingForInteraction ? (
+            ) : chat.state.agentWorking && !openConceptProposalReady && !waitingForInteraction ? (
               <AgentWorkingRow messageKey={workingMessage} />
             ) : null}
             {waitingForInteraction ? <AgentWorkingRow messageKey={workingMessage} /> : null}

@@ -443,6 +443,7 @@ export const uiMessages = {
   "Arrange clips and optional BGM in the editor.": "在编辑器中排列片段，并按需添加 BGM。",
   "Editing sources": "剪辑来源",
   "Exports are prepared by the Editing node.": "导出内容由剪辑节点准备。",
+  "The Editing node is ready with the Ready Videos and BGM. Click the Editing card to export the video or add the final video to the canvas.": "剪辑节点已就绪，视频和背景音乐已准备好。点击剪辑卡片，即可导出视频或将最终视频添加到画布。",
   "Open editing editor": "打开剪辑编辑器",
   "Open editor": "打开编辑器",
   "Close canvas menu": "关闭画布菜单",
